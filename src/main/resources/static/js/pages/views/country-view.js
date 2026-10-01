@@ -541,13 +541,15 @@ export function createCountryView(deps) {
             // broken page, and the manager cannot tell which one they are looking at.
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--country">
-                    <div class="fm-page-toolbar">
-                        <button class="back-to-dashboard" data-nav-back="dashboard">Back to dashboard</button>
-                        <div class="fm-page-title-block">
-                            <div class="fm-eyebrow">Country</div>
-                            <h2>${htmlEscape(countryIso)} is represented, not played</h2>
+                    <header class="fm-country-header">
+                        <div class="fm-country-header-main">
+                            <div>
+                                <div class="fm-eyebrow">Country</div>
+                                <h2 class="fm-country-header-title">${htmlEscape(countryIso)} is represented, not played</h2>
+                            </div>
                         </div>
-                    </div>
+                        <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
+                    </header>
                     <div class="fm-callout">
                         It has national sides, and no club divisions. A country is given its own five-tier
                         pyramid from Admin &rarr; Activate a country.

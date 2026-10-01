@@ -17,7 +17,16 @@ export function createMatchView(deps) {
             }
         }
         const mainContent = document.getElementById("main-content");
-        const initialTab = options.initialTab === 'report' ? 'report' : 'preview';
+        // The three tabs, and the requested one validated against them.
+        //
+        // It used to be `options.initialTab === 'report' ? 'report' : 'preview'` — a two-way test on one
+        // tab, so **every other request silently became Preview**. "Show results" asks for 'goals', is not
+        // 'report', and landed a manager who had just asked to see his result on the pre-match screen.
+        // Three tabs, one list, and an unknown request is refused rather than defaulted into the one tab
+        // nobody should land on by accident.
+        const MATCH_TABS = ['preview', 'goals', 'report'];
+        const requestedTab = String(options.initialTab || '').toLowerCase();
+        const initialTab = MATCH_TABS.includes(requestedTab) ? requestedTab : 'preview';
         console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if (caller === "undefined") {
             console.log(`Match not found.`);
@@ -166,62 +175,95 @@ export function createMatchView(deps) {
                 const awayAvailabilityScore = Number(previewPayload?.awayAvailabilityScore ?? 0);
                 const analysis = htmlEscape(String(previewPayload?.analysisText || 'No extra preview analysis available.'));
 
+                // Semantic classes, not inline styles.
+                //
+                // This block was ~30 `style="..."` attributes, which is why the Preview tab looked like
+                // nothing else in the game while the ZOX page beside it looked deliberate: the ZOX page
+                // has a stylesheet and a palette, and this had neither. Same content, same numbers - it
+                // just could not be styled as a set. `fm-mpv-*` is styled in dashboard.css.
                 const renderInsights = items => items.length
-                    ? items.map(item => `<div style="display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="color:#9aa0a6;">${htmlEscape(String(item.label || 'Insight'))}</span><strong>${htmlEscape(String(item.value || 'N/A'))}</strong></div>`).join('')
-                    : `<div style="color:#aaa;">No extra insight available.</div>`;
+                    ? items.map(item => `<div class="fm-mpv-row"><span>${htmlEscape(String(item.label || 'Insight'))}</span><strong>${htmlEscape(String(item.value || 'N/A'))}</strong></div>`).join('')
+                    : `<div class="fm-mpv-empty">No extra insight available.</div>`;
 
                 const renderAbsentees = items => items.length
-                    ? items.map(item => `<span style="display:inline-flex; padding:7px 10px; border-radius:999px; background:rgba(255,255,255,0.06); margin:0 8px 8px 0;">${htmlEscape(String(item))}</span>`).join('')
-                    : `<span style="color:#9aa0a6;">No absences reported.</span>`;
+                    ? items.map(item => `<span class="fm-mpv-chip">${htmlEscape(String(item))}</span>`).join('')
+                    : `<span class="fm-mpv-empty">No absences reported.</span>`;
+
+                const pct = value => Number(value || 0).toFixed(0);
+                const fixed1 = value => Number(value || 0).toFixed(1);
 
                 infoDiv.innerHTML = `
-                    <div class="fm-match-report-shell">
-                        <h3 style="text-align:center; margin:0 0 16px; color:#4CAF50;">Match Preview</h3>
-                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:16px;">
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05); text-align:center;">
-                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:8px;">Prediction</div>
-                                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">1</div><div style="font-size:1.35em; font-weight:700;">${homeWin.toFixed(0)}%</div></div>
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">X</div><div style="font-size:1.35em; font-weight:700;">${draw.toFixed(0)}%</div></div>
-                                    <div><div style="font-size:0.8em; color:#9aa0a6;">2</div><div style="font-size:1.35em; font-weight:700;">${awayWin.toFixed(0)}%</div></div>
+                    <div class="fm-mpv">
+                        <header class="fm-mpv-band">
+                            <span class="fm-mpv-band-kicker">Match preview</span>
+                            <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} <span>${htmlEscape(String(previewPayload?.homeFormation || '4-3-3'))}</span> v <span>${htmlEscape(String(previewPayload?.awayFormation || '4-3-3'))}</span> ${htmlEscape(awayTeamName)}</h3>
+                        </header>
+
+                        <div class="fm-mpv-row-3">
+                            <section class="fm-mpv-card fm-mpv-card--home">
+                                <h4 class="fm-mpv-label">Home edge</h4>
+                                <div class="fm-mpv-team">${htmlEscape(homeTeamName)}</div>
+                                <div class="fm-mpv-sub">Fit ${pct(homeFormationFitness * 100)}% &middot; Bench ${fixed1(homeBenchQuality)}</div>
+                            </section>
+                            <section class="fm-mpv-card fm-mpv-card--pred">
+                                <h4 class="fm-mpv-label">Prediction</h4>
+                                <div class="fm-mpv-prediction">${homeWin > draw && homeWin > awayWin ? 'Home win' : awayWin > homeWin ? 'Away win' : 'Draw'}</div>
+                                <div class="fm-mpv-probs">
+                                    <span>${pct(homeWin)}%</span><span>${pct(draw)}%</span><span>${pct(awayWin)}%</span>
                                 </div>
-                                <div style="font-size:0.92em; color:#dfe6eb;">xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}</div>
-                                <div style="font-size:0.88em; color:#9aa0a6; margin-top:8px;">${analysis}</div>
-                            </div>
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.05);">
-                                <div style="color:#9aa0a6; font-size:0.9em; margin-bottom:10px;">Squad fit</div>
-                                <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:10px;">
-                                    <div><div style="font-size:0.82em; color:#9aa0a6;">${htmlEscape(homeTeamName)}</div><div style="font-weight:700;">${htmlEscape(String(previewPayload?.homeFormation || '4-3-3'))}</div><div style="color:#9aa0a6; font-size:0.88em;">Fit ${(homeFormationFitness * 100).toFixed(0)}%</div><div style="color:#9aa0a6; font-size:0.88em;">Bench ${homeBenchQuality.toFixed(1)}</div></div>
-                                    <div style="text-align:right;"><div style="font-size:0.82em; color:#9aa0a6;">${htmlEscape(awayTeamName)}</div><div style="font-weight:700;">${htmlEscape(String(previewPayload?.awayFormation || '4-3-3'))}</div><div style="color:#9aa0a6; font-size:0.88em;">Fit ${(awayFormationFitness * 100).toFixed(0)}%</div><div style="color:#9aa0a6; font-size:0.88em;">Bench ${awayBenchQuality.toFixed(1)}</div></div>
-                                </div>
-                                <div style="padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); font-size:0.92em; color:#dfe6eb;">Availability ${homeAvailabilityScore.toFixed(0)}% vs ${awayAvailabilityScore.toFixed(0)}%</div>
-                                <div style="margin-top:8px; color:#9aa0a6; font-size:0.88em;">Position mismatches ${Number(previewPayload?.homePositionMismatches ?? 0)} : ${Number(previewPayload?.awayPositionMismatches ?? 0)}</div>
-                                <div style="margin-top:4px; color:#7f8c8d; font-size:0.82em;">${htmlEscape(String(previewPayload?.homePlayStyle || 'BALANCED'))} vs ${htmlEscape(String(previewPayload?.awayPlayStyle || 'BALANCED'))}</div>
-                            </div>
+                                <div class="fm-mpv-sub">xG ${expectedHomeGoals.toFixed(2)} : ${expectedAwayGoals.toFixed(2)}</div>
+                            </section>
+                            <section class="fm-mpv-card fm-mpv-card--away">
+                                <h4 class="fm-mpv-label">Away edge</h4>
+                                <div class="fm-mpv-team">${htmlEscape(awayTeamName)}</div>
+                                <div class="fm-mpv-sub">Fit ${pct(awayFormationFitness * 100)}% &middot; Bench ${fixed1(awayBenchQuality)}</div>
+                            </section>
                         </div>
-                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                                <h4 style="margin:0 0 12px; color:#dfe6eb;">Why this prediction</h4>
-                                <ul style="margin:0; padding-left:18px; color:#dfe6eb;">${predictionReasons.map(reason => `<li style="margin-bottom:8px;">${htmlEscape(String(reason))}</li>`).join('')}</ul>
-                            </div>
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${htmlEscape(homeTeamName)} insights</h4>
+
+                        <div class="fm-mpv-row-2">
+                            <section class="fm-mpv-card">
+                                <h4 class="fm-mpv-label">Squad fit</h4>
+                                <div class="fm-mpv-vs">
+                                    <div>
+                                        <div class="fm-mpv-sub">${htmlEscape(homeTeamName)}</div>
+                                        <strong>${htmlEscape(String(previewPayload?.homeFormation || '4-3-3'))}</strong>
+                                        <div class="fm-mpv-sub">Fit ${pct(homeFormationFitness * 100)}%</div>
+                                        <div class="fm-mpv-sub">Bench ${fixed1(homeBenchQuality)}</div>
+                                    </div>
+                                    <div class="fm-mpv-vs-right">
+                                        <div class="fm-mpv-sub">${htmlEscape(awayTeamName)}</div>
+                                        <strong>${htmlEscape(String(previewPayload?.awayFormation || '4-3-3'))}</strong>
+                                        <div class="fm-mpv-sub">Fit ${pct(awayFormationFitness * 100)}%</div>
+                                        <div class="fm-mpv-sub">Bench ${fixed1(awayBenchQuality)}</div>
+                                    </div>
+                                </div>
+                                <div class="fm-mpv-rule">Availability ${pct(homeAvailabilityScore)}% vs ${pct(awayAvailabilityScore)}%</div>
+                                <div class="fm-mpv-sub">Position mismatches ${Number(previewPayload?.homePositionMismatches ?? 0)} : ${Number(previewPayload?.awayPositionMismatches ?? 0)}</div>
+                                <div class="fm-mpv-sub fm-mpv-sub--faint">${htmlEscape(String(previewPayload?.homePlayStyle || 'BALANCED'))} vs ${htmlEscape(String(previewPayload?.awayPlayStyle || 'BALANCED'))}</div>
+                            </section>
+                            <section class="fm-mpv-card">
+                                <h4 class="fm-mpv-label">Why this prediction</h4>
+                                <ul class="fm-mpv-list">${predictionReasons.map(reason => `<li>${htmlEscape(String(reason))}</li>`).join('')}</ul>
+                                <div class="fm-mpv-sub">${analysis}</div>
+                            </section>
+                        </div>
+
+                        <div class="fm-mpv-row-3">
+                            <section class="fm-mpv-card">
+                                <h4 class="fm-mpv-label">${htmlEscape(homeTeamName)} readiness</h4>
                                 ${renderInsights(homeInsights)}
-                            </div>
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${htmlEscape(awayTeamName)} insights</h4>
+                            </section>
+                            <section class="fm-mpv-card">
+                                <h4 class="fm-mpv-label">${htmlEscape(awayTeamName)} readiness</h4>
                                 ${renderInsights(awayInsights)}
-                            </div>
-                        </div>
-                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-top:14px;">
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${htmlEscape(homeTeamName)} absences</h4>
+                            </section>
+                            <section class="fm-mpv-card">
+                                <h4 class="fm-mpv-label">Absences</h4>
+                                <div class="fm-mpv-sub">${htmlEscape(homeTeamName)}</div>
                                 ${renderAbsentees(homeAbsentees)}
-                            </div>
-                            <div style="padding:16px; border-radius:14px; background:rgba(255,255,255,0.04);">
-                                <h4 style="margin:0 0 12px; color:#dfe6eb;">${htmlEscape(awayTeamName)} absences</h4>
+                                <div class="fm-mpv-sub fm-mpv-sub--gap">${htmlEscape(awayTeamName)}</div>
                                 ${renderAbsentees(awayAbsentees)}
-                            </div>
+                            </section>
                         </div>
                     </div>`;
             }

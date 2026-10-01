@@ -4492,3 +4492,204 @@ body {
         padding-right: 14px;
     }
 }
+
+/* ---------------------------------------------------------------------------
+   Match preview (the `fm-mpv-*` classes)
+   ---------------------------------------------------------------------------
+   The palette is the ZOX page's, deliberately: --zox-primary / --zox-gold are
+   the values from css/zox-match-preview.css, and it is not dead code - it is
+   that page's own stylesheet. The owner liked the green band and the gold
+   accents there, so the match preview was rebuilt to speak the same visual
+   language instead of arriving from somewhere else in the game.
+
+   That file was never imported by this one, so nothing here overrides it and
+   the two pages cannot drift into a shared-variable dependency: the values are
+   written out, and the comment says where they came from.
+
+   Every number on this screen is unchanged from the inline version it replaced.
+   Only the presentation moved. (That the numbers come from /api/zox/match-preview
+   is a separate matter and is written up on the board - they are mostly
+   constants.)
+   --------------------------------------------------------------------------- */
+
+.fm-mpv {
+    display: grid;
+    gap: 14px;
+}
+
+/* The green band across the top, with the gold kicker - the ZOX header, at
+   preview width rather than full-bleed. */
+.fm-mpv-band {
+    padding: 18px 22px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+    border: 1px solid rgba(232, 212, 125, 0.28);
+}
+
+.fm-mpv-band-kicker {
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #e8d47d;
+    margin-bottom: 6px;
+}
+
+.fm-mpv-band-title {
+    margin: 0;
+    font-size: 1.3rem;
+    line-height: 1.2;
+    color: #ecf0f1;
+}
+
+.fm-mpv-band-title span {
+    color: #e8d47d;
+    font-weight: 600;
+}
+
+/* Three-up and two-up rows. auto-fit so a phone gets one column and a desktop
+   gets the intended shape without a media query. */
+.fm-mpv-row-3,
+.fm-mpv-row-2 {
+    display: grid;
+    gap: 14px;
+}
+
+.fm-mpv-row-3 {
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.fm-mpv-row-2 {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+/* The card: dark surface, and a gold left edge on the two that carry an edge.
+   The centre card is the prediction, which is why it is the one that is not
+   tinted - it is the answer rather than a side. */
+.fm-mpv-card {
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: #1a2332;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-left: 3px solid transparent;
+}
+
+.fm-mpv-card--home {
+    border-left-color: #e8d47d;
+}
+
+.fm-mpv-card--away {
+    border-left-color: #e8d47d;
+}
+
+.fm-mpv-card--pred {
+    background: #252d3d;
+    border-color: rgba(232, 212, 125, 0.22);
+}
+
+.fm-mpv-label {
+    margin: 0 0 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #e8d47d;
+}
+
+.fm-mpv-team {
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: #ecf0f1;
+    margin-bottom: 4px;
+}
+
+.fm-mpv-prediction {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #ecf0f1;
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+
+.fm-mpv-probs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+    color: #e8d47d;
+    font-weight: 700;
+    font-size: 0.94rem;
+}
+
+.fm-mpv-sub {
+    font-size: 0.86rem;
+    color: #95a5a6;
+}
+
+.fm-mpv-sub--faint {
+    color: #7f8c8d;
+    font-size: 0.8rem;
+}
+
+.fm-mpv-sub--gap {
+    margin-top: 10px;
+}
+
+.fm-mpv-empty {
+    font-size: 0.86rem;
+    color: #7f8c8d;
+}
+
+.fm-mpv-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 0.86rem;
+    color: #95a5a6;
+}
+
+.fm-mpv-row strong {
+    color: #ecf0f1;
+}
+
+.fm-mpv-rule {
+    padding-top: 10px;
+    margin: 10px 0 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.9rem;
+    color: #dfe6eb;
+}
+
+.fm-mpv-vs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.fm-mpv-vs-right {
+    text-align: right;
+}
+
+.fm-mpv-list {
+    margin: 0 0 8px;
+    padding-left: 18px;
+    color: #dfe6eb;
+    font-size: 0.9rem;
+}
+
+.fm-mpv-list li {
+    margin-bottom: 6px;
+}
+
+.fm-mpv-chip {
+    display: inline-flex;
+    padding: 6px 11px;
+    margin: 0 6px 6px 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #dfe6eb;
+    font-size: 0.82rem;
+}

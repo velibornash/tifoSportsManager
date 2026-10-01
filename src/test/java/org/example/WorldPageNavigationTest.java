@@ -166,6 +166,51 @@ class WorldPageNavigationTest {
     }
 
     @Test
+    @DisplayName("show results opens the goals, not the pre-match preview")
+    void showResultsOpensTheResultAndNotThePreview() {
+        String reveal = read(STATIC.resolve("js/reveal-ui.js"));
+        String matchView = read(STATIC.resolve("js/pages/views/match-view.js"));
+
+        // The caller's request...
+        assertTrue(reveal.contains("initialTab: 'goals'"),
+                "Show results no longer asks for the goals tab");
+
+        // ...and the callee honouring it. It used to be a two-way test on one tab:
+        // `options.initialTab === 'report' ? 'report' : 'preview'`, so every other request - including
+        // 'goals' - silently became Preview. A manager who pressed Show results landed on the
+        // pre-match screen, which is the one screen a result should never open on.
+        // Anchored on the statement starting the line, so the sentence *about* the old expression - which
+        // is in the comment right above it, deliberately, so the next reader knows what changed - does not
+        // satisfy this check. A substring match on the expression alone matched that comment and failed a
+        // correct implementation, which is the mirror of the bug this codebase has already paid for once:
+        // a scan that counts a mention.
+        assertFalse(matchView.contains("\n        const initialTab = options.initialTab === 'report'"),
+                "the match view still defaults every unrecognised tab to Preview");
+        assertTrue(matchView.contains("MATCH_TABS.includes(requestedTab)"),
+                "the requested tab is not validated against the three that exist, so a typo or a fourth "
+                        + "tab would land on Preview");
+        for (String tab : new String[]{"preview", "goals", "report"}) {
+            assertTrue(matchView.contains("'" + tab + "'"),
+                    "the tab list does not mention '" + tab + "'");
+        }
+    }
+
+    @Test
+    @DisplayName("watch your match still opens the replay viewer")
+    void watchYourMatchStillWatchesTheMatch() {
+        String reveal = read(STATIC.resolve("js/reveal-ui.js"));
+
+        // Deliberately unchanged, and pinned because the previous commit came close to redirecting it.
+        // "Watch your match" opens the viewer so you watch the game happen; "Show results" opens the
+        // match page on the goals. They are two different questions and they were briefly at risk of
+        // being merged.
+        assertTrue(reveal.contains("VIEWER_PATH"),
+                "Watch your match no longer opens the viewer");
+        assertTrue(reveal.contains("window.location.href = `${VIEWER_PATH}"),
+                "Watch your match does not navigate to the viewer path");
+    }
+
+    @Test
     @DisplayName("the league table shows a rating and its movement")
     void theLeagueTableShowsRatingAndMovement() {
         String renderers = read(STATIC.resolve("js/pages-renderers.js"));
