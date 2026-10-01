@@ -253,8 +253,9 @@ public class TeamController {
         Competition competition = resolveScheduleCompetition(team, activeSeasonYear);
         List<MatchFixture> fixtures;
         if (competition != null) {
-            seasonService.ensureEntriesForSeasonCompetition(competition, activeSeasonYear);
-            seasonService.ensureDoubleRoundRobinSchedule(competition, activeSeasonYear);
+            // Same rule as CountryController's schedule GET, and the same reasoning: this is a read, and
+            // generating a double round robin from it meant any manager opening a page wrote thousands of
+            // rows. PyramidBuilder does this when the pyramid is built, which is the only place it belongs.
             fixtures = matchFixtureRepository
                     .findTeamScheduleByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(competition.getId(), activeSeasonYear, teamId);
         } else {
