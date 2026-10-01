@@ -499,6 +499,43 @@ Also worth knowing: **`CountryController` has an explicit constructor, not a Lom
 the two dependencies was a manual edit there — and C1's test, which builds a controller by hand, needed the new
 arguments.
 
+## `4f6ce16` — a country check that ran and did nothing
+
+**Task (C3):** *"discards its own authorization check."*
+
+`GET /countries/{iso}/cup/fixture/{fixtureId}` called `requireCountry(isoCode)` and **threw the result away**,
+then loaded the tie by id alone. Any logged-in manager could read any country's cup tie — lineups, ratings, and
+the result once played — by guessing an id.
+
+**The check ran and did nothing, which is worse than not having it:** the code reads as though the route were
+scoped. It is the same shape as the fixture/match id collision — a route that looks scoped and is not.
+
+A tie belongs to the country of its competition, and that is now verified. A tie whose competition has **no**
+country cannot be shown under any country's path either: there is nothing to prove it is being asked for
+properly. The refusal is **404 rather than 403**, because telling a caller a tie exists but is not theirs is the
+same information as the score they asked for.
+
+Verified both ways: removing the check serves another country's tie with **200**.
+
+### A wider bug found on the way, fixed centrally
+
+A `ResponseStatusException` thrown **anywhere in the application** was flattened into a **500** by the catch-all,
+so every deliberate refusal — 404, 403, 409 — read as a broken server and was logged as an unhandled exception.
+There is now a handler that respects the status it carries.
+
+**That is the third instance of the same shape**, after `IllegalArgumentException` (A3) and the security
+exceptions (A3): *a catch-all that owns every exception ends up owning the exceptions that already knew what
+they were.* Each was found only because a test asserted a specific status.
+
+Also corrected here: "No such cup tie" threw `IllegalArgumentException`, which the handler maps to **400** — so
+asking for a tie that does not exist looked like a malformed request rather than a failed lookup. It is a 404
+now.
+
+### A test-side trap
+
+These tests share one database and `@BeforeEach` does not roll back, so fixed ISO codes collided on the unique
+index across methods. **A random two-character code collides too** — the space is only 676 — so it is a counter.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
