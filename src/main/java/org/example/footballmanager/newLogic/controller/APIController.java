@@ -143,12 +143,31 @@ public class APIController {
     }
 
     /** Every job and its trigger, so the schedule is inspectable rather than folklore. */
+    /**
+     * The job schedule: what the game runs, when, and in what order.
+     *
+     * <p><b>A correction to the board first:</b> this is not world-readable. {@code /api/jobs} is not on the
+     * permit list, so it was already {@code authenticated()} — any logged-in manager, not the public.
+     *
+     * <p>It is still gated to administrators, because what it returns is the game's machinery rather than
+     * the game: every registered job, its week, day and hour, its ordering, and — through {@code /jobs/runs}
+     * — the status and message of every job that has run, including the ones that failed and why. That is
+     * an operations view, and a manager running a club has no use for it.
+     */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @GetMapping("/jobs")
     public List<Map<String, Object>> listJobs() {
         return jobRunner.describeJobs();
     }
 
-    /** Job history for a week: what ran, when, and what failed. */
+    /**
+     * Job history for a week: what ran, when, what failed and why.
+     *
+     * <p>Administrator-only for the same reason as {@link #listJobs} — and this one carries the failure
+     * messages, which is the more sensitive half: they name jobs, describe what went wrong, and are read by
+     * whoever is diagnosing the game rather than by whoever is playing it.
+     */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @GetMapping("/jobs/runs")
     public List<Map<String, Object>> jobRuns(
             @RequestParam(defaultValue = "1") int week,

@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,6 +82,39 @@ class WorldAdvanceAuthorizationTest extends BaseTest {
                         .header("Authorization", bearerAs(UserRole.OWNER))
                         .param("unit", "hour")
                         .param("amount", "1"))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * The job schedule and its history are an operations view, not a manager's.
+     *
+     * <p>Listed in the same place as the world-advance endpoints because it is the same rule: a manager
+     * running a club has no use for the game's machinery. {@code /jobs/runs} is the more sensitive of the
+     * two — it carries the message from every job that failed and why.
+     *
+     * <p><b>A correction to the board:</b> these were never world-readable. {@code /api/jobs} is not on the
+     * permit list, so it was already {@code authenticated()} — any logged-in manager, not the public. The
+     * fix narrows "any manager" to "an administrator".
+     */
+    @Test
+    @DisplayName("a regular manager cannot read the job schedule")
+    void aRegularManagerCannotReadTheSchedule() throws Exception {
+        mockMvc.perform(get("/api/jobs").header("Authorization", bearerAs(UserRole.REGULAR)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("a regular manager cannot read the job history")
+    void aRegularManagerCannotReadTheRuns() throws Exception {
+        mockMvc.perform(get("/api/jobs/runs").header("Authorization", bearerAs(UserRole.REGULAR)))
+                .andExpect(status().isForbidden());
+    }
+
+    /** An administrator keeps the operations view — the gate is a narrowing, not a lockout. */
+    @Test
+    @DisplayName("an administrator still reads the job schedule")
+    void anAdministratorStillReadsTheSchedule() throws Exception {
+        mockMvc.perform(get("/api/jobs").header("Authorization", bearerAs(UserRole.OWNER)))
                 .andExpect(status().isOk());
     }
 
