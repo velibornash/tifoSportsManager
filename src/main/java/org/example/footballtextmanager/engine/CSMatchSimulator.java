@@ -13,12 +13,55 @@ import java.util.Random;
  */
 public class CSMatchSimulator {
 
-    private final Random rnd = new Random();
+    /**
+     * Generator po niti, a ne deljeno polje.
+     *
+     * <p>Bilo je {@code private final Random rnd = new Random()} — jedan generator za ceo
+     * singleton, deljen između svih korisnika. Dva korisnika koja kliknu "Next Round" u istom
+     * trenutku su ispremecali izvode iz iste sekvence, pa je ishod jednog meča zavisio od toga
+     * da li je neko drugi u međuvremenu otvorio stranicu. Uz to, bez seeda nijedan rezultat
+     * nije mogao da se ponovi — što za tabelu znači da se ne može ni verifikovati ni
+     * kalibrisati.
+     *
+     * <p>Po niti zato što dva meča ne mogu da se preklapaju u istoj niti, a dva korisnika
+     * dobijaju zasebne sekvence čak i kad se njihovi zahtevi izvršavaju paralelno.
+     * {@link #simulate} postavlja seed na početku svakog meča, pa je svaki meč
+     * reproducibilan nezavisno od onoga što se prethodno desilo.
+     */
+    private final ThreadLocal<Random> rng = ThreadLocal.withInitial(Random::new);
+
+    private Random rnd() {
+        return rng.get();
+    }
+
+    /**
+     * Seed za meč: stabilna hash kombinacija identiteta utakmice.
+     *
+     * <p>Namerno <b>ne</b> uključuje vreme ni broj poziva — isti par klubova u istom kolu
+     * daje isti meč, bez obzira na to šta se dešavalo između dva kola. To je isto pravilo koje
+     * glavni engine primenjuje na fiksure, i jedini način da se tabela može proveriti.
+     */
+    private static long seedFor(CSTeam home, CSTeam away, int round) {
+        long h = home.getId() == null ? 0L : home.getId();
+        long a = away.getId() == null ? 0L : away.getId();
+        long seed = h * 1_000_003L + a * 10_007L + round * 101L;
+        // Smešanje (splitmix64 finalizer) — bez njega susedni id-jevi daju susedne seedeve,
+        // pa bi mečevi 12 i 13 imala visoku korelaciju u šumu.
+        seed ^= (seed >>> 33);
+        seed *= 0xff51afd7ed558ccdL;
+        seed ^= (seed >>> 33);
+        seed *= 0xc4ceb9fe1a85ec53L;
+        seed ^= (seed >>> 33);
+        return seed;
+    }
 
     public CSMatchResult simulate(CSTeam home, List<CSPlayer> homePlayers, List<CSPlayer> homeBench,
                                   CSTeam away, List<CSPlayer> awayPlayers, List<CSPlayer> awayBench,
                                   CSTactics homeTactics, CSTactics awayTactics,
                                   int round) {
+
+        // Svaki meč dobija svoj seed iz identiteta utakmice — vidi seedFor().
+        rng.get().setSeed(seedFor(home, away, round));
 
         // Create mutable copies to track on-field players
         List<CSPlayer> homeOnField = new ArrayList<>(homePlayers);
@@ -81,6 +124,16 @@ public class CSMatchSimulator {
         // Generate goals with entry-minute awareness (fixes sub scoring before entering)
         generateGoalEvents(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals,
                 homeEntryMinutes, awayEntryMinutes);
+
+        // Penalties are goals. They used to be written into the timeline as pure decoration,
+        // after the score had already been fixed, so a converted penalty did not make it onto
+        // the scoreline and a missed one did nothing at all. Now each converted penalty adds a
+        // goal to the score, a GOAL event to the timeline, and the taker's goal tally.
+        PenaltyGoals penalties = generatePenalties(events, home, homeOnField, away, awayOnField,
+                homeGoals, awayGoals);
+        homeGoals += penalties.homeGoals();
+        awayGoals += penalties.awayGoals();
+
         generateStats(events, home, homeOnField, away, awayOnField, homeGoals, awayGoals);
 
         events.add(CSMatchEvent.builder()
@@ -100,8 +153,10 @@ public class CSMatchSimulator {
         List<CSPlayerMatchStats> homeStats = assignRatings(homeAll, events, home.getName(), homeMinutes);
         List<CSPlayerMatchStats> awayStats = assignRatings(awayAll, events, away.getName(), awayMinutes);
 
-        updateFatigueAfterMatch(homePlayers);
-        updateFatigueAfterMatch(awayPlayers);
+        // Zamor se racuna za celu rosteru, ne samo za pocetnu jedanaesticu — igrac koji
+        // nije igrao je odmaro, a zamena koja je ušla nosi samo svoje minute.
+        updateFatigueAfterMatch(homeAll, homeMinutes);
+        updateFatigueAfterMatch(awayAll, awayMinutes);
 
         return CSMatchResult.builder()
                 .homeTeamName(home.getName())
@@ -185,31 +240,48 @@ public class CSMatchSimulator {
      * Racuna snagu tima na osnovu individualnih skillova po poziciji,
      * ratinga, forme, umora i taktike.
      */
+    /**
+     * Sredina i rezerva veštinske skale. Veštine su 1-20; 10 je sredina, a koristi se i kao
+     * rezerva za igrača bez upisanih veština.
+     */
+    private static final double SKILL_MID = 10.0;
+    private static final int NO_SKILL = 10;
+
     private double calculateStrength(List<CSPlayer> players, CSTactics tactics, boolean isHome) {
         if (players.isEmpty()) return 30.0;
 
         double avgRating = players.stream()
                 .mapToInt(CSPlayer::getRating)
                 .average()
-                .orElse(50.0);
+                .orElse(6.0);
 
         double avgForm = players.stream()
                 .mapToDouble(CSPlayer::getForm)
                 .average()
-                .orElse(5.0);
+                .orElse(6.0);
 
         double avgFatigue = players.stream()
                 .mapToDouble(CSPlayer::getFatigue)
                 .average()
-                .orElse(3.0);
+                .orElse(0.0);
 
         // Skill-based component: each player contributes their positional skill
         double skillComponent = players.stream()
                 .mapToDouble(this::getPositionalSkill)
                 .average()
-                .orElse(50.0);
+                .orElse(22.0);
 
-        double base = avgRating * 0.4 + skillComponent * 0.3 + avgForm * 3.5 - avgFatigue * 2.0;
+        // Težine su prekalibrirane. Stale su bile
+        //   rating*0.4 + skill*0.3 + form*3.5 - fatigue*2.0
+        // na skalama rating 1-10, skill ~1-35, form 1-10, fatigue 0-10, pa je forma dala
+        // ±12 poena, veština ±3, ocena ±1.6, a zamor -20..0 — odnosno dva nasumična
+        // izvora (forma i zamor) su odlučivale ishod, dok su kvalitet ekipe i izbor taktike
+        // zajedno davali manje od šuma od ±5. Sada kvalitet ekipe vodi, taktika ima vidljiv
+        // uticaj, a forma i šum su umereni modifikatori.
+        double base = avgRating * 1.6
+                + skillComponent * 0.8
+                + (avgForm - 6.0) * 0.9
+                - avgFatigue * 0.7;
 
         if (isHome) base += 5.0;
 
@@ -223,7 +295,7 @@ public class CSMatchSimulator {
         };
         base += formationFit + styleBonus;
 
-        base += rnd.nextDouble() * 10.0 - 5.0;
+        base += rnd().nextDouble() * 6.0 - 3.0;
 
         return Math.max(10.0, base);
     }
@@ -244,17 +316,22 @@ public class CSMatchSimulator {
     }
 
     private double calculateStyleFit(List<CSPlayer> players, CSTactics tactics) {
-        double pace = players.stream().mapToInt(CSPlayer::getPace).average().orElse(50.0);
-        double defending = players.stream().mapToInt(CSPlayer::getDefending).average().orElse(50.0);
-        double passing = players.stream().mapToInt(CSPlayer::getPassing).average().orElse(50.0);
-        double shooting = players.stream().mapToInt(CSPlayer::getShooting).average().orElse(50.0);
-        double stamina = players.stream().mapToInt(CSPlayer::getStamina).average().orElse(50.0);
+        // Veštine žive na skali 1-20 (seeder upisuje 4-18), a ovo je ranije računalo
+        // `(avg - 52) / 6` — skala 0-100. Rezultat: prosečan igrač je imao (10 - 52) / 6 = -7.0,
+        // dakle svaka ekipa je dobijala oko -7 odmah, bez obzira na stil, a razlika između
+        // stilova bila je nekoliko desetinki. Sada je sredina skale 10, a raspon ±3
+        // standardne veštine, pa izbor stila zapravo nešto znači.
+        double pace = players.stream().mapToInt(CSPlayer::getPace).average().orElse(NO_SKILL);
+        double defending = players.stream().mapToInt(CSPlayer::getDefending).average().orElse(NO_SKILL);
+        double passing = players.stream().mapToInt(CSPlayer::getPassing).average().orElse(NO_SKILL);
+        double shooting = players.stream().mapToInt(CSPlayer::getShooting).average().orElse(NO_SKILL);
+        double stamina = players.stream().mapToInt(CSPlayer::getStamina).average().orElse(NO_SKILL);
 
         return switch (tactics.getStyle()) {
-            case ATTACKING -> ((shooting + passing + pace) / 3.0 - 52.0) / 6.0;
-            case COUNTER -> ((pace + shooting + stamina) / 3.0 - 51.0) / 6.5;
-            case BALANCED -> ((passing + stamina + defending) / 3.0 - 50.0) / 8.0;
-            case DEFENSIVE -> ((defending + stamina + passing) / 3.0 - 50.0) / 6.0;
+            case ATTACKING -> ((shooting + passing + pace) / 3.0 - SKILL_MID) / 3.0;
+            case COUNTER -> ((pace + shooting + stamina) / 3.0 - SKILL_MID) / 3.0;
+            case BALANCED -> ((passing + stamina + defending) / 3.0 - SKILL_MID) / 3.0;
+            case DEFENSIVE -> ((defending + stamina + passing) / 3.0 - SKILL_MID) / 3.0;
         };
     }
 
@@ -313,12 +390,16 @@ public class CSMatchSimulator {
             int goalsInMatch = 0;
             int assistsInMatch = 0;
             if (events != null) {
+                // Pripisuje se po id-ju, ne po imenu. Imena se ponavljaju između klubova
+                // (30 x 27 kombinacija za ~240 igraca), a stari kod nije ni proveravao koji je
+                // tim u dogadjaju — pa je igrac sa istim imenom u protivnickom klubu brojao
+                // tudje golove, i to na obe strane meca.
                 for (CSMatchEvent e : events) {
                     if (e.getEventType() == CSEventType.GOAL) {
-                        if (p.getName().equals(e.getPlayerName())) {
+                        if (p.getId().equals(e.getPlayerId())) {
                             goalsInMatch++;
                         }
-                        if (p.getName().equals(e.getAssistName())) {
+                        if (e.getAssistPlayerId() != null && p.getId().equals(e.getAssistPlayerId())) {
                             assistsInMatch++;
                         }
                     }
@@ -328,11 +409,11 @@ public class CSMatchSimulator {
 
             double base;
             if (goalsInMatch >= 2 || assistsInMatch >= 2) {
-                base = 7.0 + rnd.nextDouble() * 1.5;
+                base = 7.0 + rnd().nextDouble() * 1.5;
             } else if (goalsInMatch >= 1 || assistsInMatch >= 1) {
-                base = 6.5 + rnd.nextDouble() * 1.2;
+                base = 6.5 + rnd().nextDouble() * 1.2;
             } else {
-                base = 5.5 + rnd.nextDouble() * 1.0;
+                base = 5.5 + rnd().nextDouble() * 1.0;
             }
 
             if ("GK".equals(p.getPosition())) {
@@ -368,47 +449,47 @@ public class CSMatchSimulator {
             double distanceCovered = 0.0;
 
             if (minutesPlayed > 0) {
-                passesAttempted = (int) (minutesPlayed * (0.4 + rnd.nextDouble() * 0.4));
-                passesCompleted = (int) (passesAttempted * (0.65 + rnd.nextDouble() * 0.25));
-                distanceCovered = Math.round(minutesPlayed * (0.08 + rnd.nextDouble() * 0.04) * 10.0) / 10.0;
+                passesAttempted = (int) (minutesPlayed * (0.4 + rnd().nextDouble() * 0.4));
+                passesCompleted = (int) (passesAttempted * (0.65 + rnd().nextDouble() * 0.25));
+                distanceCovered = Math.round(minutesPlayed * (0.08 + rnd().nextDouble() * 0.04) * 10.0) / 10.0;
 
                 switch (p.getPosition()) {
                     case "GK" -> {
-                        saves = (int) (concededGoals == 0 ? rnd.nextInt(3) : rnd.nextInt(5) + 2);
-                        duelsWon = (int) (rnd.nextDouble() * 2);
-                        aerialDuelsWon = (int) (rnd.nextDouble() * 2);
+                        saves = (int) (concededGoals == 0 ? rnd().nextInt(3) : rnd().nextInt(5) + 2);
+                        duelsWon = (int) (rnd().nextDouble() * 2);
+                        aerialDuelsWon = (int) (rnd().nextDouble() * 2);
                     }
                     case "DEF" -> {
-                        tackles = (int) (minutesPlayed / 15.0 + rnd.nextInt(3));
-                        interceptions = (int) (minutesPlayed / 20.0 + rnd.nextInt(2));
-                        duelsWon = (int) (minutesPlayed / 10.0 + rnd.nextInt(4));
-                        duelsLost = (int) (minutesPlayed / 20.0 + rnd.nextInt(3));
-                        aerialDuelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(3));
+                        tackles = (int) (minutesPlayed / 15.0 + rnd().nextInt(3));
+                        interceptions = (int) (minutesPlayed / 20.0 + rnd().nextInt(2));
+                        duelsWon = (int) (minutesPlayed / 10.0 + rnd().nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 20.0 + rnd().nextInt(3));
+                        aerialDuelsWon = (int) (minutesPlayed / 12.0 + rnd().nextInt(3));
                     }
                     case "MID" -> {
-                        tackles = (int) (minutesPlayed / 20.0 + rnd.nextInt(3));
-                        interceptions = (int) (minutesPlayed / 18.0 + rnd.nextInt(3));
-                        duelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
-                        duelsLost = (int) (minutesPlayed / 15.0 + rnd.nextInt(4));
-                        keyPasses = (int) (minutesPlayed / 25.0 + rnd.nextInt(3));
-                        dribblesCompleted = (int) (minutesPlayed / 30.0 + rnd.nextInt(4));
-                        dribblesLost = (int) (minutesPlayed / 40.0 + rnd.nextInt(3));
+                        tackles = (int) (minutesPlayed / 20.0 + rnd().nextInt(3));
+                        interceptions = (int) (minutesPlayed / 18.0 + rnd().nextInt(3));
+                        duelsWon = (int) (minutesPlayed / 12.0 + rnd().nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 15.0 + rnd().nextInt(4));
+                        keyPasses = (int) (minutesPlayed / 25.0 + rnd().nextInt(3));
+                        dribblesCompleted = (int) (minutesPlayed / 30.0 + rnd().nextInt(4));
+                        dribblesLost = (int) (minutesPlayed / 40.0 + rnd().nextInt(3));
                     }
                     case "WNG" -> {
-                        tackles = (int) (minutesPlayed / 25.0 + rnd.nextInt(2));
-                        duelsWon = (int) (minutesPlayed / 10.0 + rnd.nextInt(5));
-                        duelsLost = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
-                        keyPasses = (int) (minutesPlayed / 20.0 + rnd.nextInt(4));
-                        dribblesCompleted = (int) (minutesPlayed / 15.0 + rnd.nextInt(5));
-                        dribblesLost = (int) (minutesPlayed / 20.0 + rnd.nextInt(4));
+                        tackles = (int) (minutesPlayed / 25.0 + rnd().nextInt(2));
+                        duelsWon = (int) (minutesPlayed / 10.0 + rnd().nextInt(5));
+                        duelsLost = (int) (minutesPlayed / 12.0 + rnd().nextInt(4));
+                        keyPasses = (int) (minutesPlayed / 20.0 + rnd().nextInt(4));
+                        dribblesCompleted = (int) (minutesPlayed / 15.0 + rnd().nextInt(5));
+                        dribblesLost = (int) (minutesPlayed / 20.0 + rnd().nextInt(4));
                     }
                     case "ATT" -> {
-                        tackles = (int) (rnd.nextDouble() * 1);
-                        duelsWon = (int) (minutesPlayed / 12.0 + rnd.nextInt(4));
-                        duelsLost = (int) (minutesPlayed / 15.0 + rnd.nextInt(3));
-                        keyPasses = (int) (minutesPlayed / 30.0 + rnd.nextInt(2));
-                        dribblesCompleted = (int) (minutesPlayed / 18.0 + rnd.nextInt(4));
-                        dribblesLost = (int) (minutesPlayed / 25.0 + rnd.nextInt(3));
+                        tackles = (int) (rnd().nextDouble() * 1);
+                        duelsWon = (int) (minutesPlayed / 12.0 + rnd().nextInt(4));
+                        duelsLost = (int) (minutesPlayed / 15.0 + rnd().nextInt(3));
+                        keyPasses = (int) (minutesPlayed / 30.0 + rnd().nextInt(2));
+                        dribblesCompleted = (int) (minutesPlayed / 18.0 + rnd().nextInt(4));
+                        dribblesLost = (int) (minutesPlayed / 25.0 + rnd().nextInt(3));
                     }
                 }
             }
@@ -451,9 +532,9 @@ public class CSMatchSimulator {
                                     java.util.Map<Long, Integer> entryMinutes) {
         if (onField.isEmpty() || bench.isEmpty()) return;
         int maxSubs = Math.min(3, bench.size());
-        int subs = rnd.nextDouble() < 0.55 ? rnd.nextInt(maxSubs + 1) : 0;
+        int subs = rnd().nextDouble() < 0.55 ? rnd().nextInt(maxSubs + 1) : 0;
         for (int i = 0; i < subs; i++) {
-            int minute = 55 + rnd.nextInt(31);
+            int minute = 55 + rnd().nextInt(31);
             CSPlayer out = pickMostTired(onField);
             if (out == null) break;
             CSPlayer in = pickLikeForLike(bench, out.getPosition());
@@ -481,6 +562,8 @@ public class CSMatchSimulator {
                     .minute(minute)
                     .eventType(CSEventType.SUBSTITUTION)
                     .teamName(team.getName())
+                    .playerOutId(out.getId())
+                    .playerInId(in.getId())
                     .playerOutName(out.getName())
                     .playerInName(in.getName())
                     .description(describeSubstitution(team.getName(), out.getName(), in.getName()))
@@ -502,7 +585,7 @@ public class CSMatchSimulator {
         int goals = 0;
         double p = Math.exp(-lambda);
         double cumulative = p;
-        double uniform = rnd.nextDouble();
+        double uniform = rnd().nextDouble();
         while (uniform > cumulative && goals < 8) {
             goals++;
             p *= lambda / goals;
@@ -527,7 +610,7 @@ public class CSMatchSimulator {
             boolean isHome;
             if (remainingHome == 0) isHome = false;
             else if (remainingAway == 0) isHome = true;
-            else isHome = rnd.nextDouble() < ((double) remainingHome / (remainingHome + remainingAway) + 0.1);
+            else isHome = rnd().nextDouble() < ((double) remainingHome / (remainingHome + remainingAway) + 0.1);
 
             // Compute minute FIRST so we can filter eligible scorers correctly
             int remaining = remainingHome + remainingAway - 1;
@@ -535,7 +618,7 @@ public class CSMatchSimulator {
             int maxMinute = 90 - remaining * 3;
             if (maxMinute < minMinute) maxMinute = minMinute;
             if (maxMinute > 90) maxMinute = 90;
-            int minute = minMinute + rnd.nextInt(Math.max(1, maxMinute - minMinute + 1));
+            int minute = minMinute + rnd().nextInt(Math.max(1, maxMinute - minMinute + 1));
 
             CSTeam scoringTeam = isHome ? home : away;
             List<CSPlayer> allScoringPlayers = isHome ? homePlayers : awayPlayers;
@@ -567,6 +650,8 @@ public class CSMatchSimulator {
                     .minute(minute)
                     .eventType(CSEventType.GOAL)
                     .goalType(goalType)
+                    .playerId(scorer.getId())
+                    .assistPlayerId(assist != null ? assist.getId() : null)
                     .playerName(scorer.getName())
                     .assistName(assist != null ? assist.getName() : null)
                     .teamName(scoringTeam.getName())
@@ -585,7 +670,7 @@ public class CSMatchSimulator {
      */
     private org.example.footballtextmanager.model.CSGoalType assignGoalType(CSPlayer scorer) {
         if (scorer == null) return org.example.footballtextmanager.model.CSGoalType.TAP_IN;
-        double roll = rnd.nextDouble();
+        double roll = rnd().nextDouble();
         return switch (scorer.getPosition()) {
             case "ATT" -> {
                 if (roll < 0.28) yield org.example.footballtextmanager.model.CSGoalType.TAP_IN;
@@ -636,13 +721,13 @@ public class CSMatchSimulator {
             };
             for (int i = 0; i < weight; i++) weighted.add(p);
         }
-        if (weighted.isEmpty()) return players.get(rnd.nextInt(players.size()));
-        return weighted.get(rnd.nextInt(weighted.size()));
+        if (weighted.isEmpty()) return players.get(rnd().nextInt(players.size()));
+        return weighted.get(rnd().nextInt(weighted.size()));
     }
 
     private CSPlayer pickAssist(List<CSPlayer> players, CSPlayer scorer) {
         if (players.size() < 2) return null;
-        if (rnd.nextDouble() < 0.3) return null; // 30% sansa nema asista
+        if (rnd().nextDouble() < 0.3) return null; // 30% sansa nema asista
 
         List<CSPlayer> candidates = players.stream()
                 .filter(p -> !p.getId().equals(scorer.getId()))
@@ -661,7 +746,77 @@ public class CSMatchSimulator {
             };
             for (int i = 0; i < weight; i++) weighted.add(p);
         }
-        return weighted.get(rnd.nextInt(weighted.size()));
+        return weighted.get(rnd().nextInt(weighted.size()));
+    }
+
+    /**
+     * Broj golova dobijenih iz kaznenih udaraca, po domaćoj i gostujućoj strani.
+     */
+    private record PenaltyGoals(int homeGoals, int awayGoals) { }
+
+    /**
+     * Generiše kaznene udarce. Svaki realizovani dodaje GOL na rezultat, GOL događaj u
+     * timeline-u i jedan gol izvođaocu; svaki promašen samo ostaje kao PENALTY događaj bez
+     * posledica, što je jedina ispravna razlika između njih.
+     */
+    private PenaltyGoals generatePenalties(List<CSMatchEvent> events,
+                                           CSTeam home, List<CSPlayer> homePlayers,
+                                           CSTeam away, List<CSPlayer> awayPlayers,
+                                           int homeGoals, int awayGoals) {
+        int homePenaltyGoals = addPenalty(events, home, homePlayers, true, homeGoals, awayGoals);
+        int awayPenaltyGoals = addPenalty(events, away, awayPlayers, false,
+                homeGoals + homePenaltyGoals, awayGoals);
+        return new PenaltyGoals(homePenaltyGoals, awayPenaltyGoals);
+    }
+
+    /**
+     * @param isHome        koja je strana u pitanju — nužno prosleđeno jer se kazneni udarci
+     *                      dodaju <i>posle</i> golova iz otvorene igre, pa se iz broja golova
+     *                      ne može zaključiti koja je strana domaća
+     * @param homeGoals     rezultat pre ovog udarca, da bi stanje na prikazu bilo ispravno
+     * @return 1 ako je kazneni udarac realizovan, inače 0
+     */
+    private int addPenalty(List<CSMatchEvent> events, CSTeam team, List<CSPlayer> players,
+                           boolean isHome, int homeGoals, int awayGoals) {
+        if (rnd().nextDouble() >= 0.12) return 0;
+
+        CSPlayer taker = pickScorer(players);
+        boolean scored = rnd().nextDouble() < 0.75;
+        int minute = rnd().nextInt(90) + 1;
+        String takerName = taker != null ? taker.getName() : "?";
+
+        events.add(CSMatchEvent.builder()
+                .minute(minute)
+                .eventType(CSEventType.PENALTY)
+                .playerId(taker != null ? taker.getId() : null)
+                .playerName(takerName)
+                .teamName(team.getName())
+                .penaltyScored(scored)
+                .description(describePenalty(takerName, team.getName(), scored))
+                .build());
+
+        if (!scored) return 0;
+
+        // Pored PENALTY događaja ide i GOL događaj, jer se golovi svuda drugim računaju iz
+        // GOAL događaja (assignRatings, Golden Boot, izveštaj meča). Sam PENALTY bi ostao
+        // nevidljiv u svemu osim u tekstu.
+        int newHome = isHome ? homeGoals + 1 : homeGoals;
+        int newAway = isHome ? awayGoals : awayGoals + 1;
+        if (taker != null) taker.setGoals(taker.getGoals() + 1);
+
+        events.add(CSMatchEvent.builder()
+                .minute(minute)
+                .eventType(CSEventType.GOAL)
+                .goalType(org.example.footballtextmanager.model.CSGoalType.PENALTY)
+                .playerId(taker != null ? taker.getId() : null)
+                .playerName(takerName)
+                .teamName(team.getName())
+                .scoreAfterGoal(newHome + ":" + newAway)
+                .description("Penalty: " + takerName + " converts from the spot for " + team.getName()
+                        + " (" + newHome + ":" + newAway + ").")
+                .build());
+
+        return 1;
     }
 
     private void generateStats(List<CSMatchEvent> events,
@@ -670,8 +825,8 @@ public class CSMatchSimulator {
                                int homeGoals, int awayGoals) {
 
         // Sutevi u okvir
-        int homeShotsOn = homeGoals + rnd.nextInt(5) + 1;
-        int awayShotsOn = awayGoals + rnd.nextInt(5) + 1;
+        int homeShotsOn = homeGoals + rnd().nextInt(5) + 1;
+        int awayShotsOn = awayGoals + rnd().nextInt(5) + 1;
         for (int i = 0; i < homeShotsOn; i++) {
             events.add(buildStatEvent(CSEventType.SHOT_ON_TARGET, home, pickScorer(homePlayers)));
         }
@@ -680,8 +835,8 @@ public class CSMatchSimulator {
         }
 
         // Sutevi van okvira
-        int homeShotsOff = rnd.nextInt(6) + 2;
-        int awayShotsOff = rnd.nextInt(6) + 2;
+        int homeShotsOff = rnd().nextInt(6) + 2;
+        int awayShotsOff = rnd().nextInt(6) + 2;
         for (int i = 0; i < homeShotsOff; i++) {
             events.add(buildStatEvent(CSEventType.SHOT_OFF_TARGET, home, pickScorer(homePlayers)));
         }
@@ -690,8 +845,8 @@ public class CSMatchSimulator {
         }
 
         // Korneri
-        int homeCorners = rnd.nextInt(10) + 2;
-        int awayCorners = rnd.nextInt(10) + 2;
+        int homeCorners = rnd().nextInt(10) + 2;
+        int awayCorners = rnd().nextInt(10) + 2;
         for (int i = 0; i < homeCorners; i++) {
             events.add(buildStatEvent(CSEventType.CORNER, home, randomPlayer(homePlayers)));
         }
@@ -699,8 +854,8 @@ public class CSMatchSimulator {
             events.add(buildStatEvent(CSEventType.CORNER, away, randomPlayer(awayPlayers)));
         }
 
-        int homeFouls = rnd.nextInt(4) + 2;
-        int awayFouls = rnd.nextInt(4) + 2;
+        int homeFouls = rnd().nextInt(4) + 2;
+        int awayFouls = rnd().nextInt(4) + 2;
         for (int i = 0; i < homeFouls; i++) {
             events.add(buildStatEvent(CSEventType.FOUL, home, randomPlayer(homePlayers)));
         }
@@ -708,8 +863,8 @@ public class CSMatchSimulator {
             events.add(buildStatEvent(CSEventType.FOUL, away, randomPlayer(awayPlayers)));
         }
 
-        int homeOffsides = rnd.nextInt(3);
-        int awayOffsides = rnd.nextInt(3);
+        int homeOffsides = rnd().nextInt(3);
+        int awayOffsides = rnd().nextInt(3);
         for (int i = 0; i < homeOffsides; i++) {
             events.add(buildStatEvent(CSEventType.OFFSIDE, home, pickScorer(homePlayers)));
         }
@@ -717,8 +872,8 @@ public class CSMatchSimulator {
             events.add(buildStatEvent(CSEventType.OFFSIDE, away, pickScorer(awayPlayers)));
         }
 
-        int homeFreeKicks = rnd.nextInt(3) + 1;
-        int awayFreeKicks = rnd.nextInt(3) + 1;
+        int homeFreeKicks = rnd().nextInt(3) + 1;
+        int awayFreeKicks = rnd().nextInt(3) + 1;
         for (int i = 0; i < homeFreeKicks; i++) {
             events.add(buildStatEvent(CSEventType.FREE_KICK, home, randomPlayer(homePlayers)));
         }
@@ -727,8 +882,8 @@ public class CSMatchSimulator {
         }
 
         // Zuti kartoni
-        int homeYellows = rnd.nextInt(4);
-        int awayYellows = rnd.nextInt(4);
+        int homeYellows = rnd().nextInt(4);
+        int awayYellows = rnd().nextInt(4);
         for (int i = 0; i < homeYellows; i++) {
             events.add(buildStatEvent(CSEventType.YELLOW_CARD, home, randomPlayer(homePlayers)));
         }
@@ -737,47 +892,21 @@ public class CSMatchSimulator {
         }
 
         // Crveni kartoni (retki)
-        if (rnd.nextDouble() < 0.08) {
+        if (rnd().nextDouble() < 0.08) {
             events.add(buildStatEvent(CSEventType.RED_CARD, home, randomPlayer(homePlayers)));
         }
-        if (rnd.nextDouble() < 0.08) {
+        if (rnd().nextDouble() < 0.08) {
             events.add(buildStatEvent(CSEventType.RED_CARD, away, randomPlayer(awayPlayers)));
         }
 
-        // Penali
-        if (rnd.nextDouble() < 0.12) {
-            CSPlayer taker = pickScorer(homePlayers);
-            boolean scored = rnd.nextDouble() < 0.75;
-            events.add(CSMatchEvent.builder()
-                    .minute(rnd.nextInt(90) + 1)
-                    .eventType(CSEventType.PENALTY)
-                    .playerName(taker != null ? taker.getName() : "?")
-                    .teamName(home.getName())
-                    .penaltyScored(scored)
-                    .description(describePenalty(taker != null ? taker.getName() : "?", home.getName(), scored))
-                    .build());
-        }
-        if (rnd.nextDouble() < 0.12) {
-            CSPlayer taker = pickScorer(awayPlayers);
-            boolean scored = rnd.nextDouble() < 0.75;
-            events.add(CSMatchEvent.builder()
-                    .minute(rnd.nextInt(90) + 1)
-                    .eventType(CSEventType.PENALTY)
-                    .playerName(taker != null ? taker.getName() : "?")
-                    .teamName(away.getName())
-                    .penaltyScored(scored)
-                    .description(describePenalty(taker != null ? taker.getName() : "?", away.getName(), scored))
-                    .build());
-        }
-
-        if (rnd.nextDouble() < 0.12) {
-            boolean homeIncident = rnd.nextBoolean();
+        if (rnd().nextDouble() < 0.12) {
+            boolean homeIncident = rnd().nextBoolean();
             CSTeam incidentTeam = homeIncident ? home : away;
             List<CSPlayer> incidentPlayers = homeIncident ? homePlayers : awayPlayers;
             events.add(buildStatEvent(CSEventType.INJURY, incidentTeam, randomPlayer(incidentPlayers)));
         }
-        if (rnd.nextDouble() < 0.16) {
-            boolean homeIncident = rnd.nextBoolean();
+        if (rnd().nextDouble() < 0.16) {
+            boolean homeIncident = rnd().nextBoolean();
             CSTeam incidentTeam = homeIncident ? home : away;
             List<CSPlayer> incidentPlayers = homeIncident ? homePlayers : awayPlayers;
             events.add(buildStatEvent(CSEventType.VAR_REVIEW, incidentTeam, randomPlayer(incidentPlayers)));
@@ -786,8 +915,9 @@ public class CSMatchSimulator {
 
     private CSMatchEvent buildStatEvent(CSEventType type, CSTeam team, CSPlayer player) {
         return CSMatchEvent.builder()
-                .minute(rnd.nextInt(90) + 1)
+                .minute(rnd().nextInt(90) + 1)
                 .eventType(type)
+                .playerId(player != null ? player.getId() : null)
                 .playerName(player != null ? player.getName() : "?")
                 .teamName(team.getName())
                 .description(describeStatEvent(type, team.getName(), player != null ? player.getName() : "?"))
@@ -838,6 +968,10 @@ public class CSMatchSimulator {
                     scorerName + " ghosts in at the back post and converts the cross",
                     "Poacher's finish from " + scorerName + " — two yards out, he doesn't miss",
                     "Classic striker's goal from " + scorerName + " — right place, right time");
+            case PENALTY -> pick(
+                    scorerName + " sends the keeper the wrong way from the spot for " + teamName,
+                    "No mistake from " + scorerName + " — the penalty is buried",
+                    scorerName + " keeps his nerve and converts the penalty");
             case COUNTER -> pick(
                     scorerName + " finishes off a clinical counter-attack for " + teamName,
                     "Three passes and it's in the net — " + scorerName + " completes the counter",
@@ -928,22 +1062,49 @@ public class CSMatchSimulator {
         if (variants == null || variants.length == 0) {
             return "";
         }
-        return variants[rnd.nextInt(variants.length)];
+        return variants[rnd().nextInt(variants.length)];
     }
 
     private CSPlayer randomPlayer(List<CSPlayer> players) {
         if (players.isEmpty()) return null;
-        return players.get(rnd.nextInt(players.size()));
+        return players.get(rnd().nextInt(players.size()));
     }
 
-    private void updateFatigueAfterMatch(List<CSPlayer> players) {
+    /**
+     * Zamor nakon meča, proporcionalno odigranim minutima.
+     *
+     * <p>Prethodno je ovo primenjivalo fiksni plus od 1.5–3.0 <b>samo na početnu jedanaesticu</b>.
+     * Dve posledice su bile ozbiljne:
+     * <ul>
+     *   <li>igrač koji uđe kao zamena nikad nije dobijao zamor, pa je zamena bila besplatno
+     *       bolja od starta — igrač sa 0 zamora koji uđe u 70. minutu bio je jači od
+     *       fiktivnog 11. igrača;</li>
+     *   <li>početna jedanaestica je dobijala neto +0.5 po kolu (teret 2.25, oporavak 1.75),
+     *       pa je svaka ekipa do polusezone svih igrača gurla ka plafonu od 10 — zamor je tada
+     *       bio konstantan za sve i nije više ništa razlikovao, a oporavak se nije mogao
+     *       nadoknaditi izborom postave.</li>
+     * </ul>
+     *
+     * <p>Sada opterećenje zavisi od minuta, a oporavak se <b>zaradjuje odmorom</b>: igrač koji nije
+     * igrao se oporavi u potpunosti. To je razlog zbog kog zamena uopšte ima smisla — klupa
+     * ostaje sveža, a(startna jedanaestica vremenom umire, i to je cena kontinuiteta.
+     *
+     * @param minutesByPlayer odigrani minuti po igraču; igrač sa 0 minuta je odmaro
+     */
+    private void updateFatigueAfterMatch(List<CSPlayer> players, Map<Long, Integer> minutesByPlayer) {
         for (CSPlayer p : players) {
-            double increase = 1.5 + rnd.nextDouble() * 1.5; // +1.5 do 3.0
-            p.setFatigue(Math.min(10.0, p.getFatigue() + increase));
+            int minutes = minutesByPlayer.getOrDefault(p.getId(), 0);
+            if (minutes > 0) {
+                double load = (0.9 + rnd().nextDouble() * 0.9) * (minutes / 90.0);
+                p.setFatigue(Math.min(10.0, p.getFatigue() + load));
 
-            // Forma se blago menja
-            double formChange = (rnd.nextDouble() - 0.5) * 1.0;
-            p.setForm(Math.max(1.0, Math.min(10.0, p.getForm() + formChange)));
+                // Forma se blago menja
+                double formChange = (rnd().nextDouble() - 0.5) * 1.0;
+                p.setForm(Math.max(1.0, Math.min(10.0, p.getForm() + formChange)));
+            } else {
+                // Nije igrao — pun odmor, dovoljan da se svaki nagomiljani zamor obriše.
+                p.setFatigue(Math.max(0.0, p.getFatigue() - (2.5 + rnd().nextDouble() * 1.5)));
+            }
         }
     }
 }

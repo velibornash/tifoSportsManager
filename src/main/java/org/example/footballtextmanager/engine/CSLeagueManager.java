@@ -121,6 +121,30 @@ public class CSLeagueManager {
     }
 
     /**
+     * Sortira tabelu i dodeljuje {@code position} redne brojeve 1..N.
+     *
+     * <p>Ovo je jedino mesto gde se {@code position} postavlja za ligu. Pre toga je sortiranje
+     * zasebna stvar od dodeljivanja brojeva, pa je pozicija ostajala 0 — sto je pozicija u
+     * {@code runBoardReview} (manager se veruje da je 0. na mestu, pa dobij besplatno
+     * "backing the push"), u {@code calculateFinancialHealth} (+10 uvek), u League Wire
+     * ("0th") i u tabeli u {@code tifo.js}.
+     *
+     * <p>Kriterijum: poeni, pa gol razlika, pa postignuti golovi, pa ime tima. Ime se koristi
+     * samo kao poslednji odvajač da redosled bude stabilan; dve ekipacije sa identicnim
+     * pokazateljima ne smeju da se "preuređuju" između dva prikaza tabele.
+     */
+    public void sortAndRenumber(List<CSTableEntry> table) {
+        table.sort(Comparator
+                .comparingInt(CSTableEntry::getPoints).reversed()
+                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalDifference).reversed())
+                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalsScored).reversed())
+                .thenComparing(CSTableEntry::getTeamName, Comparator.nullsLast(String::compareToIgnoreCase)));
+        for (int i = 0; i < table.size(); i++) {
+            table.get(i).setPosition(i + 1);
+        }
+    }
+
+    /**
      * Inicijalizuje tabelu za sve timove (sve na nuli).
      */
     public List<CSTableEntry> initializeTable(List<CSTeam> teams) {
@@ -129,10 +153,12 @@ public class CSLeagueManager {
             table.add(CSTableEntry.builder()
                     .teamId(team.getId())
                     .teamName(team.getName())
+                    .position(0)
                     .points(0).wins(0).draws(0).losses(0)
                     .goalsScored(0).goalsConceded(0).played(0)
                     .build());
         }
+        sortAndRenumber(table);
         return table;
     }
 
@@ -175,10 +201,7 @@ public class CSLeagueManager {
             homeEntry.setLosses(homeEntry.getLosses() + 1);
         }
 
-        table.sort(Comparator
-                .comparingInt(CSTableEntry::getPoints).reversed()
-                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalDifference).reversed())
-                .thenComparing(Comparator.comparingInt(CSTableEntry::getGoalsScored).reversed()));
+        sortAndRenumber(table);
     }
 
     /**

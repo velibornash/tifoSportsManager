@@ -41,26 +41,54 @@ public class CSDataInitializer {
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
     public void ensureCSDataOnStartup() {
-        if (csCountryRepository.count() > 0) {
-            log.info("CS data already seeded");
+        if (isSeeded()) {
+            log.info("CS data already seeded: 1 country, {} competitions, {} teams, {} players",
+                    csCompetitionRepository.count(), csTeamRepository.count(), csPlayerRepository.count());
             return;
         }
 
         log.info("Seeding CS (text manager) data...");
+        seed();
+    }
 
+    /**
+     * Da li je tekst-svet već izgrađen.
+     *
+     * <p>Ranije je ovde stajalo {@code csCountryRepository.count() > 0}, i to je bio kvar koji
+     * je tiho ubio ceo mod. {@code CSCountry} red NE stvara samo ovaj seeder — stvaraju ga i
+     * {@code DatabaseInitializer.buildSerbianStructure()} i {@code seedOwnerAfterReset()}, preko
+     * {@code csTeamNamed() -> serbiaForTextManager()}, a to se desi kad se klikne admin
+     * dugme "Initialize DB". Taj klik ne seje tekst-ligu, ali ostavlja zemlju u bazi.
+     *
+     * <p>Posledica: prvi boot posle tog klika je video {@code count() == 1}, preskocio
+     * seedovanje i logovao "already seeded" — a lige, unosa takmičarske tabele i igrača
+     * nije bilo. {@code /api/cs/start} je padao na "League not found", a dugme nije prijavilo
+     * ništa. Pogresan proxy: zemlja postoji, ali svet oko nje ne.
+     *
+     * <p>Zato se sada gleda na ligu, koju stvara isključivo ovaj seeder.
+     */
+    private boolean isSeeded() {
+        return csCompetitionRepository.findAll().stream()
+                .anyMatch(c -> c.getType() == CSCompetitionType.LEAGUE && c.getCsCountry() != null);
+    }
+
+    private void seed() {
         // Serbia
-        CSCountry serbia = new CSCountry();
-        serbia.setName("Serbia");
-        serbia.setIsoCode("SRB");
-        // /images/flags/ does not exist, so this was a 404 for the one country that has a flag.
+        CSCountry serbia = csCountryRepository.findByIsoCodeIgnoreCase("SRB")
+                .orElseGet(() -> {
+                    CSCountry c = new CSCountry();
+                    c.setName("Serbia");
+                    c.setIsoCode("SRB");
+                    // /images/flags/ does not exist, so this was a 404 for the one country that has a flag.
 // Serbia is the only country with artwork and the football game already points at the file that is
-// actually there; the eight countries without artwork are not given a broken path, they fall back
-// to a real flag emoji from the ISO code in the country view.
-serbia.setFlagImagePath("/images/serbiaflag.png");
-        serbia.setCurrencyCode("RSD");
-        serbia.setReputation(55);
-        serbia.setYouthRating(65);
-        serbia = csCountryRepository.save(serbia);
+                    // actually there; the eight countries without artwork are not given a broken path, they fall back
+                    // to a real flag emoji from the ISO code in the country view.
+                    c.setFlagImagePath("/images/serbiaflag.png");
+                    c.setCurrencyCode("RSD");
+                    c.setReputation(55);
+                    c.setYouthRating(65);
+                    return csCountryRepository.save(c);
+                });
         Random rng = new Random(42);
 
         // Link any existing CTeams that lack csCountry to Serbia
@@ -73,30 +101,39 @@ serbia.setFlagImagePath("/images/serbiaflag.png");
         }
 
         // Serbia First League
-        CSCompetition league = new CSCompetition();
-        league.setName("Serbian First League");
-        league.setType(CSCompetitionType.LEAGUE);
-        league.setScope(CSCompetitionScope.NATIONAL);
-        league.setTeamType(CSCompetitionTeamType.CLUB);
-        league.setCsCountry(serbia);
-        league.setTier(1);
-        league.setDivisionLevel(1);
-        league.setTeamsPerCompetition(16);
-        league.setHasPlayoff(false);
-        league.setHasPlayout(false);
-        league.setPromotionSpots(1);
-        league.setRelegationSpots(3);
-        league.setReputationWeight(10);
-        league.setHasSeeding(false);
-        league = csCompetitionRepository.save(league);
+        CSCompetition league = csCompetitionRepository.findAll().stream()
+                .filter(c -> c.getName().equals("Serbian First League"))
+                .findFirst()
+                .orElseGet(() -> {
+                    CSCompetition l = new CSCompetition();
+                    l.setName("Serbian First League");
+                    l.setType(CSCompetitionType.LEAGUE);
+                    l.setScope(CSCompetitionScope.NATIONAL);
+                    l.setTeamType(CSCompetitionTeamType.CLUB);
+                    l.setCsCountry(serbia);
+                    l.setTier(1);
+                    l.setDivisionLevel(1);
+                    l.setTeamsPerCompetition(16);
+                    l.setHasPlayoff(false);
+                    l.setHasPlayout(false);
+                    l.setPromotionSpots(1);
+                    l.setRelegationSpots(3);
+                    l.setReputationWeight(10);
+                    l.setHasSeeding(false);
+                    return csCompetitionRepository.save(l);
+                });
 
         // Current season
         int currentYear = Year.now().getValue();
-        CSSeasonCompetition season = new CSSeasonCompetition();
-        season.setSeasonYear(currentYear);
-        season.setCsCompetition(league);
-        season.setFinished(false);
-        season = csSeasonCompetitionRepository.save(season);
+        CSSeasonCompetition season = csSeasonCompetitionRepository
+                .findByCsCompetitionAndSeasonYear(league, currentYear)
+                .orElseGet(() -> {
+                    CSSeasonCompetition s = new CSSeasonCompetition();
+                    s.setSeasonYear(currentYear);
+                    s.setCsCompetition(league);
+                    s.setFinished(false);
+                    return csSeasonCompetitionRepository.save(s);
+                });
 
         // Link existing CTeams that lack CSCompetition to the league
         for (CTeam t : existingTeams) {
@@ -118,11 +155,13 @@ serbia.setFlagImagePath("/images/serbiaflag.png");
         }
 
         // Previous season (for historical data)
-        CSSeasonCompetition prevSeason = new CSSeasonCompetition();
-        prevSeason.setSeasonYear(currentYear - 1);
-        prevSeason.setCsCompetition(league);
-        prevSeason.setFinished(true);
-        csSeasonCompetitionRepository.save(prevSeason);
+        if (csSeasonCompetitionRepository.findByCsCompetitionAndSeasonYear(league, currentYear - 1).isEmpty()) {
+            CSSeasonCompetition prevSeason = new CSSeasonCompetition();
+            prevSeason.setSeasonYear(currentYear - 1);
+            prevSeason.setCsCompetition(league);
+            prevSeason.setFinished(true);
+            csSeasonCompetitionRepository.save(prevSeason);
+        }
 
         // Create 16 teams
         String[] teamNames = {
@@ -132,8 +171,6 @@ serbia.setFlagImagePath("/images/serbiaflag.png");
             "FK Napredak", "FK Proleter", "FK Metalac", "FK Rudar",
             "OFK Kruševac"
         };
-
-        List<CTeam> allTeams = new ArrayList<>();
 
         for (int i = 0; i < teamNames.length; i++) {
             String teamName = teamNames[i];
@@ -220,11 +257,19 @@ serbia.setFlagImagePath("/images/serbiaflag.png");
                 player.setName(name);
                 player = csPlayerRepository.save(player);
             }
-            allTeams.add(team);
         }
 
-        log.info("Seeded {} CS countries, {} competitions, {} season entries, {} teams with players",
-                1, 1, 1, allTeams.size());
+        // Stvarni brojevi iz baze, ne pretpostavljeni. Runi se printao "1, 1, 1" — sto je
+        // tvrdnja da je seeder napravio tacno jednu zemlju, jedno takmicanje i jedan unos
+        // bez ikakvog dokaza. Zelen status nije dokaz da je posao uradjen.
+        log.info("CS world ready: {} countries, {} competitions, {} season competitions, "
+                        + "{} teams in league, {} competition entries this season, {} players",
+                csCountryRepository.count(),
+                csCompetitionRepository.count(),
+                csSeasonCompetitionRepository.count(),
+                csTeamRepository.countByCSCompetition(league),
+                csCompetitionEntryRepository.countByCsSeasonCompetition(season),
+                csPlayerRepository.count());
     }
 
     private CSPosition pickPosition(int index) {

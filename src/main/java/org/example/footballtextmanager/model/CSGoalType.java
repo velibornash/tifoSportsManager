@@ -9,5 +9,6 @@ public enum CSGoalType {
     SCREAMER,    // powerful long-distance rocket
     FREE_KICK,   // direct free kick
     POACHERS,    // opportunist finish at the back post or 6-yard box
+    PENALTY,     // converted from the spot
     COUNTER      // scored at the end of a fast counter-attack
 }

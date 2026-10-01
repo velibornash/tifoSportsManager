@@ -23,11 +23,26 @@ public class CleanSheetController {
 
     @PostMapping("/start")
     public ResponseEntity<?> startGame(@AuthenticationPrincipal User user) {
-        if (user == null || user.getCTeam() == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "User or CTeam not found"));
+        if (user == null) {
+            return ResponseEntity.status(401).build();
         }
-	        CTeam CTeam = teamRepository.findById(user.getTifoCTeam().getId()).orElse(user.getTifoCTeam());
-	        CleanSheetGameState state = cleanSheetService.startNewGame(user.getId(), CTeam);
+        // The text mode reads User.tifoCTeam. User.cTeam is the *other* text mode's column and was
+        // what this guard used to check, so a user with only tifoCTeam set passed the guard and then
+        // dereferenced a null tifoCTeam on the next line. Both are set by DatabaseInitializer, which
+        // is why it never fired in practice — it is a guard that guarded the wrong field.
+        CTeam csTeam = user.getTifoCTeam() != null ? user.getTifoCTeam() : user.getCTeam();
+        if (csTeam == null) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "No text-manager club is attached to this account yet. "
+                            + "Seed the text world, or set the club on the account."));
+        }
+        // Re-read through the repository so the returned entity is a managed, fully populated row.
+        // A detached or transient reference has a null id, and findById(null) throws rather than
+        // returning empty.
+        if (csTeam.getId() != null) {
+            csTeam = teamRepository.findById(csTeam.getId()).orElse(csTeam);
+        }
+        CleanSheetGameState state = cleanSheetService.startNewGame(user.getId(), csTeam);
         return ResponseEntity.ok(buildStateResponse(state));
     }
 

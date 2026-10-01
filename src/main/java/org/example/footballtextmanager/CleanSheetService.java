@@ -261,8 +261,10 @@ public class CleanSheetService {
         applyRoundFinances(state, userFixture, userResult, round);
         runBoardReview(state, round);
 
-        // Oporavi fatigue izmedju kola
-        recoverFatigueBetweenRounds(state);
+        // Oporavak od izostalih igrača radi sam simulator (CSMatchSimulator.updateFatigueAfterMatch):
+        // igrač koji nije igrao u kolu je odmaro. Ovdje je ranije bila jednaka apsolutna
+        // odbitka za SVAKOG igrača, pa se zamor nije mogao oporaviti izborom postave — a
+        // pozivala se posle sto je simulacija vec bila uradjena za ovo kolo.
 
         state.setCurrentRound(round + 1);
 
@@ -1213,15 +1215,6 @@ public class CleanSheetService {
         state.addInboxMessage("transfer", "Transfer completed: " + player.getName() + " sold to " + buyer.getName() + " for €" + formatMoney((long) agreedFee) + ".");
     }
 
-    private void recoverFatigueBetweenRounds(CleanSheetGameState state) {
-        for (List<CSPlayer> roster : state.getAllTeamRosters().values()) {
-            for (CSPlayer p : roster) {
-                double recovery = 1.0 + new Random().nextDouble() * 1.5;
-                p.setFatigue(Math.max(0, p.getFatigue() - recovery));
-            }
-        }
-    }
-
     private void rolloverToNextSeason(CleanSheetGameState state) {
         List<CSTableEntry> finalTable = new ArrayList<>(state.getLeagueTable());
         if (finalTable.isEmpty()) {
@@ -1332,16 +1325,15 @@ public class CleanSheetService {
 
     private List<CSPlayer> createGeneratedRoster(Long teamId) {
         List<CSPlayer> players = new ArrayList<>();
-        players.add(createGeneratedPlayer(teamId, "GK", 60));
-        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer(teamId, "DEF", 58));
-        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer(teamId, "MID", 60));
-        for (int i = 0; i < 2; i++) players.add(createGeneratedPlayer(teamId, "WNG", 60));
-        for (int i = 0; i < 3; i++) players.add(createGeneratedPlayer(teamId, "ATT", 61));
+        players.add(createGeneratedPlayer("GK"));
+        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer("DEF"));
+        for (int i = 0; i < 4; i++) players.add(createGeneratedPlayer("MID"));
+        for (int i = 0; i < 2; i++) players.add(createGeneratedPlayer("WNG"));
+        for (int i = 0; i < 3; i++) players.add(createGeneratedPlayer("ATT"));
         return players;
     }
 
-    private CSPlayer createGeneratedPlayer(Long teamId, String pos, int baseRating) {
-        int rating = Math.max(44, Math.min(78, baseRating + random.nextInt(13) - 6));
+    private CSPlayer createGeneratedPlayer(String pos) {
         String name = pickFirstName() + " " + pickLastName();
         int age = 18 + random.nextInt(16);
         int stamina = clampSkill(6 + random.nextInt(12));
@@ -1353,12 +1345,11 @@ public class CleanSheetService {
         int passing = clampSkill(4 + random.nextInt(13));
         int shooting = "ATT".equals(pos) ? clampSkill(10 + random.nextInt(10)) : clampSkill(2 + random.nextInt(10));
 
-        return CSPlayer.builder()
+        CSPlayer player = CSPlayer.builder()
                 .id(generatedPlayerId.getAndDecrement())
                 .name(name)
                 .position(pos)
                 .age(age)
-                .rating(rating)
                 .form(4.6 + random.nextDouble() * 1.8)
                 .fatigue(0.8 + random.nextDouble() * 1.8)
                 .talent(3.0 + random.nextDouble() * 6.0)
@@ -1377,6 +1368,14 @@ public class CleanSheetService {
                 .height(1.70 + random.nextDouble() * 0.25)
                 .weight(64 + random.nextDouble() * 22)
                 .build();
+
+        // Ocena se racuna iz veština kao i kod svakog drugog igrača (CSPlayer.calculateRating).
+        // baseRating se vise ne koristi kao izvor ocene: dolazio je sa skale 0-100, pa je ovaj
+        // igrač upisan kao 44-78 dok je svaki seederovan igrač 1-10. Kroz tezinu 0.4 u
+        // calculateStrength to je znacilo da je svaki promovisani klub ~6x jac od ostalih.
+        int jitter = random.nextInt(3) - 1;
+        player.setRating(Math.max(1, Math.min(10, player.calculateRating() + jitter)));
+        return player;
     }
 
     private int clampSkill(int s) {
