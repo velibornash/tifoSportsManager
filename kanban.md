@@ -184,7 +184,7 @@ measure the source-reading claim before editing the code it points at.
 | **B6** | **Continental qualification for 47 of 48 countries is alphabetical.** Every club in a division gets an identical reputation (it is a function of tier alone), then the table is sorted by reputation and **name** | not started | `PyramidBuilder:301-304` (`reputationFor(tier)`), sort at `:275-277`; read by `InternationalClubCups.qualifiedFor:238-239`, and `poolAt(...).sort(reputationOf)` at `:270` is a comparator over identical values. **This is the half of `COMPETITIVE_ANALYSIS.md` #14 that "matters"** |
 | **B7** | ~~The international club cups cannot progress past their first knockout~~ **FIXED** — bracket now walks R16 → QF → SF → **final and third place** | **done** | The `return` inside the `while` was unconditional, so it always exited on the first iteration and rounds two and three were unreachable for ever. It now **starts from the results rather than from the beginning**: it walks the rounds and at each one asks what is already there. Still to do on this row: `ensureGroupStage` and `ensureKnockouts` have **0 callers** — nothing draws these cups in the running app yet — and a small field returns from `buildGroupStage` promising a knockout that is then never drawn |
 | **B8** | **`MatchFormat` has zero callers** — and wiring the group stage without it would settle **every level group match by a shootout** | not started | `SimMatchService:222` + `isKnockoutTie:457-460` is `type == CUP`, whose own comment says *"A group stage would need a real flag."* **Ordering constraint: wire `MatchFormat` before the group stage, not after** |
-| **B9** | **Internationals kick off 45 minutes early**, and day 6 has no job at all | not started | Job hour `20` (`MatchdayJobsConfig:30-31`), `WeekTemplate` kickoff `20:45`, `GameDay.kickoffHour()` `20`. The owner's schedule names day 6 *"form and morale"* and nothing implements it |
+| **B9** | **Internationals kick off 45 minutes early**, and day 6 has no job at all | **half done** (`1f90a82`) | The *display* is fixed: `GameDay.kickoffHour()` returned `getHour()` and threw away 45 minutes of a `LocalTime` the template already held, so the dashboard said 20:00 for a 20:45 slot. Now `HH:MM` throughout, verified live. **The gate is unchanged on purpose** — `hour` is an explicit counter decoupled from the wall clock (a load-bearing decision, see `GameClockService`), so it cannot express 20:45 and the match opens on the next tick. **Day 6 still has no job** |
 | **B10** | **`GAME_ZONE` is declared and dead**, and the in-game date moves by wall-clock time rather than by game time | not started | `GameClockService:59` declares `Europe/Belgrade`; `currentDate` is built with `ZoneOffset.UTC` (`:165`); `/api/server-time` reports Belgrade. Because `currentDate = now() + advanceOffset`, two owners clicking a week apart get different `currentDate` from the same 168 advances — and `ZoneLoadService:181-186` reads exactly that field |
 | **B11** | **Delete the three stale global cup rows** | open | Already on this board from the 2026-10-01 session; repeated here because B1/B2/B7 all sit in the same file |
 
@@ -356,11 +356,17 @@ than adding a fourth way for the table to be wrong.
 
 **Not done, and both halves are on the board rather than in the commit:**
 
-1. **The local button.** It needs an admin action and a button beside Reset / Initialize / Repair world.
-   Half a feature is worse than none, so it is not half-shipped.
-2. **No test yet.** `reconcile` is covered by nothing. The shape it needs is the one the two rating
-   services got: build a table, corrupt it the way a double-apply would, reconcile, and read back through
-   a fresh transaction.
+**Both items closed, and no button was written.**
+
+1. ~~**The local button.**~~ **Not needed — the table already updates.** The owner asked whether it does,
+   and it does: `SimMatchService:525-535` adds points, wins and draws inside the transaction that saves the
+   score, so the table is right the moment a manager watches his own match. Measured on the live database,
+   **155 played matches across 31 leagues with zero disagreements.** The 1 AM job already covers the only
+   case the incremental path cannot — a replayed or interrupted fixture double-applying a result — so a
+   manual button would be a second way to do something the schedule already does correctly.
+2. ~~**No test yet.**~~ **Done** (`61a172a`). 4/4, every test corrupts the table first, the idempotency test
+   demands a second run correct nothing, and the guard was proven able to fail by rewriting the rebuild into
+   an add (`expected: <0> but was: <2>`).
 
 **One thing to decide before the button:** "Activate this country" currently leads to a page with a single
 sentence and no data. The owner suggested putting something on it — ranking points, the national squad, the
