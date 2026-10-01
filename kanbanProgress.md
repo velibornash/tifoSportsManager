@@ -633,11 +633,19 @@ its jobs.
 **Making the week atomic would roll back 167 good hours over one bad job** and contradict both. Had this been
 "fixed" as written, the season would have frozen on the first failure.
 
-### What is genuinely open, and is not a transaction rewrite
+### The one honest question, now closed (`c499ade`)
 
 On a hard crash, DONE job records that committed ahead of a clock which rolled back are re-evaluated on the retry
-and skipped. That is self-healing **provided** the DONE key includes season/week/day/hour. **Not yet verified** —
-and that is a five-minute test, not a re-architecture.
+and skipped. That is self-healing **provided** the DONE key is unambiguous.
+
+The key is `(season, week, day, jobKey)` — **without an hour**. That is safe only while every registered job
+occupies a distinct `(day, key)` pair. If two jobs shared both, the first would mark the slot DONE and the second
+would be skipped **for ever, silently, with no error anywhere**.
+
+It holds today, and `MatchdayJobsConfig` says so in a comment: *"a shared key would let the day-3 job suppress the
+day-7 round."* **That was a comment. It is now a check** — `JobTriggerUniquenessTest`, 2/2, both verified by
+mutation (giving the second league-table job the first's key; giving the day-7 matchday the day-3 key). No
+production code changed.
 
 The board's own A1/A2 lesson is the standing instruction here: **measure the source-reading claim before editing
 the code it points at.** Four times now the reading has been wrong.
