@@ -650,6 +650,53 @@ production code changed.
 The board's own A1/A2 lesson is the standing instruction here: **measure the source-reading claim before editing
 the code it points at.** Four times now the reading has been wrong.
 
+## `05c33e3` — the boundary was written down twice and the copies disagreed
+
+**Task (A8):** the one finding the audit escalated rather than listed.
+
+`buildPlayoffSummary` told the manager which clubs were being promoted and relegated. The code that actually
+**moves** clubs computes the boundary:
+
+```
+safeCount = expectedTeams - 2 * movementSlots
+```
+
+so a sixteen-club league over two lower leagues relegates the **15th and 16th**. The summary hardcoded
+`top.get(8)` and `top.get(9)` — the **9th and 10th**.
+
+**The game relegated one pair of clubs and reported another.** Both answers look entirely plausible, which is
+why nothing caught it.
+
+There is now one definition — `boundaryFor`, returning a bounds-checked `PromotionRelegationBoundary` record —
+called by both paths. A table shorter than the rule expects reports a boundary of *nobody* rather than throwing
+an `IndexOutOfBounds` at a manager.
+
+Verified both ways. Restoring the hardcoded indices fails the test and prints the bug exactly:
+
+```
+the bottom club is not among the relegated:
+[{toLeague=..., team=Club 09}, {toLeague=..., team=Club 10}]
+```
+
+### Also found
+
+The summary reported promotions for only the **first two** lower leagues (`subList(0, 2)`) while the mover
+iterates them all — so a third league's champion was promoted and not reported. `subList` also threw on a
+country with fewer than two. Promotions otherwise already agreed; both take the lower champion.
+
+**Found and deliberately not changed:** `findTier2Leagues` is hardcoded to `"SRB"` (`SeasonService:1083`), so
+`buildPlayoffSummary` reports **nothing for any other country**, whatever league it is handed. That is a scoping
+decision rather than a slip — the summary is Serbian by design or by accident, and only the owner knows which.
+
+### Two of my assertions were wrong before the code was
+
+- A **fixed** expected answer for a ten-club league. The boundary is *correctly* unusable once there are too
+  many lower leagues (`safeCount` goes negative), and an empty list is honest — not a defect.
+- **Assuming two tier-2 leagues exist** on the test profile. The summary produces nothing without two, and the
+  profile's own set is not that. The test now guarantees what it needs.
+
+Both failed on correct code, which is now the sixth time this session and the reason the mutation check exists.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
