@@ -108,10 +108,8 @@ public class GoalEventRepository {
      */
     private List<GoalEvent> goalsOf(Match match) {
         String json = match == null ? null : match.getEventJson();
-        if (json == null || json.isBlank() || json.trim().startsWith("[")) {
-            if (json == null || json.isBlank()) {
-                return List.of();
-            }
+        if (json == null || json.isBlank()) {
+            return List.of();
         }
         JsonNode events;
         try {
@@ -119,7 +117,7 @@ public class GoalEventRepository {
         } catch (Exception unparseable) {
             return List.of();
         }
-        if (json.trim().equals("[]") || !events.isArray()) {
+        if (!events.isArray() || events.isEmpty()) {
             return List.of();
         }
 
