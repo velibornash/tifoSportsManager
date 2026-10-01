@@ -1320,3 +1320,94 @@ clubs and no fixture list. Wiring it means generalising the seeder from "the cup
 than reaching for the first one — a real change to code every national cup already depends on. It is
 written up as not done rather than left for someone to discover from a "Not created yet" badge on a page
 that now says these competitions exist.
+
+
+---
+
+# Session 2026-10-01 — the world stops seeding itself, and three things were found dead
+
+Owner: *"start aplikacije treba da radi SAMO START aplikacije. Nikakav init nikakav seed nista."*
+
+The Oracle instance had been failing silently for a season. Everything below came out of that report.
+
+## What changed
+
+| Commit | Change |
+|---|---|
+| `d368a2a` | International club cups scoped **per tier** — see the spec section in `kanban.md` |
+| `16274aa` | `SimulatedWorldSeeder` — simulated countries as a static world, no players, no fixtures |
+| `54b5e56` | `initialize-db` was reporting success on a world with **no leagues at all** |
+| `bbdf397` | `escapeHtml` never imported; `/leagues/null/table` 500 |
+| `6639545` | **Boot writes nothing.** Initialize = Serbian structure only; new *Seed other nations* button |
+| `087c2f9` | The bottom Back button on a match view was never wired to anything |
+| `8d66a56` | Baseline selector appointment moved into Initialize DB — it had been in the removed boot path |
+| `c0ba3ba` | `LazySquadGenerator` — a playerless simulated club gets a squad when a match needs one |
+| `b68346c` | Club rating seed corrected to 1500 −100 per tier |
+| `cc8d6da` | `dataFixSuggestions.md` §1.1 settled: recovery **is** committed, the finding is wrong |
+
+## The pattern of the whole session: things that reported success and did nothing
+
+Four separate bugs, one shape:
+
+1. `initialize-db` caught its own seeding failure, logged it, returned normally — and the job reported
+   success off that return. A world with zero leagues looked like a clean rebuild.
+2. `initSerbianFootballStructure()` opened with `orElseThrow()` on Serbia, and **every** league below it
+   is built from that country. One missing row, and the whole pyramid was skipped before the first league.
+3. The bottom Back button got a `dataset` and a `display` style and **no listener**. Clicking it did
+   nothing, with no error, which is why it read as "the button isn't there" rather than as a bug.
+4. `escapeHtml` was used in a `catch` and never imported, so the first failed country load replaced a
+   readable message with a dead render.
+
+The lesson is the standing rule again: **a green status is not evidence.** Three of these four could
+only be found by opening the app, not by reading the code.
+
+## Three bugs I caused in this session
+
+Worth writing down, because each one was a correct decision applied one step too far.
+
+**Removing boot seeding removed a step nothing else did.** The baseline selector appointment lived in
+the boot path. So after Initialize DB, the national-team page opened for the owner saying "you are not
+the selector" on a side that had **no selector at all**. Found by the owner, not by me.
+
+**The cups were wrong twice before they were right.** First: three global competitions taking every
+division on the planet. Then: per *division* rather than per *country per tier*. The owner said "nemam
+ništa protiv full seed ostalih zemalja" and the shape became clear. Both wrong versions looked
+plausible, which is why the spec is now written down before the code rather than after.
+
+**The club rating seed was wrong in the source all along** — `1500 + (worst - tier) * 200` anchors the
+*worst* tier at 1500 and puts tier 1 at 2300. The existing test only asserted "tier 1 is above tier 3",
+which is exactly the weak assertion that let it through. **A test that cannot fail proves less than no
+test**, and that one could not fail.
+
+## The measurement trap, in three layers
+
+Writing `ZoneLoadRecoveryPersistenceTest` took four attempts, and each failed version was green while
+measuring nothing:
+
+1. no `lastPlayedAt` → player skipped, `touched == 0`
+2. load with no zone → not-null violation, then no window match
+3. load dated with `now()` instead of the **game clock** → outside the recovery window
+4. every one of those passed its own assertions
+
+Only the fourth version — clear the persistence context, re-read from the database — could actually
+fail. **This is the single most transferable thing from the session**, and it applies to
+`dataFixSuggestions.md` §1.2–1.5, which are unverified and may be the same shape.
+
+## Oracle verification
+
+Confirmed live, and the first run on a real server:
+
+```
+Static pyramid for Other Nations: 31 division(s), 310 club(s), no players, no fixtures.
+Simulated world: 47 country/countries seeded (0 already had a pyramid),
+                 1457 division(s), 14570 club(s). No players, no fixtures.
+```
+
+47 × 31 = 1457. 1457 × 10 = 14,570. "Other" is the 48th country. Nothing was generated that was not
+needed — which is the entire point of the static world.
+
+## Not done
+
+**Cup draw wiring.** `CupFixtureSeeder` still seeds only the first CUP row, so the 15 per-tier
+competitions have qualified clubs and no fixture list. **Knockout progression** — no final, no third
+place. **Three stale global cup rows** from the first wrong version still need deleting.

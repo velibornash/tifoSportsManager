@@ -31,6 +31,70 @@ The one exception is work with a number attached — a count either meets its ta
 
 ## 🔄 In progress
 
+*Nothing. The last task — settling `dataFixSuggestions.md` §1.1 — is done and committed.*
+
+---
+
+## 📌 NEXT SESSION — start here
+
+Ten commits landed on 2026-10-01 (`d368a2a` … `cc8d6da`). The reasoning is in `kanbanProgress.md`
+under "Session 2026-10-01"; this is just the work list, in the order it should be picked up.
+
+### 1. Club ratings — the columns and the recalc
+
+The **arithmetic and the seed are done**: `RatingEngine` has tier-weighted K factors
+(`clubK(MatchValue)`, so some matches count more), a group-stage bonus (`qualificationBonus()`), and the
+seed is now pinned to 1500 / 1400 / 1300 / 1200 / 1100. What is missing is storage and wiring:
+
+- a rating column on `Team`, plus previous-value and delta columns
+- **delta is relative to the last stored value**, recalculated after each match (owner's call)
+- persist across seasons — a season reset was **not** asked for and has not been built
+- seeding at initialisation, from the club's own tier
+
+### 2. The two ranking tables, which read those columns
+
+- **Serbia / Country tab, club list** — position, clickable club name, rating points, and +/− against
+  the previous entry
+- **Country ranking list** — a plain ordinal in the table row, clickable, instead of the country name
+  being trapped inside a button
+
+### 3. The international cup, which has data but no matches
+
+- wire `CupFixtureSeeder` to a **named** cup rather than the first CUP row, so the 15 per-tier
+  competitions get fixture lists
+- **knockout progression** — round of 16 → QF → SF → **final and third place**
+- delete the **three stale global cup rows** from the first wrong version
+- lazy squad generation is in place, so a cup tie against a human club will have a lineup
+
+### 4. Verify `dataFixSuggestions.md` §1.2–1.5 before fixing any of it
+
+§1.1 turned out to be **wrong** — recovery is committed, and the missing `save()` was never a lost
+write. That document was produced by reading source, and three of its findings had a configuration
+where the claim "passed" while measuring nothing. Treat the rest as unverified:
+
+| § | Claim | Status |
+|---|---|---|
+| 1.2 | "Simulate all" can silently discard an entire league | unverified — plausible, real trade-off |
+| 1.3 | `@Transactional` on `totalSides()` not `seedIfMissing()` in `NationalTeamSeeder` | unverified |
+| 1.4 | `MatchPersistenceService` is dead code (402 lines, zero callers) | unverified |
+| 1.5 | `MatchEventRepository.save()` is a no-op | unverified — probably a design choice, badly named |
+
+### 5. Smaller, still open
+
+- `/demo` routes — **waiting on the owner** to decide what they should be
+- `reset-db` deadlock against a running simulation
+- `Network error during authFetch` / `DB init error` on Oracle — **not diagnosed.** It was seen while
+  the seeding was running, so it may simply have been a restarting server. **Re-check first**: if it is
+  still happening with the server definitely up, it outranks everything else here.
+- National Team Qualifiers + World Cup (senior) — mechanism exists, competitions and formats do not
+- U-21 as its own competitions with its own qualification — **not tabs on one competition**
+- calendar-year fixtures
+- match engine realism — **last, per the owner**
+
+---
+
+## 🔄 In progress
+
 *Nothing. The result-hiding task is done and verified live; the next session starts on the World
 queue (bot league tier standards).*
 
