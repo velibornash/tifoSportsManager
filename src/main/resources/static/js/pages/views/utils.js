@@ -379,17 +379,40 @@ export function buildEmptyState(message) {
             </div>`;
 }
 
+/**
+ * The player's appearance count and average rating.
+ *
+ * <p><b>authFetch is not optional and must be passed.</b> It used to be called with one argument from
+ * both player-view.js and league-view.js, so `authFetch` was undefined and the call threw a TypeError
+ * which this catch turned into `matchesPlayed: 0`. The profile then showed "MC 0 matches" and "Apps 0"
+ * for a player who had started, scored and assisted - while the very same page showed his goal and his
+ * assist, because those come from a different column.
+ *
+ * <p>So `matchesPlayed` is now null on failure rather than 0. Zero means "played no matches" and that is a
+ * fact about the player; null means "we could not find out", and a caller that prints null is visibly
+ * broken instead of confidently wrong.
+ */
 export async function fetchPlayerRatingSummary(playerId, authFetch) {
+    const unknown = { averageRating10: null, averageRating100: null, matchesPlayed: null, loaded: false };
+    if (typeof authFetch !== 'function') {
+        console.error('fetchPlayerRatingSummary called without authFetch; appearance count is unknown.');
+        return unknown;
+    }
     try {
         const response = await authFetch(`/match-stats/player/${playerId}`);
-        if (!response.ok) return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
+        if (!response.ok) {
+            console.error(`Rating summary for player ${playerId} returned ${response.status}.`);
+            return unknown;
+        }
         const payload = await response.json();
         return {
             averageRating10: payload.averageRating10 ?? null,
             averageRating100: payload.averageRating100 ?? null,
-            matchesPlayed: payload.matchesPlayed ?? 0
+            matchesPlayed: payload.matchesPlayed ?? null,
+            loaded: true
         };
     } catch (err) {
-        return { averageRating10: null, averageRating100: null, matchesPlayed: 0 };
+        console.error(`Rating summary for player ${playerId} failed.`, err);
+        return unknown;
     }
 }

@@ -93,7 +93,11 @@ export function createPlayerView(deps) {
         const injuryText = player?.injured
             ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
             : 'Available';
-        const matchesPlayed = ratingSummary.matchesPlayed ?? player?.played ?? player?.matchesPlayed ?? 0;
+        // null means the count could not be fetched. Printing that as 0 is the bug this file had, so
+        // it is shown as a dash instead - visibly unknown rather than confidently wrong.
+        const knownAppearances = ratingSummary.matchesPlayed ?? player?.played ?? player?.matchesPlayed ?? null;
+        const appearancesText = knownAppearances === null ? '\u2014' : knownAppearances;
+        const matchesPlayed = knownAppearances;
         const outputGoals = player?.totalGoals ?? player?.goals ?? 0;
         const outputAssists = player?.totalAssists ?? player?.assists ?? 0;
         const backButtonAttrText = [
@@ -157,7 +161,7 @@ export function createPlayerView(deps) {
                                 <div class="fm-player-chip-row">
                                     <span class="fm-player-chip">OVR ${player?.overall ?? '-'}</span>
                                     <span class="fm-player-chip secondary">${htmlEscape(positionInfo.primary)}</span>
-                                    <span class="fm-player-chip secondary">${matchesPlayed} matches</span>
+                                    <span class="fm-player-chip secondary">${appearancesText} matches</span>
                                 </div>
                             </div>
                         </div>
@@ -373,7 +377,7 @@ export function createPlayerView(deps) {
                             <div class="fm-player-overview-strip">
                                 <div><strong>${player.age ?? '-'}</strong><span>Age</span></div>
                                 <div><strong>${player.overall ?? '-'}</strong><span>OVR</span></div>
-                                <div><strong>${ratingSummary.matchesPlayed ?? 0}</strong><span>Apps</span></div>
+                                <div><strong>${appearancesText}</strong><span>Apps</span></div>
                                 ${renderTalentCell(player)}
                             </div>
                         </section>
@@ -415,7 +419,7 @@ export function createPlayerView(deps) {
                                 <tbody>
                                     <tr>
                                         <td>Current save</td>
-                                        <td>${ratingSummary.matchesPlayed ?? 0}</td>
+                                        <td>${appearancesText}</td>
                                         <td>${player.totalGoals ?? 0}</td>
                                         <td>${player.totalAssists ?? 0}</td>
                                         <td>${averageRating}</td>
@@ -607,7 +611,7 @@ export function createPlayerView(deps) {
         console.log(`Loading player for team ${teamId} and player ${playerId}`);
         const [response, ratingSummary, transferStatus] = await Promise.all([
             authFetch(`/teams/${teamId}/players/${playerId}`),
-            fetchPlayerRatingSummary(playerId),
+            fetchPlayerRatingSummary(playerId, authFetch),
             fetchPlayerTransferStatus(playerId)
         ]);
         console.log(`Response status: ${response.status}`);

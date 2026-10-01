@@ -450,7 +450,7 @@ export function createLeagueView(deps) {
         try {
             const [playerResponse, ratingSummary, transferStatus] = await Promise.all([
                 authFetch(`/players/${playerId}`),
-                fetchPlayerRatingSummary(playerId),
+                fetchPlayerRatingSummary(playerId, authFetch),
                 fetchPlayerTransferStatus(playerId)
             ]);
 
