@@ -78,6 +78,19 @@ export function createPlayerView(deps) {
 
     // --- HTML builders ---
 
+    /**
+     * How many matches this player has appeared in, and how to print it.
+     *
+     * <p>Returns null when the count could not be fetched, and null prints as an em dash. It used to
+     * print as 0, which is a different statement: "this player has played no matches" rather than "we do
+     * not know". That difference is the whole bug - a failed fetch rendered as 0 matches on a player who
+     * had started, scored and assisted.
+     */
+    function appearanceCount(ratingSummary, player) {
+        const count = ratingSummary?.matchesPlayed ?? player?.played ?? player?.matchesPlayed ?? null;
+        return { count, text: count === null ? '\u2014' : count };
+    }
+
     function buildPlayerProfileHeroHtml(player, options = {}) {
         const {
             backLabel = 'Back', eyebrow = 'Player overview', teamName = 'Club squad',
@@ -93,11 +106,9 @@ export function createPlayerView(deps) {
         const injuryText = player?.injured
             ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
             : 'Available';
-        // null means the count could not be fetched. Printing that as 0 is the bug this file had, so
-        // it is shown as a dash instead - visibly unknown rather than confidently wrong.
-        const knownAppearances = ratingSummary.matchesPlayed ?? player?.played ?? player?.matchesPlayed ?? null;
-        const appearancesText = knownAppearances === null ? '\u2014' : knownAppearances;
-        const matchesPlayed = knownAppearances;
+        const appearances = appearanceCount(ratingSummary, player);
+        const appearancesText = appearances.text;
+        const matchesPlayed = appearances.count;
         const outputGoals = player?.totalGoals ?? player?.goals ?? 0;
         const outputAssists = player?.totalAssists ?? player?.assists ?? 0;
         const backButtonAttrText = [
@@ -293,6 +304,7 @@ export function createPlayerView(deps) {
         const positionInfo = getPlayerPositionInfo(player.position);
         const conditionPercent = getPlayerConditionPercent(player);
         const averageRating = formatRatingBadge(ratingSummary.averageRating10);
+        const appearancesText = appearanceCount(ratingSummary, player).text;
         const formBadge2 = formatFormBadge(player.form);
         const injuryText = player.injured
             ? `Injured${player.injuryDaysRemaining ? ` · ${player.injuryDaysRemaining} days` : ''}`
