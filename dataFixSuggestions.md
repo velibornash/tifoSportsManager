@@ -29,26 +29,50 @@ end for what is missing and how to get it cheaply.
 
 ## 1. Correctness bugs found during the investigation
 
-### 1.1 `RecoveryJob` writes zero rows and still reports DONE
+### 1.1 `RecoveryJob` — CORRECTED. The write lands, but the computation is thrown away
 
-`newLogic/service/ZoneLoadService.java:125-162` — `applyDailyRecovery()` iterates the affected
-players and calls `player.setMorale(player.getMorale() + 0.2)`, incrementing a `touched` counter,
-but **never calls `playerRepository.save(player)`**.
+> **CORRECTION (2026-10-01, second pass).** The first draft of this document claimed
+> `ZoneLoadService.applyDailyRecovery()` mutates morale and never calls `save()`, so the job
+> "writes zero rows". **That was wrong.** The method is `@Transactional` and
+> `players.findByLastPlayedAtIsNotNull()` returns **managed** entities, so JPA dirty checking
+> flushes `setMorale()` at commit. The write lands. Verified by reading
+> `ZoneLoadService.java:125-162` directly and `git log` on the file (`bb0cbe0`, `9e3c5c3`).
+>
+> This is the second time in this project that "no explicit `save()`" was read as "no write" — see
+> `sprintProgress.md`'s *"A test that passed while proving nothing"* and the
+> `REQUIRES_NEW`-backfill finding. **Hibernate flushes managed state; absence of `save()` is not
+> absence of a write.** Do not repeat this reading.
 
-Consequences:
+The job is wired and works. But reading the same method surfaced two *real* defects that the
+original finding missed:
 
-- `RecoveryJob` (key `recovery`, `ANY_DAY`, hour 6, `order() = 10`) executes, finds players via
-  `findLoadsPlayedSince(windowStart)`, mutates them in memory, discards them, and writes a
-  `job_run` row with status `DONE`.
-- Daily morale recovery has therefore never actually happened.
+**(a) The computed recovery amount is discarded.** `ZoneLoadService.java:151-155`:
 
-This is worse than the previously-recorded finding that the *scheduling* of `RecoveryJob` was
-unproven. The writer side is fine — `ZoneLoadRecorder` has produced 2,140 zone-load rows live —
-and the read path is proven by integration test. Only the final write is missing.
+```java
+double work = workedSinceWindow.get(player.getId());
+if (work <= 0.0) { continue; }
+player.setMorale(player.getMorale() + 0.2);   // flat, ignores `work`
+```
 
-**Fix:** add the `save` (ideally one `saveAll` over the deduped player list, not a per-row save —
-see §4.2 on ID strategy). **Then add a live assertion that the row count changed**, because a
-green `job_run` row is not evidence.
+`work` — the player's summed effective minutes across all zones in the window — is used **only as
+a positivity gate**. The `DAILY_RECOVERY_CAP` (90) and `DAILY_RECOVERY_RATE` (0.65) that
+`recoveryFor` (`:81`) applies are **never applied here.** A player who played one minute of a 1–2
+and a player who played a full 90 minutes both get exactly `+0.2`.
+
+So there are two different recovery models in one class: `recoveryFor` (the version the player
+screens read, which honours the cap and rate) and `applyDailyRecovery` (the version the world gets,
+which is a flat `+0.2`). The class javadoc at `:132-135` claims *"The arithmetic is identical to
+recoveryFor(): same window, same sum, same cap, same rate."* **That claim is false.** Call
+`recoveryFor(player.getId())` — it is already the correct function and is already in the class.
+
+**(b) No upper clamp.** `MoraleService` clamps to `0..100` (`:125, :144, :157`) and
+`SquadEnvironmentService` clamps with `Math.min(100.0, …)` (`:120`). `ZoneLoadService:155` does
+not. A player who appears in the zone table accrues `+0.2` every game day and is never reduced by
+this path, so morale walks off the top of the scale.
+
+**Fix:** replace the three lines with a call to `recoveryFor` (or replicate its cap/rate) and
+clamp the result to `0..100`. Both are small. **Then add a live assertion that the morale column
+changed**, per the standing rule that a green `job_run` row is not evidence.
 
 ### 1.2 "Simulate all" can silently discard an entire league
 
@@ -930,7 +954,7 @@ standing rule about.
 
 | # | Action | File |
 |---|---|---|
-| 0.1 | Add the missing `save()` to `applyDailyRecovery()`; batch it | `ZoneLoadService.java:125-162` |
+| 0.1 | Make `applyDailyRecovery()` honour `recoveryFor`'s cap/rate instead of a flat `+0.2`, and clamp to 0–100 (see §1.1 — the write itself is fine) | `ZoneLoadService.java:151-155` |
 | 0.2 | Make the CAS decline visible, or convert it to a queue | `AsyncSimulationRunner.java:36-39` + `SimulationController.java:159` |
 | 0.3 | Move `@Transactional` to `seedIfMissing()` | `NationalTeamSeeder.java:71` |
 | 0.4 | Rethrow or mark rollback-only instead of returning `null` | `SimMatchService.java:295-298` |
@@ -1018,8 +1042,8 @@ Reminder: `ddl-auto=update` **never drops** an index. Verify against the live sc
 
 If you want one day's work with the largest measurable return, in this order:
 
-1. **0.1** — add the missing `save()` in `ZoneLoadService`. One line, fixes a job that currently
-   reports success while doing nothing.
+1. **0.1** — make `applyDailyRecovery()` use `recoveryFor` instead of a flat `+0.2`, and clamp.
+   The morale write itself already works; the amount applied is wrong.
 2. **0.2** — make the `AsyncSimulationRunner` CAS visible or queue the work. A manager clicking
    "Simulate all" can currently lose an entire league silently.
 3. **1.1** — gate `TAC`/`THR` logging. −2.2 MB and −24 K syscalls per match, no behaviour change.
