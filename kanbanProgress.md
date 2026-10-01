@@ -20,6 +20,151 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
+
+**Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
+and delta columns, the replay from match history, seeding it at initialisation"* — plus two things the
+owner reported from the Oracle instance on the way: the World page is slow, and its header looks wrong.
+
+### The rating
+
+`RatingEngine` had arithmetic and no caller, the same fate `NationalRatingService`'s arithmetic had for
+three days. The gap was storage and wiring, not mathematics.
+
+**Three columns on `Team`, and deliberately not on `reputation`.** Eight services read
+`Team.reputation` and four clamp it to 0–100 — attendance, wages, sponsorship, transfer pulling.
+`Country.reputation` is already a 1500-scale Elo on a column of the same name, and that collision has
+already cost a session. So `elo_rating`, `elo_previous_rating`, `elo_delta`, with the reason written
+down on the column.
+
+**A replay, not an increment** — the same three reasons as the national ratings, of which the first
+decides it: Serbia has been playing since the pyramid went in, so an incremental job leaves every one of
+those matches uncounted and the owner has to reset the database to see the feature work at all.
+
+**Seeding is free.** The replay *begins* at each club's tier seed, so a club is rated 1500/1400/1300/1200/1100
+the first time it runs and there is no separate backfill to forget to call. **No season reset**, because none
+was asked for and a pure function of the match table persists across seasons for nothing.
+
+**Once per batch, not per match.** The replay is world-wide, so per fixture a matchday would replay the
+world 155 times, and the cost would grow with the world rather than with the batch.
+
+**`qualificationBonus()` is not applied, on purpose.** The international cups have qualified clubs and **no
+fixtures**, because the draw is not wired, and the national cup is a straight knockout — so there is nothing
+to detect a group stage from. A branch that provably never fires is a green log line and no rating
+movement, which is the exact failure this codebase keeps being bitten by. It waits for the draw.
+
+### Two things I got wrong, both caught
+
+1. **Every league match in the game was being rated as a cup match.** `valueFor` checked only for
+   international scope, so `CompetitionType.LEAGUE` fell through to `MatchValue.CUP` — nine points a
+   season short of the owner's scale, in a game whose premise is that league football is what a rating is
+   *for*. The test that caught it also **corrected me**: I had asserted that a cup tie outweighs a league
+   match. The recorded owner order is the opposite — league is the reference point and a cup tie is
+   deliberately below it, which `MatchValue` had wrong once at 1.15 until a property test caught it. The
+   kanban's one-line summary of the spec ("a cup tie or an international outweighs a league game") is the
+   loose sentence; `MatchValue` is the decision.
+
+2. **`sameValue` compared two boxed `Double`s with `==`,** which compares references, and ratings at
+   1100–1500 sit outside `Double`'s identity cache of −128…127 — so the "has this row changed" check was
+   always false. Fixed.
+
+   **Its predicted consequence turned out to be false, and that was measured rather than argued.** The
+   audit's claim was ~14,880 UPDATEs after every matchday. The clubs are loaded inside the replay's own
+   transaction, so they are **managed**; `save()` on a managed entity is a `merge()` that does nothing, and
+   Hibernate skips an UPDATE whose columns are unchanged regardless. Reinstating the broken comparison and
+   re-running the test still issues **zero** UPDATEs. Dirty checking is what protects the database, not the
+   guard.
+
+   The guard was still worth fixing — **a guard that does not work is worse than none, because the next
+   reader trusts it and stops looking** — and the finding is written into `kanban.md` so it is not
+   re-"fixed" from the audit text.
+
+### The World page, twice
+
+**It was slow, and it was not the network.** `summarise()` asked **fifteen** cups to read the finished
+season's tables when there are only **three** distinct sets of them — three cups per tier, all off the same
+divisions — and then read each division with two queries of its own. Tier 5 has sixteen divisions in each of
+forty-eight countries: **768 divisions × 2 queries × 3 cups**, plus thirty full scans of the competition
+table. On a server reached over a network, every one of those is a round trip.
+
+A tier's tables are now loaded once and its three cups selected from them. **The selection rules are
+untouched — same comparator, same pools, same bands — because the body was moved rather than rewritten.**
+
+`InternationalClubCupsQueryBudgetTest` asserts the **shape** rather than a count, because a count would rot
+the next time a repository grows one lookup: adding divisions to a tier must not add queries. Measured
+**1 division 20 queries, 16 → 22, 64 → 22**. Under the old code the 16-division step alone cost 96 more.
+
+**Its header was the reverse of every other page** — back button hard left, title hard right. It now reuses
+the Country tab's own header component rather than copying it, so they cannot drift apart again: three CSS
+selector pairs became one, scoped to the class. The mobile `position: fixed` bar was **retargeted, not
+deleted** — it was keyed on `.fm-page-toolbar`, and leaving that selector alive against nothing would have
+kept the rule running against no element and quietly reintroduced the off-screen-button bug reported two
+sessions ago. `WorldPageNavigationTest` failed on the change, which is the guard working, and its assertion
+was moved onto the new selector with the scoping requirement kept.
+
+### Verified
+
+| | |
+|---|---|
+| `ClubRatingServiceTest` | **10** — ladder, results, delta-vs-previous, competition weighting, idempotency, not-a-ratchet, national sides |
+| `ClubRatingPersistenceTest` | **3** — written *not* `@Transactional` and reading back through a fresh transaction, because the only shape that catches a lost write |
+| `InternationalClubCupsQueryBudgetTest` | **2** — flat query cost, and the qualified counts still correct |
+| The guard test bites | `aSettledReplayIssuesNoUpdates` was written, found green, **broken the code deliberately** and watched it fail — twice, because its first version measured nothing at all |
+
+**A third test in this session was green while measuring nothing**, which makes four in the repository's
+history and the standing rule is the reason it is written down. `aSettledReplayIssuesNoUpdates` uses
+Hibernate statistics, and the class had no `generate_statistics` property, so it compared zero updates to
+zero updates and passed with the bug present. It also asserted the wrong thing — that the second replay
+should write *as many* rows as the first, when it should write **none**.
+
+### The World page's numbers are real; ZOX's are not
+
+The owner asked whether ZOX analytics was wired to the pre-match report, and the screenshots in
+`manual/images/` answer it visually. **ZOX's design is genuinely better than ours** — tabs, cards, clean
+hierarchy — and its content is fabricated:
+
+| ZOX preview | ours, League Schedule |
+|---|---|
+| `OVR 93.4 · Form N/A` | `OVR 83 / 80 / 74 / 82`, **Form 7.3 / 8.1 / 7.1 / 6.7 / 8.9** |
+| prediction `51% / 25% / 24%` | — |
+| `xG 1.30 : 1.20` | — |
+| fitness `92%` / `91%`, mismatches `0 / 0` | — |
+
+ZOX's two computed numbers average `MatchPlayerStats.getRating()` — **the ratings from the match that had
+already been played** — and 93.4/(93.4+88.3) = 51%, which is the "prediction". `drawProbability` is the
+literal `0.25`. Everything else is a constant. Meanwhile `ScheduleInsightService` has been computing real
+strength, form and a prediction all along and is wired to the **schedule** pages, so there are three preview
+surfaces, one real, and the good-looking one is not it.
+
+Written up on the board in full. The fix order matters: point ZOX at `ScheduleInsightService` and delete
+the constants, make its default match a **fixture** rather than the last played match, and merge the two
+preview endpoints. **The post-match prose is cosmetic and must not be touched until that is settled** — a
+wrong number dressed up is worse than a missing one.
+
+### The suite is red at HEAD, which is a fact the board did not have
+
+Both documents said there was **no recorded green run** at HEAD. The stronger fact: HEAD is not green.
+
+| | tests | failures | errors |
+|---|---:|---:|---:|
+| clean `941cf5e`-era HEAD, this session | 864 | **16** | **51** |
+| with this commit | 879 | 18 → **16 once the two of mine were fixed** | 51 |
+
+So this commit adds 15 tests, all green, and moves no existing number. **`NationalRatingServiceTest` is
+order-dependent** and flips depending on which classes run before it — it fails on a clean HEAD when run
+alone and passes in the full suite. Worth recording, because the next person to add a test class will hit
+it and blame themselves.
+
+### What is *not* done
+
+- **The two ranking tables that read the new columns.** That was the second item on the board and this is
+  the first half of it.
+- `qualificationBonus()` — waiting on the cup draw.
+- The mobile `padding-top: 240px` on the World page is **reasoned, not measured**. The header grew to a card
+  carrying a title, the Back button and five wrapping facts, which puts it at roughly 210–220px at 390px
+  wide. The two errors are not symmetric — over-padding is whitespace, under-padding hides the first panel
+  — so it is deliberately generous. **Worth one look at 390×844.**
+
 ## `0056bc5` — the zone model gets a writer, and `Zone` itself was wrong
 
 **Task:** *"Zone-based morale and daily recovery — model only. `Zone`, `PlayerZoneLoad` and
