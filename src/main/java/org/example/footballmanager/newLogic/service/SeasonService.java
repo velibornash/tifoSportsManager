@@ -375,7 +375,10 @@ public class SeasonService {
         // The two second-placed clubs, each with the table it finished on, so they can be ranked
         // against each other rather than by which league they happened to be in.
         List<CompetitionEntry> lowerRunners = new ArrayList<>();
-        for (Competition lowerLeague : tier2Leagues.subList(0, 2)) {
+        // Every lower league, not the first two: the mover iterates them all, so the summary
+        // reporting two would omit a promotion the game actually makes. subList(0, 2) also threw on a
+        // country with fewer than two lower leagues.
+        for (Competition lowerLeague : tier2Leagues) {
             SeasonCompetition lowerSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(lowerLeague, seasonYear).orElse(null);
             if (lowerSc == null) continue;
             List<CompetitionEntry> lowerTable = sortTable(competitionEntryRepository.findBySeasonCompetition(lowerSc));
@@ -807,6 +810,66 @@ public class SeasonService {
         return moved;
     }
 
+    /**
+     * Where a league's promotion and relegation boundary falls, and who sits on it.
+     *
+     * <p><b>This exists because the boundary was written down twice and the two copies disagreed.</b>
+     * {@code applyPromotionRelegationForLeague} computed it — {@code safeCount = expectedTeams - 2 *
+     * movementSlots}, so a sixteen-club league over two lower leagues relegates the 15th and 16th. The
+     * summary that <i>tells the manager</i> which clubs those are hardcoded {@code top.get(8)} and
+     * {@code top.get(9)}: the 9th and 10th. So the game relegated one pair of clubs and reported another.
+     *
+     * <p>One definition, called by both. A second copy of a boundary rule is how the answer and the
+     * arithmetic drift apart, and here the drift was invisible because both look plausible.
+     *
+     * @param movementSlots how many clubs move down per lower league — normally the number of child leagues
+     */
+    record PromotionRelegationBoundary(int expectedTeams, int safeCount,
+                                  List<Team> playoffTop, List<Team> relegatedDirect) {
+        boolean isUsable() {
+            return safeCount >= 1;
+        }
+    }
+
+    /**
+     * Computes the boundary from the league's own size and its number of lower leagues.
+     *
+     * @return empty-safe: a league too small to have a boundary yields {@code safeCount <= 0}
+     */
+    private PromotionRelegationBoundary boundaryFor(List<CompetitionEntry> sortedParentTable,
+                                                    Integer teamsPerCompetition,
+                                                    int movementSlots) {
+        if (movementSlots < 1) {
+            return new PromotionRelegationBoundary(sortedParentTable.size(), 0, List.of(), List.of());
+        }
+        int expectedTeams = teamsPerCompetition != null && teamsPerCompetition > 0
+                ? teamsPerCompetition
+                : sortedParentTable.size();
+        int safeCount = expectedTeams - (movementSlots * 2);
+
+        List<Team> playoffTop = new ArrayList<>();
+        List<Team> relegatedDirect = new ArrayList<>();
+        // Bounds-checked, so a table shorter than the rule expects reports a boundary of nobody rather
+        // than throwing an IndexOutOfBounds at a manager.
+        for (int i = safeCount; i < safeCount + movementSlots; i++) {
+            CompetitionEntry entry = entryAt(sortedParentTable, i);
+            if (entry != null && entry.getTeam() != null) {
+                playoffTop.add(entry.getTeam());
+            }
+        }
+        for (int i = safeCount + movementSlots; i < safeCount + movementSlots * 2; i++) {
+            CompetitionEntry entry = entryAt(sortedParentTable, i);
+            if (entry != null && entry.getTeam() != null) {
+                relegatedDirect.add(entry.getTeam());
+            }
+        }
+        return new PromotionRelegationBoundary(expectedTeams, safeCount, playoffTop, relegatedDirect);
+    }
+
+    private CompetitionEntry entryAt(List<CompetitionEntry> table, int index) {
+        return index >= 0 && index < table.size() ? table.get(index) : null;
+    }
+
     private void applyPromotionRelegationForLeague(Competition parentLeague,
                                                    List<Competition> childLeagues,
                                                    int seasonYear,
@@ -822,28 +885,27 @@ public class SeasonService {
         }
 
         List<CompetitionEntry> parentTable = sortTable(competitionEntryRepository.findBySeasonCompetition(parentSeasonCompetition));
-        int expectedTeams = parentLeague.getTeamsPerCompetition() != null ? parentLeague.getTeamsPerCompetition() : parentTable.size();
         int movementSlots = childLeagues.size();
-        int safeCount = expectedTeams - (movementSlots * 2);
-        if (parentTable.size() < expectedTeams || safeCount < 1) {
+
+        // The one definition of the boundary. buildPlayoffSummary reads the same call, so the clubs the
+        // manager is told are being relegated are the clubs that are being relegated.
+        PromotionRelegationBoundary boundary = boundaryFor(
+                parentTable, parentLeague.getTeamsPerCompetition(), movementSlots);
+        int safeCount = boundary.safeCount();
+        // The original guard, unchanged: a table shorter than the league claims to have is not something to
+        // move clubs out of. An earlier version of this edit wrote a comparison that was always false and
+        // silently dropped it.
+        if (parentTable.size() < boundary.expectedTeams() || !boundary.isUsable()) {
             return;
         }
 
-        List<Team> playoffTop = new ArrayList<>();
-        List<Team> relegatedDirect = new ArrayList<>();
-        for (int i = safeCount; i < safeCount + movementSlots; i++) {
-            Team team = parentTable.get(i).getTeam();
-            if (team != null) {
-                playoffTop.add(team);
-                teamsById.putIfAbsent(team.getId(), team);
-            }
+        List<Team> playoffTop = new ArrayList<>(boundary.playoffTop());
+        List<Team> relegatedDirect = new ArrayList<>(boundary.relegatedDirect());
+        for (Team team : playoffTop) {
+            teamsById.putIfAbsent(team.getId(), team);
         }
-        for (int i = safeCount + movementSlots; i < safeCount + movementSlots * 2; i++) {
-            Team team = parentTable.get(i).getTeam();
-            if (team != null) {
-                relegatedDirect.add(team);
-                teamsById.putIfAbsent(team.getId(), team);
-            }
+        for (Team team : relegatedDirect) {
+            teamsById.putIfAbsent(team.getId(), team);
         }
         if (playoffTop.size() < movementSlots || relegatedDirect.size() < movementSlots) {
             return;
@@ -923,27 +985,29 @@ public class SeasonService {
 
         List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
         List<Competition> tier2Leagues = findTier2Leagues();
-        if (top.size() < 10 || tier2Leagues.size() < 2) {
-            return Map.of(
-                    "seasonYear", seasonYear,
-                    "directPromotions", List.of(),
-                    "directRelegations", List.of(),
-                    "playoffResults", List.of()
-            );
-        }
+
+        // **The same boundary the mover uses.** This hardcoded `top.get(8)` and `top.get(9)` — the 9th and
+        // 10th — while applyPromotionRelegationForLeague relegated the bottom of the table, which for a
+        // sixteen-club league over two lower leagues is the 15th and 16th. So the summary told the manager
+        // one pair of clubs were being relegated while a different pair was. Both look plausible, which is
+        // why nobody noticed.
+        PromotionRelegationBoundary boundary = boundaryFor(
+                top, superLiga.getTeamsPerCompetition(), tier2Leagues.size());
 
         List<Map<String, Object>> directRelegations = new ArrayList<>();
-        directRelegations.add(Map.of(
-                "team", top.get(8).getTeam().getName(),
-                "toLeague", tier2Leagues.get(0).getName()
-        ));
-        directRelegations.add(Map.of(
-                "team", top.get(9).getTeam().getName(),
-                "toLeague", tier2Leagues.get(1).getName()
-        ));
+        List<Team> relegated = boundary.relegatedDirect();
+        for (int i = 0; i < relegated.size() && i < tier2Leagues.size(); i++) {
+            directRelegations.add(Map.of(
+                    "team", relegated.get(i).getName(),
+                    "toLeague", tier2Leagues.get(i).getName()
+            ));
+        }
 
         List<Map<String, Object>> directPromotions = new ArrayList<>();
-        for (Competition lowerLeague : tier2Leagues.subList(0, 2)) {
+        // Every lower league, not the first two: the mover iterates them all, so the summary
+        // reporting two would omit a promotion the game actually makes. subList(0, 2) also threw on a
+        // country with fewer than two lower leagues.
+        for (Competition lowerLeague : tier2Leagues) {
             SeasonCompetition lowerSc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(lowerLeague, seasonYear).orElse(null);
             if (lowerSc == null) {
                 continue;
