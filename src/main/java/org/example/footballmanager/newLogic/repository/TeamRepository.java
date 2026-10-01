@@ -87,4 +87,24 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
      * the same as "no squads have been seeded".
      */
     List<Team> findByType(org.example.footballmanager.newLogic.model.CompetitionTeamType type);
+
+    /**
+     * The ISO codes of every country that has at least one club - a list of strings, not a list of teams.
+     *
+     * <p>This exists because the country catalog asked {@code teamRepository.findAll()} and then mapped
+     * every team to its country. That is a public, unauthenticated endpoint - the registration page calls
+     * it before anyone has logged in - and it was materialising every club in the world to answer a
+     * yes/no question per country.
+     *
+     * <p>The board blamed an eager {@code Country.clubs}, which is not quite it: {@code clubs} is LAZY,
+     * while {@code seniorNationalTeam} and {@code u21NationalTeam} are {@code @OneToOne} with no fetch
+     * attribute and so <b>are</b> eager, so touching any {@code Country} fetched both national sides.
+     * This query never loads a {@code Country} or a {@code Team} entity at all.
+     */
+    @Query("""
+            select distinct t.country.isoCode
+            from org.example.footballmanager.newLogic.model.Team t
+            where t.country is not null and t.country.isoCode is not null and trim(t.country.isoCode) <> ''
+            """)
+    List<String> findDistinctIsoCodesOfCountriesWithClubs();
 }

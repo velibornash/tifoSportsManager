@@ -160,10 +160,11 @@ public class CountryController {
                 .filter(code -> code != null && !code.isBlank())
                 .map(code -> code.toUpperCase(Locale.ROOT))
                 .collect(Collectors.toSet());
-        Set<String> seededWithClubs = teamRepository.findAll().stream()
-                .map(team -> team.getCountry())
-                .filter(Objects::nonNull)
-                .map(Country::getIsoCode)
+        // Was `teamRepository.findAll()` mapped to its country: every club in the world, materialised, on
+        // a public endpoint the registration page calls before anyone has logged in, to answer a yes/no
+        // per country. Touching a Country also fetches its two eager national sides. A projection returns
+        // the same answer as a handful of strings and loads no entity.
+        Set<String> seededWithClubs = teamRepository.findDistinctIsoCodesOfCountriesWithClubs().stream()
                 .filter(code -> code != null && !code.isBlank())
                 .map(code -> code.toUpperCase(Locale.ROOT))
                 .collect(Collectors.toSet());
