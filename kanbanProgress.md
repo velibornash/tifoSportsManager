@@ -562,6 +562,45 @@ C5 called an `authenticated()` endpoint world-readable. Neither was a code defec
 whoever picked them up looking in the wrong place. **The board describes intent more often than it describes
 code**, and reading the code is still the faster route to the truth.
 
+## `d71f88e` — a GET that built the world
+
+**Task (C4):** *"generates fixtures on a GET" — `:669`.*
+
+`GET /countries/leagues/{id}/schedule` called `ensureEntriesForSeasonCompetition` and
+`ensureDoubleRoundRobinSchedule`, so opening the page created the entries and **every fixture of a double round
+robin** on a request that is supposed to be safe.
+
+Three consequences, none of which need a bug report to explain:
+
+- any authenticated manager **wrote to the world by opening a page**;
+- two managers opening it at once **raced each other into generating the same fixtures**;
+- anything that caches a GET — a proxy, a CDN, the browser — could **freeze the fixture list at the moment it
+  first ran**.
+
+**`TeamController` had the same two calls in its own schedule path** and was fixed the same way. Found while
+looking, not asked for.
+
+Both already happen where they belong: `PyramidBuilder` calls them when a pyramid is built, `SimulatedWorldSeeder`
+reaches it, and `AdminController` exposes that as the seeding action. A league with no schedule now reads as
+**honestly empty** rather than being quietly generated for whoever looked at it first — which is the same
+principle as *"a hidden button is not a permission"*: the side effect was invisible because nobody asked for it.
+
+Verified live: league 1 still returns its 90 fixtures, the League → Schedule page renders 44 club rows, zero
+console errors. The test was verified in both directions.
+
+### The fifth guard test this session that proved nothing
+
+The first version of `LeagueScheduleGetDoesNotWriteTest` **created four bare clubs and no competition entries**.
+`ensureDoubleRoundRobinSchedule` reads its entrants from `competitionEntryRepository` and returns having done
+nothing below two — so the write was in place and the test passed.
+
+A fixture without entries gives the generator nothing to generate, which makes the guard guard nothing. It is now
+four clubs **registered in the competition**, so a double round robin is twelve fixtures and any write is obvious.
+
+That is five this session: C1 (statement count), C1 (Hibernate counter), C1 (session count), C3 (random ISO codes
+colliding), and this one. **The pattern is the same each time — the assertion was written before checking what
+the code actually requires to be true for the behaviour to exist.**
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
