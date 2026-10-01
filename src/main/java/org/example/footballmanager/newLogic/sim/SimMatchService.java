@@ -43,6 +43,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.example.footballmanager.newLogic.util.LazySquadGenerator;
 
 /**
  * Official match path: runs the sim engine headless for a fixture and persists
@@ -62,6 +63,7 @@ public class SimMatchService {
     private final org.example.footballmanager.newLogic.service.MoraleService moraleService;
     private final SimReplayStore replayStore;
     private final LineupRepository lineupRepository;
+    private final org.example.footballmanager.newLogic.util.LazySquadGenerator lazySquadGenerator;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
     private final StaffMemberRepository staffMemberRepository;
@@ -83,6 +85,19 @@ public class SimMatchService {
         Team awayTeam = fixture.getAwayTeam();
         String homeName = homeTeam != null ? homeTeam.getName() : "Home FC";
         String awayName = awayTeam != null ? awayTeam.getName() : "Away FC";
+
+        // A simulated club has no players until a match is the thing that makes it need some. Without
+        // this, a tie against a human club resolved on reputation and had no lineup to show at all.
+        //
+        // Only here, only on the match path, and only when one side is human: two bot clubs is still
+        // just a result, and generating for those would undo the static world entirely.
+        if (homeTeam != null && awayTeam != null && LazySquadGenerator.isHumanInvolved(homeTeam, awayTeam)) {
+            int generated = lazySquadGenerator.ensureSquadsForMatch(homeTeam, awayTeam);
+            if (generated > 0) {
+                log.info("{} vs {}: generated {} player(s) for a club that had no squad.",
+                        homeName, awayName, generated);
+            }
+        }
 
         List<Player> homeBench = new ArrayList<>();
         List<Player> awayBench = new ArrayList<>();

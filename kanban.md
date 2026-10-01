@@ -842,6 +842,31 @@ simulation should be cancellable and waited on. Neither is obvious from the outs
 
 ---
 
+## 🧩 Lazy squads for the simulated clubs
+
+The simulated countries are seeded with clubs, ratings and a standing table but **no players** —
+deliberately, because 46 countries is ~370,000 player rows for clubs that had never kicked a ball. The
+cost of that is that a tie against a human club had no lineup to show.
+
+`LazySquadGenerator` closes it on the match path, and only there:
+
+- Trigger is **one side human-controlled**. Two bot clubs is still just a result, because a result is
+  all that is displayed.
+- Generated **at the club's own tier** (12 and −1 per tier), so a fifth-tier club cannot turn up with a
+  first-team squad.
+- **Persisted once** — the next match and the next boot find it. An existing squad is never touched,
+  so this tops up an empty club and is not a refresh.
+- **Display-only.** Does not feed ratings, Elo or transfers. A generated squad is not a real club.
+- The precondition is enforced **inside the generator**, not only at the call site. It was originally
+  only in `SimMatchService`, and the "two bots generate nothing" test caught that a second caller
+  could have bypassed it.
+
+`LazySquadGeneratorTest` 5/5. **Not yet verified against the live database** — the current world was
+seeded by the old all-in-one path and has no playerless bot clubs, so there is nothing to exercise it
+on. It gets its first real run after a reset + *Seed other nations*.
+
+---
+
 ## 🟢 Admin tools — what each one does (owner, 2026-10-01)
 
 Starting the application now starts the application. No seeding, no backfills, no repair, no catalogue —
