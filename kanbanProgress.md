@@ -1111,6 +1111,38 @@ Three ways to give these seven classes a world, none of them mine to make:
 order-dependence, and because the 13-minute measurement says the shared-world options are not affordable as
 they stand. But it is a change to seven test classes' shape, and that is yours to approve.
 
+## `952b619`, `2cd3d12` — a service that would NPE, and a catalogue for seven red classes
+
+### E5 — five orphans, deleted (`952b619`)
+
+`CompetitionController` (7 L, 0 routes), `StadiumController` (8 L, 0 routes), `LeagueService` (9 L),
+`TrainingService` (21 L), `StadiumService` (7 L). **Zero references** anywhere in `src/main` or `src/test`,
+verified before deleting.
+
+**`TrainingService` was the dangerous one.** A live `@Service` whose `playerRepository` is **never injected** —
+no constructor, no `@Autowired` — so `assignBasicTraining` saves through a null field. Its body is a `TODO` and
+a comment reading *"dummy logika"*.
+
+A class announced to Spring as a service that cannot be called is worse than an empty file: **it reads as an
+implementation.**
+
+### The seven red classes (`2cd3d12`) — one green, six closer
+
+`TestCountryCatalogue` seeds `WorldCatalogSeeder.seedAll()`: **48 country rows**, the world's real catalogue, no
+pyramid and no squads. Idempotent, so it is cheap from every `@BeforeEach`.
+
+**Result: `ScoutingServiceTest` is green, 10/10.** The other six went from 4–11 errors each to 0–6, and what
+remains needs **pyramids and clubs**, not countries — a different layer of world rather than a bigger
+catalogue.
+
+Two dead ends, both traps rather than carelessness:
+
+- **`@Component` in test sources is not scanned**, so the helper was simply absent and every autowire failed
+  with *"No qualifying bean"*.
+- **A test class cannot carry `@Bean` methods** — Spring refuses it outright: *"Test classes cannot include
+  `@Bean` methods"*. Putting the bean in `BaseTest`, which looks like the obvious home for something every test
+  uses, is exactly the forbidden shape. Hence a `@TestConfiguration` imported per class, which Spring does allow.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
