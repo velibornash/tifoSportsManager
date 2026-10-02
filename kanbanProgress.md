@@ -906,6 +906,45 @@ U21 side is still drawn.
 `squadsFor` is now package-private. It has five call sites inside the class, and driving a whole seeding pass to
 reach it would have tested the pass rather than the bug.
 
+## `1806d2f` — the caller could name the column, and could mint a club
+
+**Task (C6):** *"Unvalidated `sortBy` into `Sort.by()` ×3; raw entity create with no validation and no auth ×2;
+`LineupController` raw `RuntimeException` → 500 with a leaked message ×2."* Flagged 2026-09-26, unchanged since.
+
+### The sort column was the caller's to choose
+
+Five sites across four controllers — not the three the board counted — took a caller-supplied column straight
+into `Sort.by(sortBy)`. That hands the caller the column name, so they could:
+
+- order by a column the page never intended to expose and never knew existed;
+- order by an **unindexed** column, turning a two-character request into a full sort of every player of every
+  club in every country;
+- send a name that is not a property and get a failure from deep inside Hibernate whose message **names the
+  entity and its columns** — a schema description handed to whoever asked.
+
+`SortWhitelist.of(sortBy, direction, parameter, allowed)` allow-lists per endpoint. An unknown column is a **400**
+that names what was asked for and what is permitted, instead of quoting the schema.
+
+### Two create endpoints that took a raw entity
+
+`PlayerController` and `TeamController` each took a `Player`/`Team`, saved it with **no administrator check and no
+validation**, and returned the entity. So any logged-in manager could mint a club or a player — and a body
+carrying an `id` would **overwrite an existing row through `save()`**, which is a write primitive dressed as a
+create.
+
+Both are now `PreAuthorize`-gated like the rest of the privileged surface, validated, and answered with the DTO
+the surrounding code already returns.
+
+### Two 500s that were refusals
+
+`LineupController` threw raw `RuntimeException` for a missing lineup and for the wrong number of starters. Both
+fell into the catch-all and arrived as **500**, so a manager who sent the wrong number of players was told the
+server had broken, and the message went through the error path rather than being a deliberate refusal. They are
+404 and 400 now.
+
+`UnvalidatedInputTest`, 7/7, **verified in both directions** — reverting the club gate and its validation fails
+two of the seven.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
