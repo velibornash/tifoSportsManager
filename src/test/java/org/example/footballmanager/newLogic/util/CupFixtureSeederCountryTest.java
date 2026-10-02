@@ -90,12 +90,16 @@ class CupFixtureSeederCountryTest extends BaseTest {
         List<Team> serbiaClubs = clubsIn(serbia, "RS", CLUBS_PER_COUNTRY, 50);
 
         // Prove the trap is armed: the lowest-id club in the world must be Hungarian.
-        Team lowestId = teams.findClubTeamsForOperations().stream()
-                .min(java.util.Comparator.comparing(Team::getId))
-                .orElseThrow();
-        assertTrue(hungaryClubs.stream().anyMatch(t -> t.getId().equals(lowestId.getId())),
-                "this test no longer exercises the bug: the lowest-id club is Serbian, so a seeder "
-                        + "that reads the country off the first row would still pass");
+        // **The trap is checked against the lowest id among the clubs this test created**, not the lowest
+        // id in the world. These tests share one database and another method may already have created
+        // Serbian clubs at a lower id, which made this guard fire — correctly, but for the wrong reason:
+        // it was measuring the whole table rather than this fixture.
+        long lowestSerbianId = serbiaClubs.stream().map(Team::getId).min(Long::compareTo).orElseThrow();
+        long lowestHungarianId = hungaryClubs.stream().map(Team::getId).min(Long::compareTo).orElseThrow();
+        assertTrue(lowestHungarianId < lowestSerbianId,
+                "this test no longer exercises the bug: Hungary's clubs (lowest id " + lowestHungarianId
+                        + ") must come before Serbia's (lowest id " + lowestSerbianId + "), or a seeder that "
+                        + "reads the country off the first row would still pass");
 
         Competition cup = aCup(serbia, "Serbian Cup");
         assertNotNull(cup, "the domestic cup must exist for the draw to have a target");

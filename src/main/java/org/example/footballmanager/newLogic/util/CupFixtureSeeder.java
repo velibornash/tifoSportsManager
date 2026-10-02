@@ -55,7 +55,6 @@ public class CupFixtureSeeder {
     static final int MAIN_DRAW_TEAMS = 256;
 
     /** Day 5 is the cup slot in the seven-day template. */
-    private static final LocalDate SEASON_START = LocalDate.of(2026, 7, 1);
     private static final int CUP_DAY = 5;
     private static final int CUP_HOUR = 18;
 
@@ -70,8 +69,23 @@ public class CupFixtureSeeder {
      * a round lands on the same day. Shared with the international cups, which have their own week map
      * but the same day and hour — two date rules would mean two answers to "when does the cup play".
      */
-    public static LocalDateTime matchDateFor(int week) {
-        LocalDate day5 = SEASON_START.plusWeeks(week - 1L).plusDays(CUP_DAY - 1L);
+    /**
+     * When a cup tie in a given week is played, measured from the <b>game clock's</b> season start.
+     *
+     * <p>This was measured from a literal, {@code LocalDate.of(2026, 7, 1)}, and that is B4. Every season's
+     * round 1 got the same wall-clock date, and the recovery window is {@code currentDate - 2 days}
+     * ({@code ZoneLoadService:69,127}), so once the clock passed 2026-07-06 <b>no cup fixture ever fell
+     * inside it</b> - loads were written and never read and {@code RecoveryJob} reported zero for ever.
+     *
+     * <p>The league path already had this right: {@code SeasonService:267} seeds from
+     * {@code clock.getCurrentDate()}. This now uses the same clock rather than a date that means nothing
+     * to the running world.
+     *
+     * <p>Still one rule for "when does the cup play", shared with the international cups: the week number
+     * and the cup's own day, so every tie in a round lands on the same day.
+     */
+    public static LocalDateTime matchDateFor(int week, LocalDateTime seasonStart) {
+        LocalDate day5 = seasonStart.toLocalDate().plusWeeks(week - 1L).plusDays(CUP_DAY - 1L);
         return LocalDateTime.of(day5, java.time.LocalTime.of(CUP_HOUR, 0));
     }
 
@@ -466,7 +480,7 @@ public class CupFixtureSeeder {
             fixture.setPlayed(false);
             // The cup plays on day 5 of its week, so the date is derived from the week number rather
             // than invented per tie: one rule, and every tie in a round lands on the same day.
-            fixture.setMatchDate(matchDateFor(week));
+            fixture.setMatchDate(matchDateFor(week, seasons.getOrCreateClock().getCurrentDate()));
             made.add(fixtures.save(fixture));
         }
         log.info("Cup {} round {}: {} ties for week {} (day {}), favourites vs non-favourites, "

@@ -46,20 +46,29 @@ public class InternationalFixtureSeeder {
     /** Day 1 of the game week, 20:45. */
     static final int KICKOFF_HOUR = 20;
     static final int KICKOFF_MINUTE = 45;
-    private static final LocalDate SEASON_START = LocalDate.of(2026, 7, 1);
 
     private final CompetitionRepository competitions;
     private final MatchFixtureRepository fixtures;
     private final TeamRepository teams;
     private final PlayerRepository players;
+    private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+
+    /** The running world's season start, which is what a fixture date is measured from. */
+    private LocalDateTime seasonStart() {
+        return clocks.findById(1L)
+                .map(org.example.footballmanager.newLogic.model.GameClock::getCurrentDate)
+                .orElse(LocalDateTime.of(2026, 7, 1, 12, 0));
+    }
 
     public InternationalFixtureSeeder(CompetitionRepository competitions,
                                       MatchFixtureRepository fixtures, TeamRepository teams,
-                                      PlayerRepository players) {
+                                      PlayerRepository players,
+                                      org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.teams = teams;
         this.players = players;
+        this.clocks = clocks;
     }
 
     @Transactional
@@ -115,8 +124,14 @@ public class InternationalFixtureSeeder {
             fixture.setWeekNumber(QUALIFIER_WEEK);
             fixture.setDayNumber(GameDay.INTERNATIONAL_DAY);
             fixture.setPlayed(false);
+            // Measured from the game clock's season start, not a literal. B4: every season's qualifier
+            // was stamped 2026-07-01, and once the clock passed 2026-07-06 no international fell inside the
+            // two-day recovery window, so zone loads were written and never read and RecoveryJob reported
+            // zero for ever. The league path already used clock.getCurrentDate() and this now matches it.
             fixture.setMatchDate(LocalDateTime.of(
-                    SEASON_START.plusWeeks(QUALIFIER_WEEK - 1L).plusDays(GameDay.INTERNATIONAL_DAY - 1L),
+                    seasonStart().toLocalDate()
+                            .plusWeeks(QUALIFIER_WEEK - 1L)
+                            .plusDays(GameDay.INTERNATIONAL_DAY - 1L),
                     java.time.LocalTime.of(KICKOFF_HOUR, KICKOFF_MINUTE)));
             fixtures.save(fixture);
             made++;

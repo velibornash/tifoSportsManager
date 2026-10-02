@@ -97,17 +97,33 @@ public class InternationalClubCupDraw {
     private final CompetitionEntryRepository entries;
     private final SeasonCompetitionRepository seasonCompetitions;
     private final TransactionTemplate requiresNew;
+    private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+
+    /**
+     * The game clock's season start, which is where a fixture date is measured from.
+     *
+     * <p>Was {@code LocalDate.of(2026, 7, 1)}, hardcoded - B4. Once the clock passed 2026-07-06 no cup
+     * fixture fell inside the two-day recovery window at all, so zone loads were written and never read.
+     * The league path already used {@code clock.getCurrentDate()} and this now matches it.
+     */
+    private java.time.LocalDateTime seasonStart() {
+        return clocks.findById(1L)
+                .map(org.example.footballmanager.newLogic.model.GameClock::getCurrentDate)
+                .orElse(java.time.LocalDateTime.of(2026, 7, 1, 12, 0));
+    }
 
     public InternationalClubCupDraw(CompetitionRepository competitions,
                                      MatchFixtureRepository fixtures,
                                      CompetitionEntryRepository entries,
                                      SeasonCompetitionRepository seasonCompetitions,
-                                     org.springframework.transaction.PlatformTransactionManager transactionManager) {
+                                     org.springframework.transaction.PlatformTransactionManager transactionManager,
+                                     org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.entries = entries;
         this.seasonCompetitions = seasonCompetitions;
         this.requiresNew = new TransactionTemplate(transactionManager);
+        this.clocks = clocks;
         this.requiresNew.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -590,7 +606,7 @@ public class InternationalClubCupDraw {
         fixture.setSeasonYear(seasonYear);
         fixture.setGroupCode(groupCode);
         fixture.setPlayed(false);
-        fixture.setMatchDate(CupFixtureSeeder.matchDateFor(week));
+        fixture.setMatchDate(CupFixtureSeeder.matchDateFor(week, seasonStart()));
         return fixture;
     }
 
