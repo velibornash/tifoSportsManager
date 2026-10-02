@@ -1172,6 +1172,34 @@ so importing is part of using it.
 **The six rewrites themselves are not in this commit.** They are the next piece of work, and each one needs to
 decide what the product actually guarantees before it can be written.
 
+## `6d5ea70` — 264 questions a day, all with the same answer
+
+**D4.** `isDue` is `hour >= job.hour()`, so a job at 09:00 counts as due for the next **fifteen** hours.
+`runDue` runs every hour. So the guard lookup inside `runOnce` was issued **11 jobs × 24 hours = 264 times a
+game day** — two hundred and sixty-four database round trips to re-learn something that had not changed.
+
+A day-scoped memo of DONE job keys answers the guard without the database. Two properties keep it honest:
+
+- **A FAILED job is never memoised.** A2 promises the next scan retries it, so only DONE may be cached.
+- **The memo is per game day**, because the DONE record itself is keyed on `(season, week, day, key)` — tomorrow
+  is a different slot and is asked properly.
+
+`JobGuardLookupCountTest`, 3/3, counting **statements rather than intentions**, verified both ways: disabling the
+memo reports **14 statements** across fifteen scans where it should be 0.
+
+### The counter caught me first
+
+The first run read **zero for every scan** — including the first, which does query — and would have reported
+*"the memo eliminated all the queries"* while the counter was simply switched off.
+
+It now enables statistics explicitly and asserts the counter moves **before** asserting anything about the count.
+That is the guard on the guard, and it is the same trap these notes record twice, met a third time in the same
+session as the two earlier ones.
+
+One assertion of mine was wrong as well: I expected the first scan to issue exactly one statement. A job that has
+never run is claimed with a `PENDING` insert and then updated to `DONE`, so **two is right and one is not** — and
+thanks to B4 that claim is a real insert rather than the update it used to be.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
