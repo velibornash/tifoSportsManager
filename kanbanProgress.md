@@ -945,6 +945,38 @@ server had broken, and the message went through the error path rather than being
 `UnvalidatedInputTest`, 7/7, **verified in both directions** — reverting the club gate and its validation fails
 two of the seven.
 
+## `9641cdf` — the world was flat, and continental entry was alphabetical
+
+**Task (B6):** *"Continental qualification for 47 of 48 countries is alphabetical."*
+
+Every club in a division was created with **one identical reputation** — a function of tier alone. So the
+standing table sorted by reputation and then **by name**, and continental qualification read that table.
+
+**The comparator was over identical values, so the name tiebreak *was* the result.** Nothing was wrong, nothing
+errored, and the world was simply flat.
+
+This is the half of `COMPETITIVE_ANALYSIS.md` #14 the board calls *"the one that matters"*.
+
+### Fixed where the clubs are made, not where they are sorted
+
+Sorting on a column that holds one repeated value papers over the flatness: any other reader of that reputation
+would still find ten identical clubs. The spread is applied in `fillDivision`, by **index within the division**:
+
+- **stable across installs** — the same club name gets the same strength every time, unlike a hash of the name,
+  which would look varied and change between installs;
+- **wide enough** for a continental qualification order to mean something;
+- a **starting ordering, not a claim about any real club** — `WorldCatalogSeeder` makes exactly this argument
+  for country strength, and the manager world is not a replica of the real one.
+
+`PyramidClubStrengthSpreadTest`, 2/2, asserting **distinctness and ordering** rather than a particular number.
+
+### A stale pointer on the board
+
+The board cites `InternationalClubCups:270` as *"a comparator over identical values"*. That is **stale**: the
+code already delegates to `LeagueTableOrder.sort(rows)`, the one comparator in the codebase, with a comment
+saying a table also ordered in SQL would be *"a second ordering waiting to disagree with it"*. It was fixed
+before this session. Recorded so nobody re-investigates it.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
