@@ -845,6 +845,37 @@ inline mock maker could no longer instrument classes — which surfaced as error
 successfully. The project's JDK is Corretto 21; with `JAVA_HOME` set to it everything passes. **A test failure
 caused by the wrong JDK is not a test failure**, and I initially misreported one such as pre-existing.
 
+## `f1d8991` — the whole recovery window sat after the season's only possible cup date
+
+**Task (B4):** *"Cup and international fixtures are dated 2026-07-01, hardcoded, with no season offset."*
+
+**Three** seeders measured fixture dates from that literal: `CupFixtureSeeder`, `InternationalFixtureSeeder` and
+`InternationalClubCupDraw`, which called into the first.
+
+The recovery window is `currentDate - 2 days` (`ZoneLoadService:69,127`). So once the clock passed **2026-07-06**,
+**no cup or international fixture ever fell inside it** — zone loads were written and never read, and `RecoveryJob`
+reported zero for ever.
+
+**A whole feature quietly dead, with nothing erroring anywhere.** No exception, no failed job, no red log line: the
+job ran, wrote its rows, and found nothing to recover, for ever.
+
+The league path was already right — `SeasonService:267` seeds from `clock.getCurrentDate()` — which is why this was
+cup-only, and why the fix is to **use the same clock** rather than to invent a better date. All three now read the
+game clock, with the literal kept only as a fallback for a world that has no clock row, which is the case the
+league's own `getOrCreateClock` already handles.
+
+`FixtureDateFollowsTheClockTest`, 3/3. The assertion is on **movement**: push the clock a year forward and the tie
+must move with it. A test asserting a literal date would have passed against the old code for ever — which is
+precisely the shape of the bug.
+
+### Two of my own errors, both fixed rather than worked around
+
+- `CupFixtureSeederCountryTest`'s trap guard (from B2) compared against the lowest club id in the **whole
+  database**, so another test method creating Serbian clubs first made it fire — correctly, but measuring the wrong
+  thing. It now compares only the clubs its own fixture created.
+- The clock test assumed a clock row the H2 profile does not have, and compared a **post-push** date against a
+  **pre-push** one.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
