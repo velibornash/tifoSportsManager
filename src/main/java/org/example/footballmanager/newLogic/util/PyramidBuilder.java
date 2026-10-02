@@ -317,7 +317,22 @@ public class PyramidBuilder {
                 // Reputation on the club scale the economy reads, inside the band the seeder uses. It
                 // is not an Elo number and must not be confused with a country's rating — the two share
                 // a column name and nothing else.
-                team.setReputation(40.0 + league.getTier() * 8.0);
+                // **Clubs within a division are given distinct strengths.**
+                //
+                // Every club in a division used to be created with one identical reputation, a function of
+                // tier alone. So the standing table sorted by reputation and then **by name** - and
+                // continental qualification read that table, which made entry alphabetical for 47 of 48
+                // countries. The comparator at the sort below was over identical values, so the name
+                // tiebreak *was* the result.
+                //
+                // The spread is by index within the division: stable across installs (the same club name
+                // gets the same strength every time, unlike a hash of the name), and wide enough that the
+                // top and bottom of a division are distinguishable. **It is a starting ordering, not a
+                // claim about any real club** - the manager world is not a replica of the real one.
+                double withinDivision = CLUBS_PER_DIVISION <= 1
+                        ? 0.0
+                        : (double) index / (CLUBS_PER_DIVISION - 1);
+                team.setReputation(40.0 + league.getTier() * 8.0 + withinDivision * 7.0);
                 team.setBudget(2_000_000.0 + (6 - league.getTier()) * 1_500_000.0);
                 team = teams.save(team);
             }
