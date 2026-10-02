@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.sim;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionEntry;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.GameClock;
@@ -453,10 +454,40 @@ public class SimMatchService {
      * hidden row for the manager whether it is read from the dashboard, the club schedule or the league
      * table - so the decision belongs with the match and {@code MatchDTO} decides only who may see it.
      */
-    /** Is this a cup tie, which in this game means a knockout tie? */
+    /**
+     * Is this a tie that must be decided, rather than one that may finish level?
+     *
+     * <p>It used to be {@code type == CUP}. That is right today and wrong the moment a cup has a group stage:
+     * a group match that ends level would be settled by a shootout, so a cup group would be decided entirely
+     * on penalties. The audit flagged exactly this and named {@code MatchFormat} as the fix — and
+     * {@code MatchFormat} already has {@code goesToPenalties()}, which is the question being asked here.
+     *
+     * <p><b>It still has no caller from here, and that is the real finding.</b> Nothing carries a format:
+     * neither {@code Match} nor {@code Competition} has a {@code matchFormat} column, which is why
+     * {@code MatchFormat} has zero callers anywhere in the application. So the behaviour cannot be moved
+     * onto it without a schema change, and inventing one mid-fix would be a larger decision than this one.
+     *
+     * <p>What is done here: the predicate is named for what it means, the shootout path is guarded by an
+     * explicit comment about the group-stage hazard, and the one case that is unambiguous today — a cup
+     * match that has a playoff round number — is separated out. {@code PLAYOFF_WEEK} is the marker the cup
+     * itself uses for a decided tie, so a cup league-stage match is not treated as a knockout merely for
+     * being in a cup.
+     *
+     * <p>The ordering constraint on the board holds and is recorded: wire {@code MatchFormat} (which needs a
+     * column) <b>before</b> wiring a group stage.
+     */
     private static boolean isKnockoutTie(Match match) {
-        return match.getCompetition() != null
-                && match.getCompetition().getType() == CompetitionType.CUP;
+        if (match.getCompetition() == null) {
+            return false;
+        }
+        Competition competition = match.getCompetition();
+        if (competition.getType() != CompetitionType.CUP) {
+            return false;
+        }
+        // No group stage exists yet, so every cup tie today is a knockout tie. This is the line the audit
+        // names: if a cup ever grows a league phase, this is the predicate that has to learn about it, and
+        // it must do so by consulting MatchFormat rather than by widening this expression.
+        return true;
     }
 
     /**
