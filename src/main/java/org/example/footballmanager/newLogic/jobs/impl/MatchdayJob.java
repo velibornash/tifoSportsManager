@@ -12,6 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.List;
 
 /**
@@ -88,12 +91,25 @@ public class MatchdayJob implements DayJob {
             log.debug("Matchday {}: no {} competition exists, nothing to play.", key, competitionType);
             return;
         }
-        List<Long> ids = targets.stream()
-                .flatMap(competition -> fixtures
-                        .findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day).stream()
-                        .filter(fixture -> fixture.getCompetition() != null
-                                && fixture.getCompetition().getId().equals(competition.getId()))
-                        .map(MatchFixture::getId))
+        // **One query, not one per competition.**
+        //
+        // `findUnplayedOnDay` used to be called *inside* the flatMap, so it ran once for every target
+        // competition and every call returned the identical rows — the competition filter was applied in
+        // Java, after the query, so the query could not narrow anything. With sixteen CUP competitions that
+        // is sixteen identical full-table scans of the fixture table for one matchday, and the audit calls it
+        // "the worst query pattern in the framework, and it worsens with every tier added".
+        //
+        // The fixtures for the day are fetched once and then filtered by a set of competition ids.
+        Set<Long> targetIds = targets.stream()
+                .map(Competition::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<Long> ids = fixtures.findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day).stream()
+                .filter(fixture -> fixture.getCompetition() != null
+                        && targetIds.contains(fixture.getCompetition().getId()))
+                .map(MatchFixture::getId)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 
