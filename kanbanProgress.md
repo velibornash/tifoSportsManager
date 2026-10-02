@@ -787,6 +787,64 @@ The board says delete three stale global cup rows. **Checked the database instea
 competition exists and none without a country.** The rows are not there — the 31 competitions are 31 Serbian
 leagues plus one national cup. Closed as not applicable, and noted to re-check if a fresh seed reintroduces them.
 
+## `89b8165`, `0db10aa` — only DONE is terminal, the claim comes before the body, and Serbia starts level
+
+The four parked decisions, answered (owner, 2026-10-02) and acted on.
+
+### A2 — a failed job is picked up again (`89b8165`)
+
+The rule: *a job fires and must execute immediately; if it does not execute successfully, the status is not DONE
+and the scheduler picks it up next time.*
+
+The guard returned early on `FAILED` as well as `DONE`, so **one transient throw disabled that job for that
+(season, week, day) for good** — and a `MatchdayJob` that failed meant a whole matchday was never played and
+never retried.
+
+The accepted cost is stated rather than hidden: a job that half-applied before throwing is re-run and half of it
+applied twice. A test asserted the old behaviour (*"a FAILED job is not retried automatically — a half-applied job
+must not run twice"*) and is **rewritten rather than left green and wrong**, with two counterweights — a `DONE` job
+is never run again over three scans, and a job that fails then succeeds becomes `DONE` and stops.
+
+### A1 — the claim comes before the body (`0db10aa`)
+
+The guard was read unlocked and the body run **and committed** before the guard was written, so two concurrent
+scans both ran the job and the unique constraint rejected only the second **save**. Duplicate row prevented,
+duplicate work not.
+
+`PENDING` — declared and never written, the audit's *"used nowhere"* — is now the claim, inserted before the body.
+
+**A freshness window was needed and the board does not mention it.** The first version did not work: the second
+scanner usually arrives by **reading** the row, not by attempting the insert, and since *"not DONE"* means retry,
+a live `PENDING` was re-run by the very scanner the claim was added to stop. The test caught it — *"the job body
+ran 2 times for one slot"*.
+
+So a claim is honoured for ten minutes and assumed abandoned after that, stamped at claim time. That is how a
+scan tells *"someone is in the body right now"* from *"someone took this slot and died"*. Without it, a killed
+process leaves a job unplayed for ever; a job that legitimately runs longer than ten minutes must be re-entrant.
+
+`JobClaimConcurrencyTest` runs **against the real database** — a mock repository cannot express the collision,
+because it has no unique constraint to lose — with the body held open on a latch so the scans genuinely overlap.
+Verified it can fail.
+
+### Serbia's ranking (`0db10aa`)
+
+`TeamFactory`'s fallback invented Serbia at **reputation 50 / youth 50** when the country row was missing, while
+every other country is created at `WorldCatalogSeeder.STARTING_RATING = 1500`. The one country a manager actually
+plays sat at the bottom of the World page's ranking, below forty-seven countries.
+
+Both now reference `STARTING_RATING` rather than a retyped literal, so the two cannot drift again.
+
+**Left alone deliberately:** the `55` in `DatabaseInitializer:882` and `CSDataInitializer:99` are the **text
+manager's** `CSCountry` — a different table in a different game mode. And `DatabaseInitializer.createCountryIfNotExists`
+has **no callers at all**, so its reputation argument is not worth chasing.
+
+### A note on the environment
+
+Partway through, `mvn` began resolving Homebrew's **Java 24** instead of the project's Java 21, and Mockito's
+inline mock maker could no longer instrument classes — which surfaced as errors in tests I had already run
+successfully. The project's JDK is Corretto 21; with `JAVA_HOME` set to it everything passes. **A test failure
+caused by the wrong JDK is not a test failure**, and I initially misreported one such as pre-existing.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
