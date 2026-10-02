@@ -23,6 +23,21 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
      * every day the job fired on.
      */
     List<Player> findByLastPlayedAtIsNotNull();
+
+    /**
+     * Players who are actually tired — the only ones weekly recovery has anything to say about.
+     *
+     * <p>The sibling of {@link #findByLastPlayedAtIsNotNull()}, and it fixes the same mistake in the
+     * other job: weekly fatigue recovery read {@code findAll()} and skipped anybody at zero fatigue
+     * inside the loop, so every week it loaded the whole world — 370,000 rows once the simulated
+     * countries are seeded — to recover the tired few, and then {@code saveAll}'d the entire list back,
+     * changed or not.
+     *
+     * <p>Fatigue lives on the {@code Skills} embeddable, so this is a column on {@code player} and the
+     * question is asked by the database rather than by a loop over everything.
+     */
+    List<Player> findBySkillsFatigueGreaterThan(int fatigue);
+
     List<Player> findByTeamId(Long teamId);
     List<Player> findByTeamIdAndPosition(Long teamId, Position position);
     Optional<Player> findByIdAndTeamId(Long id, Long teamId);

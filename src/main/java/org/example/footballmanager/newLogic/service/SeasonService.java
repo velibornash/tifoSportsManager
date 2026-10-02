@@ -602,7 +602,15 @@ public class SeasonService {
      */
     @Transactional
     protected void recoverFatigueForWeek() {
-        List<Player> squad = playerRepository.findAll();
+        // **Only the tired.** This used to be findAll() with a `fatigue <= 0 → continue` inside the
+        // loop, so every week it materialised every player in the world — 370,000 rows once the
+        // simulated countries are seeded — to recover the tired few, and then saveAll'd the whole list
+        // back, changed or not. `findByLastPlayedAtIsNotNull` is the same fix in the other job and the
+        // reasoning belongs to both, so it is written down here too rather than left to be rediscovered.
+        //
+        // saveAll is kept, deliberately: on a list of only the tired players it is cheap, and an
+        // explicit write is easier to trust than a reader having to know that the players are managed.
+        List<Player> squad = playerRepository.findBySkillsFatigueGreaterThan(0);
         boolean changed = false;
         for (Player player : squad) {
             if (player == null || player.getSkills() == null) continue;
