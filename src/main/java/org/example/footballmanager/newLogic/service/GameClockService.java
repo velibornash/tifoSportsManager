@@ -56,7 +56,14 @@ public class GameClockService {
      * <p>Must match the zone clock.js formats in, or the header and the API would disagree about
      * what hour it is - the same class of bug as storing the hour twice.
      */
-    private static final java.time.ZoneId GAME_ZONE = java.time.ZoneId.of("Europe/Belgrade");
+    /**
+     * The game's own timezone.
+     *
+     * <p>Declared and never read - B10's "dead constant". It is now the single definition, and
+     * {@code /api/server-time} uses it instead of repeating the literal. One zone, named once, so a
+     * server-time that disagrees with the clock is not a thing that can happen.
+     */
+    public static final java.time.ZoneId GAME_ZONE = java.time.ZoneId.of("Europe/Belgrade");
 
     private final GameClockRepository clocks;
     private final SeasonService seasons;
@@ -137,6 +144,13 @@ public class GameClockService {
      * day the manager pressed the button, so week-rollover and season-rollover never ran. Counters
      * that wrap cannot be missed that way.
      */
+    /** The world's current date, or a stable fallback when no clock row carries one. */
+    private LocalDateTime currentDateOf(GameClock clock) {
+        return clock.getCurrentDate() != null
+                ? clock.getCurrentDate()
+                : LocalDateTime.now().withSecond(0).withNano(0);
+    }
+
     @Transactional
     public Map<String, Object> advanceHour() {
         GameClock clock = clock();
@@ -145,12 +159,14 @@ public class GameClockService {
         int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
         int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
 
+        boolean weekRolled = false;
         if (hour > 23) {
             hour = 0;
             day += 1;
             if (day > GameDay.LAST) {
                 day = GameDay.FIRST;
                 week += 1;
+                weekRolled = true;
                 if (week > SeasonService.WEEKS_PER_SEASON) {
                     week = 1;
                     season += 1;
@@ -163,7 +179,26 @@ public class GameClockService {
         clock.setCurrentWeek(week);
         clock.setCurrentSeason(season);
         clock.setAdvanceOffsetSeconds(offsetOf(clock) + SECONDS_PER_HOUR);
-        clock.setCurrentDate(LocalDateTime.ofInstant(gameTime(), ZoneOffset.UTC));
+        // **The in-game date advances with the game, not with the wall clock (B10).**
+        //
+        // This overwrote the date with `Instant.now()` truncated to UTC on every single hour, so
+        // `currentDate` tracked real time rather than the season: two managers doing the same 168 advances
+        // got different dates, and `ZoneLoadService:181-186` reads exactly this field.
+        //
+        // **The date moves when the week does**, by one week. That is the rate the rest of the codebase
+        // already uses and has always used: `SeasonService:443` and `:635` both do
+        // `clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1))` when the week counter advances.
+        //
+        // A game day is a <b>day-slot</b> - the seven-day template is a game construct, not a week of
+        // wall-clock days. A week of game time is one week of date, so advancing 168 hours moves the date
+        // by exactly seven days. Writing "one day per day-slot" would have been a rate nobody else in the
+        // codebase agreed with, which is the drift this whole bug was.
+        if (weekRolled) {
+            clock.setCurrentDate(currentDateOf(clock).plusWeeks(1));
+        } else if (clock.getCurrentDate() == null) {
+            clock.setCurrentDate(LocalDateTime.now().withSecond(0).withNano(0));
+        }
+
         clocks.save(clock);
 
         return afterMove(clock, hour);

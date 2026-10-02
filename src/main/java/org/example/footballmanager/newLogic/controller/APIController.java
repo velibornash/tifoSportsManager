@@ -39,7 +39,9 @@ public class APIController {
 
     @GetMapping("/server-time")
     public ResponseEntity<Map<String, String>> getServerTime() {
-        ZoneId zone = ZoneId.of("Europe/Belgrade");  // CET za Srbiju
+        // The game's own zone, defined once on the clock. It used to repeat the literal here, which is
+        // how a constant ends up dead in one place and duplicated in another.
+        ZoneId zone = org.example.footballmanager.newLogic.service.GameClockService.GAME_ZONE;
         ZonedDateTime nowZoned = ZonedDateTime.now(zone);  // trenutno vreme u CET
         LocalDateTime now = nowZoned.toLocalDateTime();
 
