@@ -1053,6 +1053,64 @@ Verified both directions: removing the `match_fixture` index fails it.
   `hibernate.jdbc.batch_size=50` is dead code for every entity and every `save()` in a loop is a separate round
   trip. Switching the hot paths to `SEQUENCE` is a real change with real consequences.
 
+## `d4520df` — E1: the first full-suite run at HEAD, and two of my own tests were order-dependent
+
+**E1** — *"There is no recorded green run at HEAD. The 879 `@Test` annotations is not a passing count."*
+
+**`mvn test` at HEAD: 981 tests, 23 failures, 26 errors, 2 skipped — 49 red.** For the first time on
+record.
+
+### Two were mine, and both had the same cause
+
+**`CountryCatalogQueryCountTest`** compared the catalog's marked-has-clubs count against the projection's
+**total**. The catalog is a fixed list of 48 codes; the projection returns every country that has clubs,
+including ones other classes created. Alone they matched; in the suite they disagreed by exactly that much.
+The assertion was **measuring a difference of scope, not a bug**. Both sides are now compared over the codes
+the catalog knows about.
+
+**`CupFixtureSeederCountryTest`** assumed the seeder drew *its own* cup. `nationalCup()` returns the
+**lowest-id domestic cup in the whole database** — the B2 residual already on this board — so once another
+class created a domestic cup at a lower id, the draw went there and all six tests inspected an empty
+competition. They now ask the seeder's own question and check whichever cup it answered with.
+
+Both were **green alone and red in the suite**. That is the shape this repository's own notes warn about: a
+test that only works in a clean database is not a test, it is a measurement of running order.
+
+### The other 47 are pre-existing, and they need your decision
+
+Seven classes, all failing for the same reason: they were written against a **`test` profile that seeded nine
+countries**, and that seeding was deliberately removed on 2026-10-01 so that starting the application starts
+the application and nothing else. So they call `countries.findByIsoCode("BRA")` and fail with *"Seed data is
+missing country BRA"*.
+
+Verified pre-existing: `ScoutingServiceTest` was added by `60bcf69`, whose own message says *"stop synthesising
+countries in the test"* — it was changed to require real seeded countries and has been red ever since.
+
+**I tried the obvious fix and it was wrong.** `DatabaseInitializer.ensureBaselineDataOnStartup()` is public,
+idempotent, and builds exactly the world these tests want. But it builds **the entire world** — tens of
+thousands of writes — and calling it per test class made one class take **over 13 minutes** without finishing.
+That violates the owner's decision in spirit: the world is expensive to build, and building it per test class
+makes the suite unusable. I reverted it rather than leave it.
+
+### The choice
+
+Three ways to give these seven classes a world, none of them mine to make:
+
+1. **Have each test build the minimum it needs** — a handful of countries and leagues in a `@BeforeEach`.
+   Fast, no global cost, and each test becomes self-contained. More code, and a risk of fixtures drifting from
+   the real seed.
+2. **One shared seeded world, built once for the whole suite** — a `@BeforeAll` that runs the initializer a
+   single time, with everything reading from it. Cheapest per test, but it reintroduces exactly the
+   order-dependence that made two of my own tests wrong above, and it costs the one world build that is
+   currently too slow.
+3. **Rewrite the seven classes to assert against what the product really guarantees** rather than against a
+   seeded world. Most honest and the most work; it may also be the only option if some of these tests are
+   asserting things the game no longer promises.
+
+**My recommendation is 1** — self-contained fixtures, because it is the only one that does not reintroduce
+order-dependence, and because the 13-minute measurement says the shared-world options are not affordable as
+they stand. But it is a change to seven test classes' shape, and that is yours to approve.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
