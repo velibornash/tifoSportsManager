@@ -1014,6 +1014,45 @@ codebase already agrees on, not one invented alongside it — and that is now wh
 It is now the single definition of the game's timezone, and `/api/server-time` uses it instead of repeating the
 literal. One zone, named once, so a server-time that disagrees with the clock cannot happen.
 
+## `8046038` — the index was declared, so the test checked the declaration
+
+**Task (D5):** *"Nine missing indexes and an ID strategy."* The substance lives in `dataFixSuggestions.md` §4.
+
+Indexed, taking §4.3's ranking and keeping to what a query in the app depends on:
+
+- **`match_fixture (season_year, week_number, day_number, played)`** — eight repository methods key on exactly that
+  triple and the hourly job calls them every hour. **The identical triple is already indexed on `job_run`: the
+  bookkeeping table got it and the data table did not.** That is the single clearest omission in the schema.
+- **`player (team_id)`** — no index at all on the largest table, for the most-called query in the app.
+- **`match_player_stats (player_id, match_id)`** — the 1+N lookup behind every squad load.
+- **`season_competition (competition_id, season_year)`** and **`competition_entry (team_id)`** — both called
+  inside loops.
+
+**Dropped `ix_competition_entry_sc`**: a strict prefix of `ix_competition_entry_sc_pos`, so every query it served is
+already served. Dead weight, with a write cost on every insert.
+
+### The test reads the schema, not the annotations
+
+`SchemaIndexTest` asks the **JDBC metadata**. Declaring an index is not having one — a typo in a column name, a
+renamed table, or a profile whose `ddl-auto` is not `update` each give a green build and an unindexed database.
+And the dead index is asserted **absent**, because an index that is dropped and comes back is not a drop.
+
+**And the test found me doing the very thing it exists to catch.** My first helper passed a lowercase table name to
+`getIndexInfo`, which returned nothing, so the test failed *while the index was present*. That is a green build
+measuring nothing, and it happened on the same day this repository's log records the same trap being hit twice.
+H2 also uppercases identifiers, so the comparison needed H2's own case.
+
+Verified both directions: removing the `match_fixture` index fails it.
+
+### Left alone, both because they need you
+
+- **§4.4 `match_tick_states`**: *"Decision needed before any work here… Do not index it as-is."* Delete it and keep
+  replay files, or make it the system of record and give it a unique constraint and a retention policy. It is a
+  ~3.6 GB latent problem either way.
+- **§4.1**: 70 of 71 entities use `IDENTITY`, which **disables JDBC batching entirely** — so
+  `hibernate.jdbc.batch_size=50` is dead code for every entity and every `save()` in a loop is a separate round
+  trip. Switching the hot paths to `SEQUENCE` is a real change with real consequences.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
