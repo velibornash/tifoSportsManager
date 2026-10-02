@@ -977,6 +977,43 @@ code already delegates to `LeagueTableOrder.sort(rows)`, the one comparator in t
 saying a table also ordered in SQL would be *"a second ordering waiting to disagree with it"*. It was fixed
 before this session. Recorded so nobody re-investigates it.
 
+## `09ad534` — the in-game date was the wall clock, 469 milliseconds at a time
+
+**Task (B10):** *"`GAME_ZONE` is declared and dead, and the in-game date moves by wall-clock time rather than by
+game time."*
+
+### currentDate was wall-clock time
+
+`advanceHour` overwrote it with `Instant.now()` truncated to UTC **on every single hour**. So the in-game date
+tracked real time rather than the season: **two managers doing the same 168 advances got different dates** from
+the same game state — and `ZoneLoadService:181-186` reads exactly that field.
+
+Verified, and the numbers are the whole point:
+
+```
+two runs of the same 168 advances ended on different dates:
+2026-10-09T16:31:59.388234 and 2026-10-09T16:31:59.857176
+```
+
+**469 milliseconds apart, two different in-game dates.** A test asserting a literal date would have passed for
+ever and would not have noticed — which is why the assertion is the property itself: two runs of the same advances
+end on the same date.
+
+The date now moves when the **week counter** does, by one week — the rate `SeasonService:443` and `:635` have
+always used. Everything else already treated the date as game time; only this line disagreed, and that is how B4's
+fixture dates could be right while the recovery window was not.
+
+### A game day is a day-slot, not a wall-clock day
+
+My first fix moved the date one day per day-slot and **two of my own tests caught it by failing on correct
+code**. The seven-day template is a game construct with no months in it. The rate that matters is the one the
+codebase already agrees on, not one invented alongside it — and that is now what the test asserts.
+
+### GAME_ZONE is no longer dead
+
+It is now the single definition of the game's timezone, and `/api/server-time` uses it instead of repeating the
+literal. One zone, named once, so a server-time that disagrees with the clock cannot happen.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
