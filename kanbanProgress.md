@@ -24,6 +24,187 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `36c4d41`, `61bb1f3`, `42f5305`, `037b576` — D1, and the measurement that reframed it
+
+**Task (D1):** *"Nine whole-table loads inside loops or on request paths. Each needs: find the call,
+replace the load with a query returning only what the loop needs."*
+
+Four sites are closed and committed. **The board's framing of the defect is wrong, and that was the
+first thing worth establishing** — it is the fifth board description not to survive measurement, after
+C1, C5, A5 and B11.
+
+### The framing is wrong: "in a loop" was the cheap half
+
+Every one of these rows says the load happens *once per loop iteration*. Measured, that part is mostly
+free, and the reason is worth writing down because it is not a property of this codebase — it is a
+property of Hibernate.
+
+`NationalRatingService.findOwningCountry` called `countries.findAll()` on **every** call, and it is
+called three times per international match (twice for `isNationalSide`, once for `isYouth`). The board
+says "once per international match". It is three. **And it costs no SQL at all.**
+
+The measurement, which is the whole finding:
+
+| | country-table SELECTs |
+|---|---:|
+| a deliberate loop calling `countries.findAll()` **4 times** | **1** |
+| a replay over 4 internationals | **1** |
+| a replay over 28 internationals | **1** |
+
+Hibernate elides a `select` whose rows are already in the persistence context. `recompute()` loads
+`countries.findAll()` once at the top of its own transaction, so every later call in the loop reads
+rows that are already managed and issues nothing. I verified the counter could *see* a per-match load
+before concluding it could not — a deliberately repeated `findAll()` in a loop still reported one.
+
+**So the real D1 defect is not "a whole table loaded once per iteration". It is "a whole table loaded
+once, to answer a question about part of it."** The once-per-call version costs everything; the
+per-iteration version on top of it is usually free. That is a different fix list from the one the board
+enumerates, and it is why the anchors that survived are the ones that load a big table for a narrow
+question.
+
+### What was closed
+
+| Commit | Site | Was | Now |
+|---|---|---|---|
+| `36c4d41` | `NationalTeamSeeder.clubsIn` | `findClubTeamsForOperations()` — every club in the world — filtered in Java by country id. **48 full scans of a 14,880-row table** per seeding pass | `findClubTeamsForCountry(countryId)`, an indexed lookup |
+| `61bb1f3` | `SimulationController` **×4** | `matchFixtureRepository.findAll()` then `(seasonYear, roundNumber)` filtered in Java. Two are `POST` handlers, so the whole fixture table crossed the wire on every click | `findBySeasonYearAndRoundNumber` |
+| `42f5305` | `SeasonService.recoverFatigueForWeek` | `playerRepository.findAll()` weekly, skipping `fatigue <= 0` in the loop, then `saveAll` of the **entire** list | `findBySkillsFatigueGreaterThan(0)` |
+| `037b576` | `CupFixtureSeeder.nationalCup`, `SeasonService.allLeagueCompetitionsByCountry` | `competitionRepository.findAll()` — 1,457 divisions plus the cups — filtered in Java | `findFirstDomesticCup`, `findByType` |
+
+`recoverFatigueForWeek` was the sibling of a fix the board already records: `findByLastPlayedAtIsNotNull`
+did exactly this for the *daily* recovery job, with the same reasoning, and the weekly one was missed.
+
+### Two translation traps, both caught by running the existing tests
+
+**JPQL `<>` is not Java `!=`.** `c.getScope() != CompetitionScope.INTERNATIONAL` becomes
+`scope <> :scope` — and in Java `null != INTERNATIONAL` is **true**, so an unscoped cup is a domestic
+cup, while in SQL `NULL <> 'X'` is `NULL`, not `TRUE`, so every unscoped cup drops out and the draw
+picks a different one. Five assertions in `CupFixtureSeederCountryTest` caught it, because that test's
+cups have no scope. **Any Java filter translated into JPQL has to be re-checked for null.**
+
+**`findFirst` adds `LIMIT 1` only to a *derived* query.** On an explicit `@Query` the name is
+decoration, and the `Optional` return blew up with `IncorrectResultSizeDataAccessException: 2 results
+were returned`. Spring Data's `Limit` parameter is what actually restricts it.
+
+### The site I could not narrow, and why that is the right answer
+
+`CupFixtureSeeder.seedIfMissing` looks like a free win and is not. It picks its cup with `findFirst()`
+over an **unordered** result, and `findAll()` and `findByType()` do not return the same order — so
+narrowing the load silently changed *which cup the seeder draws*, and broke five assertions.
+
+**A filter that decides which row wins cannot move into the query without also making the choice
+deterministic**, and making it deterministic is the parked owner decision about `nationalCup()` (one
+job drawing 48 cups, or one draw per country). It keeps its `findAll()` and the code says why.
+
+### Five guards of mine that measured nothing before the code
+
+The board records six from previous sessions. These are mine, and the first three are the same trap
+wearing different clothes.
+
+1. **`NationalRatingQueryBudgetTest`** asserted the country-table load count does not scale with the
+   match count. It passed against the unfixed code, because there is nothing to catch. **Deleted** —
+   a guard that measures Hibernate rather than the code is worse than none, because the next reader
+   trusts it.
+2. **`SimulationControllerFixtureScopeTest`** first used Hibernate's entity-load counter. It read
+   **zero** in a `@Transactional` test, because the rows are already in the persistence context — the
+   comparing-two-zeroes failure this file records three times. Rebuilt on a mock.
+3. **`WeeklyFatigueRecoveryScopeTest`** scanned for the bare method name, found the **call site** in
+   `applyWeekMaintenance`, balanced braces from whatever `{` came next, and so read a block belonging
+   to another method. It passed against the exact code it was written to catch. It now matches the
+   *declaration*: a call is followed by `;`, a declaration by `{`.
+4. **`WeeklyFatigueRecoveryScopeTest`** also asserted the `saveAll` must go, having just decided in the
+   production code to keep it. The assertion was the thing that was wrong — and left in place it would
+   have pushed a reader into `dataFixSuggestions §1.1`'s mistake from the other side: removing an
+   explicit write on the strength of a belief that dirty checking covers for it.
+5. **`SimulationControllerFixtureScopeTest`** asserted an *empty* round blocks the week advance. It is
+   the reverse: blocking needs unplayed fixtures, so an empty round proceeds and moves the clock. The
+   two advance-week tests also had the same setup and were merged.
+
+Every guard that shipped was then re-run against the reverted fix and watched fail. The three that
+count:
+
+```
+NationalTeamSeederClubScanTest    → Wanted but not invoked:
+                                    teamRepository.findClubTeamsForOperations();
+SimulationControllerFixtureScope  → matchFixtureRepository.findAll();
+WeeklyFatigueRecoveryScopeTest    → recoverFatigueForWeek calls playerRepository.findAll() again
+```
+
+### Not fixed, and one of these is a real defect the board does not have
+
+**`roundNumber` is not `weekNumber`, and four request paths compare a round against the game week.**
+`roundNumber` is a round within a league's own season (1–18 for a double round robin); `weekNumber` is
+the game week, and `LeagueSlotSchedule` puts **two rounds in each week** — rounds 1–10 fill weeks 1–5,
+11–18 fill weeks 7–10, and weeks 6, 11 and 12 hold the mid-season window, the playoff and the break.
+So `roundNumber == clock.getCurrentWeek()` is right for week 1 and wrong for most others: **week 3
+holds rounds 5 and 6, and week 6 holds no league round at all.**
+
+That is a plausible explanation for two things the board already records and never connected — the week
+advance "refusing with *Still 5 unplayed fixture(s)*" and the 775/2015 day split — but **I did not
+verify either**, and it is a behaviour change on four endpoints, so it is reported rather than decided.
+It needs an owner ruling: should those endpoints answer for the game's **week** or for the league's
+**round**?
+
+**`SeasonService.settleWeeklyFinancesForAllClubs` is D3, not D1.** It does read `teamRepository.findAll()`
+and it does include national sides, but `applyWeeklyFinances` is `REQUIRES_NEW`, so the loop opens
+**~15,000 separate transactions a week**. One table read beside 15,000 commits is not the cost, and
+narrowing the read would change *which entities get settled* — a product decision. Left for D3.
+
+**`PlayerZoneLoadRepository.findLoadsPlayedSince`** — no LIMIT, no pagination — is D2's read side and
+untouched.
+
+### Two pre-existing failures found on the way, both reproduced at HEAD
+
+Neither is mine and neither is fixed here. Both were confirmed by stashing every change of mine and
+running the identical command at `42f5305`.
+
+- **`CupFixtureSeederCountryTest` is green alone and red in a run with `CupDrawSeedingTest`** — 5
+  failures, and the cup it inspects is not the one it built. Another class creates a domestic cup at a
+  lower id, so the lowest-id rule picks that one. `d4520df` fixed this class for exactly this reason
+  and the order dependence survives for this combination. It is E1/E3's test-isolation problem.
+- **`SeasonRolloverNumberTest`** — `PessimisticLockingFailure: Timeout trying to lock table "JOB_RUN"`.
+
+### What is still unverified
+
+- **No completed full-suite run, so the 49-red baseline is still unverified.** A run was attempted and
+  **74 classes in, it blocked for 13 minutes and was killed.** The blocker is environmental and
+  pre-existing: `CountryPageRendersTest`, `SidebarAccordionOpensTest` and `MobilePanelOverflowTest`
+  drive a real browser through Playwright and need **the application running on :8080**, which the board
+  states and which was not up. So `mvn test` cannot complete here without starting the app first, and
+  that is a decision worth making deliberately rather than discovering as a 60-minute timeout.
+- **What the partial run did show: 26 failures across the classes it reached, and none of them is mine.**
+  Every one is the pre-existing order-dependence family the board already records — *"the seeded world
+  has no human club"*, *"Serbia has no pyramid, so this test proves nothing"*, *"expected 31 but was 0"*,
+  a `CONSTRAINT_INDEX_6` collision on `SRB` — plus `CupFixtureSeederCountryTest`, which I reproduced
+  identically at HEAD. **None is in the four sites I changed, and none is one of my new classes.** That
+  is weaker than a green suite and I am not claiming it as one.
+- **The recorded "116 test files" in `AGENTS.md` is wrong twice over**: `src/test/java/.../ui/` does not
+  exist, and the Playwright classes live in `newLogic/service/`. The three browser tests are service-
+  package classes, which is also why nothing in the file list hints that a full `mvn test` needs a server.
+- **No live-database run.** Every cost figure in the table above is the board's own arithmetic
+  (14,880 clubs, 370,000 players), not something measured here.
+- **`findByClubTeamsForCountry` and `findBySkillsFatigueGreaterThan` are new index-less queries.**
+  `player.team_id` is indexed (D5) but `player.fatigue` and `team.country_id` are not, so both narrow
+  enormously without being instant. D5's remainder should look at them.
+- **`(season_year, round_number)` is not covered by any index.** D5 indexed
+  `(season_year, week_number, day_number, played)`, and the four controller queries filter on
+  `round_number`, so they use only the leading column. That is a large improvement on a full scan and
+  is not the same as an indexed lookup — relevant if the round-vs-week question above is settled in
+  favour of `round_number`.
+
+
+### A note on the environment
+
+The shell's `PATH` is `/usr/bin:/bin:/usr/sbin:/sbin`. `mvn` is at `/usr/local/bin/mvn` and is **not**
+on it, so the board's JDK export is not sufficient on its own:
+
+```bash
+export JAVA_HOME=/Users/velja/Library/Java/JavaVirtualMachines/corretto-21.0.12/Contents/Home
+export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
+```
+
+An agent's shell does not inherit the owner's terminal exports, so this has to be in every command.
+
 ## `17c05c1`, `dc8ed66`, `97595ae` — four tables that were empty, and two id-space bugs behind them
 
 **Task:** the owner reported from the app that the league top scorers, the league top assists and the
