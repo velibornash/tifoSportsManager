@@ -876,6 +876,36 @@ precisely the shape of the bug.
 - The clock test assumed a clock row the H2 profile does not have, and compared a **post-push** date against a
   **pre-push** one.
 
+## `11c3a02` — every national pass added another squad
+
+**Task (B5):** *"`NationalTeamSeeder.squadsFor` is not idempotent — no 'does this side already have players'
+check, on a path that runs on both seeding branches and from five call sites."*
+
+**No guard at all.** Every pass added another squad of up to 25 players to a side that already had one — up
+to **2,400 duplicate player rows per pass**.
+
+`BotSquadGenerator.ensureSquad` has had exactly this check the whole time and writes down why: *"Idempotent by
+squad size, not by a flag: the players are the record."* The same rule applies here now.
+
+**Also a scan that bought nothing.** `teams.findClubTeamsForOperations()` was called *inside* `squadsFor`, so
+the whole club table was walked for the senior side and again for the U21 side of **every country** — twice per
+country, a full table scan each time, to answer a question whose answer is a property of the country. Clubs are
+now read once per country and memoised.
+
+`NationalTeamSquadIdempotenceTest`, 2/2, **verified in both directions**. Removing the guard reproduces the bug
+exactly:
+
+```
+a second draw added 25 players to a side that already had 25
+==> expected: <25> but was: <50>
+```
+
+The second test is the counterweight a guard like this can break: it is **per side, not per country**, so the
+U21 side is still drawn.
+
+`squadsFor` is now package-private. It has five call sites inside the class, and driving a whole seeding pass to
+reach it would have tested the pass rather than the bug.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
