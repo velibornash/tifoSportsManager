@@ -13,8 +13,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Runs the jobs that are due, and only those, exactly once (owner, 2026-09-28).
@@ -44,6 +47,15 @@ public class JobRunner {
     private final JobRunRepository runs;
     private final TransactionTemplate requiresNew;
 
+    /**
+     * Job keys known to have run, per game day.
+     *
+     * <p>Bounded by the days a session sees, which is the clock advancing, and it is cleared with the
+     * runner. A world advanced for years in one process would accumulate one small set per day, and that
+     * is the memory this saves - the alternative is a database round trip per job per hour.
+     */
+    private final Map<String, Set<String>> doneJobs = new ConcurrentHashMap<>();
+
     public JobRunner(List<DayJob> jobs, JobRunRepository runs,
                      PlatformTransactionManager transactionManager) {
         // Sorted by order(), not left in injection order. Spring does not guarantee the order of a
@@ -71,11 +83,36 @@ public class JobRunner {
      */
     public Map<String, Object> runDue(int seasonYear, int weekNumber, int dayNumber, int hour) {
         List<Map<String, Object>> outcomes = new ArrayList<>();
+        String dayKey = seasonYear + "/" + weekNumber + "/" + dayNumber;
+        Set<String> doneToday = doneJobs.computeIfAbsent(dayKey, ignored -> new HashSet<>());
+
         for (DayJob job : jobs) {
             if (!isDue(job, weekNumber, dayNumber, hour)) {
                 continue;
             }
-            outcomes.add(runOnce(job, seasonYear, weekNumber, dayNumber, hour));
+            // **D4: a job that has already run today does not need asking again.**
+            //
+            // `isDue` is `hour >= job.hour()`, so a job at 09:00 is considered due for the next fifteen
+            // hours, and `runDue` runs every hour — so the guard lookup in `runOnce` was issued 11 jobs x
+            // 24 hours = **264 times a game day** to re-learn something that had not changed.
+            //
+            // The day-scoped memo is a cache of DONE keys and nothing else. **A FAILED job is never
+            // cached**, so the retry that A2 introduced still reaches the database on the next hour; and an
+            // empty cache after a restart simply means the first hour of the day asks, which is where the
+            // database is the source of truth.
+            if (doneToday.contains(job.key())) {
+                Map<String, Object> already = new LinkedHashMap<>();
+                already.put("key", job.key());
+                already.put("status", "ALREADY_DONE");
+                already.put("memo", true);
+                outcomes.add(already);
+                continue;
+            }
+            Map<String, Object> outcome = runOnce(job, seasonYear, weekNumber, dayNumber, hour);
+            if ("DONE".equals(outcome.get("status"))) {
+                doneToday.add(job.key());
+            }
+            outcomes.add(outcome);
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("season", seasonYear);
