@@ -4,7 +4,10 @@ import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,6 +17,53 @@ import java.util.Optional;
 public interface CompetitionRepository extends JpaRepository<Competition, Long> {
     List<Competition> findByCountryId(Long countryId);
     List<Competition> findByTypeAndScope(CompetitionType type, CompetitionScope scope);
+
+    /**
+     * Every competition of one type.
+     *
+     * <p>Added for D1, and the season rollover is the reason it is here: it read every competition in
+     * the world — the leagues plus the cups, some 1,500 of them — and kept the leagues in Java.
+     *
+     * <p><b>This was tried in the cup seeder too and had to be taken back out there</b>, which is the
+     * useful part of the note. The cup seeder's {@code findFirst()} picks a cup out of an
+     * <em>unordered</em> result, and {@code findAll()} and {@code findByType()} do not return the same
+     * order — so narrowing the load silently changed which cup the seeder drew, and broke five
+     * assertions. A filter that decides <em>which row wins</em> cannot be pushed into the query without
+     * also making the choice deterministic, and making it deterministic is a separate decision.
+     */
+    List<Competition> findByType(CompetitionType type);
+
+    /**
+     * The lowest-id domestic cup.
+     *
+     * <p><b>"Lowest id" is the whole rule, and it is a rule rather than an accident of iteration.</b>
+     * The seeder used to write {@code findAll().stream().filter(type == CUP).findFirst()}, and
+     * {@code findFirst} over a table with no ORDER BY is a silent coupling to whatever order the rows
+     * come back in. This returns the same cup that rule selects, deterministically, and it reads only
+     * the domestic cups rather than the whole competition table.
+     *
+     * <p><b>It is still only ever one country's cup</b>, which is a parked owner decision rather than
+     * a defect: with one job drawing for forty-eight countries, the lowest-id domestic cup in the
+     * database is the only one it can reach. See the board on {@code nationalCup()}.
+     *
+     * <p><b>The {@code Limit} parameter is not decoration.</b> Spring Data only turns {@code findFirst}
+     * into a {@code LIMIT 1} for a <em>derived</em> query method; on an explicit {@code @Query} the
+     * name is decoration and the query returned every matching row, so an {@code Optional} return blew
+     * up with {@code IncorrectResultSizeDataAccessException: 2 results were returned}.
+     *
+     * <p><b>The null check is load-bearing, and dropping it was a bug found by an existing test.</b>
+     * The Java this replaces reads {@code c.getScope() != CompetitionScope.INTERNATIONAL}, and in Java
+     * {@code null != INTERNATIONAL} is <em>true</em> — a cup with no scope set is a domestic cup. The
+     * obvious translation, {@code scope <> :scope}, is not equivalent: in SQL {@code NULL <> 'X'} is
+     * {@code NULL}, not {@code TRUE}, so every unscoped cup would drop out of the result and the draw
+     * would find a different cup. Five assertions in {@code CupFixtureSeederCountryTest} caught it,
+     * because that test's cups have no scope.
+     */
+    @Query("SELECT c FROM Competition c WHERE c.type = :type "
+            + "AND (c.scope IS NULL OR c.scope <> :scope) ORDER BY c.id ASC")
+    Optional<Competition> findFirstDomesticCup(@Param("type") CompetitionType type,
+                                               @Param("scope") CompetitionScope scope,
+                                               Limit limit);
     Optional<Competition> findByName(String name);
 
     /**

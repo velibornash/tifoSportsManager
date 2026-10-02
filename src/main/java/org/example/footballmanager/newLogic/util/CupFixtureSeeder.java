@@ -126,6 +126,19 @@ public class CupFixtureSeeder {
 
     @Transactional
     public void seedIfMissing() {
+        // **Left as findAll() on purpose, and the reason is worth more than the optimisation.**
+        //
+        // This looks like a free D1 win — the competition table is every league division in the world,
+        // 1,457 of them, read to find the few dozen cups. Narrowing it to findByType(CUP) was tried and
+        // broke CupFixtureSeederCountryTest in five places, because `findFirst()` over an unordered
+        // result is a silent coupling to whatever order the rows come back in: findAll() and
+        // findByType() do not return the same order, so the seeder picked a *different cup*.
+        //
+        // Which cup this should draw is already a parked owner decision — one job drawing 48 national
+        // cups, or one draw per country. Making the selection deterministic is the fix for that, and it
+        // belongs with the decision rather than inside a performance change. nationalCup() is narrowed
+        // below because *its* rule is already deterministic (lowest id), so the query returns exactly
+        // what the stream selected.
         Competition cup = competitions.findAll().stream()
                 .filter(c -> c.getType() == CompetitionType.CUP)
                 .findFirst()
@@ -268,10 +281,8 @@ public class CupFixtureSeeder {
      * running the national cup's round-for-week arithmetic over them was never going to be right.
      */
     private Competition nationalCup() {
-        return competitions.findAll().stream()
-                .filter(c -> c.getType() == CompetitionType.CUP)
-                .filter(c -> c.getScope() != CompetitionScope.INTERNATIONAL)
-                .min(Comparator.comparing(Competition::getId))
+        return competitions.findFirstDomesticCup(CompetitionType.CUP, CompetitionScope.INTERNATIONAL,
+                        org.springframework.data.domain.Limit.of(1))
                 .orElse(null);
     }
 

@@ -1118,11 +1118,15 @@ public class SeasonService {
      * 31-division pyramid, played one season, and then stopped: the rollover created the new season's
      * table rows and fixture lists for Serbia's divisions only, so Croatia's thirty-one divisions had
      * no season two and went silent.
+     *
+     * <p><b>Asked of the database rather than filtered in Java.</b> This reads every competition in the
+     * world — the leagues plus the cups, some 1,500 of them — to keep the leagues, and it did so once
+     * per season rollover for each of the two paths that call it.
      */
     private Map<String, List<Competition>> allLeagueCompetitionsByCountry() {
         Map<String, List<Competition>> byCountry = new TreeMap<>();
-        for (Competition league : competitionRepository.findAll()) {
-            if (league.getType() != CompetitionType.LEAGUE || league.getCountry() == null) {
+        for (Competition league : competitionRepository.findByType(CompetitionType.LEAGUE)) {
+            if (league.getCountry() == null) {
                 continue;
             }
             byCountry.computeIfAbsent(league.getCountry().getIsoCode(), key -> new ArrayList<>()).add(league);
