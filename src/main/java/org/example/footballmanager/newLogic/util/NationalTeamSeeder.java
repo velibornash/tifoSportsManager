@@ -151,6 +151,12 @@ public class NationalTeamSeeder {
      *
      * <p>The senior and the U21 side are drawn from the same clubs, so scanning the club table twice per
      * country bought nothing. Memoised per country id for the life of this seeder's run.
+     *
+     * <p><b>And it is a country's clubs, not every club in the world filtered afterwards.</b> The scan was
+     * {@code findClubTeamsForOperations()} — the whole club table — narrowed in Java by country id, so
+     * drawing the world's squads materialised 14,880 clubs to select the 310 of one country. The
+     * repository now asks for the country's clubs directly, which is an indexed lookup on
+     * {@code team.country_id} rather than a full-table scan per country.
      */
     private java.util.Map<Long, List<Team>> clubsByCountry = new java.util.HashMap<>();
 
@@ -158,16 +164,7 @@ public class NationalTeamSeeder {
         if (country == null || country.getId() == null) {
             return List.of();
         }
-        return clubsByCountry.computeIfAbsent(country.getId(), id -> {
-            List<Team> clubs = new ArrayList<>();
-            for (Team club : teams.findClubTeamsForOperations()) {
-                if (club.getId() != null && club.getCountry() != null
-                        && id.equals(club.getCountry().getId())) {
-                    clubs.add(club);
-                }
-            }
-            return clubs;
-        });
+        return clubsByCountry.computeIfAbsent(country.getId(), teams::findClubTeamsForCountry);
     }
 
     /**
@@ -192,11 +189,10 @@ public class NationalTeamSeeder {
         }
 
         List<Player> eligible = new ArrayList<>();
-        // **One club scan per country, not one per squad.** findClubTeamsForOperations returns every club in
-        // the world and it was called inside this method, which runs for the senior side and the U21 side of
-        // every country - so the whole club table was walked twice per country, and findClubTeamsForOperations
-        // itself costs a full scan. The country's clubs are a property of the country, so they are read once
-        // and passed in.
+        // **One club read per country, not one per squad and not one whole-table scan.** clubsIn reads
+        // this country's clubs by query and memoises them: the senior side and the U21 side are drawn
+        // from the same clubs, and forty-eight countries are drawn in one pass, so a per-country scan
+        // of every club in the world is a scan of the world forty-eight times over.
         for (Team club : clubsIn(country)) {
             eligible.addAll(players.findByTeamId(club.getId()));
         }

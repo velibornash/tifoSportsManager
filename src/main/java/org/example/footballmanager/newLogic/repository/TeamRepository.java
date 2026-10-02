@@ -80,6 +80,25 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findClubTeamsForOperations();
 
     /**
+     * One country's clubs, by what they are rather than by which of them turn up.
+     *
+     * <p>{@link #findClubTeamsForOperations()} answers "every club in the world", and the national-squad
+     * seeder wanted "this country's clubs" — so it took the whole club table and kept the rows whose
+     * country id matched. That is 14,880 clubs at the scale this project targets, loaded to select the
+     * 310 that belong to one country, and the question is asked of forty-eight countries as the world's
+     * squads are drawn.
+     *
+     * <p><b>The predicate is {@code findClubTeamsForOperations}'s, unchanged, plus the country.</b> It
+     * has to be that exact predicate: {@code type is null} is not a detail. {@code PyramidBuilder}
+     * creates every club in the world and never sets {@code type}, so an {@code = CLUB} test alone
+     * matches no club at all and a country's squad would silently come out empty.
+     */
+    @Query("select t from Team t where t.country.id = :countryId "
+            + "and (t.type is null or t.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB) "
+            + "order by t.id asc")
+    List<Team> findClubTeamsForCountry(@Param("countryId") Long countryId);
+
+    /**
      * Every team of one kind - club or national side.
      *
      * <p>findClubTeamsForOperations returns clubs only, which is right for club work and quietly
