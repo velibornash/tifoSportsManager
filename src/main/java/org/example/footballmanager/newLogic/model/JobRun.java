@@ -39,11 +39,26 @@ import java.time.Instant;
 public class JobRun {
 
     public enum Status {
-        /** Outstanding: the trigger has passed and it has not run. */
+        /**
+         * Claimed but not finished: a scan has taken this slot and the body is running, or the process died
+         * before it could say otherwise.
+         *
+         * <p>Previously declared and <b>never written</b> - the audit's "a pattern used nowhere". It now
+         * carries the claim that makes A1 safe: the row is inserted <i>before</i> the body runs, so two
+         * concurrent scans collide on the unique constraint and only one gets to do the work.
+         *
+         * <p><b>A row left PENDING means the run died mid-flight.</b> Under the owner's rule (2026-10-02) —
+         * "if it does not execute successfully the status is not DONE and the scheduler picks it up next
+         * time" — a PENDING is simply not DONE, so the next scan re-claims and re-runs it. No timeout and no
+         * manual re-queue is needed, and a crashed job cannot wedge itself permanently.
+         */
         PENDING,
         /** Ran cleanly. Never runs again for this day. */
         DONE,
-        /** Threw. Recorded and skipped; an operator re-queues it. */
+        /**
+         * Threw. <b>Not terminal</b> — the next scan picks it up again, because a permanently missed
+         * matchday is worse than a duplicate application (owner, 2026-10-02).
+         */
         FAILED
     }
 

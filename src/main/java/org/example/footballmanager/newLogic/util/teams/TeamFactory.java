@@ -33,8 +33,15 @@ public class TeamFactory {
                     newCountry.setName("Serbia");
                     newCountry.setIsoCode("SRB");
                     newCountry.setCurrencyCode("RSD");
-                    newCountry.setReputation(50);
-                    newCountry.setYouthRating(50);
+                    // **The catalogue's scale, not a legacy one.** This invented Serbia at 50/50 while
+                    // every other country is created at WorldCatalogSeeder.STARTING_RATING (1500), so the
+                    // one country a manager actually plays sat at the bottom of the World page's ranking
+                    // against forty-seven countries three hundred points or more above it. The fallback
+                    // exists for a missing row; it must not also change the scale.
+                    newCountry.setReputation(
+                            org.example.footballmanager.newLogic.util.WorldCatalogSeeder.STARTING_RATING);
+                    newCountry.setYouthRating(
+                            org.example.footballmanager.newLogic.util.WorldCatalogSeeder.STARTING_RATING);
                     return countryRepository.save(newCountry);
                 });
 

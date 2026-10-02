@@ -106,6 +106,24 @@ public class JobRunner {
         return hour >= job.hour();
     }
 
+    /**
+     * How long a claim is honoured before it is assumed abandoned.
+     *
+     * <p>Ten minutes against a job body that runs in seconds. It is not tuned for performance; it exists so
+     * that a process killed mid-job cannot leave that job unplayed for ever. A job that legitimately runs
+     * longer than this must be re-entrant, because it will be started again.
+     */
+    private static final long CLAIM_LIVE_FOR_SECONDS = 600;
+
+    /** Is this PENDING row a claim a live scan still holds, or one a dead scan left behind? */
+    private static boolean claimIsLive(JobRun claim) {
+        if (claim.getRanAt() == null) {
+            // A claim with no timestamp cannot be shown to be live, so it is treated as abandoned.
+            return false;
+        }
+        return claim.getRanAt().isAfter(Instant.now().minusSeconds(CLAIM_LIVE_FOR_SECONDS));
+    }
+
     private Map<String, Object> runOnce(DayJob job, int seasonYear, int weekNumber, int dayNumber, int hour) {
         Map<String, Object> outcome = new LinkedHashMap<>();
         outcome.put("key", job.key());
@@ -147,6 +165,59 @@ public class JobRunner {
         record.setWeekNumber(weekNumber);
         record.setDayNumber(dayNumber);
         record.setRanAtHour(hour);
+
+        // **The claim, written before the body runs (A1).**
+        //
+        // The guard used to be read unlocked and written *after* the body had already run and committed. Two
+        // concurrent scans therefore both saw "no row", both ran the job, and the unique constraint only
+        // rejected the second **save** — after both had done the work. The duplicate row was prevented and the
+        // duplicate work was not.
+        //
+        // Writing the claim first in its own transaction means the second scanner collides on the unique
+        // constraint *before* it runs anything, and is turned away.
+        //
+        // A PENDING row left behind means the run died, and under the owner's rule it is not DONE, so the
+        // next scan re-claims it. There is no staleness timeout, which is what the earlier design of this
+        // needed and did not have.
+        if (existing.isEmpty()) {
+            record.setStatus(JobRun.Status.PENDING);
+            // Stamped at claim time, not at completion: this is how another scan tells "someone is in the
+            // body right now" from "someone took this slot and died".
+            record.setRanAt(Instant.now());
+            try {
+                requiresNew.executeWithoutResult(status -> runs.save(record));
+            } catch (RuntimeException claimedTwice) {
+                // Another scanner claimed this slot between our read and our write. That is the collision
+                // this insert exists to cause, so it is a success for the guard and not an error.
+                log.debug("Job {} for season {} week {} day {} was claimed by another scan; skipping.",
+                        job.key(), seasonYear, weekNumber, dayNumber);
+                outcome.put("status", "ALREADY_DONE");
+                return outcome;
+            }
+        } else if (existing.get().getStatus() == JobRun.Status.PENDING && claimIsLive(existing.get())) {
+            // **A PENDING stamped moments ago belongs to a scan that is inside the body right now.**
+            //
+            // This is the hole in claim-before-run: the winner of the insert race runs the body, but the
+            // loser can arrive by *reading* the row rather than by attempting the insert — and under the
+            // owner's rule "not DONE" means retry, so a live PENDING would be re-run by the very second
+            // scanner the claim was added to stop.
+            //
+            // So the claim is only honoured while it is fresh. Past that window the scan that took it is
+            // gone — crashed, killed, or the machine rebooted — and the slot is genuinely abandoned and is
+            // picked up again. A ten-minute window against a job that runs in seconds is generous; it
+            // exists so a killed process cannot leave a matchday unplayed for ever.
+            log.debug("Job {} for season {} week {} day {} is already claimed by a live scan; skipping.",
+                    job.key(), seasonYear, weekNumber, dayNumber);
+            outcome.put("status", "ALREADY_RUNNING");
+            return outcome;
+        } else {
+            // PENDING but stale, or FAILED: nobody is working on this slot, so take it over. The owner's rule
+            // is "if it does not execute successfully the status is not DONE and the scheduler picks it up
+            // next time", and a stale claim is what that looks like after a crash.
+            record.setStatus(JobRun.Status.PENDING);
+            record.setRanAt(Instant.now());
+            requiresNew.executeWithoutResult(status -> runs.save(record));
+        }
 
         try {
             requiresNew.executeWithoutResult(status ->
