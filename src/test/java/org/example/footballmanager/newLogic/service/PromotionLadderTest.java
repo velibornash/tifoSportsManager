@@ -14,8 +14,10 @@ import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * The promotion ladder, and who it runs for (owner, 2026-09-30).
@@ -40,7 +43,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>non-Serbian</b> country on purpose: a test that uses Serbia would pass against the old code, which
  * is the trap this file exists to avoid.
  */
+@Import(TestCountryCatalogue.class)
 class PromotionLadderTest extends BaseTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     @Autowired private SeasonService seasons;
     @Autowired private CountryActivationService activation;
@@ -225,4 +232,10 @@ class PromotionLadderTest extends BaseTest {
         assertEquals(CountryState.SIMULATED, brazil.getState(),
                 "rolling a season forward must not activate a country");
     }
+
+    @BeforeEach
+    void seedTheCatalogue() {
+        catalogue.seed();
+    }
+
 }

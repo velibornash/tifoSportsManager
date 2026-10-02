@@ -28,5 +28,6 @@ public abstract class BaseTest {
     // build, which is confusing when a dev server is already on 8080, and it was costing about
     // 45 seconds of wall clock on the Spring context alone.
     // Switch back to RANDOM_PORT only if a test genuinely needs to make real HTTP calls.
+
 }
 

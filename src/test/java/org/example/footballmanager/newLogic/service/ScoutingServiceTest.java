@@ -15,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * The scouting network's rules (Sprint 5.1).
@@ -38,7 +40,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestCountryCatalogue.class)
 class ScoutingServiceTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     @Autowired ScoutingService scouting;
     @Autowired TeamRepository teams;
@@ -60,6 +66,7 @@ class ScoutingServiceTest {
 
     @BeforeEach
     void setUp() {
+        catalogue.seed();
         club = club("Scouting club");
         rival = club("Rival club");
         // The seed already carries nine countries with known youthRatings. Creating more would fight

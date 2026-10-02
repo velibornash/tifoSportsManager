@@ -9,8 +9,10 @@ import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.util.players.BotLeagueStandard;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -23,6 +25,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * The standards the clubs already in the database are put on (owner, 2026-09-30).
@@ -38,7 +41,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * looking at. The measured "before", straight out of Postgres before the fix landed:
  * tier 1 → 8.61, tier 2 → 8.71, tier 3 → 8.57, tier 4 → 8.56, tier 5 → 8.57.
  */
+@Import(TestCountryCatalogue.class)
 class BotLeagueStandardBackfillTest extends BaseTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     @Autowired private BotLeagueStandardBackfill backfill;
     @Autowired private BotLeagueStandard standard;
@@ -217,4 +224,10 @@ class BotLeagueStandardBackfillTest extends BaseTest {
                 });
         return key.toString();
     }
+
+    @BeforeEach
+    void seedTheCatalogue() {
+        catalogue.seed();
+    }
+
 }

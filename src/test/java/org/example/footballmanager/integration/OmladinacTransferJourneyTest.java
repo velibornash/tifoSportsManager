@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * The owner's club, from a real starting state, through a real transfer (owner, 2026-09-26).
@@ -53,7 +55,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(TestCountryCatalogue.class)
 class OmladinacTransferJourneyTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     @Autowired PlayerContractService contracts;
     @Autowired NegotiationService negotiation;
@@ -71,6 +77,7 @@ class OmladinacTransferJourneyTest {
 
     @BeforeEach
     void setUp() {
+        catalogue.seed();
         // A window has to be open or nothing below can happen, and the calendar is the only thing
         // that decides that.
         var clock = clocks.findAll().stream().findFirst().orElseThrow();

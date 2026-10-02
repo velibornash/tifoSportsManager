@@ -14,8 +14,10 @@ import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * The Šid league and the second human manager, verified against a real seeded database.
@@ -41,7 +44,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
+@Import(TestCountryCatalogue.class)
 class SidLeagueSeedingIntegrationTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     private static final String SREMAC = "Sremac Berkasovo";
     private static final String LEAGUE = "Opštinska liga Šid";
@@ -213,4 +220,10 @@ class SidLeagueSeedingIntegrationTest {
     private List<String> clubsIn(Competition league) {
         return teams.findByCompetitionId(league.getId()).stream().map(Team::getName).toList();
     }
+
+    @BeforeEach
+    void seedTheCatalogue() {
+        catalogue.seed();
+    }
+
 }

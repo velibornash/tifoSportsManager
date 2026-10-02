@@ -18,8 +18,10 @@ import org.example.footballmanager.newLogic.service.CountryActivationService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.util.players.BotLeagueStandard;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 
 import java.util.List;
 import java.util.Set;
@@ -29,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.example.footballmanager.TestCountryCatalogue;
 
 /**
  * Turning a country from represented into played (owner, 2026-09-30).
@@ -41,7 +44,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * a real catalogue country does. A country is created without a pyramid, exactly as the 47 represented
  * ones are.
  */
+@Import(TestCountryCatalogue.class)
 class CountryActivationTest extends BaseTest {
+
+    @Autowired
+    TestCountryCatalogue catalogue;
 
     @Autowired private CountryActivationService activation;
     @Autowired private PyramidBuilder pyramids;
@@ -293,4 +300,10 @@ class CountryActivationTest extends BaseTest {
         });
         return result[0];
     }
+
+    @BeforeEach
+    void seedTheCatalogue() {
+        catalogue.seed();
+    }
+
 }
