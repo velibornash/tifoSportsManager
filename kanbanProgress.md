@@ -2323,3 +2323,43 @@ needed — which is the entire point of the static world.
 **Cup draw wiring.** `CupFixtureSeeder` still seeds only the first CUP row, so the 15 per-tier
 competitions have qualified clubs and no fixture list. **Knockout progression** — no final, no third
 place. **Three stale global cup rows** from the first wrong version still need deleting.
+
+---
+
+## Status at the end of the unattended session — what is parked, and why
+
+Everything below is **waiting on a decision from the owner** and was deliberately not touched. Nothing here is
+blocked on effort.
+
+| Item | The question | Why it was not decided alone |
+|---|---|---|
+| **A1 + A2** | **How long before a `PENDING` job claim is considered abandoned and retried?** | A1's fix is claim-then-run; A2 is a way to release a claim. Doing A1 alone leaves a crashed job blocked **for ever** — worse than the bug. The staleness rule decides whether a slow job gets stolen from mid-run, and there is no obviously right number |
+| **C2 injuries** | **Should a rival see that a player is out for three weeks?** | `PlayerDTO` carries it and the player's own profile page reads it, so narrowing it is a change to a shared DTO with other consumers |
+| **A8 `findTier2Leagues`** | **Is the season summary Serbian by design or by accident?** | It is hardcoded to `"SRB"`, so it reports nothing for any other country. That is a scoping decision |
+| **B1 residual** | **Does one job draw all 48 national cups, or does each country get its own?** | `nationalCup()` returns the lowest-id domestic cup, so only one country's cup is ever drawn. The shuffle is correct; the *selection* is not |
+
+### Verified state at hand-off
+
+- **`mvn compile` clean**, and the app boots and serves (200 on `/login.html`, dispatcher initialised, no
+  compilation errors). The process is reaped when the shell session that started it ends, so later live calls
+  in that window fail with connection refused — **an artifact of the harness, not a fault in the application**.
+- **38/38** across every test written this session: `WorldAdvanceAuthorizationTest` (9), `MatchdayJobQueryCountTest`
+  (2), `JobTriggerUniquenessTest` (2), `PromotionRelegationBoundaryTest` (2), `GoalEventRepositoryTest` (4),
+  `CupFixtureSeederCountryTest` (6), `LeagueTableReconciliationServiceTest` (4), `CountryCupFixtureScopingTest` (4),
+  `LeagueScheduleGetDoesNotWriteTest` (2), `CountryCatalogQueryCountTest` (3), `CountryTeamPlayersDisclosureTest` (3).
+- **Every guard test written this session was proven able to fail** by reverting the fix, except two that were
+  caught in that state *by the mutation itself* and one (`JobTriggerUniquenessTest`'s day+key case) that is
+  subsumed by the stricter key check.
+
+### The two patterns worth keeping
+
+**Six guard tests this session passed against the code they were written to catch** — a statement count, a
+Hibernate counter, a session count, colliding random ISO codes, a fixture with no competition entries, and a
+fixed expected answer. Every one had the same cause: **the assertion was written before checking what the code
+requires to be true for the behaviour to exist.** The mutation check is not ceremony; it is the only thing that
+found them.
+
+**Four board descriptions did not survive contact with the code** — C1 (blamed a LAZY relation), C5 (called an
+`authenticated()` endpoint world-readable), A5 (described a bug that is deliberate, tested, and whose fix would
+freeze the season), and B11 (rows that are not in the database). The board describes *intent* more often than it
+describes *code*.
