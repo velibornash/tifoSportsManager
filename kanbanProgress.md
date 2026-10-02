@@ -1,5 +1,9 @@
 # 📈 kanbanProgress.md
 
+> **New session? Read [`kanban.md` §RESUME HERE](kanban.md) first.** It has the JDK export, the measurements,
+> the remaining work with verified file anchors, and the list of items parked on an owner decision. This file is
+> the append-only history of *how* things were landed; the board is the state.
+
 **The running log for [`kanban.md`](kanban.md).** One entry per task, newest first, each carrying the
 commit that landed it — so a claim in the board can always be checked against a diff.
 
@@ -1171,6 +1175,48 @@ so importing is part of using it.
 
 **The six rewrites themselves are not in this commit.** They are the next piece of work, and each one needs to
 decide what the product actually guarantees before it can be written.
+
+## Hand-off: the session's remaining work, written so a cold session can start
+
+**Context does not carry between conversations.** A new session begins empty — no history, no decisions, no
+measurements — and the board is the only thing it can read. So the hand-off is written into the board rather
+than left in a conversation that will not exist by morning.
+
+### Verified, not remembered
+
+The D1 line numbers on the board had **drifted**. They were replaced with anchors checked against the current
+source, so the next session is not sent to `SeasonService:577` (a subtraction) when the actual
+`teamRepository.findAll()` is at `:553`:
+
+| What | Where it really is |
+|---|---|
+| `teamRepository.findAll()` | `SeasonService:553` |
+| `playerRepository.findAll()` | `SeasonService:605` |
+| `for (Competition … : competitions.findAll())` | `SeasonService:1116` |
+| `for (Country … : countries.findAll())` | `NationalRatingService:239` |
+| `for (Team club : teams.findClubTeamsForOperations())` | `NationalTeamSeeder:163` |
+| `competitions.findAll().stream()` | `CupFixtureSeeder:129`, `:271` |
+| `findLoadsPlayedSince` — no LIMIT, no pagination | `PlayerZoneLoadRepository` |
+
+A board that points at the wrong line is worse than one that points at nothing, because it looks verified.
+
+### What the next session needs to know before it starts
+
+- **The JDK export.** Everything fails without it, and the failures look like code faults.
+- **The three measurements** — catalogue 118 ms, one pyramid 37 s then 10 ms, whole-world init 13+ minutes. The
+  last one was tried and reverted; retrying it is the expensive mistake already made once.
+- **The two rules that keep applying**: a guard test is only worth writing if it has been seen to fail, and the
+  board describes intent more often than code — four descriptions did not survive measurement this session.
+
+### What is left, honestly
+
+**D1, D2, D3** — performance, each with verified anchors, none needing a decision.
+**E1's six rewrites, E2, E3** — the rewrites each need one judgement made first: *what does the product actually
+guarantee?* That is the work, and it is not something to be guessed at.
+**D5's remainder** — blocked on the owner (`IDENTITY` batching, `match_tick_states`, other sports' indexes).
+**Two items the owner has already ruled on and that are not implemented**: scoping `findTier2Leagues` off its
+hardcoded `"SRB"`, and making `nationalCup()` take the country so one job can draw 48 cups without touching
+another country's draws.
 
 ## `6d5ea70` — 264 questions a day, all with the same answer
 

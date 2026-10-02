@@ -35,29 +35,83 @@ The one exception is work with a number attached — a count either meets its ta
 
 ---
 
-## 📌 NEXT SESSION — start here
+## 🔖 RESUME HERE — a new session starts with an empty context
 
-**Read the INGESTED section above first.** Two documents landed on 2026-10-01 and both reorder this board:
-`experAudit01102026.md` and `COMPETITIVE_ANALYSIS.md`. Between them they put a correctness cluster
-(schedulers, the game clock, who may touch them) **above every feature on this board**, and one item —
-**A4, the season counter skipping a season on every rollover** — above everything because it is three
-lines and it permanently corrupts data.
+**A new conversation knows nothing.** No history, no decisions, no measurements. Everything needed to continue
+is in this file, in `kanbanProgress.md`, and in `git log`. **Read this section first.**
 
-Both documents agree, and it is worth saying plainly: **the world grew 48× in five days and the code that
-schedules it was written for one country.** Everything in cluster A is that sentence.
+### 1. Set the JDK before anything else — everything fails without it
 
-### 0. Owner decisions needed before anything else
+```bash
+export JAVA_HOME=/Users/velja/Library/Java/JavaVirtualMachines/corretto-21.0.12/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+```
 
-1. **Confirm the cluster-A ordering.** It is two documents' opinion, not yours, and it reorders a board you
-   have been working from.
-2. **`DefensiveShape`** — the engine now derives its out-of-possession shape arithmetically and that wins on
-   every lookup, so it defends in a different shape than it attacks with no data edit. Both documents say
-   this needs an owner ruling, not a code change.
-3. **`/demo` routes** — still waiting on you. Seven of the thirteen unreachable pages fetch fake data from
-   `DummyDataController`; the audit's verdict is that the controller is "the thing to delete", which makes
-   the decision easier rather than harder.
-4. **`Network error during authFetch` on Oracle** — still not diagnosed. Re-check first: if it is still
-   happening with the server definitely up, it outranks cluster A.
+`mvn` resolves **Homebrew's Java 24** by default; this project targets **21**. On 24, Mockito's inline mock
+maker cannot instrument classes, so tests that pass on 21 fail with errors that look exactly like code faults.
+**A failure caused by the wrong JDK is not a test failure.** It happened once and was misreported as
+"pre-existing" before the cause was found.
+
+### 2. Finished, with commit hashes in their rows
+
+Clusters **B** and **C** are complete. Also closed: **A1, A2, A5, A6, A7, A8, D4**, **D5** (football indexes
+only), **E1** (the full run is recorded — **and it is red**), **E5**.
+
+### 3. Three rules that shaped the last session — they still apply
+
+1. **Measure before believing a document.** Four board descriptions did not survive contact with the code:
+   C1 (blamed a LAZY relation), C5 (called an `authenticated()` endpoint world-readable), **A5** (described a
+   deliberate, tested design whose "fix" would have frozen the season on the first job failure), and B11 (rows
+   that are not in the database). The board describes **intent** more often than **code**.
+2. **A guard test that cannot fail proves less than no test.** Six written last session passed against the code
+   they were meant to catch. Every guard has been re-run with the fix reverted to prove it fails. If a counter is
+   involved, prove the counter is live **first** — that trap was met three times in one session.
+3. **Never assert against global state another test can change.** Two tests were green alone and red in the
+   suite: `create-drop` gives one shared H2 per run.
+
+### 4. Measurements — do not re-derive these
+
+| What | Cost |
+|---|---:|
+| Country catalogue, 48 rows (`WorldCatalogSeeder.seedAll`) | **118 ms** |
+| One country's pyramid (31 divisions, 310 clubs) | **37,068 ms**, then **10 ms** on a repeat |
+| Whole-world initializer (`ensureBaselineDataOnStartup`) | **13+ minutes** — tried, reverted, do not retry |
+
+A pyramid is affordable **once per JVM**, not once per test. The seams are `TestCountryCatalogue` and
+`TestPyramid.Builder` (`320649d`).
+
+### 5. What is left
+
+#### D segment — the assigned work when the session ended
+
+| # | What to do | Where |
+|---|---|---|
+| **D1** | **Nine** whole-table loads inside loops or on request paths. Each needs: find the call, replace the load with a query returning only what the loop needs. Not a schema change.<br>**Verified anchors** (the board's older line numbers have drifted): `SeasonService:553` `teamRepository.findAll()`, `:605` `playerRepository.findAll()`, `:1116` `for (Competition league : competitionRepository.findAll())`; `NationalRatingService:239` `for (Country country : countries.findAll())` — **once per international match**; `NationalTeamSeeder:163` `for (Team club : teams.findClubTeamsForOperations())` (now memoised per country — check what remains); `CupFixtureSeeder:129` and `:271` `competitions.findAll().stream()`; `SimulationController:235` `matchFixtureRepository.findAll…ForWeek`; `PlayerZoneLoadRepository` `findLoadsPlayedSince` — **no LIMIT, no pagination**, and its own comment records a **42-minute** recovery job |
+| **D2** | ~1.47 M zone-load rows per game day, loaded whole into a `HashMap` once a day in one transaction | `ZoneLoadRecorder` saves **198 rows per match one at a time** (22 players x 9 zones); the read side loads them all. `PlayerZoneLoadRepository.findLoadsPlayedSince` is the one to make paged or streamed |
+| **D3** | Whole-world day jobs: `RecoveryJob` walks every player who ever played; `FinanceJob` settles every club, each in its own transaction | Recorded under `274d3ff` — *"the jobs are priced for a village, not a world"* |
+| **D5 (rest)** | **Blocked on the owner.** §4.1: `IDENTITY` disables all JDBC batching (70 of 71 entities) so `batch_size=50` is dead code. §4.4: `match_tick_states` says *"Decision needed… Do not index it as-is"*. Basketball/AF/text-football have **no declared indexes** | `dataFixSuggestions.md` §4 |
+
+#### E segment
+
+| # | What to do | Where |
+|---|---|---|
+| **E1 (rest)** | **Six test classes red**, all needing pyramids. Owner chose: **rewrite them to assert what the product actually guarantees.** `ScoutingServiceTest` is already **green, 10/10** — the same fix applied there | Run the class, read the failure, decide the guarantee, write the fixture the guarantee implies. Seams: `TestCountryCatalogue` (118 ms) and `TestPyramid.Builder` (37 s once per JVM) |
+| **E2** | Nine controllers with zero tests — `Lineup`, `Player`, `Team`, `User`, `Admin`, `Community`, `DummyData`, `Competition`, `Stadium`. Only three tests exercise any controller, so **the whole cluster-C security surface is untested** | Use the JWT pattern from `WorldAdvanceAuthorizationTest`. Mock the repository **interface**, do not spy the injected bean — Spring Data returns a JDK proxy Mockito cannot wrap |
+| **E3** | Calendar-year fixtures: `WeeklyFinanceServiceTest`, `StaffSponsorServiceTest`, `PlayerContractServiceTest` pass 2024/2025/2026 as `seasonYear`. Self-consistent under either scheme, so they pin nothing. **Ordering constraint: before the tactics wiring, not after** | A season is 12 weeks counted from 1. Any code passing a calendar year is wrong even if it passes |
+
+### 6. Parked — owner has ruled, not yet implemented
+
+- **`findTier2Leagues` is hardcoded to `"SRB"`** — owner: *accident.* So `buildPlayoffSummary` reports
+  nothing for any other country. **Scope it to the league's own country.**
+- **`nationalCup()` returns the lowest-id domestic cup** — owner: *one job for all countries, country passed in,
+  results correct for the calling country, previous draws in other countries untouched.* **Not implemented.**
+
+### 7. Parked — owner decisions still open
+
+- **D5 §4.1 / §4.4** (above).
+- `DefensiveShape`, `/demo` routes, and the `Network error during authFetch` on Oracle were listed in the old
+  version of this section and have not been re-examined since. Re-check before spending time on them.
+
 
 ### 1. Cluster A — the scheduler and the clock (P0)
 
