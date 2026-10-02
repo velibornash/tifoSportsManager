@@ -28,6 +28,7 @@ import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TeamMedicalService;
 import org.example.footballmanager.newLogic.service.TeamTacticsService;
 import org.springframework.data.domain.PageRequest;
+import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -92,7 +93,8 @@ public class TeamController {
                                             @RequestParam(defaultValue = "100") int size,
                                             @RequestParam(defaultValue = "name") String sortBy,
                                             @RequestParam(defaultValue = "asc") String direction) {
-        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Sort sort = SortWhitelist.of(sortBy, direction, "sortBy",
+                Set.of("id", "name", "reputation", "budget"));
         return teamRepository.findAll(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200)), sort))
                 .getContent()
                 .stream()
@@ -100,9 +102,25 @@ public class TeamController {
                 .toList();
     }
 
+    /**
+     * Creates a club.
+     *
+     * <p><b>This accepted a raw {@code Team} and saved it.</b> No administrator check, so any logged-in
+     * manager could create a club; no validation, so a body carrying an {@code id} would overwrite an existing
+     * row through {@code save()}; and the raw entity went back out with every column on it.
+     *
+     * <p>Now gated like the rest of the privileged surface, validated for a name, and answered with the
+     * summary DTO the rest of this controller already returns.
+     */
     @PostMapping("/create")
-    public Team createTeam(@RequestBody Team team) {
-        return teamRepository.save(team);
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
+    public ResponseEntity<TeamSummaryDTO> createTeam(@RequestBody TeamSummaryDTO request) {
+        if (request == null || request.getName() == null || request.getName().isBlank()) {
+            throw new IllegalArgumentException("A club needs a name.");
+        }
+        Team team = new Team();
+        team.setName(request.getName().trim());
+        return ResponseEntity.ok(TeamSummaryDTO.from(teamRepository.save(team)));
     }
 
     // Lista igrača

@@ -22,6 +22,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 
 @RestController
@@ -65,7 +67,8 @@ public class TrainingController {
                                           @RequestParam(defaultValue = "100") int size,
                                           @RequestParam(defaultValue = "id") String sortBy,
                                           @RequestParam(defaultValue = "asc") String direction) {
-        Sort sort = direction.equalsIgnoreCase("desc") ? Sort.by(sortBy).descending() : Sort.by(sortBy).ascending();
+        Sort sort = SortWhitelist.of(sortBy, direction, "sortBy",
+                Set.of("id", "name", "date"));
         return trainingRepository.findAll(PageRequest.of(Math.max(0, page), Math.max(1, Math.min(size, 200)), sort))
                 .getContent();
     }
