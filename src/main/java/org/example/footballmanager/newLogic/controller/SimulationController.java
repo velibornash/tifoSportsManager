@@ -86,9 +86,7 @@ public class SimulationController {
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
-                .filter(f -> Objects.equals(f.getSeasonYear(), seasonYear))
-                .filter(f -> Objects.equals(f.getRoundNumber(), currentWeek))
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
                 .filter(f -> !f.isPlayed())
                 .filter(f -> f.getHomeTeam() != null && f.getAwayTeam() != null)
                 .sorted(Comparator.comparing((MatchFixture f) -> f.getCompetition() == null ? Long.MAX_VALUE : f.getCompetition().getId())
@@ -232,10 +230,7 @@ public class SimulationController {
                 userLeagueName = userTeam.getCompetition().getName();
             }
         }
-        List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findAll().stream()
-                .filter(f -> Objects.equals(f.getSeasonYear(), seasonYear))
-                .filter(f -> Objects.equals(f.getRoundNumber(), currentWeek))
-                .toList();
+        List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek);
         String finalUserLeagueName = userLeagueName;
         List<MatchFixture> userFixturesForWeek = userLeagueName != null
                 ? allFixturesForWeek.stream()
@@ -355,9 +350,7 @@ public class SimulationController {
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
-                .filter(fixture -> Objects.equals(fixture.getSeasonYear(), seasonYear))
-                .filter(fixture -> Objects.equals(fixture.getRoundNumber(), currentWeek))
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
                 .filter(fixture -> !fixture.isPlayed())
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .filter(fixture -> Objects.equals(fixture.getHomeTeam().getId(), team.getId())
@@ -431,9 +424,7 @@ public class SimulationController {
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findAll().stream()
-                .filter(fixture -> Objects.equals(fixture.getSeasonYear(), seasonYear))
-                .filter(fixture -> Objects.equals(fixture.getRoundNumber(), currentWeek))
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .sorted(Comparator.comparing((MatchFixture f) -> f.getCompetition() == null ? Long.MAX_VALUE : f.getCompetition().getId())
                         .thenComparing(MatchFixture::getMatchDate, Comparator.nullsLast(LocalDateTime::compareTo)))
