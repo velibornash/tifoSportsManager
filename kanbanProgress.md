@@ -740,6 +740,53 @@ Doing A1 alone introduces the permanent-PENDING failure described above. Doing A
 work. **They need to be designed together**, and the PENDING-staleness rule is the owner's call — it decides
 whether a slow job gets stolen from while it is still legitimately running.
 
+## `a4e0882`, `6ac283a`, `83fb875` — a week of orphans, sixteen identical queries, and a shootout trap
+
+A batch of three while the owner was away, chosen because none of them needs a decision from anyone.
+
+### A6 — the orphan, deleted (`a4e0882`)
+
+`AdvanceWeekAsyncService`: 186 lines, **zero callers**, hardcoded `findById(1L)`, Serbian-only loop. Verified by
+grep across `src/`, `src/test/` and any config binding — **not just the declaration** — before deleting.
+
+Its danger is not its size. **Five of its operations also exist in the job path**, so wiring it back — which is
+exactly what an audit finding invites — would double-apply the week. Orphaned code with a plausible name and a
+working body is worse than no code: it reads like the answer to a question whose real answer is elsewhere.
+
+### A7 — sixteen identical queries (`6ac283a`)
+
+`findUnplayedOnDay` was called **inside** the `flatMap` over target competitions. Every call returned the identical
+rows, because the competition filter ran in Java *after* the query, so the query could not narrow anything. With
+sixteen CUP competitions that is sixteen identical full-table scans of the fixture table for a single matchday —
+and the audit notes it worsens with every tier added.
+
+Now fetched once and filtered by a set of competition ids. `MatchdayJobQueryCountTest`, 2/2, **verified both
+ways**: restoring the flatMap fails with *"Wanted 1 time, was 16"*.
+
+**Two tests, not one.** A count alone would be satisfied by a query that returns nothing. The second asserts the
+answer is still right — sixteen competitions with one fixture between two of them must still play exactly the
+target competition's fixture. A cheap query must not be a wrong one.
+
+### B8 — documented, root cause recorded (`83fb875`)
+
+`MatchFormat` has zero callers, and **the reason is the actual finding: nothing carries a format.** Neither
+`Match` nor `Competition` has a `matchFormat` column, so `MatchFormat.goesToPenalties()` cannot be consulted
+without a schema change. That is why this was not "fixed".
+
+Done without a schema change: `isKnockoutTie` is named for what it decides rather than for the competition type,
+and the shootout path carries an explicit note about the group-stage trap. Verified unchanged: **25/25** across the
+engine wiring tests.
+
+**The board's ordering constraint holds and is now recorded at the predicate**: wire the column, then the group
+stage — `isKnockoutTie` is exactly the method that has to learn about a league phase, and it must do so by
+consulting `MatchFormat`, not by widening the expression.
+
+### B11 — closed as stale, not acted on
+
+The board says delete three stale global cup rows. **Checked the database instead of trusting the note: one CUP
+competition exists and none without a country.** The rows are not there — the 31 competitions are 31 Serbian
+leagues plus one national cup. Closed as not applicable, and noted to re-check if a fresh seed reintroduces them.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
