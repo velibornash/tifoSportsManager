@@ -7,6 +7,10 @@ import lombok.Setter;
 
 import java.util.List;
 
+@Table(name = "season_competition",
+        indexes = {
+                @Index(name = "ix_season_competition_comp_season", columnList = "competition_id,season_year"),
+        })
 @Entity
 @Getter
 @Setter

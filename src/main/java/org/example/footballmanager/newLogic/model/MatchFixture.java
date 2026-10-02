@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.model;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.Index;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,7 +15,10 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity(name = "MatchFixture")
-@Table(name = "match_fixture")
+@Table(name = "match_fixture",
+        indexes = {
+                @Index(name = "ix_match_fixture_season_week_day", columnList = "season_year,week_number,day_number,played"),
+        })
 public class MatchFixture {
 
     @Id

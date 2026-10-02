@@ -4,6 +4,10 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 @Data
+@Table(name = "match_player_stats",
+        indexes = {
+                @Index(name = "ix_match_player_stats_player_match", columnList = "player_id,match_id"),
+        })
 @Entity(name = "MatchPlayerStats")
 public class MatchPlayerStats {
     @Id

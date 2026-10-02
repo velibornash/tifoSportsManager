@@ -8,6 +8,11 @@ import org.hibernate.annotations.ColumnDefault;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(name = "player",
+        indexes = {
+                @Index(name = "ix_player_team", columnList = "team_id"),
+                @Index(name = "ix_player_team_position", columnList = "team_id,position"),
+        })
 @Entity(name = "Player")
 public class Player {
 

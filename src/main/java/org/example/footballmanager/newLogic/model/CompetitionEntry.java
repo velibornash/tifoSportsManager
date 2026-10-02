@@ -6,8 +6,9 @@ import lombok.Setter;
 
 @Entity
 @Table(indexes = {
-        @Index(name = "ix_competition_entry_sc", columnList = "season_competition_id"),
-        @Index(name = "ix_competition_entry_sc_pos", columnList = "season_competition_id,position")
+        @Index(name = "ix_competition_entry_sc_pos", columnList = "season_competition_id,position"),
+        // findBySeasonCompetitionAndTeam runs inside loops during seeding (DatabaseInitializer:1226,1249,1270).
+        @Index(name = "ix_competition_entry_team", columnList = "team_id")
 })@Getter
 @Setter
 public class CompetitionEntry {
