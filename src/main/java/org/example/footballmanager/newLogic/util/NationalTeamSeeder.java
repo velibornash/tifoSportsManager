@@ -146,15 +146,58 @@ public class NationalTeamSeeder {
      * knowing: a form or an injury on the club player does not automatically appear on the national
      * one, because they are separate rows. That is the T1 problem, not something to pretend away here.
      */
-    private void squadsFor(Team nationalTeam, Country country, boolean youth) {
+    /**
+     * A country's clubs, read once and memoised.
+     *
+     * <p>The senior and the U21 side are drawn from the same clubs, so scanning the club table twice per
+     * country bought nothing. Memoised per country id for the life of this seeder's run.
+     */
+    private java.util.Map<Long, List<Team>> clubsByCountry = new java.util.HashMap<>();
+
+    private List<Team> clubsIn(Country country) {
+        if (country == null || country.getId() == null) {
+            return List.of();
+        }
+        return clubsByCountry.computeIfAbsent(country.getId(), id -> {
+            List<Team> clubs = new ArrayList<>();
+            for (Team club : teams.findClubTeamsForOperations()) {
+                if (club.getId() != null && club.getCountry() != null
+                        && id.equals(club.getCountry().getId())) {
+                    clubs.add(club);
+                }
+            }
+            return clubs;
+        });
+    }
+
+    /**
+     * Package-private so the idempotence test can drive it directly.
+     *
+     * <p>It is called from five call sites inside this class and is the thing the board's B5 finding is about,
+     * so it is the unit under test rather than something reached only through a whole seeding pass.
+     */
+    void squadsFor(Team nationalTeam, Country country, boolean youth) {
+        if (nationalTeam == null || nationalTeam.getId() == null) {
+            return;
+        }
+        // **Idempotent by squad size, not by a flag: the players are the record.**
+        //
+        // This had no guard at all, and it runs on both seeding branches and from five call sites, so every
+        // pass added another squad of up to 25 players to a side that already had one - up to 2,400 duplicate
+        // player rows per pass. BotSquadGenerator.ensureSquad has had exactly this check the whole time, and
+        // its comment says why: called on every boot, and a second call must not add a second set.
+        if (!players.findByTeamId(nationalTeam.getId()).isEmpty()) {
+            log.debug("{} already has players; not drawing a second squad.", nationalTeam.getName());
+            return;
+        }
+
         List<Player> eligible = new ArrayList<>();
-        for (Team club : teams.findClubTeamsForOperations()) {
-            if (club.getCountry() == null || club.getId() == null) {
-                continue;
-            }
-            if (!country.getId().equals(club.getCountry().getId())) {
-                continue;
-            }
+        // **One club scan per country, not one per squad.** findClubTeamsForOperations returns every club in
+        // the world and it was called inside this method, which runs for the senior side and the U21 side of
+        // every country - so the whole club table was walked twice per country, and findClubTeamsForOperations
+        // itself costs a full scan. The country's clubs are a property of the country, so they are read once
+        // and passed in.
+        for (Team club : clubsIn(country)) {
             eligible.addAll(players.findByTeamId(club.getId()));
         }
         if (eligible.isEmpty()) {
