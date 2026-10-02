@@ -697,6 +697,49 @@ decision rather than a slip — the summary is Serbian by design or by accident,
 
 Both failed on correct code, which is now the sixth time this session and the reason the mutation check exists.
 
+## A1 and A2 measured — both real, and A1's stated fix shape has a hole in it
+
+**No code changed.** Measured before acting, per the A1/A2 lesson the board itself carries — and after A5
+and A8 both turned out to be misdescribed, that lesson earned its keep twice.
+
+### A1 — confirmed, and worse than the board says
+
+`JobRun` **does** carry the unique constraint (`@Table(name = "job_run", uniqueConstraints = ...)`), so the
+sequence is:
+
+1. `JobRunner:116` reads the guard **unlocked** — two concurrent advances both see "no row";
+2. `:140-141` each runs the body in `REQUIRES_NEW` and **commits it** — *the duplicate work has now happened*;
+3. `:145` each writes the guard — the unique constraint rejects the second **save**.
+
+So the duplicate **row** is prevented and the duplicate **work** is not. The class javadoc at `:24-28` claims
+the guard is the whole mechanism, so the code and its own documentation disagree.
+
+**The board's fix shape is "insert PENDING, then flip to DONE" — and it has a hole the board does not
+mention.** A crash between the insert and the flip leaves a **PENDING row that blocks that job for ever**, which
+is a worse failure than the one being fixed: the job would never run again for that (season, week, day) with no
+error and no way to recover. A PENDING status therefore needs a **staleness rule** — a claim older than N
+minutes is treated as abandoned and retried — and that is a design decision, not a two-line insert.
+
+### A2 — confirmed
+
+`JobRunner:124-130` returns on `FAILED`, and `JobRunRepository` has **no reset, delete or update method at
+all** — only three queries. Four places promise an operator can re-queue:
+
+- `JobRun:31` — *"an operator re-queues it explicitly"*
+- `JobRun:46` — *"Threw. Recorded and skipped; an operator re-queues it."*
+- `JobRunner:122` — *"the case where a job failed and has been re-queued"*
+- `GameClockScheduler:21` — *"a job that failed and was re-queued ... is picked up"*
+
+So the promise is made four times and the capability exists nowhere. And the consequence is the serious part: a
+`MatchdayJob` failure means **a whole matchday is never played and never retried**.
+
+### Why this stopped here rather than becoming a diff
+
+A1 and A2 are one design, not two: a claim-before-run protocol (A1) and a way to release or retry a claim (A2).
+Doing A1 alone introduces the permanent-PENDING failure described above. Doing A2 alone leaves the duplicate
+work. **They need to be designed together**, and the PENDING-staleness rule is the owner's call — it decides
+whether a slow job gets stolen from while it is still legitimately running.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
