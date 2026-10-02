@@ -117,16 +117,28 @@ public class JobRunner {
                 seasonYear, weekNumber, dayNumber, job.key());
 
         if (existing.isPresent() && existing.get().getStatus() == JobRun.Status.DONE) {
-            // The whole reason this class exists.
+            // The whole reason this class exists, and now the **only** thing that stops a re-run.
+            //
+            // It used to also stop on FAILED — "not retried automatically, a job that already threw once may
+            // have applied half its work". That was defensible on its own and wrong in practice: a FAILED
+            // guard is **terminal**, so one transient throw disabled that job for that (season, week, day) for
+            // good. A MatchdayJob that failed meant **a whole matchday was never played and never retried**.
+            // The owner, 2026-10-02: a job fires and must execute immediately; if it does not complete, the
+            // status is not DONE and the scheduler picks it up next time.
+            //
+            // The risk is real and is stated rather than hidden: a job that half-applied before throwing will
+            // be re-run, and half of it will be applied twice. That is now the owner's accepted trade — a
+            // permanently missed matchday is worse than a duplicate application, and a job that can
+            // half-apply should be written to be idempotent.
             outcome.put("status", "ALREADY_DONE");
             return outcome;
         }
-        if (existing.isPresent() && existing.get().getStatus() == JobRun.Status.FAILED) {
-            // Not retried automatically: a job that already threw once may have applied half its
-            // work, and re-running it blindly is how a double-apply happens.
-            outcome.put("status", "FAILED");
-            outcome.put("message", existing.get().getMessage());
-            return outcome;
+        // Not DONE means not done: this row is a previous attempt that did not complete, so the job runs
+        // again now. The message from the last attempt is kept for diagnosis and overwritten on success.
+        if (existing.isPresent()) {
+            log.info("Re-running {} for season {} week {} day {} after {}: {}",
+                    job.key(), seasonYear, weekNumber, dayNumber,
+                    existing.get().getStatus(), existing.get().getMessage());
         }
 
         JobRun record = existing.orElseGet(JobRun::new);

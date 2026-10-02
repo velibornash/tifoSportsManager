@@ -184,9 +184,25 @@ class JobRunnerTest {
         assertTrue(failed.getMessage().contains("boom"), "the reason must be diagnosable");
     }
 
+    /**
+     * A FAILED job is retried on the next scan (owner, 2026-10-02).
+     *
+     * <p><b>This test used to assert the opposite.</b> It read: *"a FAILED job is not retried automatically - a
+     * half-applied job must not run twice"*, and that was defensible reasoning on its own. It was wrong in
+     * practice, because a FAILED guard is terminal: one transient throw disabled that job for that
+     * (season, week, day) **for good**, and a MatchdayJob that failed meant a whole matchday was never played
+     * and never retried.
+     *
+     * <p>The owner's rule: a job fires and must execute immediately; if it does not complete, the status is
+     * not DONE and the scheduler picks it up next time.
+     *
+     * <p><b>The accepted cost, stated rather than hidden:</b> a job that half-applied before throwing will be
+     * re-run and half of it applied twice. A permanently missed matchday is worse, and a job that can
+     * half-apply should be written to be idempotent.
+     */
     @Test
-    @DisplayName("a FAILED job is not retried automatically - a half-applied job must not run twice")
-    void failureIsNotRetriedBlindly() {
+    @DisplayName("a FAILED job is retried on the next scan - only DONE is terminal")
+    void aFailedJobIsRetried() {
         AtomicInteger attempts = new AtomicInteger();
         DayJob broken = new DayJob() {
             @Override
@@ -220,7 +236,74 @@ class JobRunnerTest {
         runner.runDue(2025, 1, 1, 9);
         runner.runDue(2025, 1, 1, 10);
 
-        assertEquals(1, attempts.get(), "must not re-run a job that already failed");
+        assertEquals(2, attempts.get(),
+                "a job that failed must be picked up again - a terminal FAILED means a matchday is never "
+                        + "played and never retried");
+    }
+
+    /**
+     * The counterweight, and the property that makes the retry safe enough: <b>DONE still stops a re-run.</b>
+     *
+     * <p>Without this the retry would apply every job on every scan, which is the double-apply the old rule
+     * was protecting against.
+     */
+    @Test
+    @DisplayName("a DONE job is still not run again - DONE is the only terminal state")
+    void aDoneJobIsNotRunAgain() {
+        CountingJob once = job("once", DayJob.ANY_WEEK, DayJob.ANY_DAY, 9, 50);
+        JobRunner runner = runner(once);
+
+        runner.runDue(2025, 1, 1, 9);
+        runner.runDue(2025, 1, 1, 10);
+        runner.runDue(2025, 1, 1, 11);
+
+        assertEquals(1, once.runs().get(),
+                "a DONE job must never run twice, or every scan would apply every job again");
+    }
+
+    /**
+     * A job that fails and then succeeds is DONE afterwards, so it stops being retried.
+     */
+    @Test
+    @DisplayName("a job that fails and then succeeds becomes DONE and stops retrying")
+    void aRecoveredJobStopsRetrying() {
+        AtomicInteger attempts = new AtomicInteger();
+        DayJob recovers = new DayJob() {
+            @Override
+            public String key() {
+                return "recovers";
+            }
+
+            @Override
+            public int week() {
+                return ANY_WEEK;
+            }
+
+            @Override
+            public int day() {
+                return ANY_DAY;
+            }
+
+            @Override
+            public int hour() {
+                return 9;
+            }
+
+            @Override
+            public void run(JobContext context) {
+                if (attempts.incrementAndGet() == 1) {
+                    throw new IllegalStateException("transient");
+                }
+            }
+        };
+        JobRunner runner = runner(recovers);
+
+        runner.runDue(2025, 1, 1, 9);
+        runner.runDue(2025, 1, 1, 10);
+        runner.runDue(2025, 1, 1, 11);
+
+        assertEquals(2, attempts.get(),
+                "it should fail once, succeed on the retry, and then never run again");
     }
 
     @Test
