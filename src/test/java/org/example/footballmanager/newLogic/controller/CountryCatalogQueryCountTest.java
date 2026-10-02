@@ -9,6 +9,7 @@ import jakarta.persistence.EntityManager;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 
@@ -169,12 +170,30 @@ class CountryCatalogQueryCountTest extends BaseTest {
                         + "codes, it returned " + codesFromProjection + ". Either the clubs are not there "
                         + "or the projection is no longer distinct.");
 
-        // And the answer the endpoint gives must match the projection, not the club count.
-        long markedHasClubs = catalog.stream().filter(row -> Boolean.TRUE.equals(row.get("hasClubs"))).count();
-        assertEquals(codesFromProjection, markedHasClubs,
-                "the catalog marked " + markedHasClubs + " countries as having clubs but the projection "
-                        + "found " + codesFromProjection + ". The endpoint and its own query disagree, which "
-                        + "means the answer is not coming from the projection.");
+        // The endpoint's answer must come from its own projection — **compared over the codes both sides
+        // know about**.
+        //
+        // It compared the catalog's marked count against the projection's total, which only works in an
+        // empty database. The catalog is a fixed list of 48 codes; the projection returns every country
+        // that has clubs, including ones other test classes created. Run in the full suite they disagreed by
+        // exactly that much, and the test - which passes alone - was measuring a difference of scope rather
+        // than a bug.
+        java.util.Set<String> catalogCodes = catalog.stream()
+                .map(row -> String.valueOf(row.get("code")))
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> projectedInCatalog = teamRepository.findDistinctIsoCodesOfCountriesWithClubs()
+                .stream()
+                .map(code -> code.toUpperCase(Locale.ROOT))
+                .filter(catalogCodes::contains)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> markedInCatalog = catalog.stream()
+                .filter(row -> Boolean.TRUE.equals(row.get("hasClubs")))
+                .map(row -> String.valueOf(row.get("code")))
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(projectedInCatalog, markedInCatalog,
+                "the catalog marks " + markedInCatalog + " as having clubs, but its own projection found "
+                        + projectedInCatalog + ". The answer is not coming from the projection.");
 
     }
 

@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -108,10 +109,8 @@ class CupFixtureSeederCountryTest extends BaseTest {
 
         assertTrue(drawn > 0, "the cup drew nothing at all, so there is nothing to check");
 
-        List<MatchFixture> round1 = fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                cup.getId(), SEASON()).stream()
-                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
-                .toList();
+        Competition seederTarget = theCupTheSeederUsed();
+        List<MatchFixture> round1 = roundOneFixtures(seederTarget);
 
         assertTrue(!round1.isEmpty(), "round 1 recorded no fixtures");
 
@@ -147,10 +146,8 @@ class CupFixtureSeederCountryTest extends BaseTest {
 
         seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
 
-        List<MatchFixture> round1 = fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                cup.getId(), SEASON()).stream()
-                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
-                .toList();
+        Competition seederTarget = theCupTheSeederUsed();
+        List<MatchFixture> round1 = roundOneFixtures(seederTarget);
         assertTrue(!round1.isEmpty(), "round 1 recorded no fixtures");
 
         // Club i has rating 40+i, so a LOW index is a WEAK club: the weakest ENTRY_ROUND_TEAMS are
@@ -290,7 +287,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
 
         // Wipe the round and draw again from the same state.
         fixtures.deleteAll(fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                cup.getId(), SEASON()));
+                theCupTheSeederUsed().getId(), SEASON()));
         List<String> secondDraw = pairingsOf(drawAndRead(cup));
 
         assertFalse(firstDraw.isEmpty(), "the first draw produced no ties to compare");
@@ -342,16 +339,43 @@ class CupFixtureSeederCountryTest extends BaseTest {
 
     private List<MatchFixture> drawAndRead(Competition cup) {
         seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
-        return fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                        cup.getId(), SEASON()).stream()
-                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
-                .toList();
+        return roundOneFixtures(theCupTheSeederUsed());
     }
 
     private List<String> pairingsOf(List<MatchFixture> round) {
         return round.stream()
                 .map(f -> f.getHomeTeam().getId() + "v" + f.getAwayTeam().getId())
                 .sorted()
+                .toList();
+    }
+
+    /**
+     * The cup the seeder actually drew into.
+     *
+     * <p>{@code nationalCup()} returns the **lowest-id domestic cup in the whole database** — a known
+     * residual on B2, documented on the board. So a test that creates its own cup and calls the seeder cannot
+     * assume the seeder drew <i>that</i> cup: when another test class has created a domestic cup at a lower id
+     * first, the draw goes into that one and every assertion aimed at the wrong competition.
+     *
+     * <p>That is why these tests pass alone and fail in the full suite. A test that only works in an empty
+     * database is not a test; it is a measurement of running order.
+     *
+     * <p>So the assertion asks the seeder's own question and checks the answer rather than assuming its own
+     * cup won.
+     */
+    private Competition theCupTheSeederUsed() {
+        return competitions.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.CUP)
+                .filter(c -> c.getScope() != CompetitionScope.INTERNATIONAL)
+                .min(Comparator.comparing(Competition::getId))
+                .orElseThrow(() -> new IllegalStateException("no domestic cup exists for the seeder to draw"));
+    }
+
+    /** Round-1 fixtures of whichever cup the seeder used. */
+    private List<MatchFixture> roundOneFixtures(Competition cup) {
+        return fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        cup.getId(), SEASON()).stream()
+                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
                 .toList();
     }
 
