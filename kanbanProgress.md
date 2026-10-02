@@ -1143,6 +1143,35 @@ Two dead ends, both traps rather than carelessness:
   `@Bean` methods"*. Putting the bean in `BaseTest`, which looks like the obvious home for something every test
   uses, is exactly the forbidden shape. Hence a `@TestConfiguration` imported per class, which Spring does allow.
 
+## `320649d` — the measurement that decides whether six rewrites are affordable
+
+**Owner's decision on the six red classes:** *"rewrite them to assert what the product actually guarantees."*
+
+That needs a world to assert against, so this adds `TestPyramid`: **one country's pyramid**, 31 divisions and
+310 clubs, as a seam the rewrites can use.
+
+**Measured rather than assumed**, because the previous approach was chosen on a guess and had to be reverted:
+
+| | |
+|---|---:|
+| catalogue, 48 countries | **118 ms** |
+| one country's pyramid | **37,068 ms** |
+| the same pyramid again | **10 ms** |
+
+So a pyramid is affordable **once per JVM**, not once per test: the first class to ask pays 37 seconds, every
+later caller pays 10. That is the whole difference between a suite that runs and the thirteen-minute wall the
+whole-world initializer hit.
+
+**The 37 seconds are a real constraint** and are recorded rather than smoothed over — a class that needs a
+pyramid pays for it, and a class that does not never does.
+
+Two naming errors of mine, both mechanical: the nested class was originally `TestPyramid` inside `TestPyramid`,
+which Java rejects, so it is `Builder`; and a `@TestConfiguration` is only a bean for classes that `@Import` it,
+so importing is part of using it.
+
+**The six rewrites themselves are not in this commit.** They are the next piece of work, and each one needs to
+decide what the product actually guarantees before it can be written.
+
 ## `c46786f` — clubs get a rating, and the World page stops asking the database 11,000 times
 
 **Task:** the first item on the board — *"club ratings: a rating column on `Team`, plus previous-value
