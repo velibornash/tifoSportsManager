@@ -67,26 +67,6 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     List<MatchFixture> findAllForTeam(@Param("teamId") Long teamId);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndPlayedFalse(Long competitionId, Integer seasonYear);
     List<MatchFixture> findBySeasonYearAndWeekNumber(Integer seasonYear, Integer weekNumber);
-
-    /**
-     * Every fixture of one round of one season - by round, not by week.
-     *
-     * <p>Added for D1. Four request paths in {@code SimulationController} asked
-     * {@code findAll()} and then filtered {@code (seasonYear, roundNumber)} in Java, which is the whole
-     * fixture table of every season in the world read to answer a question about one round of one.
-     *
-     * <p><b>Named for the column, because the two are not the same and conflating them is the trap.</b>
-     * {@code roundNumber} is a round within a league's own season (1..18 for a double round robin);
-     * {@code weekNumber} is the game week, and {@code LeagueSlotSchedule} puts <b>two rounds in each
-     * week</b> — rounds 1-10 fill weeks 1-5, 11-18 fill weeks 7-10, and weeks 6, 11 and 12 hold the
-     * mid-season window, the playoff and the break. The existing {@code findBySeasonYearAndWeekNumber}
-     * is therefore <b>not</b> a substitute for this method, and swapping one for the other would
-     * change what these four endpoints return rather than merely making them cheaper.
-     *
-     * <p>What the callers do with the result is unchanged: every other predicate they apply in Java
-     * stays in Java, so this is a narrowing of the load and not a change of meaning.
-     */
-    List<MatchFixture> findBySeasonYearAndRoundNumber(Integer seasonYear, Integer roundNumber);
     Optional<MatchFixture> findByHomeTeamIdAndAwayTeamIdAndSeasonYearAndRoundNumber(Long homeTeamId, Long awayTeamId, Integer seasonYear, Integer roundNumber);
 
     List<MatchFixture> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);

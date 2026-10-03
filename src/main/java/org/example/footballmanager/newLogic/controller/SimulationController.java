@@ -84,9 +84,10 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> simulateCurrentRound(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int currentDay = clock.getCurrentDay() != null ? clock.getCurrentDay() : GameDay.FIRST;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay).stream()
                 .filter(f -> !f.isPlayed())
                 .filter(f -> f.getHomeTeam() != null && f.getAwayTeam() != null)
                 .sorted(Comparator.comparing((MatchFixture f) -> f.getCompetition() == null ? Long.MAX_VALUE : f.getCompetition().getId())
@@ -219,6 +220,7 @@ public class SimulationController {
     public ResponseEntity<Map<String, Object>> advanceWeek(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int currentDay = clock.getCurrentDay() != null ? clock.getCurrentDay() : GameDay.FIRST;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         // Only check user's league fixtures — other leagues can continue in background
@@ -230,7 +232,7 @@ public class SimulationController {
                 userLeagueName = userTeam.getCompetition().getName();
             }
         }
-        List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek);
+        List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay);
         String finalUserLeagueName = userLeagueName;
         List<MatchFixture> userFixturesForWeek = userLeagueName != null
                 ? allFixturesForWeek.stream()
@@ -348,9 +350,10 @@ public class SimulationController {
 
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int currentDay = clock.getCurrentDay() != null ? clock.getCurrentDay() : GameDay.FIRST;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay).stream()
                 .filter(fixture -> !fixture.isPlayed())
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .filter(fixture -> Objects.equals(fixture.getHomeTeam().getId(), team.getId())
@@ -422,9 +425,10 @@ public class SimulationController {
     private Map<String, Object> buildFallbackFeed(User user) {
         GameClock clock = seasonService.getOrCreateClock();
         int currentWeek = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int currentDay = clock.getCurrentDay() != null ? clock.getCurrentDay() : GameDay.FIRST;
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
-        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndRoundNumber(seasonYear, currentWeek).stream()
+        List<MatchFixture> fixtures = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay).stream()
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .sorted(Comparator.comparing((MatchFixture f) -> f.getCompetition() == null ? Long.MAX_VALUE : f.getCompetition().getId())
                         .thenComparing(MatchFixture::getMatchDate, Comparator.nullsLast(LocalDateTime::compareTo)))

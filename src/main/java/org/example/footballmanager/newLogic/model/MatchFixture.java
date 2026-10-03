@@ -17,18 +17,20 @@ import java.time.LocalDateTime;
 @Entity(name = "MatchFixture")
 @Table(name = "match_fixture",
         indexes = {
-                @Index(name = "ix_match_fixture_season_week_day", columnList = "season_year,week_number,day_number,played"),
-                // For `findBySeasonYearAndRoundNumber`, which four request paths in SimulationController
-                // ask on every click. The index above already starts on season_year, so these queries
-                // could use its leading column — but they filter on round_number too, which that index
-                // does not contain, so Postgres falls back to a Seq Scan. Measured on a Serbian world
-                // (2,790 fixtures): 0.51 ms without this, 0.14 ms with it, and 155 rows instead of the
-                // 2,790 that findAll() materialised.
+                // (season_year, week_number, day_number, played) — eight repository methods key on this
+                // triple and the hourly job calls them every hour. The identical triple is indexed on
+                // job_run: the bookkeeping table got it and the data table did not.
                 //
-                // <b>This index is what the round-vs-week question decides.</b> If those endpoints should
-                // answer for the game's WEEK rather than the league's ROUND, this is the wrong index and
-                // the existing season/week/day one already serves them — see the board.
-                @Index(name = "ix_match_fixture_season_round", columnList = "season_year,round_number"),
+                // <b>This index also serves the four "current matchday" request paths</b>, which is why
+                // there is no index on round_number. There was one, and it was wrong: those endpoints
+                // were filtering on round_number while the counter on the clock is a week, so in week 3
+                // they fetched round 3 — which is week 2's football — and skipped rounds 5 and 6, and
+                // rounds 13-18 were never reached at all because the clock stops at week 12. Owner ruled
+                // (2026-10-03): one press plays one matchday. Day 3 and day 7 are league, day 1 is
+                // international and day 5 is cup, so (season, week, day) is the axis that says which
+                // football is due, and this index already serves it exactly. Dropped, and asserted
+                // dropped, because an index that is removed and comes back is not a removal.
+                @Index(name = "ix_match_fixture_season_week_day", columnList = "season_year,week_number,day_number,played"),
         })
 public class MatchFixture {
 

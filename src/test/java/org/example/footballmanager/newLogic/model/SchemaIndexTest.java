@@ -129,9 +129,10 @@ class SchemaIndexTest extends BaseTest {
                         + "seeding pass of the world's squads asks it 48 times, and unindexed each one scans "
                         + "every club in the world.");
 
-        assertTrue(indexNamesOn("MATCH_FIXTURE").stream().anyMatch(n -> n.equals("IX_MATCH_FIXTURE_SEASON_ROUND")),
-                "match_fixture has no (season_year, round_number) index. Four request paths filter on those two "
-                        + "columns and the existing season/week/day index cannot seek on round_number, so they "
-                        + "fall back to reading the whole fixture table.");
+        assertTrue(indexNamesOn("MATCH_FIXTURE").stream()
+                        .anyMatch(n -> n.equals("IX_MATCH_FIXTURE_SEASON_WEEK_DAY")),
+                "match_fixture has no (season_year, week_number, day_number, played) index. It serves both the "
+                        + "eight repository methods that key on that triple and the four current-matchday request "
+                        + "paths, which ask (season, week, day) because one press plays one matchday.");
     }
 }

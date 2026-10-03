@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.controller;
 
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.GameDay;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Team;
@@ -26,9 +27,11 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,13 +80,13 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
     @DisplayName("simulate-all asks for one round and never reads the whole fixture table")
     void simulateAllAsksForOneRound() {
         MatchFixtureRepository fixtures = Mockito.mock(MatchFixtureRepository.class);
-        when(fixtures.findBySeasonYearAndRoundNumber(any(), any())).thenReturn(List.of());
+        when(fixtures.findBySeasonYearAndWeekNumberAndDayNumber(any(), any(), any())).thenReturn(List.of());
 
         SimulationController controller = controllerWith(fixtures);
         controller.simulateCurrentRound(null);
 
         verify(fixtures, never()).findAll();
-        verify(fixtures, atLeastOnce()).findBySeasonYearAndRoundNumber(any(), any());
+        verify(fixtures, atLeastOnce()).findBySeasonYearAndWeekNumberAndDayNumber(any(), any(), any());
     }
 
     @Test
@@ -100,11 +103,12 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
         // simulation is run and the clock is not touched, so the measurement costs nothing but the read.
         var clock = seasons.getOrCreateClock();
         Integer season = clock.getCurrentSeason();
-        int round = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int week = clock.getCurrentWeek() != null ? clock.getCurrentWeek() : 1;
+        int day = clock.getCurrentDay() != null ? clock.getCurrentDay() : 1;
 
         MatchFixtureRepository fixtures = Mockito.mock(MatchFixtureRepository.class);
-        when(fixtures.findBySeasonYearAndRoundNumber(any(), any()))
-                .thenReturn(List.of(unplayedFixture(season, round)));
+        when(fixtures.findBySeasonYearAndWeekNumberAndDayNumber(any(), any(), any()))
+                .thenReturn(List.of(unplayedFixture(season, week, day)));
 
         SimulationController controller = controllerWith(fixtures);
         var response = controller.advanceWeek(null);
@@ -118,7 +122,58 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
                         + ". A query scoped too narrowly would report a round nobody has to play.");
 
         verify(fixtures, never()).findAll();
-        verify(fixtures, atLeastOnce()).findBySeasonYearAndRoundNumber(any(), any());
+        verify(fixtures, atLeastOnce()).findBySeasonYearAndWeekNumberAndDayNumber(any(), any(), any());
+    }
+
+    /**
+     * The ruling: one press plays <b>one matchday</b>, not one round and not a whole week.
+     *
+     * <p>This is the test that could not have been written before the owner ruled, and it pins the
+     * thing that was actually wrong rather than the thing that was merely slow. The four endpoints
+     * read the clock's <b>week</b> and used it as a <b>round</b> number, and in a league that plays two
+     * rounds a week those are not the same thing:
+     *
+     * <pre>
+     *   game week 1 -> rounds 1, 2      game week 6  -> nothing (mid-season window)
+     *   game week 2 -> rounds 3, 4      game week 7  -> rounds 11, 12
+     *   game week 3 -> rounds 5, 6      game week 10 -> rounds 17, 18
+     * </pre>
+     *
+     * <p>So in week 3 they fetched round 3 — week 2's football — skipped rounds 5 and 6, and rounds
+     * 13 to 18 were never reached at all because the clock stops at week 12. Measured on the seeded
+     * Serbian world: week 3 returned round 3 where the week really holds 5 and 6, and week 6 returned a
+     * fixture on a day deliberately left empty for the national-team pause.
+     *
+     * <p><b>Day 3 and day 7 are league, day 1 is international and day 5 is cup</b>, so (season, week,
+     * day) is the axis that says which football is due — and it is the axis the existing
+     * {@code ix_match_fixture_season_week_day} index already serves, which is why no index on
+     * {@code round_number} was wanted.
+     */
+    @Test
+    @Transactional
+    @DisplayName("the endpoints ask for a matchday by week AND day, never by round")
+    void theEndpointsAskForAMatchdayNotARound() {
+        MatchFixtureRepository fixtures = Mockito.mock(MatchFixtureRepository.class);
+        when(fixtures.findBySeasonYearAndWeekNumberAndDayNumber(any(), any(), any())).thenReturn(List.of());
+
+        controllerWith(fixtures).simulateCurrentRound(null);
+
+        var asked = mockingDetails(fixtures).getInvocations().stream()
+                .filter(i -> i.getMethod().getName().equals("findBySeasonYearAndWeekNumberAndDayNumber"))
+                .toList();
+        assertTrue(!asked.isEmpty(),
+                "the controller asked for fixtures without naming a day. One press plays one matchday, and a "
+                        + "week holds two of them.");
+        verify(fixtures, never()).findAll();
+
+        // The day it asked for has to be the day the clock is on, not the day it defaults to.
+        var clock = seasons.getOrCreateClock();
+        int expectedDay = clock.getCurrentDay() != null ? clock.getCurrentDay() : GameDay.FIRST;
+        int askedDay = (Integer) asked.get(0).getArgument(2);
+        assertEquals(expectedDay, askedDay,
+                "the controller asked for day " + askedDay + " and the clock is on day " + expectedDay
+                        + ". Asking for the wrong day is the same defect as asking by round: it plays the "
+                        + "wrong football.");
     }
 
     // --- wiring ---
@@ -144,7 +199,15 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
 
     // --- fixture ---
 
-    private MatchFixture unplayedFixture(Integer season, int round) {
+    /**
+     * A fixture sitting on a named game week and day.
+     *
+     * <p>Week and day are separate arguments on purpose. The controller asks for
+     * {@code (season, week, day)} and nothing else, so a fixture built with the week in its round
+     * column — which is what this helper used to do — is invisible to it. That is the defect the test
+     * exists to catch, and a fixture that could not be seen would have made it vacuous.
+     */
+    private MatchFixture unplayedFixture(Integer season, int week, int day) {
         Competition competition = new Competition();
         competition.setName("ZZ Fixture Scope " + UUID.randomUUID());
         competition.setType(CompetitionType.LEAGUE);
@@ -156,9 +219,9 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
         fixture.setHomeTeam(aTeam("ZZ Home " + UUID.randomUUID()));
         fixture.setAwayTeam(aTeam("ZZ Away " + UUID.randomUUID()));
         fixture.setSeasonYear(season);
-        fixture.setRoundNumber(round);
-        fixture.setWeekNumber(round);
-        fixture.setDayNumber(3);
+        fixture.setRoundNumber(1);
+        fixture.setWeekNumber(week);
+        fixture.setDayNumber(day);
         fixture.setPlayed(false);
         return fixture;
     }
