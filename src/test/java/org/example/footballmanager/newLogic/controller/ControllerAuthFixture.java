@@ -149,7 +149,14 @@ private static String randomIsoCode() {
             // not one.
             cTeam = csTeams.save(cTeam);
             user.setCTeam(cTeam);
-            user.setTifoCTeam(cTeam);
+            // **Only cTeam, deliberately.** `PlusFeatureService.viewerTeamId` checks `tifoCTeam` FIRST and
+            // returns `getTifoCTeam().getId()` -- and `CTeam` is a different entity with its own id
+            // sequence, so that value is not a `Team` id. Setting both here made every ownership check that
+            // goes through `viewerTeamId` fail, which showed up as a manager being refused his own club.
+            //
+            // It is not a fixture artefact to be shrugged off: `DatabaseInitializer` and `StartupInitializer`
+            // both set the **owner's** `tifoCTeam`, so the owner really does get a `CTeam` id back from
+            // `viewerTeamId`. Recorded as P0-18.
         }
         return "Bearer " + jwtUtil.generateToken(users.save(user));
     }

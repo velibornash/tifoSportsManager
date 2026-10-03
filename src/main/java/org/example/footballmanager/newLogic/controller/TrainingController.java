@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.controller;
 
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Training;
+import org.example.footballmanager.newLogic.dto.PlayerDTO;
 import org.example.footballmanager.newLogic.dto.training.PlayerTrainingGraphPointDTO;
 import org.example.footballmanager.newLogic.dto.training.PlayerTrainingReportDTO;
 import org.example.footballmanager.newLogic.dto.training.TrainingSetupDTO;
@@ -19,6 +20,7 @@ import org.example.footballmanager.newLogic.service.TrainingProgressionService;
 import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -121,21 +123,76 @@ public class TrainingController {
                 .orElseThrow(() -> new RuntimeException("Trening nije pronađen za igrača " + playerId));
     }
 
-    // Endpoint: Treniraj jednog igrača i vrati ga sa ažuriranim veštinama
+    /**
+     * Trains one player and answers with the same DTO every other player reader in the game uses.
+     *
+     * <p><b>This trained and returned any player in the world.</b> The id was taken at face value, no club
+     * was involved, and the raw {@code Player} went back out — carrying {@code talent}, {@code earnings},
+     * the injury record, {@code personality} and the {@code skills} object. That is the disclosure P0-1a
+     * closed on {@code /players/paged} and P0-1b found on {@code /players}, on a third surface nobody had
+     * looked at.
+     *
+     * <p><b>The ownership rule already existed in this file.</b> {@code setIntensity}, forty lines below,
+     * documents the refusal it makes: <i>"a player who does not play for this club is a 403, not a bad
+     * request, because the request is well formed and the manager simply is not allowed to make it."</i> And
+     * {@code plusFeatures} was already injected to make exactly that check. So the rule was written, and
+     * applied to one route out of two.
+     */
     @PostMapping("/train/{playerId}")
-    public Player trainPlayer(@PathVariable Long playerId) {
-        Optional<Player> optionalPlayer = playerRepository.findById(playerId);
-        if (optionalPlayer.isEmpty()) {
-            throw new RuntimeException("Player not found: " + playerId);
+    public ResponseEntity<PlayerDTO> trainPlayer(@PathVariable Long playerId,
+                                                 @AuthenticationPrincipal User principal) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND",
+                        "Player not found: " + playerId));
+
+        if (!mayTrain(principal, player)) {
+            throw new AccessDeniedException("You can only train players at your own club.");
         }
 
-        Player player = optionalPlayer.get();
         progressionService.trainPlayer(player);
-        return playerRepository.save(player);
+        Player saved = playerRepository.save(player);
+        Long viewerTeamId = plusFeatures.viewerTeamId(principal);
+        return ResponseEntity.ok(PlayerDTO.from(saved, 0, null,
+                plusFeatures.talentOrNull(saved, principal, viewerTeamId)));
     }
 
-    // Endpoint: Treniraj sve igrače u sistemu
+    /**
+     * May this caller train this player?
+     *
+     * <p>The player's <b>club</b> is the thing checked, not the player's id — the id is in the path and is
+     * therefore the caller's to choose. Fails closed: no principal, no club on the player, or a club the
+     * caller does not run are all "not yours".
+     *
+     * <p>The owner is let through, because a fix that locks the owner out of his own game is worse than
+     * the hole it closes.
+     */
+    private boolean mayTrain(User principal, Player player) {
+        if (principal == null || player == null) {
+            return false;
+        }
+        if (principal.getRole() != null && principal.getRole().name().equals("OWNER")) {
+            return true;
+        }
+        return plusFeatures.isOwnPlayer(player, plusFeatures.viewerTeamId(principal));
+    }
+
+    /**
+     * Trains every player in the world.
+     *
+     * <p><b>An administrator action, and an operator escape hatch.</b> It used to be reachable by any
+     * logged-in manager: {@code findAll()} plus {@code saveAll()} over every player in the database —
+     * roughly 300,000 rows at the scale this project targets — on a request thread.
+     *
+     * <p>It has <b>zero callers</b>: not in {@code static/js}, not in {@code src/main}, not in one test. The
+     * game's training runs through day 4's {@code TrainingJob} and through
+     * {@code POST /training/weekly/team/{teamId}/run}, which is what the training screen actually calls.
+     *
+     * <p><b>So it is guarded, not deleted — by the owner's decision</b>, and the deletion question is
+     * recorded on the board rather than settled here. A role guard answers "who may"; it does not answer
+     * "should this exist at all", and this is the most expensive request in the game with nothing to buy.
+     */
     @PostMapping("/train-all")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     public Map<String, Object> trainAllPlayers() {
         // **It reports; it does not return the world.**
         //

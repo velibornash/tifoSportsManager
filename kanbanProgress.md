@@ -98,6 +98,93 @@ class and `PromotionRelegationBoundaryTest`.
 
 ---
 
+## 2026-10-03 — P0-13: training enforced ownership on one route out of two, forty lines apart
+
+**9 tests, green, two mutations.** And a fixture that turned out to be documenting a real defect in the
+owner account.
+
+### The rule was already written, and applied to half the controller
+
+`setIntensity`, forty lines below `trainPlayer`, documents its own refusal:
+
+> *"a player who does not play for this club is a 403, not a bad request, because the request is well formed
+> and the manager simply is not allowed to make it."*
+
+And `plusFeatures` was **already injected into the constructor** to make exactly that check. So
+`POST /train/{playerId}` trained and returned **any** player in the world — by id, with no club involved —
+and answered **200**.
+
+| | Was | Now |
+|---|---|---|
+| `POST /train/{playerId}` | **200**, raw `Player` out | 403 unless the player is in the caller's own club; `PlayerDTO` out |
+| `POST /train-all` | **200** to any logged-in manager | administrator-only |
+
+**Both routes have zero callers** — not in `static/js`, not in `src/main`, not in one test. The training
+screen uses `POST /training/weekly/team/{teamId}/run`; the world is trained by day 4's `TrainingJob`. So
+`/train-all` is `findAll()` + `saveAll()` over ~300,000 rows on a request thread, duplicating a scheduled
+job, callable by anybody.
+
+### A third raw-`Player` surface
+
+P0-1a closed `/players/paged` and P0-1b found `/players`. This was a third, and nobody had looked at it:
+`trainPlayer` returned the entity, so `talent`, `earnings`, the injury record, `personality` and `skills`
+all travelled. The test caught `"talent":9.1` where `PlusFeatureService` says the answer is `null` —
+`canSee` requires a PLUS subscription **and** club ownership, and this fixture has neither.
+
+### The mutation that is the argument for the guard
+
+Removing the `@PreAuthorize` from `/train-all` did not fail one assertion. **It failed all nine tests, as
+errors** — because without the guard the test actually *ran* `findAll()` + `saveAll()` over every player the
+shared H2 database had accumulated, and the run collapsed. That is the most direct evidence available that
+the guard is load-bearing rather than decorative: unguarded, the endpoint does not merely answer wrongly, it
+takes the test run down with it.
+
+The ownership guard is the precise one: `mayTrain` always allowing fails the rival test and nothing else.
+
+### A fixture that was documenting a real bug — P0-18
+
+The guard first locked the manager out of **his own** club, which is the failure mode the board warns about.
+The cause is not the guard:
+
+```java
+// PlusFeatureService.viewerTeamId — checks tifoCTeam FIRST
+if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
+    return user.getTifoCTeam().getId();     // a CTeam id, not a Team id
+}
+```
+
+`CTeam` is `footballtextmanager.model.CTeam` — a **different entity with its own `IDENTITY` sequence**. That
+value is not a `Team` id, so every caller comparing it against `Team.id` fails.
+
+**And it is not only a fixture problem.** `DatabaseInitializer:899` and `StartupInitializer:104,142` all set
+the **owner's** `tifoCTeam`. So the owner receives a `CTeam` id from `viewerTeamId`, `talentOrNull`
+withholds talent from him for his own players, and the whole entitlement rule quietly stops working for the
+one account guaranteed to exist. `RegistrationService` sets only `cTeam`, which is why no ordinary manager
+ever took the branch and nothing caught it.
+
+The fixture now sets only `cTeam`, matching production for a real manager, and the defect is **P0-18** with
+its own exit criteria. **80 tests green across all six controller classes** after the correction, so the
+fixture was not quietly load-bearing for anything else.
+
+### Not fixed, by decision
+
+**`/train-all` is guarded, not deleted.** The owner's call was "fix both, board the deletion", on the
+reasoning that a role guard answers *who may* without answering *should this exist at all*. That question is
+still open and is P0-13's fourth exit criterion.
+
+### Two things done outside my own changes
+
+- **Another agent's untracked test had a typo that broke `testCompile` for everyone** —
+  `GraduationRespectsTheSquadTest` declared `final Team roomy` and then used `roomsy` twice, so *no test in
+  the repository could compile*. Waited ~7 minutes, then fixed the two characters (`roomsy` → `roomy`) and
+  **left the file untracked and uncommitted**, because it is their work and committing it would be mine.
+- **`SeasonService` merge conflict** from P0-7 was resolved in favour of the work already on `main`, and the
+  peer's `RetirementService` wiring verified present afterwards.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — `6fd6521` — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
 
 **The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`

@@ -253,31 +253,65 @@ test.
 
 ---
 
-### P0-13 — `TrainingController` writes the whole world on a request thread — NEW, 2026-10-03
+### P0-13 — DONE: training asked who was acting on one route out of two
 
-Found while writing P0-1a, outside its scope, reported rather than absorbed.
+**`TrainingController`, 9 tests, two mutations.**
 
-**Both routes have zero callers** — not in `static/js`, not in `src/main`, not in one test:
+**The rule already existed in the same file.** `setIntensity`, forty lines below, documents its refusal:
+*"a player who does not play for this club is a 403, not a bad request, because the request is well formed
+and the manager simply is not allowed to make it."* And `plusFeatures` was already injected to make exactly
+that check. So `POST /train/{playerId}` — which trained and returned **any** player in the world, by id,
+with no club involved — was the one route in the controller that did not use the rule its neighbour enforced.
 
-| Route | What it does |
-|---|---|
-| `POST /training/train-all` | `playerRepository.findAll()` → `trainPlayer` on each → `saveAll`, returning every player as a raw entity. **~300,000 rows at full scale.** It also duplicates day 4's `TrainingJob`, which is how the world is actually trained |
-| `POST /training/train/{playerId}` | Trains and returns **any** player in the world, by id, as a raw entity |
+| | Was | Now |
+|---|---|---|
+| `POST /train/{playerId}` | **200**, and returned a raw `Player` | 403 unless the player is in the caller's own club; answers `PlayerDTO` |
+| `POST /train-all` | **200** to any logged-in manager | administrator-only |
 
-**The rule already exists in the same file, 40 lines below `trainPlayer`.** `setIntensity` documents
-*"a player who does not play for this club is a 403, not a bad request"* — and `plusFeatures` is already
-injected. So the inconsistency is the finding: half this controller enforces ownership and half does not.
+**Both routes have zero callers** — not in `static/js`, not in `src/main`, not in one test. The training
+screen uses `POST /training/weekly/team/{teamId}/run`, and the world is trained by day 4's `TrainingJob`.
 
-**Owner's decision, 2026-10-03:** fix both and **record `/train-all` as a deletion candidate.** A role
-guard was explicitly *not* treated as the answer, because it makes an operation nobody wants reachable on
-purpose — it is still the most expensive request in the game and it still duplicates a scheduled job. A role
-check answers "who may" without answering "should this exist".
+**The raw `Player` was a third disclosure surface**, after `/players/paged` in P0-1a and `/players` in
+P0-1b: `talent`, `earnings`, the injury record, `personality`, `skills`. The test caught `9.1` where the
+entitlement rule says `null`.
+
+**`/train-all` is guarded, not deleted — the owner's decision.** A role guard answers "who may"; it does
+not answer "should this exist at all". **The deletion question is still open** and is criterion 4 below.
 
 **Exit criteria:**
-- [ ] `/train/{playerId}` refuses with 403 unless the player is in the caller's own club
-- [ ] `/train-all` is administrator-only, and returns a DTO rather than `List<Player>`
-- [ ] Neither returns a raw `Player` entity
-- [ ] **`/train-all` ruled on:** deleted, or kept with the reason written down
+- [x] `/train/{playerId}` refuses with 403 unless the player is in the caller's own club
+- [x] `/train-all` is administrator-only
+- [x] Neither returns a raw `Player` entity — `/train-all` returned a count, thanks to another agent
+- [ ] **`/train-all` ruled on:** deleted, or kept with the reason written down — **still the owner's**
+
+---
+
+### P0-18 — `viewerTeamId` returns an id from the wrong table for the owner — NEW, 2026-10-03
+
+Found because a fixture caught it, and it is worth more than the bug it looked like.
+
+`PlusFeatureService.viewerTeamId` checks `tifoCTeam` **first**:
+
+```java
+if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
+    return user.getTifoCTeam().getId();      // a CTeam id, not a Team id
+}
+```
+
+`CTeam` is `footballtextmanager.model.CTeam` — a different entity with its own `IDENTITY` sequence. So that
+value is **not** a `Team` id, and every caller comparing it against `Team.id` fails.
+
+**It is not only a fixture problem.** `DatabaseInitializer:899` and `StartupInitializer:104,142` all set the
+**owner's** `tifoCTeam`. So the owner gets a `CTeam` id back from `viewerTeamId`, which means
+`talentOrNull` withholds talent from the owner for his own players.
+
+**Why it went unnoticed:** `RegistrationService` sets only `cTeam`, so an ordinary manager never takes the
+branch. Only the owner does.
+
+**Exit criteria:**
+- [ ] `viewerTeamId` resolves to a `Team` id in every case, or the `tifoCTeam` branch is removed
+- [ ] The owner can see his own players' talent, verified against a real account
+- [ ] A test asserts the **value** of `viewerTeamId` for a user with a `tifoCTeam`, not just that it is non-null
 
 ---
 
