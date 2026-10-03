@@ -331,6 +331,77 @@ look rather than to act on my own summary.
 
 ---
 
+## 2026-10-03 — P0-18: the owner's own players' talent, withheld by an id from another table
+
+**One method, one branch, and the only account guaranteed to exist was the one that took it.**
+6 tests green, mutation-proven, 98 green with the six controller authorization classes.
+
+### The defect
+
+```java
+public Long viewerTeamId(User user) {
+    if (user == null) return null;
+    if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
+        return user.getTifoCTeam().getId();      // a CTeam id
+    }
+    String name = clubNameOf(user);
+    ...
+}
+```
+
+`CTeam` is `footballtextmanager.model.CTeam` — **a different entity with its own `IDENTITY` sequence.**
+Every caller compares this method's answer against `Team.id`, so for anyone holding a `tifoCTeam` the answer
+was wrong, and wrong *silently*: a plausible integer, just from another number space.
+
+### Why the owner, and why nobody noticed
+
+`DatabaseInitializer:899` and `StartupInitializer:104,142` all set the **owner's** `tifoCTeam`. So the one
+account guaranteed to exist took the branch, and `talentOrNull` withheld his own players' talent — the one
+thing a scouting subscription buys, and the thing `PlusFeatureService` exists to gate.
+
+`RegistrationService` sets **only** `cTeam`. So no ordinary manager ever reached the branch, every ordinary
+account behaved correctly, and the defect lived entirely in the account nobody tests.
+
+**And it could pass by coincidence.** In a small database the two id sequences can line up, which would make
+a "not null" assertion pass against the broken code. That is the only reason it survived, and it is why the
+test compares against the club's id rather than against non-nullness.
+
+### The mutation, which is the proof
+
+Restoring the short-circuit fails 2 of 6, and the failure names the defect exactly:
+
+```
+aTifoCTeamDoesNotDecideTheAnswer
+  viewerTeamId answered with the CTeam's id (17) where the club's id (1) was needed
+  expected: <1> but was: <17>
+
+theOwnerCanSeeHisOwnPlayersTalent
+  the owner's own player's talent was withheld, because viewerTeamId answered
+  with a CTeam id and isOwnPlayer compared it against Team.id
+```
+
+**The second one is the test that matters.** It asserts the *effect* through `talentOrNull`, not the
+intermediate id — so it would still hold if every caller were changed to stop using `viewerTeamId`, which an
+id assertion would not survive.
+
+### The fix is one branch, and the comment now says why it is gone
+
+`clubNameOf` already reads `cTeam` first and falls back to `tifoCTeam`, so resolving by name alone serves
+both fields. The javadoc carries the reasoning, because the branch looked deliberate and somebody will
+otherwise helpfully restore it.
+
+### A fixture parameter I added and then removed
+
+The CTeam helper originally took a second argument — an id chosen to differ from the club's — on the theory
+that the test could not then pass by coincidence. **It could not**, and the reason is the bug itself: the
+saved CTeam is handed whatever its own sequence produces, which is exactly how the real defect survived. What
+actually pins the assertion is comparing against `club.getId()`. The parameter was decoration, and decoration
+that claims to be a guard is worse than none.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-15: four profiles that named a club the world does not have, and twelve that it might
 
 **The tactics backup file is tracked in git, holds the only durable copy of a club's tactical-editor work,

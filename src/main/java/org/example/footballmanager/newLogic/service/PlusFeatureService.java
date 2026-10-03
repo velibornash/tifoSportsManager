@@ -146,13 +146,23 @@ public class PlusFeatureService {
      * <p>Exists as a method because three call sites each grew their own private copy of this lookup,
      * which is how the entitlement rule ended up implemented in several places at once. Fails closed:
      * an unknown user, or one with no club, gets null, and every gate treats null as "not mine".
+     *
+     * <p><b>It used to short-circuit on {@code tifoCTeam} and return that id directly</b>, which was a
+     * {@code CTeam} id — {@code CTeam} is {@code footballtextmanager.model.CTeam}, a different entity with
+     * its own {@code IDENTITY} sequence — returned from a method whose every caller compares it against
+     * {@code Team.id}. The two number spaces are unrelated, so the answer was wrong for anyone who had a
+     * {@code tifoCTeam}.
+     *
+     * <p><b>It was not a rare branch.</b> {@code DatabaseInitializer} and {@code StartupInitializer} all set
+     * the <b>owner's</b> {@code tifoCTeam}, so the one account guaranteed to exist took it, and
+     * {@code talentOrNull} silently withheld the owner's own players' talent. {@code RegistrationService}
+     * sets only {@code cTeam}, which is why no ordinary manager ever reached the branch and nothing caught
+     * it. Resolving by name alone handles both fields, because {@link #clubNameOf} reads {@code cTeam}
+     * first and falls back to {@code tifoCTeam}.
      */
     public Long viewerTeamId(User user) {
         if (user == null) {
             return null;
-        }
-        if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
-            return user.getTifoCTeam().getId();
         }
         String name = clubNameOf(user);
         if (name == null || name.isBlank()) {
