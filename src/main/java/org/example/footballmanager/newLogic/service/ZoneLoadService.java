@@ -144,12 +144,19 @@ public class ZoneLoadService {
         }
 
         int touched = 0;
-        for (Player player : players.findByLastPlayedAtIsNotNull()) {
-            if (player.getId() == null || !workedSinceWindow.containsKey(player.getId())) {
-                continue;
-            }
-            double work = workedSinceWindow.get(player.getId());
-            if (work <= 0.0) {
+        // **Only the players the map already names.** This used to ask
+        // findByLastPlayedAtIsNotNull() — every player who has ever played — and `continue` past
+        // everyone not in the map. The map was built on the line above, so the loop below already knows
+        // exactly who can be touched: loading the rest of the world to discover that it was going to
+        // skip them is 370,000 rows a day to recover the few thousand who actually turned up.
+        //
+        // The `lastPlayedAt` predicate is kept in the query rather than assumed from "these ids came
+        // from zone loads, so they must have played". That is true today and would be the sort of thing
+        // that stops being true; stated here, a violation is a missed player rather than a quietly
+        // recovered one.
+        for (Player player : players.findByIdInAndLastPlayedAtIsNotNull(workedSinceWindow.keySet())) {
+            Double work = workedSinceWindow.get(player.getId());
+            if (work == null || work <= 0.0) {
                 continue;
             }
             player.setMorale(player.getMorale() + 0.2);

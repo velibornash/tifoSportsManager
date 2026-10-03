@@ -25,6 +25,21 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     List<Player> findByLastPlayedAtIsNotNull();
 
     /**
+     * The named players who have actually played — recovery's population, asked for by id.
+     *
+     * <p>{@link #findByLastPlayedAtIsNotNull()} answers "every player who has ever played", and the
+     * daily recovery job wanted "the ones who played in the last two days" — so it loaded the whole
+     * answer and skipped the rest inside the loop. At the scale this project targets that is every
+     * player in the world, every game day, to recover the few thousand who actually turned up.
+     *
+     * <p><b>The predicate is kept rather than assumed.</b> "These ids came from zone loads, so they must
+     * have played" is true today and is the kind of thing that stops being true when some other code
+     * writes a zone load. Stating it in the query means a violation is a missed player rather than a
+     * quietly recovered one.
+     */
+    List<Player> findByIdInAndLastPlayedAtIsNotNull(Collection<Long> ids);
+
+    /**
      * Players who are actually tired — the only ones weekly recovery has anything to say about.
      *
      * <p>The sibling of {@link #findByLastPlayedAtIsNotNull()}, and it fixes the same mistake in the
