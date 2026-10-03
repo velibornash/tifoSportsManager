@@ -382,6 +382,17 @@ registration flow makes — so the test cannot pass against a message shape the 
 the applicant's name is **unique per run**, because the shared database does not roll back and a row left by
 an earlier run would let the assertion pass on stale data.
 
+### The merged tree could not load a Spring context, and it is not this work
+
+In `main` these two classes errored with `Failed to load ApplicationContext`, which cascaded into every other
+`@SpringBootTest` sharing that context. **19 green on the branch**, where another agent's uncommitted
+`MatchType` / `ExhibitionMatchService` work is absent, and the sources compile cleanly — so it is a runtime
+mapping error from that in-flight work, not a compile error and not mine.
+
+**Recorded rather than worked around**, because the temptation with a red suite is to stash somebody else's
+half-finished change and re-run until green, which is how a real regression gets attributed to the wrong
+commit. It will be re-verified in `main` once that work lands.
+
 **A full `mvn test` was not run**, so "green in a full run" does not count as met.
 
 ---
