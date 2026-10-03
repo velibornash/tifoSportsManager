@@ -19,6 +19,43 @@ import java.time.LocalDateTime;
 @RestControllerAdvice
 public class GlobalApiExceptionHandler {
 
+    /**
+     * A request that is missing a required parameter, or carries one it cannot read, is a <b>client</b>
+     * error.
+     *
+     * <p>It was arriving as a <b>500</b>, because neither type had a handler and both fell through to the
+     * catch-all below. That is the wrong signal twice over: the server did not break, and a frontend that
+     * checks {@code response.ok} cannot tell a malformed request from a real outage — which is the mistake
+     * this codebase has already made once, where loaders that did not check {@code ok} turned a 404 into a
+     * generic "API Error" card.
+     *
+     * <p>Found while testing {@code DELETE /transfers/remove/{playerId}}: omitting {@code teamId} logged
+     * {@code Unhandled exception ... Required request parameter 'teamId' is not present} and answered 500.
+     */
+    @ExceptionHandler({
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.http.converter.HttpMessageNotReadableException.class})
+    public ResponseEntity<ApiErrorResponseDTO> handleMalformedRequest(Exception ex, HttpServletRequest request) {
+        log.debug(
+                "Malformed request during {} {} (query={}): {}",
+                request.getMethod(),
+                request.getRequestURI(),
+                request.getQueryString(),
+                ex.getMessage()
+        );
+
+        ApiErrorResponseDTO body = new ApiErrorResponseDTO(
+                HttpStatus.BAD_REQUEST.value(),
+                "BAD_REQUEST",
+                ex.getMessage() != null ? ex.getMessage() : "The request could not be read.",
+                request.getRequestURI(),
+                LocalDateTime.now()
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleMissingStaticResource(NoResourceFoundException ex, HttpServletRequest request) {
         log.debug(

@@ -16,6 +16,203 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — `6fd6521` — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
+
+**The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`
+is in the entry above.
+
+### `StadiumSettingsController` — a guard on one route is not a guard on the controller
+
+`POST /image` has carried `PlusFeatureService.isOwnTeam` since it was written, with a comment explaining why:
+*"Without it any authenticated manager could overwrite a rival's ground."* **The same reasoning was never
+applied to the five routes beside it**, and all five answered **200** to a manager naming a rival's club:
+
+| Route | Was | Consequence |
+|---|---|---|
+| `POST /build` | 200 | expand, improve seats or roof a rival's ground — **costs money** |
+| `POST /training-facilities/{f}/upgrade` | 200 | a level of rival's gym — **costs money** |
+| `POST /maintenance` | 200 | set a rival's weekly pitch budget — **costs money** |
+| `POST /tickets` | 200 | re-price every tier of a rival's gate |
+| `POST /paint` | 200 | repaint a rival's ground |
+
+The same defect P0-1a closed on `TeamController`, same package, with the ownership helper **already injected
+into the constructor**. Reads stay open — a manager needs capacity and prices to decide whether to sign
+anyone — and the tests assert them 200 on purpose.
+
+### A green status that was not evidence, in miniature
+
+`StadiumBuildService.buildRoof` **refuses** when the roof costs more than the club has, and the controller
+wraps that refusal in a **200**, deliberately, with a comment saying a refusal is a normal answer. So a
+fixture club that could not afford a roof produced a 200 that built nothing, and
+
+```
+aManagerCanStillBuildHisOwnGround  his own build reported success and the ground has no roof
+```
+
+failed on the second half of its assertion for a reason that had nothing to do with authorization. **The
+only reason the difference was visible at all is that the money assertions read the stored ground back out
+of the database instead of trusting the status code.** Every such assertion in this class does now.
+
+That also made the *rival* tests stronger rather than weaker: once the fixtures could afford the work, the
+200s above became a manager genuinely putting a roof on somebody else's ground.
+
+### The other two: no defects, and that is a result worth writing down
+
+**`CommunityController`** (8 tests) and **`DummyDataController`** (8 tests) found **nothing**. Both are
+reported, because a security sweep that only ever reports holes says nothing about which surfaces were
+checked — and `DummyDataController` had no test at all.
+
+- `CommunityController` resolves every caller from the token and has no id in any path for a caller to
+  change. The one write takes a `recipientUserId`, which is a choice of recipient, not a claim over data.
+- `DummyDataController` is fabricated by definition, so its only real property is that `/demo/**` needs a
+  token — `/demo/service/ui/**` is on the permit list, the JSON tree is not, and nothing checked that.
+
+**A weak test was deleted rather than shipped.** The community class first carried a test asserting that the
+chat was reachable to a regular manager, on the grounds that the applicant filter was then the thing under
+test. It asserted nothing beyond non-nullness, so it was cut and the risk written up as **P0-17** instead.
+
+### Two findings recorded rather than fixed
+
+- **P0-16 — every `/demo` mapping has a literal `1` and no `@PathVariable`.** `/demo/teams/1/profile`
+  answers 200; `/demo/teams/57/profile` answers 404. Five frontend files call
+  `/demo/teams/${teamId}/profile`, so **every club except team 1 gets an empty screen**, and club 1 gets a
+  fabricated profile that looks real. Not fixable here — the board rules *"do not wire it to anything"* and
+  deleting the routes breaks five pages.
+- **P0-17 — `shouldHideFromNonAdmin`** is a single boolean deciding whether a pending applicant's username
+  and email reach the chat of every logged-in manager. Untested, and pinning it honestly needs a real
+  pending request rather than a test that asserts almost nothing.
+
+### Mutations
+
+| Mutation | Result |
+|---|---|
+| `StadiumSettingsController.mayManage` always allows | 6 of 14 fail — exactly the five writes plus the paint read-back |
+| `/demo/**` and `/community/**` added to the permit list | 8 of 16 fail — every anonymous test in both classes |
+
+**87 green** across all four P0-1b classes plus `TransferControllerAuthorizationTest`,
+`PitchMaintenanceServiceTest`, `AcademyQualityTest` and `TrainingFacilityServiceTest`.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
+## 2026-10-03 — P0-1b: the transfer market asked nothing about who was acting
+
+**`TransferController`, 14 mappings, ten of them writes, and the most severe finding in the whole P0
+segment.** 27 tests, green, two mutations proven able to fail.
+
+### Ten writes, one missing question
+
+Every write takes **the acting club as a caller-supplied parameter** — in the body for `list`, `buy`,
+`direct-buy`, `clear`, `accept-offer`, `reject-offers`; in the query for `interest`, `withdraw`, `remove`.
+`TransferService` can only compare that parameter against the seller, because it cannot know who holds the
+token. **So "is this your club?" was never asked anywhere on the surface.**
+
+The codebase already knew. `AdminController.forceUnlist` carries a javadoc explaining it lives under
+`/admin` *because* `/transfers` is not role-guarded, so putting it there "would let any authenticated user
+delist another club's player". The hole was written down in prose and left open, and the sentence describes
+exactly what happened.
+
+| Route | What any logged-in manager could do |
+|---|---|
+| `POST /list/{playerId}` | list **any** player in the world at **any** price |
+| `DELETE /remove/{playerId}` | delist **any** player |
+| `POST /buy/{playerId}` | spend **any** club's budget — the *buyer* is named in the body |
+| `POST /interest/{playerId}` | register interest as **any** club |
+| `/accept-offer`, `/reject-offers`, `/interest/{id}/clear` | act on **any** listing |
+
+**`POST /buy/{playerId}` is the only route in this repository where one manager can move another club's
+money.** `completeTransfer` checks "the club has the cash" against the buyer it was handed.
+
+### And on four of them, omitting the parameter turned the check off
+
+The seller guards read:
+
+```java
+if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) { throw 403; }
+```
+
+`actingTeamId == null` **skips the comparison entirely**. The guard was strictest when the caller could prove
+who they were and absent when they could not — exactly backwards. Four methods had hand-rolled this;
+`requireSeller`, in the same file, already had it right (null is a 400 `TEAM_REQUIRED`). All four now go
+through `requireSeller`, with a `Player`-taking overload added for the listing path.
+
+`POST /list` with no `teamId` listed any player at any price. `DELETE /remove` with no `teamId` delisted any
+player. `/reject-offers` and `/interest/{id}/clear` with no `teamId` rejected every live offer on somebody
+else's listing.
+
+### The rule applied
+
+**The club named in the request must be the club the caller runs** — `PlusFeatureService.isOwnTeam`, the
+same call `StadiumSettingsController` and `TeamController` already use. Not "the club named is the seller",
+which naming a rival satisfies.
+
+Two refusals kept distinct, because conflating them makes the API lie: **no club named is 400** (the request
+is incomplete — telling a caller who forgot a parameter that he may not do a thing he may be allowed to do is
+its own small lie) and **a club he does not run is 403**. Refusals are thrown as `AccessDeniedException` and a
+missing club as `ApiException`, so all ten handlers keep returning `TransferDTO` and nothing changes on
+success.
+
+Reads untouched and asserted as 200: the market page is for every manager, the country filter already defaults
+to the viewer's own, and the owner is explicit that signing a foreigner is allowed.
+
+### A mutation found a guard nothing could observe
+
+**Restoring the null bypass inside `requireSeller` left all 22 tests green.** The controller answers 400 for a
+missing club before the service is reached, so the bypass became unreachable over HTTP — and untested.
+
+A guard nothing can observe is not a guard. `TransferService` is public and is also called by the AI market
+and the matchday jobs, and those callers are not behind this controller. **Five tests now call the four
+service methods directly with the acting club omitted**, asserting the exception's **code** — `TEAM_REQUIRED`
+versus `FORBIDDEN` — because "it refused" is a weaker claim than "it refused for the stated reason". Under the
+mutation they now fail 4 of 27, with `the call was allowed, so the seller guard did not fire`.
+
+### Three of my own fixtures were wrong, and one nearly hid the defect
+
+- **The budget was never saved.** I set it on the returned entity and forgot `save()`. The purchase test then
+  passed for the *wrong reason*: refused with `TRANSFER_NOT_COMPLETED ... may no longer be able to afford it`,
+  which reads exactly like a correct authorization refusal and is actually an empty wallet. A test that
+  cannot fail is worse than no test.
+- **The listing had no offer on it.** `rejectOffers` and `acceptBestOffer` both ask `getOpenOfferTransfer`
+  first, which answers 409 when there is nothing to act on — so both tests would have passed against a
+  controller that never checked anything. And that ordering is itself a finding: **a 409 before the ownership
+  question** tells a stranger whether a player who is not his has live offers.
+- **Naming the seller in the buy test** produced `INVALID_TRANSFER: You cannot buy your own player` — a
+  correct refusal, and useless for proving anything. The point is a club that is neither the caller's nor the
+  seller's.
+
+### A missing required parameter was answering 500
+
+`DELETE /transfers/remove/{playerId}` with no `teamId` logged *"Unhandled exception … Required request
+parameter 'teamId' is not present"* and answered **500**. `GlobalApiExceptionHandler` had no handler for
+`MissingServletRequestParameterException`, `MethodArgumentTypeMismatchException` or
+`HttpMessageNotReadableException`, so all three fell to the catch-all. A malformed request is a client error;
+answering 500 twice lies — the server did not break, and a frontend that checks `response.ok` cannot tell a
+bad request from an outage. All three are 400 now.
+
+### Pre-existing, not mine — and it is a ready-made fix
+
+**`NegotiationServiceTest` fails 10/10** with `NoSuchElementException: No value present`, in its own
+`inWindow()` helper: `clockRepository.findAll().stream().findFirst().orElseThrow()`. The test database is
+empty and **boot writes nothing**, so there is no `GameClock` row.
+
+Confirmed pre-existing by stashing every change of mine and running the identical command at `0e40cfd`: the
+same 10 errors. I hit the identical trap an hour earlier and solved it by creating the row, so the fix is
+three lines — but this is **P0-2's** class to rewrite, not this task's, and it is recorded there rather than
+taken here.
+
+### Not done
+
+`StadiumSettingsController`, `DummyDataController` and `CommunityController` — P0-1b is not finished. The
+first of those is already known to check ownership on `/image` and not on `/tickets`, `/maintenance` or
+`/build`, all three of which spend the club's money.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
+---
+
 ## 2026-10-03 — `e16ec34` — P1-7c: the scorer counted goals VAR ruled out, and I reported a defect that was not there
 
 Two items, one fixed and one retracted.
