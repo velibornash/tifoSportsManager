@@ -24,6 +24,65 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `cc947a7` — B9: a job scheduled on a day that does not exist
+
+**The board's B9 said "day 6 has no job at all".** It does, and that part is a product decision rather
+than a defect. Writing a test for it turned up something else on the first run.
+
+### What the calendar promises
+
+`GameDay` is the game's own statement of each day, and the dashboard renders it:
+
+| Day | Kind | Job |
+|---:|---|---|
+| 1 | International | `matchday-international` 20:00 |
+| 2 | Finance | `finance` 10:00 |
+| 3 | League | `matchday-league-a` 19:00 |
+| 4 | Training | `training` 10:00 · `league-table-reconcile-a` 01:00 |
+| 5 | Cup | `matchday-cup` 18:00 |
+| **6** | **Form and morale** | **none** |
+| 7 | League | `matchday-league-b` 16:00 · `week-rollover` 23:00 · `season-rollover` 23:00 |
+
+Plus two `ANY_DAY` jobs: `day-opened` 00:00 and `recovery` 06:00.
+
+### The finding: day 8
+
+`league-table-reconcile-b` was pinned to `DAY_AFTER_SECOND_LEAGUE_MATCHDAY = 8`, under the comment
+**"Day 7 is the second league day, so this repairs the night after it."**
+
+**Day 8 does not exist.** `GameDay.LAST` is 7. So the job **had never fired**, and the day-7 matchday's
+results were never reconciled — by the job that exists to reconcile them. The comment states the intent
+perfectly and the constant cannot satisfy it, which is why nothing caught it: it reads correctly.
+
+**Day 1 of the following week is the day after day 7, and it is wrong here.** The job takes its season
+from the dispatch context — *"the season the runner dispatched in"* — and `WeekRolloverJob` fires at day 7
+hour 23, so by day 1 the context carries the **new** season and the job would rebuild tables created
+minutes earlier, leaving the week it was meant to repair unrepaired.
+
+So it runs on **day 7 at 22:00**, and both constraints are already fixed elsewhere in the codebase:
+**after** the 16:00 league match it repairs, and **before** the 23:00 week and season rollover that would
+move the season out from under it. `LeagueTableReconcileJob` takes an optional hour override for exactly
+this case; the day-4 instance keeps 01:00, which genuinely is the morning after day 3.
+
+### The test, and what it deliberately does not do
+
+`EveryGameDayHasAJobTest` is structural over the injected `List<DayJob>`, in the shape of
+`JobTriggerUniquenessTest` — **it asks what the application is, not what a document says.** Its third
+assertion found the day-8 bug on the first run.
+
+**It does not guess what day 6 should compute.** That is the owner's decision, and the test's job is to
+make the gap impossible to forget and to pin the rest of the week so a fix cannot be made by removing
+the promise instead of keeping it:
+
+- day 6 is asserted to have **nothing** on it, and the assertion says what to do when that stops being
+  true — *"day 6 now has [something] scheduled on it. That is the fix — so update this test and close B9's
+  second half on the board rather than deleting the assertion."*
+- the two `ANY_DAY` jobs are **excluded deliberately**: a squad recovering at 06:00 is not the day 6 the
+  calendar promises, and counting them would make the test pass against the broken week.
+- every other named day must have a job, and no job may sit on a day outside 1–7.
+
+3/3, and the day-8 assertion proven able to fail by putting `8` back.
+
 ## `5df1a88` — B3: the seeder that could never run again
 
 **The board's B3, and its own summary was accurate in every particular:** *"It persists the row at `:75`
