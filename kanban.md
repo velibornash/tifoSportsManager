@@ -414,18 +414,38 @@ P2 as a job to build.**
 
 ---
 
-### P0-7 — `findTier2Leagues()` is hardcoded to Serbia
+### P0-7 — DONE: the playoff path was the last place in the season that only knew about Serbia
 
-`SeasonService.java:1094`. Owner has already ruled: **an accident.** It filters on
-`"SRB".equalsIgnoreCase(...)`, so `buildPlayoffSummary` reports nothing for any of the other 47
-countries.
+**`295511b`'s successor, `see kanbanProgress.md`.** The board named one site; there were **three**.
 
-**Exit criteria:**
-- [ ] Scoped to the league's own country rather than a literal
-- [ ] `PromotionRelegationBoundaryTest` still documents why the boundary is where it is, and is updated to
-      cover a **non-Serbian** country — the existing test asserts the Serbia-only behaviour, so it must
-      change with the fix
-- [ ] Verified against a country that is not Serbia, not inferred
+**The fix needed no new plumbing.** Both callers already held the top flight —
+`buildPlayoffSummary(Competition superLiga, …)` and `ensurePlayoffWeekFixtures(Competition superLiga, …)` —
+so the country is read off the competition the caller passed. **The bug was never a missing parameter; it
+was a hardcoded string where a parameter should have been.**
+
+| Site | Was |
+|---|---|
+| `ensurePlayoffWeekFixtures` `:372` | asked for tier-2 leagues in `"SRB"` |
+| `findTier2Leagues()` `:1094` | filtered a Serbia-only list a **second** time |
+| `findSerbianLeagues()` `:1115` | the Serbia-only list itself |
+
+So of 48 countries, **47 had no promotion or relegation summary and no playoff fixtures**, and Serbia worked
+perfectly — which is exactly why the omission was invisible. The season rollover and the promotion ladder
+had already been made country-agnostic; the playoff path was the one the earlier fix missed.
+
+**A top flight with no country yields nothing rather than defaulting to Serbia.** The tempting fix — "if the
+country is null, assume SRB" — would put one country's playoff inside another's pyramid, which is worse than
+the bug. Asserted, so the fallback cannot come back.
+
+**Verification, and its limit.** `PyramidBuilder:151` sets `country` on every competition it creates and
+`CountryActivationService.activate()` builds through it, so an activated country's pyramid carries its
+country; the live database has **0 of 31** leagues with a null country. The test proves a non-Serbian country
+of exactly that shape gets both its summary and its fixtures.
+
+**But the live database is Serbia-only** — 31 leagues, 1 country, 0 non-Serbian top flights — so this was
+**not** run against a real activated foreign pyramid. The board asked for that and it is not met. Activating
+one writes ~7,750 player rows, and the board records that attempt as a 26-minute operation that committed
+nothing. **The owner's call, recorded rather than taken.**
 
 ---
 

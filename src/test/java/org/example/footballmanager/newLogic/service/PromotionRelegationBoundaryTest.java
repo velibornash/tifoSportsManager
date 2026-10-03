@@ -135,10 +135,17 @@ class PromotionRelegationBoundaryTest extends BaseTest {
     /**
      * Guarantee at least {@code wanted} Serbian tier-2 leagues.
      *
-     * <p>{@code findTier2Leagues} is hardcoded to Serbia and filters on tier 2, and the summary produces
-     * nothing at all without two of them — so the test creates what it needs rather than inheriting whatever
-     * the profile happens to hold. The PostgreSQL world has two; the H2 test profile has its own set, and an
-     * earlier version of this test that assumed two produced empty results and was wrong about the code.
+     * <p>The summary produces nothing at all without two of them, so the test creates what it needs rather
+     * than inheriting whatever the profile happens to hold. The PostgreSQL world has two; the H2 test
+     * profile has its own set, and an earlier version of this test that assumed two produced empty results
+     * and was wrong about the code.
+     *
+     * <p><b>Serbia is used here because this test is about the boundary, not the country.</b> It used to be
+     * used here because the lookup was hardcoded to Serbia — a reason recorded in a comment on
+     * {@link #aLeague} and now removed, because {@code findTier2Leagues} reads the country off the top
+     * flight. A country that is not Serbia is covered by
+     * {@code PlayoffIsScopedToTheTopFlightsCountryTest}; keeping this one on Serbia means a failure here is
+     * about the arithmetic rather than about the lookup.
      */
     private void ensureTier2LeaguesExist(int wanted) {
         while (serbianTier2Count() < wanted) {
@@ -156,12 +163,13 @@ class PromotionRelegationBoundaryTest extends BaseTest {
     }
 
     private Competition aLeague(String label, int tier, int teamsPerCompetition) {
-        // findTier2Leagues() is hardcoded to "SRB" (SeasonService:1083), so a summary for any other
-        // country silently reports nothing. That is a separate finding, on the board - the test uses
-        // Serbia because of it, not because it is testing Serbia.
-        //
         // Serbia already exists on the test profile and iso_code is unique, so it is looked up rather
         // than created. Creating it fails on the unique index.
+        //
+        // This used to carry a note that the tier-2 lookup was hardcoded to "SRB", so a summary for any
+        // other country silently reported nothing. That is fixed: the country now comes off the top
+        // flight. The note is gone rather than reworded, because leaving it would tell the next reader
+        // the lookup is still Serbia-shaped when it is not.
         Country country = countries.findByIsoCode("SRB").orElseGet(() -> {
             Country fresh = new Country();
             fresh.setName("Boundary Serbia");
