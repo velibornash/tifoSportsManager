@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.dto.MatchDTO;
 import org.example.footballmanager.newLogic.dto.MatchEventFlatDTO;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.model.event.MatchEvent.MatchEventType;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
@@ -257,7 +258,15 @@ public class MatchController {
             java.util.List<Map<String, Object>> events = mapper.readValue(match.getEventJson(), new TypeReference<java.util.List<Map<String, Object>>>() {});
             for (Map<String, Object> event : events) {
                 String type = String.valueOf(event.get("type"));
-                if (type != null && (type.contains("GOAL") || type.contains("CARD") || type.contains("INJURY") || type.contains("SUB"))) {
+                // **Explicit goal vocabulary, not `contains`.** This matched `type.contains("GOAL")`,
+                // which also caught `GOAL_KICK` — a restart, not a goal — and put it on the match report
+                // as a key moment. `isGoalRelated` rather than `countsAsGoal`, because a VAR overturn
+                // *is* a key moment and belongs on a match report even though it is nobody's goal; the
+                // old substring already included `VAR_GOAL_OVERTURNED`, so this changes nothing else.
+                if (MatchEventType.isGoalRelated(type)
+                        || type.contains("CARD")
+                        || type.contains("INJURY")
+                        || type.contains("SUB")) {
                     Map<String, Object> keyEvent = new java.util.LinkedHashMap<>();
                     keyEvent.put("minute", event.get("minute"));
                     keyEvent.put("type", type);

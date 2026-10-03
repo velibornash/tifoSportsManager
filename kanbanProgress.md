@@ -16,7 +16,140 @@ deliberately to check.
 
 ---
 
-## 2026-10-03 — `48c1116` — P1-7b: the per-tick log stopped being written, and it was 98% of the blob
+## 2026-10-03 — P1-7c: the scorer counted goals VAR ruled out, and I reported a defect that was not there
+
+Two items, one fixed and one retracted.
+
+### Fixed: a goal VAR ruled out was credited to a scorer
+
+`GoalEventRepository.isGoal` tested `type.contains("GOAL")`. That matched `GOAL_DISALLOWED` (15) and
+`VAR_GOAL_OVERTURNED` (15) as well as `GOAL` (297), so **30 credits for goals that do not exist** went
+into three things the owner reads: the league's top scorers, the league's top assists, and
+`LeagueMilestoneService`'s club top scorer and top assist.
+
+**It was never a product question.** I recorded it last time as one — *struck through, or not listed?* —
+and that was the wrong framing, because the engine has already answered it:
+
+```java
+// BallResultHandler.java:256 — VAR is asked BEFORE the goal is scored
+if (varService != null && !varService.checkGoal(scorerTeam, state.getBall().getPosition())) {
+    recorder.appendEvent(state.getMatchTicks(), "GOAL_DISALLOWED", overturnedMsg, state);
+    recorder.appendEvent(state.getMatchTicks(), "VAR_GOAL_OVERTURNED", ...);
+```
+
+A disallowed goal is in neither the scoreline nor the statistics. So the old rule produced a table whose
+goals did not add up to the league's — **a striker on 5 beside a team that scored 3.** No owner decision
+was needed; the table was contradicting the scoreline.
+
+### The real shape of the fix: three copies of "what is a goal"
+
+Changing the one predicate would have left the pattern in place, which is how it survived. The three
+call sites, all substring, all different:
+
+| Site | Was | Now |
+|---|---|---|
+| `GoalEventRepository.isGoal` — the scorer table | `contains("GOAL")` | `MatchEventType.countsAsGoal` |
+| `MatchController.extractKeyEvents` — the match report | `contains("GOAL") \|\| contains("CARD") \|\| …` | `isGoalRelated` / explicit card, injury, sub |
+| `SimReportMapper.isReportable` — what gets written | `contains("GOAL")` | `isGoalRelated` / `isVarDecision` |
+
+**`MatchController` is the narrow one, on purpose.** Its only change is that `GOAL_KICK` — a restart — is
+no longer a key moment. I first had it also add every `VAR_*` decision, then took that out: nothing in the
+defect asked for it, `VAR_GOAL_OVERTURNED` was already included by the old substring because it contains
+`GOAL`, and `extractKeyEvents` has **no test at all** — grepping the test tree finds nothing that touches
+it, `MatchDetailService`, `LeagueMilestoneService` or `StatsController`. A behaviour addition on an
+untested path is how a second defect gets in behind the first.
+
+**The definition now lives on `MatchEventType`**, the enum that owns the vocabulary, with three predicates
+and the reasoning attached:
+
+- **`countsAsGoal`** — a goal that stood, so it may be credited. `GOAL`, `VAR_GOAL_CONFIRMED`, `OWN_GOAL`,
+  `PENALTY_GOAL`. `GOAL_KICK` is excluded: it is a restart that contains the substring by accident, and
+  the old rule put it on the match report as a key moment.
+- **`isGoalRelated`** — a goal that stood *or* one VAR ruled out. For a match report, where an overturn
+  **is** the key moment. This is why the ruled-out entries are still written to the blob: they are the
+  audit trail that lets a reader see why a scorer's total is what it is. **Written and counted are
+  different questions**, and the earlier fix conflated them because the substring matched both.
+- **`isVarDecision`** — `VAR` or any `VAR_` prefix, so a VAR decision nobody has named still reaches the
+  report.
+
+All three fold case, dashes and spaces the same way, because `MatchDetailService.normalizeEventType`
+already did and the writer and the readers have to agree on what a type *is* before any of them compares
+it to anything.
+
+### The guard
+
+`RuledOutGoalIsNotCreditedTest` — 2 tests, 16 s. **It goes through the repository, not the predicate**, on
+purpose: a test asserting only `countsAsGoal` would pass against a repository that had stopped calling it,
+which is exactly the gap that let the substring rule look harmless. It writes a blob holding one real
+goal, one disallowed goal, one overturned goal and one goal kick, and asserts the number that reaches the
+scorer table. A second case asserts a match where every goal was overturned credits nobody, because
+`LeagueMilestoneService` would otherwise name a top scorer who did not score.
+
+**Proven able to fail** by restoring `normalise(type).contains("GOAL")`, and the failure names the
+defect exactly as the product saw it:
+
+```
+exactly one of those four is a goal that counted, but the scorer table was given
+[Ada Goals, Ada Goals, Cy Unassisted, null] ==> expected: <1> but was: <4>
+```
+
+Four credited where one existed. The `null` is the goal kick, which has no scorer.
+
+`SimReportMapperReportableTypesTest` grew from 10 tests to 12 and its `goalEventRepositorysOwnGoalTestIsHonoured`
+became `aRuledOutGoalIsWrittenAndNeverCounted`, which asserts both halves — the entry is written *and* it
+is never counted — plus `aGoalKickIsARestart` and `varDecisionsAreRecognisedByPrefix`. Both fail on the
+old code, with the reason in the message.
+
+`GoalEventRepositoryTest` 4/4 unchanged: the two real goals in its fixture are still found, with the
+assist intact.
+
+---
+
+## 2026-10-03 — RETRACTED: `simulate-all` does report its background work, and I said it did not
+
+**I reported a defect that does not exist, and the owner asked me to fix it.** The claim was that
+`POST /simulation/current-round/simulate-all` "returned `simulatedCount: 5, leaguesProcessed: 1` while 160
+matches were written" — presented as this repository's recurring shape, code reporting success while doing
+something else.
+
+**The endpoint reports it.** From the source, and it was there all along:
+
+```java
+payload.put("simulatedCount", simulatedCount);            // the user's own league, synchronous
+payload.put("backgroundSimulating", !otherLeagueFixtures.isEmpty());
+payload.put("backgroundTotal", otherLeagueFixtures.size()); // everything else, handed to @Async
+payload.put("message", simulatedCount > 0
+        ? "Simulated your league. Other leagues are simulating in background." : ...);
+```
+
+and `/current-round/status` reports `backgroundSimulated` and `backgroundTotal` live while it runs.
+
+**How I got it wrong.** The response was piped through this:
+
+```python
+print({k: d.get(k) for k in ('status','action','simulatedCount','leaguesProcessed')})
+```
+
+Four keys out of a payload that has nine. `backgroundTotal` was in the response and I did not print it,
+then read the absence of a number I had chosen not to ask for as evidence that the number was missing.
+**The 160 matches I measured afterwards were the background batch doing exactly what it said it would.**
+
+This is the same failure shape as the rest of this log, and mine: a measurement that reported a result
+while measuring less than it claimed. `EXPLAIN ANALYZE` and the filtered JSON print are the same mistake
+twice — both correct queries, both through a path that discarded the part that mattered.
+
+**The correction is recorded in place** in the P1-7b entry above rather than deleted, because an
+append-only log that quietly drops a wrong finding is worth less than one that says it was wrong.
+
+### One real, minor gap found while checking
+
+`AsyncSimulationRunner` logs a failed background fixture (`log.error("Failed to simulate fixture {} …")`)
+and moves on, and **never counts the failures.** So `/current-round/status` can show
+`backgroundSimulated: 148, backgroundTotal: 154` and never say that six failed — the owner has to infer
+it. That is observability, not a false report, and it is on the board as P1-7's remaining item.
+
+---
+
 
 **One filter, in one method.** `SimReportMapper.eventJson` now skips any event type no page can use, and
 the keep-list is derived from the two readers that decide it rather than from what looks tidy.
@@ -130,6 +263,10 @@ goal:
    while **160 matches** were being written, because `AsyncSimulationRunner` continues in the background —
    the count was still climbing 20 seconds later. This repository's recurring shape, code reporting
    success while doing something else, in a place nobody was watching.
+   > **CORRECTED — this was my measurement error, not a defect.** See the P1-7c entry: the endpoint
+   > reports `backgroundSimulating` and `backgroundTotal`, and `/current-round/status` reports the
+   > progress live. My print statement selected four keys out of the payload and I drew a conclusion
+   > from those four. The endpoint was honest throughout. **Do not act on the claim above.**
 3. **`PENALTY_SCORED` is dropped, and that is safe — verified, not assumed.** 30 occurrences. Dropping it
    would lose goals from the scorer list if the engine recorded a penalty goal *instead of* a `GOAL`, so
    that was checked: **all 26 matches containing one also carry a `GOAL` entry and a `PENALTY_AWARDED`**,

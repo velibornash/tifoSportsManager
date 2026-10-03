@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.example.footballmanager.newLogic.model.Match;
+import org.example.footballmanager.newLogic.model.event.MatchEvent.MatchEventType;
 import org.example.footballmanager.newLogic.model.event.GoalEvent;
 import org.springframework.stereotype.Component;
 
@@ -147,11 +148,25 @@ public class GoalEventRepository {
         return goals;
     }
 
+    /**
+     * Whether this event is a goal that counted.
+     *
+     * <p><b>This was {@code type.contains("GOAL")}, and it was wrong.</b> That matched
+     * {@code GOAL_DISALLOWED} and {@code VAR_GOAL_OVERTURNED} as well, and both are goals **VAR ruled
+     * out** — so a player was credited on the league's top-scorers page, the top-assists page and the
+     * club milestone leader list with a goal that does not exist. Measured on the shipped matches:
+     * {@code GOAL} 297, {@code GOAL_DISALLOWED} 15, {@code VAR_GOAL_OVERTURNED} 15. Those 30 were the
+     * defect.
+     *
+     * <p><b>Not a matter of taste: the engine never scores them.</b> {@code BallResultHandler} asks VAR
+     * <i>before</i> it calls {@code goalScored}, so the scoreline never counted them either and the old
+     * rule produced a table whose goals did not add up to the league's.
+     *
+     * <p>The definition lives on {@link MatchEventType} because three call sites needed it and each had
+     * worked it out for itself.
+     */
     private boolean isGoal(JsonNode event) {
-        String type = text(event, "type");
-        // MatchEventType.GOAL, matched by name: the enum is declared inside MatchEvent.java rather than
-        // its own file, so importing it would not resolve.
-        return type != null && type.toUpperCase().contains("GOAL");
+        return MatchEventType.countsAsGoal(text(event, "type"));
     }
 
     private String firstNonBlank(JsonNode event, String... fields) {

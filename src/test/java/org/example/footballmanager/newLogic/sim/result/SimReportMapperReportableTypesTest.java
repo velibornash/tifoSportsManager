@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.sim.result;
 
+import org.example.footballmanager.newLogic.model.event.MatchEvent.MatchEventType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -113,17 +114,45 @@ class SimReportMapperReportableTypesTest {
     }
 
     @Test
-    @DisplayName("GoalEventRepository's own goal test is honoured, including the goals VAR ruled out")
-    void goalEventRepositorysOwnGoalTestIsHonoured() {
-        // isGoal() is type.contains("GOAL"), so it credits GOAL_DISALLOWED and VAR_GOAL_OVERTURNED
-        // today. That is a defect, recorded in kanbanProgress.md and not fixed here — but until the
-        // owner rules on it the blob must keep carrying those entries, or narrowing the blob would
-        // change the top-scorers table as a side effect of a performance fix.
-        for (String type : List.of("GOAL", "GOAL_DISALLOWED", "VAR_GOAL_OVERTURNED", "OWN_GOAL")) {
+    @DisplayName("a goal VAR ruled out is written for the audit trail, and never counted")
+    void aRuledOutGoalIsWrittenAndNeverCounted() {
+        // Written and counted are different questions, and the fix separated them. The blob keeps the
+        // overturn so a match report can show it and a reader can see why a scorer's total is what it
+        // is; the scorer's total excludes it because BallResultHandler asks VAR before it scores.
+        for (String type : List.of("GOAL_DISALLOWED", "VAR_GOAL_OVERTURNED")) {
             assertTrue(SimReportMapper.isReportable(type),
-                    type + " matches GoalEventRepository.isGoal, so it reaches the scorer table today. "
-                            + "Dropping it here would quietly change that table.");
+                    type + " is a goal VAR ruled out. It stays in the blob as the audit trail - dropping "
+                            + "it would leave the report unable to explain the score.");
+            assertFalse(MatchEventType.countsAsGoal(type),
+                    type + " must never be credited to a scorer. The engine asks VAR before it calls "
+                            + "goalScored, so the scoreline does not count it either.");
         }
+        // And the ones that do count.
+        for (String type : List.of("GOAL", "VAR_GOAL_CONFIRMED", "OWN_GOAL", "PENALTY_GOAL")) {
+            assertTrue(MatchEventType.countsAsGoal(type), type + " is a goal that stood.");
+        }
+    }
+
+    @Test
+    @DisplayName("a goal kick is a restart, and the substring that used to say otherwise is gone")
+    void aGoalKickIsARestart() {
+        assertFalse(MatchEventType.countsAsGoal("GOAL_KICK"),
+                "GOAL_KICK is a restart. type.contains(\"GOAL\") matched it, which put a goal kick on the "
+                        + "match report as a key moment.");
+        assertFalse(MatchEventType.isGoalRelated("GOAL_KICK"),
+                "GOAL_KICK is neither a goal that counted nor one that was ruled out.");
+    }
+
+    @Test
+    @DisplayName("VAR decisions are recognised by prefix, so an unnamed one still reaches the report")
+    void varDecisionsAreRecognisedByPrefix() {
+        for (String type : List.of("VAR", "VAR_REVIEW", "VAR_IN_PROGRESS", "VAR_OFFSIDE_OVERTURNED",
+                "VAR_GOAL_OVERTURNED", "VAR_RED_CONFIRMED", "VAR_PENALTY_OVERTURNED")) {
+            assertTrue(MatchEventType.isVarDecision(type), type + " is a VAR decision.");
+            assertTrue(SimReportMapper.isReportable(type), type + " belongs in the report.");
+        }
+        assertFalse(MatchEventType.isVarDecision("GOAL"), "a goal is not a VAR decision.");
+        assertFalse(MatchEventType.isVarDecision(null));
     }
 
     @Test
@@ -131,6 +160,8 @@ class SimReportMapperReportableTypesTest {
     void nothingKeptIsUnwanted() {
         Set<String> wanted = new java.util.LinkedHashSet<>(MATCH_DETAIL_WANTS);
         wanted.addAll(ZOX_TIMELINE_WANTS);
+        // A ruled-out goal is wanted by nobody as a *score*, but it is wanted as an explanation, which
+        // is why it is written. Kept here so the reason is stated rather than implied.
         wanted.addAll(List.of("VAR_REVIEW", "GOAL_DISALLOWED", "VAR_GOAL_OVERTURNED", "OWN_GOAL"));
 
         for (String kept : List.of("GOAL", "YELLOW_CARD", "RED_CARD", "CARD", "PENALTY",
@@ -150,20 +181,26 @@ class SimReportMapperReportableTypesTest {
         assertFalse(SimReportMapper.isReportable(null));
         assertFalse(SimReportMapper.isReportable(""));
         assertFalse(SimReportMapper.isReportable("   "));
+        assertFalse(MatchEventType.countsAsGoal(null));
+        assertFalse(MatchEventType.isGoalRelated(""));
     }
 
     @Test
     @DisplayName("the engine's spelling variants resolve to the same answer")
     void spellingVariantsResolve() {
-        // MatchDetailService normalises case, dashes and spaces; the writer does the same, so the two
-        // agree on what a type is before either of them compares it to anything.
+        // MatchDetailService normalises case, dashes and spaces; the shared definition does the same, so
+        // the writer and every reader agree on what a type is before any of them compares it.
         assertTrue(SimReportMapper.isReportable("goal"));
         assertTrue(SimReportMapper.isReportable("Yellow-Card"));
         assertFalse(SimReportMapper.isReportable("pass"));
+        assertTrue(MatchEventType.countsAsGoal("goal"));
+        assertTrue(MatchEventType.countsAsGoal(" Goal "));
+        assertTrue(MatchEventType.isVarDecision("var_goal_overturned"));
     }
 
     @Test
     @DisplayName("a reader gaining a type has to be added here, and this is what makes that loud")
+
     void aReaderGainingATypeMustBeAddedHere() {
         // Not automatable against a switch statement, so it is stated instead: when
         // mapEventToDTO or buildTimeline gains a case, add the type to the matching vocabulary above.

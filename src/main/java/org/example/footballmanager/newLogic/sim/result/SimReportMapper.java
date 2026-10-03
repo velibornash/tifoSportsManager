@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.sim.result;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.example.footballmanager.newLogic.model.event.MatchEvent.MatchEventType;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome.EventEntry;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome.PlayerOutcome;
 import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome.TeamOutcome;
@@ -72,13 +73,13 @@ public final class SimReportMapper {
      * {@code MatchDetailService} drops. Reading only one of them would have quietly emptied part of the
      * match report.
      *
-     * <p><b>The {@code GOAL} substring rule is {@code GoalEventRepository}'s, not a convenience.</b>
-     * {@code isGoal} tests {@code type.contains("GOAL")}, so today it credits a scorer for
-     * {@code GOAL_DISALLOWED} and {@code VAR_GOAL_OVERTURNED} — a goal VAR ruled out. That is a
-     * defect and it is recorded in {@code kanbanProgress.md} rather than fixed here, because whether a
-     * disallowed goal belongs on the scorers list with a strikethrough or not at all is a product
-     * question. Until it is answered the blob must keep carrying those entries, or narrowing would
-     * change the scorer table as a side effect of a performance fix.
+     * <p><b>A goal VAR ruled out is written but never credited.</b> {@code GOAL_DISALLOWED} and
+     * {@code VAR_GOAL_OVERTURNED} stay in the blob because they are the audit trail — a match report
+     * shows the overturn as a key moment, and a reader asking why a goal is missing from a scorer's total
+     * deserves an answer. {@link MatchEventType#countsAsGoal} is what keeps them off the scorer's total,
+     * which used to be a {@code contains("GOAL")} substring and credited all 30 of them across the
+     * shipped matches. <b>Written and counted are different questions</b>, and the fix separated them
+     * rather than narrowing the blob to whatever the scorer happens to read.
      */
     private static final Set<String> REPORTABLE_TYPES = Set.of(
             "GOAL",
@@ -102,16 +103,17 @@ public final class SimReportMapper {
         if (type == null || type.isBlank()) {
             return false;
         }
-        String normalised = type.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
-        // GoalEventRepository matches on the substring, so a goal the engine words differently is a
-        // goal it already counts. Kept for that reason alone.
-        if (normalised.contains("GOAL")) {
+        // A goal, or a goal VAR ruled out: both belong in the report, and the second is the reason the
+        // first one's absence from a scorer's total is explicable. The shared definition is on
+        // MatchEventType, because three call sites had each invented their own answer to this question.
+        if (MatchEventType.isGoalRelated(type)) {
             return true;
         }
         // buildTimeline accepts anything starting with VAR_, and VAR review is a real part of a report.
-        if (normalised.startsWith("VAR_")) {
+        if (MatchEventType.isVarDecision(type)) {
             return true;
         }
+        String normalised = type.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
         return REPORTABLE_TYPES.contains(normalised);
     }
 

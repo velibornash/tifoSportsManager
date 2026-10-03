@@ -498,16 +498,25 @@ the replay viewer reads.
 - [ ] `LeagueMilestoneService` parses a season once instead of twice
 - [ ] The existing 155 matches keep their big blobs until the world is reset — **no migration was run,
       deliberately.** Say if a backfill is wanted
+**One defect found here and fixed, and one I reported that was not real:**
 
-**Two defects found here and recorded, not fixed:**
+- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** It tested
+  `type.contains("GOAL")`, so `GOAL_DISALLOWED` (15) and `VAR_GOAL_OVERTURNED` (15) counted as goals and
+  put a player on the top-scorers page, the top-assists page and the club milestone list. **Not a
+  preference: `BallResultHandler` asks VAR *before* it calls `goalScored`, so the scoreline never counted
+  them either** — a striker on 5 beside a team that scored 3 is a table disagreeing with itself. The
+  definition now lives on `MatchEventType.countsAsGoal`, because **three** call sites had each invented
+  their own answer. `MatchController.extractKeyEvents` had the same substring and was putting
+  `GOAL_KICK` — a restart — on the match report as a key moment.
+- **NOT A DEFECT — `simulate-all` does report the background work, and my claim was wrong.** It returns
+  `backgroundSimulating` and `backgroundTotal`, and `/current-round/status` reports
+  `backgroundSimulated` / `backgroundTotal` live. My print statement selected four keys out of the
+  payload and I concluded from those four. Recorded because the log entry asserted it, and a wrong
+  finding in an append-only log is worth correcting loudly.
+- **A real but minor gap:** `AsyncSimulationRunner` logs a failed background fixture and moves on, and
+  never counts the failures, so `/current-round/status` can show `148/154` without ever saying six
+  failed. Exit criteria: a failed background fixture is counted and reported, not only logged.
 
-- **`GoalEventRepository.isGoal` credits goals VAR ruled out.** It tests `type.contains("GOAL")`, so
-  `GOAL_DISALLOWED` (15) and `VAR_GOAL_OVERTURNED` (15) count as goals and put a player on the
-  top-scorers list. **A product decision, not a performance one:** does a disallowed goal belong on the
-  list struck through, or not at all? The keep-list preserves today's behaviour on purpose until it is
-  answered.
-- **`simulate-all` under-reports.** It returned `simulatedCount: 5, leaguesProcessed: 1` while **160
-  matches** were written, because `AsyncSimulationRunner` continues in the background.
 
 ---
 
