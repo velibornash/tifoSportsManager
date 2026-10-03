@@ -114,7 +114,121 @@ before deducting. So a fee above cash is possible. That is shared settlement use
 
 ---
 
-## 2026-10-03 — P1-1: four indexes on `match`, and two of the board's three claims refuted
+## 2026-10-03 — P1-7: the per-tick event log, and the two Elo replays that could not run
+
+**`Match.event_json` is 742 KB to 1,035 KB on every simulated match.** It is the whole per-tick decision
+log — every tick, every player, `DECISION` / `PASS` / `RECEIVE` with a human-readable description —
+written into one text column by `SimMatchService:294`. Measured on the live rows:
+
+| | |
+|---|---:|
+| matches carrying one | 155, ranging 741,879 – 1,035,458 bytes |
+| all of them together | **124 MB of text for 155 rows** |
+| compressed on disk | 16 MB (a 0.143 ratio, so TOAST is doing real work) |
+| one full season, 89,280 matches | **~66 GB of text, ~9.2 GB on disk** |
+
+Both Elo replays read a match's date, its two sides and its score, and **neither reads the blob.**
+Returning `Match` entities made Hibernate select it anyway. `ClubRatingService.recompute()` calls
+`findPlayedClubScoredInOrder()` **after every simulated matchday**, and one season is 89,280 matches — so
+**~66 GB of Strings in a single result list, inside one transaction.** That is not slow. It cannot run,
+and it is green on the dev database only because 155 × 742 KB is 130 MB.
+
+### The measurement I got wrong first, and how it nearly said the opposite
+
+My first attempt timed this with `EXPLAIN (ANALYZE, FORMAT JSON)` and got **0.281 ms** for all 155
+blobs — 130 MB in a third of a millisecond, which is about 460 GB/s. I did not believe it, and I was
+right not to: **psql was not transferring the rows**, so the plan's own timing excluded the only part
+that costs anything. Had I taken that number at face value the conclusion would have been "the blob is
+free, no change needed".
+
+The measurement that works is `COPY (...) TO '/dev/null'` with `\timing`, which forces the rows out of
+the server and through the client:
+
+| 155 matches, real blobs | run 1 | run 2 | run 3 |
+|---|---:|---:|---:|
+| `SELECT event_json` | 470 ms | 463 ms | 643 ms |
+| a projection, no blob | 2.3 ms | 2.6 ms | 2.1 ms |
+| `SELECT sum(length(event_json))` | 927 ms | | |
+
+**3.0 ms per row against 0.014 ms — 215× per row.** And the aggregate's 927 ms is the independent check
+that the blobs really are being read: 130 MB cannot be summed in less.
+
+**This is the fourth time this codebase has produced a measurement that reported success while measuring
+nothing**, and the shape is new: the earlier three were a seeding job, a pyramid builder, and a test
+that read zero rows. This one was a *correct* query timed through a path that discarded its result.
+
+### Landed
+
+`ScoredMatch` — nine scalars: match id, both sides' ids and names, both scores, and the competition's
+scope and type. The two replay queries construct it directly; `ClubRatingService` and
+`NationalRatingService` read it instead of `Match`.
+
+| 155 matches, same 155 rows both ways | before | after |
+|---|---:|---:|
+| entity shape (`m.*` with the two team joins) | 443 / 540 / 554 ms | **6.5 / 10.6 / 11.2 ms** |
+| `ScoredMatch` projection | | |
+| one season, scaled by 89,280 / 155 | ~255 s and ~66 GB | **~3.7 s and ~5 MB** |
+
+Row count checked identical (**155 = 155**) rather than assumed, because a projection that quietly drops
+rows would make the replay look fast and wrong.
+
+**The sides are ids and names, not `Team` references**, so the replay loads no proxies and asks for no
+second row per team. The joins are explicit `LEFT JOIN`s rather than `m.homeTeam.id`, which in a JPQL
+select clause would be an inner join and would **silently drop** a match with a missing side instead of
+carrying a null id into the replay's existing "no league division, not rated" branch. That branch is now
+also the null path, where the entity version threw a `NullPointerException` — so one corrupt row no
+longer stops the other fourteen thousand clubs being rated.
+
+**Why a projection and not `@Basic(fetch = LAZY)`.** Lazy would fix these two callers and hand
+`GoalEventRepository` — the one class that genuinely parses the log — an extra query per row inside the
+transaction, or a `LazyInitializationException` outside it. `open-in-view=true` in prod hides the second by
+keeping the session open, which is the worst outcome: correct until it is not. This is the same trade as
+`findLoadMinutesPlayedOnce` being a projection rather than a lazy column.
+
+### The guard
+
+`ScoredMatchCarriesNoBlobTest`, 5 tests, 183 ms, no database. It pins the record's nine components by
+name, asserts neither replay query's JPQL mentions `eventJson` / `lineupJson` / `statsJson`, asserts both
+readers return `List<ScoredMatch>` **whatever the method is called**, asserts the two entity-returning
+readers are gone rather than left beside the new ones, and asserts the club replay still excludes
+`INTERNATIONAL` by type — that test is the club-versus-national split, and widening it would rate national
+sides on the club ladder.
+
+**Proven able to fail:** adding a `String eventJson` component to `ScoredMatch` and selecting it in the
+query was tried, and the guard caught it.
+
+### Left open, with numbers, because each needs a decision that is not mine
+
+| Site | Cost |
+|---|---:|
+| `TeamController:250` club match history — `MatchDTO` carries no JSON at all | 12 × 742 KB = **8.9 MB per page view** |
+| `TeamController:577`, `ScheduleInsightService:70` | same |
+| `GoalEventRepository.findByMatchCompetitionIdAnd…` — **the top-scorers page** | 60 × 742 KB = **44 MB parsed per request** |
+| `GoalEventRepository.findByMatchSeasonYearAndScoredTrue` — `LeagueMilestoneService:71,75` | **89,280 × 742 KB, twice** |
+
+The club-history ones are a `MatchDTO` projection and are simply wider than a replay fix. The
+`GoalEventRepository` ones are a data-modelling decision: the per-tick log is written to `event_json`
+**and** written again as a file by `SimReplayStore`, and only `MatchDetailService:34` and
+`ZoxApiController:575` — both single-match request paths — read the database copy. Either a goals table
+beside the blob, or a `jsonb` column the database can filter on. Both are schema changes with a
+migration. Recorded as **P1-7** rather than done.
+
+### Not mine, verified rather than assumed
+
+`NationalRatingServiceTest#theWorldIsLevelUntilSomethingIsPlayed` fails: `expected: <1> but was: <0>`.
+**Verified pre-existing**, not caused by this change — a clean `git worktree` at HEAD `6ffba68`, built and
+run with none of these changes present, fails identically. It asserts on seed state that the fixture does
+not produce (`countDistinctRatings()` returns 0, and a sibling test in the same class expects 1 and
+passes). **Not fixed** — it belongs to whoever owns the international replay's fixture.
+
+Separately: for a few minutes the whole test tree would not compile, because a parallel agent's
+uncommitted `TransferService` had gained a constructor argument that their own two tests had not caught up
+with. Their files, their work, left alone — noted because it means **a red build is not always yours** and
+the reflex of fixing it would have been wrong.
+
+---
+
+
 
 **The board asked for three indexes. Two are wrong and one is irrelevant. Four unlisted ones are the
 real win.** Every number below was measured on a throwaway database holding a **full projected season**,

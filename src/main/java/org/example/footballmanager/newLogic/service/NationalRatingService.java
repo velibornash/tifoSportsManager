@@ -2,11 +2,10 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
-import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchValue;
-import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.ScoredMatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -94,7 +93,7 @@ public class NationalRatingService {
      */
     @Transactional
     public Result recompute() {
-        List<Match> history = matches.findPlayedByCompetitionTypeOrderByMatchDateAscIdAsc(CompetitionType.INTERNATIONAL);
+        List<ScoredMatch> history = matches.findPlayedScoredByCompetitionTypeInOrder(CompetitionType.INTERNATIONAL);
 
         // Working ratings, keyed by the side that played them. A country's column is only written at
         // the end, so a half-replayed history never leaves the table holding numbers from no history.
@@ -111,13 +110,13 @@ public class NationalRatingService {
         }
 
         int replayed = 0;
-        for (Match match : history) {
-            if (!isNationalSide(match.getHomeTeam()) || !isNationalSide(match.getAwayTeam())) {
+        for (ScoredMatch match : history) {
+            if (!isNationalSide(match.homeTeamId()) || !isNationalSide(match.awayTeamId())) {
                 // A national competition with a club in it is a data problem, not a rating. Skipping it
                 // keeps one bad row from corrupting every other country in the world.
                 log.warn("International {} has a non-national side ({} v {}); not rated",
-                        match.getId(), match.getHomeTeam() != null ? match.getHomeTeam().getName() : "?",
-                        match.getAwayTeam() != null ? match.getAwayTeam().getName() : "?");
+                        match.id(), match.homeTeamName() != null ? match.homeTeamName() : "?",
+                        match.awayTeamName() != null ? match.awayTeamName() : "?");
                 continue;
             }
             applyToWorkingRatings(match, senior, youth);
@@ -145,10 +144,10 @@ public class NationalRatingService {
         return requiresNew.execute(status -> recompute());
     }
 
-    private void applyToWorkingRatings(Match match, Map<Long, Double> senior, Map<Long, Double> youth) {
-        Long homeId = match.getHomeTeam().getId();
-        Long awayId = match.getAwayTeam().getId();
-        Map<Long, Double> ratings = isYouth(match.getHomeTeam()) ? youth : senior;
+    private void applyToWorkingRatings(ScoredMatch match, Map<Long, Double> senior, Map<Long, Double> youth) {
+        Long homeId = match.homeTeamId();
+        Long awayId = match.awayTeamId();
+        Map<Long, Double> ratings = isYouth(homeId) ? youth : senior;
 
         double homeRating = ratings.getOrDefault(homeId, START_RATING);
         double awayRating = ratings.getOrDefault(awayId, START_RATING);
@@ -157,8 +156,8 @@ public class NationalRatingService {
         // takes the OTHER weight. When the owner adds those competitions the stage changes and this
         // line does not — which is the point of keeping the stage out of the competition name.
         double k = RatingEngine.nationalK(MatchValue.INTERNATIONAL, NationalStage.OTHER);
-        double homeActual = actualFor(match.getHomeGoals(), match.getAwayGoals());
-        double awayActual = actualFor(match.getAwayGoals(), match.getHomeGoals());
+        double homeActual = actualFor(match.homeGoals(), match.awayGoals());
+        double awayActual = actualFor(match.awayGoals(), match.homeGoals());
 
         ratings.put(homeId, homeRating + RatingEngine.delta(homeRating, awayRating, homeActual, k));
         ratings.put(awayId, awayRating + RatingEngine.delta(awayRating, homeRating, awayActual, k));
@@ -222,14 +221,14 @@ public class NationalRatingService {
      * <p>Membership, not the name. The catalogue names them "{country} U-21" for the world page, and
      * matching on a name is how "Serbia U-21 Women" ends up rated as a senior side.
      */
-    private boolean isNationalSide(Team team) {
-        return team != null && findOwningCountry(team.getId()) != null;
+    private boolean isNationalSide(Long teamId) {
+        return teamId != null && findOwningCountry(teamId) != null;
     }
 
-    private boolean isYouth(Team team) {
-        Country owner = findOwningCountry(team.getId());
+    private boolean isYouth(Long teamId) {
+        Country owner = findOwningCountry(teamId);
         return owner != null && owner.getU21NationalTeam() != null
-                && owner.getU21NationalTeam().getId().equals(team.getId());
+                && owner.getU21NationalTeam().getId().equals(teamId);
     }
 
     private Country findOwningCountry(Long teamId) {

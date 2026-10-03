@@ -1,12 +1,11 @@
 package org.example.footballmanager.newLogic.service;
 
-import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
-import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchValue;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.ScoredMatch;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,7 +115,7 @@ public class ClubRatingService {
         }
 
         int replayed = 0;
-        for (Match match : matches.findPlayedClubMatchesInOrder()) {
+        for (ScoredMatch match : matches.findPlayedClubScoredInOrder()) {
             applyToWorkingRatings(match, current, previous);
             replayed++;
         }
@@ -156,14 +155,15 @@ public class ClubRatingService {
      * precisely because it exceeded a very low expectation, and that is what the owner meant by
      * "neverovatan rating boost".
      */
-    private void applyToWorkingRatings(Match match, Map<Long, Double> current, Map<Long, Double> previous) {
-        Long homeId = match.getHomeTeam().getId();
-        Long awayId = match.getAwayTeam().getId();
+    private void applyToWorkingRatings(ScoredMatch match, Map<Long, Double> current, Map<Long, Double> previous) {
+        Long homeId = match.homeTeamId();
+        Long awayId = match.awayTeamId();
         if (!current.containsKey(homeId) || !current.containsKey(awayId)) {
             // A club with no division is not on the ladder, so there is nothing to rate it against. One
-            // such row must not stop the other fourteen thousand being rated.
+            // such row must not stop the other fourteen thousand being rated. A null id lands here too,
+            // which is why this is a check rather than a dereference.
             log.warn("Match {} ({} v {}) has a side with no league division; not rated.",
-                    match.getId(), match.getHomeTeam().getName(), match.getAwayTeam().getName());
+                    match.id(), match.homeTeamName(), match.awayTeamName());
             return;
         }
 
@@ -171,8 +171,8 @@ public class ClubRatingService {
         double awayRating = current.get(awayId);
         double k = RatingEngine.clubK(valueFor(match), homeRating, awayRating);
 
-        double homeActual = actualFor(match.getHomeGoals(), match.getAwayGoals());
-        double awayActual = actualFor(match.getAwayGoals(), match.getHomeGoals());
+        double homeActual = actualFor(match.homeGoals(), match.awayGoals());
+        double awayActual = actualFor(match.awayGoals(), match.homeGoals());
 
         previous.put(homeId, homeRating);
         previous.put(awayId, awayRating);
@@ -193,15 +193,14 @@ public class ClubRatingService {
      * match at the cup's 0.90 — so a league season moved ratings by nine points fewer than the owner's
      * scale says, in a game whose whole premise is that league football is what a rating is for.
      */
-    private MatchValue valueFor(Match match) {
-        Competition competition = match.getCompetition();
-        if (competition == null) {
+    private MatchValue valueFor(ScoredMatch match) {
+        if (match.scope() == null) {
             return MatchValue.LEAGUE;
         }
-        if (competition.getScope() == CompetitionScope.INTERNATIONAL) {
+        if (match.scope() == CompetitionScope.INTERNATIONAL) {
             return MatchValue.INTERNATIONAL;
         }
-        return competition.getType() == CompetitionType.LEAGUE ? MatchValue.LEAGUE : MatchValue.CUP;
+        return match.type() == CompetitionType.LEAGUE ? MatchValue.LEAGUE : MatchValue.CUP;
     }
 
     private Result persist(List<Team> clubs, Map<Long, Double> current, Map<Long, Double> previous,

@@ -354,12 +354,47 @@ the code near it has changed.
 | Club match history, played, ordered *(same)* | 170.3 ms | **0.26 ms** | P1-1 |
 | Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | P1-1 |
 | One week of a season *(same)* | 156.4 ms | **27.8 ms** | P1-1 |
+| Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | P1-7 |
 | A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
 | Recovery read, one matchday *(17.7M-row table)* | 4,441 ms | **still open, P1-3** | — |
 
 **Read the scale column.** The first three rows were measured on a 155-match village; the P1-1 rows on a
 full 89,280-match season. **A number is only comparable to a number measured the same way**, and the
 first three are not comparable to the last five.
+
+---
+
+### P1-7 — DONE for the two Elo replays. Three other readers still fetch 742 KB a row.
+
+`Match.eventJson` is **742 KB to 1,035 KB** on every simulated match — the whole per-tick decision log,
+one text column. 155 matches hold **130 MB** of it; a full season is **~66 GB**.
+
+**Landed:** the club Elo replay and the international Elo replay now read a `ScoredMatch` projection —
+nine scalars, no entity, no blob. Measured on the real rows, same 155 matches both ways:
+**443–554 ms → 6.5–11.2 ms**, and one season's replay goes from ~255 s and ~66 GB of Strings to ~3.7 s
+and ~5 MB. `ScoredMatchCarriesNoBlobTest` holds it there.
+
+**Not `matches.findAll()`-style guesswork:** `@Basic(fetch = LAZY)` was rejected because it would fix
+these two callers and hand `GoalEventRepository` an extra query per row for the two places that really do
+parse the log.
+
+**Still open, all three measured, none fixed:**
+
+| Site | Cost | Why not fixed here |
+|---|---:|---|
+| `TeamController:250` club history, `MatchDTO` carries no JSON | 12 rows × 742 KB = **8.9 MB per page view** | Needs a `MatchDTO` projection, which is a wider change than a replay |
+| `TeamController:577`, `ScheduleInsightService:70` | same | same |
+| `GoalEventRepository.findByMatchCompetitionIdAnd…` — **the top scorers page** | 60 × 742 KB = **44 MB parsed per request** | The blob is the data. Needs a data-modelling decision, below |
+| `GoalEventRepository.findByMatchSeasonYearAndScoredTrue` — `LeagueMilestoneService:71,75` | **89,280 × 742 KB, twice** | same |
+
+**The decision those last two need from the owner.** The per-tick log is written to `match.event_json`
+*and* written again as a replay file by `SimReplayStore`, and only two single-match request paths ever
+read the database copy. Either a goals table beside the blob, or a `jsonb` column the database can filter
+— both are schema changes with a migration, so they are not mine to pick. **Exit criteria:** the two
+`GoalEventRepository` methods stop costing 44 MB and 66 GB, and the top-scorers page stops parsing a
+season to list five goals per match.
+
+---
 
 ---
 
@@ -483,15 +518,24 @@ What remains is `match`, and the honest question is what a full season costs:
 |---|---:|
 | matches per matchday, 48 countries | 7,440 |
 | matches per 12-week season | **89,280** |
-| per match row, with P1-1's four indexes | ~1.5 KB + 275 B of index |
-| one season | ~130 MB |
+| `event_json` per match | **742 KB – 1,035 KB**, ~106 KB compressed |
+| one season, raw text | **~66 GB** |
+| one season, on disk (TOAST-compressed) | **~9.2 GB** |
+| `match` without `event_json` | ~130 MB a season, +24 MB of index |
+
+**So the question is not "delete old matches", it is "why is a per-tick log in the database at all".**
+`SimReplayStore` already writes the same replay to a file, and only two single-match request paths read the
+database copy — see P1-7.
 
 **Exit criteria:**
 - [ ] Growth rate measured per simulated matchday, from the harness rather than extrapolated
-- [ ] A retention decision recorded for `match`. **Before anything is deleted:** the Elo replay
-      (`findPlayedClubMatchesInOrder`) re-reads **every** played club match in date order, and the club
-      Elo history needs its old ratings. Deleting match rows silently breaks both, so the answer is
-      probably "keep them and let it grow" — but it has to be an answer, not an omission
+- [ ] **A retention decision for `event_json` specifically.** Before anything is deleted: the top scorers
+      and assists pages read it, and so do the match detail and replay pages. Deleting it breaks four
+      screens, and deleting it *quietly* is worse than not having it
+- [ ] A retention decision for the `match` row itself. **Before anything is deleted:** the Elo replay
+      (`findPlayedScoredInOrder`) re-reads **every** played club match in date order, and the club Elo
+      history needs its old ratings. Deleting match rows silently breaks both, so the answer is probably
+      "keep them" — but it has to be an answer, not an omission
 - [ ] The file-backed replay retention checked against the same question, so the two answers agree
 
 ---

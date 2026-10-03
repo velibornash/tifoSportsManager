@@ -239,7 +239,7 @@ class NationalRatingServiceTest extends BaseTest {
         // them, so this asserts the honest starting state rather than a moved column: the point is
         // that this number can never be "48 countries all reading one value with internationals played".
         long played = matches
-                .findPlayedByCompetitionTypeOrderByMatchDateAscIdAsc(CompetitionType.INTERNATIONAL)
+                .findPlayedScoredByCompetitionTypeInOrder(CompetitionType.INTERNATIONAL)
                 .size();
         long distinct = countDistinctRatings();
         if (played == 0) {
