@@ -24,6 +24,94 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `d95da9d` — D2: the zone-load window, measured on a real matchday
+
+**The board's D2:** *"`PlayerZoneLoadRepository.findLoadsPlayedSince` — no LIMIT, no pagination"* and
+*"~1.47 M rows per game day, loaded whole into a `HashMap`"*, with the figures marked **"derived, not
+measured; confirm against the live schema first."*
+
+### Getting a real matchday to measure against
+
+The seeded Serbian world had never played a match, so `player_zone_load` was empty and every cost figure
+would have been arithmetic. So: booted the app, advanced the clock to **day 3 hour 18** — just before the
+19:00 league matchday — and called `simulate-all`.
+
+**That call is also the proof that yesterday's ruling works.** It found day 3's round and simulated it,
+where before the fix it would have fetched round 1. 5 simulated synchronously, 150 in the background.
+
+| | |
+|---|---:|
+| played matches | **155** |
+| zone-load rows | **18,853** |
+| distinct players | **3,410** |
+
+155 matches is exactly the day-3 count the fixture table showed, which is the ruling landing in real data.
+
+### What the query was doing
+
+`applyDailyRecovery` loaded a **`PlayerZoneLoad` entity** per row and called `effectiveMinutes()` on it —
+a managed entity with a persistence-context entry, plus **every column of the `JOIN FETCH`ed match**, for
+an arithmetic sum over four numbers.
+
+| | Time |
+|---|---:|
+| entity shape (`l.*, m.*`) | **21.0 ms** |
+| projection (`player_id, zone, minutes, intensity`) | **10.8 ms** |
+
+**Two times faster, and the row crossing the wire is a third of the width.** Both plans are a hash of the
+window's matches joined to a scan of the loads, so `match.match_date` carrying no index is not yet a cost
+— 31 buffers for the whole match side.
+
+The join no longer **fetches** the match; it is there only for the window predicate.
+
+### A second copy of a rule, guarded as one
+
+The projection **is** a second copy of `PlayerZoneLoad.effectiveMinutes()`, which is the thing this
+codebase keeps paying for — *"a second copy of a scale rule is how the two drift apart in the first
+place."* So `ZoneLoadProjectionTest` asserts the two agree **on a row for every zone**, built the way
+`ZoneLoadRecorder` writes them rather than from tidy numbers. `workRate` still comes from the same `Zone`
+enum, so only `minutes × intensity` is restated.
+
+Both halves proven able to fail. Dropping `workRate()` fails with both numbers printed:
+
+```
+the projection and the entity disagree for zone DEFENSIVE_LEFT
+  expected: <17.205000000000002> but was: <22.94>
+```
+
+### The guard that could not fail, and where it moved
+
+**Reverting `applyDailyRecovery` to the entity query left `ZoneLoadProjectionTest` 2/2 green.** It proves
+the projection is arithmetically right and that the repository method returns rows, but it never looks at
+the service — so it could not fail against the wiring it was written for.
+
+That is the seventh inert guard this file records, and the first one reached by **omission** rather than by
+writing the assertion before checking what the code needs to be true for the behaviour to exist. The
+wiring assertion now lives in `DailyRecoveryScopeTest`, beside the rest of that method's guards, and it
+fails with *"applyDailyRecovery reads the window as entities again"*.
+
+### What is deliberately NOT done
+
+**The query is not paged.** The obvious fix is `Pageable`, and **offset paging over a join with no total
+order can skip and duplicate rows between pages** — which would silently under-count a player's recovery,
+the exact class of bug this board exists to stop. **Keyset paging on `id` is the correct version and is not
+written.** Landing the projection first is the part that is safe on its own.
+
+**The write side is untouched.** `ZoneLoadRecorder` still saves ~121 rows per match one at a time, and
+`IDENTITY` generation across 70 of 71 entities means no JDBC batching to make that cheap — that is D5
+§4.1's territory and it needs an owner ruling.
+
+### Two of my own errors, both the same shape
+
+The projection test first asked from **the year 2000** and asserted every returned row was its own
+player's. It failed the moment another class put a zone-load row in the shared database — *"the projection
+returned rows for a player it should not have"*. The window is bounded to a **2099** match now, and the
+test says why. Then a replacement left `LocalDateTime.of(FAR_FUTURE_MATCH.minusHours(1))`, which does not
+compile.
+
+**`MoraleAndBudgetServiceTest` has 3 errors alone and at HEAD alike** — reproduced by stashing every
+change of mine, so it is pre-existing and not this commit's.
+
 ## `dddf462`, `c5fada3` — D3: the two whole-world day jobs
 
 **The board's D3:** *"Whole-world day jobs. `RecoveryJob` walks every player who ever played; `FinanceJob`
