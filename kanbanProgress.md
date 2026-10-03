@@ -382,7 +382,7 @@ first of those is already known to check ownership on `/image` and not on `/tick
 
 ---
 
-## 2026-10-03 — P1-3: the recovery read pages, and the index P1-1 rejected turns out to be the one that matters
+## 2026-10-03 — `513f738` — P1-3: the recovery read pages, and the index P1-1 rejected turns out to be the one that matters
 
 The board's version of this task is answered: `findByLastPlayedAtIsNotNull()` has no caller any more, so
 there is no `last_played_at` index to add. What was left was the read itself, and it was the wrong table.
