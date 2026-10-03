@@ -67,6 +67,26 @@ public class ClubNeedService {
      */
     @Transactional(readOnly = true)
     public double interest(Team club, Player target) {
+        return interest(club, target, null);
+    }
+
+    /**
+     * How badly a club wants this player, with the club's squad supplied by the caller.
+     *
+     * <p>Pass {@code null} for {@code squad} to have it loaded here, which is what the single-club
+     * callers want. Pass a list when the caller already has it, which is what the weekly market wants:
+     * it asks this question about every club for every listed player, and loading the squad inside the
+     * answer made that a cross product of individual queries — measured at <b>180 reads for 30 clubs
+     * and 3 listed players</b>, on a world of 14,880 clubs. See
+     * {@code TransferMarketSquadReadCountTest}.
+     *
+     * <p>Taking the squad as an argument also makes the scoring logic pure, so it can be exercised with
+     * a hand-built list instead of a database.
+     *
+     * <p>An <b>empty</b> list is a real answer (a club with no players) and is used as given. Only
+     * {@code null} means "not supplied".
+     */
+    public double interest(Team club, Player target, List<Player> squad) {
         if (club == null || target == null) return 0;
         if (target.getPosition() == null) return 0;
 
@@ -82,16 +102,19 @@ public class ClubNeedService {
             return 0;
         }
 
-        List<Player> squad = clubSquad(club);
+        // Resolved only after the guards above, because a club has no interest in its own player or in
+        // a target with no position, and answering those without touching the database is the point of
+        // the early returns.
+        List<Player> theSquad = squad != null ? squad : clubSquad(club);
 
-        long inPosition = countInPosition(squad, position);
-        long inRole = countInRole(squad, role);
+        long inPosition = countInPosition(theSquad, position);
+        long inRole = countInRole(theSquad, role);
 
-        if (inRole >= ROLE_DEPTH && !isBetterThanSquadInRole(squad, role, target)) {
+        if (inRole >= ROLE_DEPTH && !isBetterThanSquadInRole(theSquad, role, target)) {
             // Covered at his actual job, and nobody there is worse than him: no interest at all.
             return 0;
         }
-        if (inPosition >= MIN_USEFUL_DEPTH && !isBetterThanSquadInPosition(squad, position, target)) {
+        if (inPosition >= MIN_USEFUL_DEPTH && !isBetterThanSquadInPosition(theSquad, position, target)) {
             // Covered even at the broad level and nobody to improve on.
             return 0;
         }
@@ -105,15 +128,15 @@ public class ClubNeedService {
         if (inPosition <= THIN_POSITION) {
             score += 0.20 - 0.08 * inPosition;           // and thin in his part of the pitch
         }
-        if (isBetterThanSquadInRole(squad, role, target)) {
+        if (isBetterThanSquadInRole(theSquad, role, target)) {
             score += 0.25;                                // an upgrade on what he does
-        } else if (isBetterThanSquadInPosition(squad, position, target)) {
+        } else if (isBetterThanSquadInPosition(theSquad, position, target)) {
             score += 0.12;
         }
-        if (isGettingOld(squad, role)) {
+        if (isGettingOld(theSquad, role)) {
             score += 0.15;                                // his job needs replacing
         }
-        if (isYouth(squad)) {
+        if (isYouth(theSquad)) {
             score += 0.05;                                // a young squad wants young players
         }
         if (target.getAge() <= 23) {
@@ -130,8 +153,13 @@ public class ClubNeedService {
      */
     @Transactional(readOnly = true)
     public double valuation(Team club, Player target) {
+        return valuation(club, target, null);
+    }
+
+    /** As {@link #valuation(Team, Player)}, with the club's squad supplied by the caller. */
+    public double valuation(Team club, Player target, List<Player> squad) {
         double value = target.getPlayerValue();
-        double appetite = interest(club, target);
+        double appetite = interest(club, target, squad);
         if (appetite <= 0) return 0;
 
         // Age: a curve peaking in the mid-twenties. Buying a 33-year-old at his 2007 price is how a

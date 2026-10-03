@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -794,13 +795,23 @@ public class TransferService {
             return;
         }
 
+        // One read for every squad in the world, for the whole pass.
+        //
+        // The questions below are asked once per club per listed player, and each answer used to load
+        // that club's squad with its own query — then weightedBuyer asked a second time for every club
+        // that said yes, and valuation a third. That is a cross product, and it measured 180 individual
+        // reads for 30 clubs and 3 listed players; the world's 14,880 clubs are what turned the weekly
+        // rollover into hours of CPU. Nothing in this pass completes a transfer (a bid is only recorded),
+        // so one snapshot per club is not just cheaper but correct — there is no mid-pass move to miss.
+        Map<Long, List<Player>> squadsByClubId = loadSquadsByClubId(allTeams);
+
         for (Player targetPlayer : listedPlayers) {
             Team sellerTeam = requirePlayerTeam(targetPlayer);
 
             // The seller does not bid for his own player, and neither does anyone who cannot pay.
             List<Team> buyers = allTeams.stream()
                     .filter(team -> !Objects.equals(team.getId(), sellerTeam.getId()))
-                    .filter(team -> needsInterest(team, targetPlayer))
+                    .filter(team -> needsInterest(team, targetPlayer, squadsByClubId))
                     .toList();
             if (buyers.isEmpty()) {
                 continue;
@@ -808,12 +819,12 @@ public class TransferService {
 
             // Weighted, not uniform: the club that wants him most is the likeliest to win him, and a
             // rich club with a real gap outbids a poor one with the same gap.
-            Team buyerTeam = weightedBuyer(buyers, targetPlayer);
+            Team buyerTeam = weightedBuyer(buyers, targetPlayer, squadsByClubId);
             if (buyerTeam == null) {
                 continue;
             }
 
-            double offerPrice = clubNeeds.valuation(buyerTeam, targetPlayer);
+            double offerPrice = clubNeeds.valuation(buyerTeam, targetPlayer, squadsByClubId.get(buyerTeam.getId()));
             if (offerPrice <= 0) {
                 continue;
             }
@@ -831,39 +842,66 @@ public class TransferService {
             if (buyerBudget + 0.0001 < offerPrice) {
                 continue;
             }
-            if (buyerTeam.getId() != null
-                    && humanManagedTeamIds.contains(buyerTeam.getId())
-                    && needsInterest(buyerTeam, targetPlayer)) {
-                recordIncomingInterest(buyerTeam, targetPlayer, offerPrice, asking, transferByPlayerId);
-            } else {
-                recordIncomingInterest(buyerTeam, targetPlayer, offerPrice, asking, transferByPlayerId);
-            }
+            // Both arms of this used to be the same call, so the test on the human-managed id decided
+            // nothing. A human-managed buyer's bid is recorded the same way an AI club's is — the
+            // manager just gets to answer it.
+            recordIncomingInterest(buyerTeam, targetPlayer, offerPrice, asking, transferByPlayerId);
         }
     }
 
     /** Whether a club would bother with this player at all. */
-    private boolean needsInterest(Team club, Player target) {
-        return clubNeeds.interest(club, target) > 0;
+    private boolean needsInterest(Team club, Player target, Map<Long, List<Player>> squadsByClubId) {
+        return clubNeeds.interest(club, target, squadsByClubId.get(club.getId())) > 0;
+    }
+
+    /**
+     * Every club's squad, in one query.
+     *
+     * <p>Clubs with no players are simply absent from the map, and an absent key means an empty squad —
+     * which is the truth, not a missing answer. {@link ClubNeedService} treats {@code null} as "load it
+     * yourself" and an empty list as "this club has nobody", so the two are kept distinct on purpose.
+     */
+    private Map<Long, List<Player>> loadSquadsByClubId(List<Team> clubs) {
+        List<Long> ids = clubs.stream()
+                .map(Team::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<Player>> byClub = new HashMap<>();
+        for (Player player : playerRepository.findByTeamIdIn(ids)) {
+            if (player == null || player.getTeam() == null || player.getTeam().getId() == null) {
+                continue;
+            }
+            byClub.computeIfAbsent(player.getTeam().getId(), key -> new ArrayList<>()).add(player);
+        }
+        return byClub;
     }
 
     /**
      * Picks a buyer in proportion to appetite, so a club with a genuine gap usually wins the player
      * it actually needs rather than losing him to a richer club with a thinner one.
      */
-    private Team weightedBuyer(List<Team> buyers, Player target) {
+    private Team weightedBuyer(List<Team> buyers, Player target, Map<Long, List<Player>> squadsByClubId) {
+        // Appetite is computed once per buyer and reused for the total and the walk. It used to be asked
+        // twice — once to sum, once again while walking — which doubled the work for no reason.
+        double[] appetites = new double[buyers.size()];
         double total = 0;
-        for (Team buyer : buyers) {
-            total += clubNeeds.interest(buyer, target);
+        for (int i = 0; i < buyers.size(); i++) {
+            Team buyer = buyers.get(i);
+            appetites[i] = clubNeeds.interest(buyer, target, squadsByClubId.get(buyer.getId()));
+            total += appetites[i];
         }
         if (total <= 0) {
             return null;
         }
         double roll = nextRandomDouble() * total;
         double running = 0;
-        for (Team buyer : buyers) {
-            running += clubNeeds.interest(buyer, target);
+        for (int i = 0; i < buyers.size(); i++) {
+            running += appetites[i];
             if (roll <= running) {
-                return buyer;
+                return buyers.get(i);
             }
         }
         return buyers.get(buyers.size() - 1);
