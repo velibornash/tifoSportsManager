@@ -305,7 +305,7 @@ exists to remove.
 
 ---
 
-### P0-17 — the community chat hides applicant details behind one boolean — NEW, 2026-10-03
+### P0-17 — DONE: the chat's applicant filter is now pinned by a test
 
 `CommunityController.shouldHideFromNonAdmin` decides whether a message bound to a **pending registration
 request** — an applicant's username and email — is shown to a non-administrator. It is a single boolean
@@ -315,9 +315,40 @@ Recorded rather than tested on purpose: pinning it needs a message bound to a pe
 built that way would assert almost nothing about authorization. A test that cannot fail is worse than no
 test.
 
+**What is actually at stake, stated precisely rather than alarmingly.** The DTO already gates the
+applicant's **email** behind `adminViewer`. What is not gated is the **username**, the fact that they applied,
+and which club they asked for. So the exposure is not a password and not an address — it is **a list of who is
+trying to join the game and where they want to play**, visible to every logged-in manager.
+
+**Low severity today, in a world with one real player. Not low in the world this project targets.**
+
+**`RegistrationApplicantIsNotInTheChatTest`, 5 green, mutation-proven.** Removing the boolean fails exactly
+the test that claims to hold it up:
+
+```
+aRegularManagerDoesNotSeeTheApplicant
+  a pending applicant's username reached the community chat of an ordinary
+  manager ==> expected: <false> but was: <true>
+```
+
+**The four tests that keep it honest.** Asserting one hidden username proves nothing unless the message
+exists and the endpoint works, so:
+
+| Test | What it rules out |
+|---|---|
+| `anApprovedApplicantBecomesVisible` | the same applicant, same message, one status flipped — **the filter is the status, not luck** |
+| `anAdministratorSeesTheApplicant` | hiding it from the queue would break the feature the message exists for |
+| `aRejectedApplicantIsVisible` | the predicate is *pending*-only, not "any registration" by accident |
+| `aManagerCanStillReadTheChat` | the whole route being dead, which would make the first test pass for the wrong reason |
+
+The applicant name is unique per run, because the shared database does not roll back and an earlier run's row
+would otherwise let the assertion pass on stale data.
+
 **Exit criteria:**
-- [ ] A message attached to a pending registration request is proven invisible to a `REGULAR` manager
-- [ ] The test asserts on the **absence of the applicant's address**, not on a count or a key
+- [x] A pending applicant's username is proven invisible to a `REGULAR` manager
+- [x] Asserted on the **absence of the applicant's own name**, not on a count or a missing key
+- [x] The message is created through the real `postRegistrationSubmitted` path, not hand-built
+- [x] Proven able to fail by removing `shouldHideFromNonAdmin`
 
 ---
 
