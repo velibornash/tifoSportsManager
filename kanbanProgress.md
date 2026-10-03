@@ -331,6 +331,61 @@ look rather than to act on my own summary.
 
 ---
 
+## 2026-10-03 — P0-17: one boolean, no test, and the applicant list on the other side of it
+
+**5 tests green, mutation-proven.** Found while writing P0-1b and recorded there as untested; this is that
+follow-up.
+
+### The exposure, stated without inflating it
+
+`CommunityController.canViewMessage` ends:
+
+```java
+return adminViewer || !shouldHideFromNotAdmin(message);
+// where: request != null && request.getStatus() == PENDING
+```
+
+**The email is already gated** — `adminViewer && request != null ? request.getEmail() : null`. So this is
+**not** an address leak and **not** a credential leak. What crosses the line is the **username**, the fact
+that the person applied, and **which club they asked for**.
+
+So the honest description is: *a pending applicant's username and intended club, visible to every logged-in
+manager*. In a world with one real player that is close to harmless. In the world this project targets it is
+a roster of who is trying to join, and it is one boolean away from gone with nothing behind it.
+
+### The mutation, and why one test was not enough
+
+Removing `shouldHideFromNonAdmin` fails **exactly one** of the five:
+
+```
+aRegularManagerDoesNotSeeTheApplicant
+  a pending applicant's username reached the community chat of an ordinary manager
+  ==> expected: <false> but was: <true>
+```
+
+**One failure is the correct number here** — the other four are supposed to keep passing, because they assert
+the filter is not over-reaching. That is the difference between a guard and a lockout.
+
+### The four tests that stop the first one being vacuous
+
+Asserting that a name is absent proves nothing unless the message exists and the endpoint works:
+
+| Test | What it rules out |
+|---|---|
+| `anApprovedApplicantBecomesVisible` | the same applicant, the same message, **one status flipped** — so the difference between hidden and shown is exactly the predicate and not luck |
+| `anAdministratorSeesTheApplicant` | hiding it from the queue would break the review feature the message exists for |
+| `aRejectedApplicantIsVisible` | the predicate is *pending*-only, rather than "any registration" by accident |
+| `aManagerCanStillReadTheChat` | the route being dead, which would make the absence assertion pass for the wrong reason |
+
+The message is created through the real `messages.postRegistrationSubmitted(request)` — the call the
+registration flow makes — so the test cannot pass against a message shape the product does not produce. And
+the applicant's name is **unique per run**, because the shared database does not roll back and a row left by
+an earlier run would let the assertion pass on stale data.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-18: the owner's own players' talent, withheld by an id from another table
 
 **One method, one branch, and the only account guaranteed to exist was the one that took it.**
