@@ -289,9 +289,18 @@ exists to remove.
 - [x] Six of eight read real data
 - [x] `competitionType` filter on the schedule, **6 tests green**, mutation-proven
 - [x] Team Stats **deleted** on the owner's decision — a fourth, emptier presentation of `/milestones`
-- [ ] **Friendlies:** trace where `FriendlyRequestService` writes its fixtures, then extend
-      `CompetitionType` with `FRIENDLY` **and make the generator write it**. Owner has ruled the enum should
-      grow; the second half is what makes it mean anything
+- [ ] **Friendlies — a parallel worker is on this, and its answer is better than extending
+      `CompetitionType`.** `MatchType` (new, for P2-8, owner decision 2026-10-03) states the problem this
+      entry describes: a match used to record only its *competition*, "which left nowhere to write 'friendly'
+      or 'exhibition' — those belong to no competition, so the field was simply empty and the two were
+      indistinguishable, unlabelable and **unfilterable**." Its `ofCompetition` is described as "the only
+      bridge", so a match's type and its competition's type cannot drift apart.
+      **So: do not extend `CompetitionType` as well.** Two competing type enums is exactly the drift this
+      codebase keeps paying for. The friendlies screen becomes
+      `?competitionType=FRIENDLY` → a match-type filter once `MatchType` lands, and the schedule row needs to
+      carry it alongside `competitionType`.
+      **Open question for the owner:** whether the schedule's filter should take a `matchType` parameter
+      rather than reusing `competitionType`, given a friendly belongs to no competition at all.
 - [ ] `DummyDataController` deleted once the last caller is rewired
 
 ---

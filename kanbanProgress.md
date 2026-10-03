@@ -301,7 +301,31 @@ What is actually missing is narrower:
   writes is a change that looks finished and is not.
 
 The owner also noted the last two `pages.js` edits landing in another agent's commit is not a problem as
-long as the change is in. Agreed, and recorded once rather than dwelled on.
+long as the change is in. Agreed, and recorded once rather than dwelled on. The Team Stats deletion landed
+the same way, in `bd4f948`. `grep` confirms `loadTeamStats` is gone from both files and this entry is in
+`main`.
+
+### The friendlies gap is being solved in parallel, and its answer beats mine
+
+Another agent has added `MatchType` for **P2-8** under an owner decision dated today, and its javadoc
+describes this exact problem:
+
+> *"A match used to record only which **competition** it belonged to, which left nowhere to write 'friendly'
+> or 'exhibition' — those belong to no competition, so the field was simply empty and the two were
+> indistinguishable, unlabelable and **unfilterable**."*
+
+That is P0-16's last blocker, arrived at independently and stated more precisely than I managed. Its
+`ofCompetition` is "the only bridge", so a match's type and its competition's type cannot drift — which is
+the failure mode a hand-added `FRIENDLY` on `CompetitionType` would invite.
+
+**So the owner's instruction to extend `CompetitionType` should not also be carried out.** Two competing
+type enums, one on competitions and one on matches, is precisely the kind of drift this codebase keeps
+paying for. The friendlies screen becomes a `matchType` filter once `MatchType` lands, and the schedule row
+carries it beside `competitionType`.
+
+**This is the second time today that tracing a claim of mine changed the answer.** The first was
+*"there is nothing to filter on"* turning out to be too strong. Both times the cheaper move was to go and
+look rather than to act on my own summary.
 
 **A full `mvn test` was not run**, so "green in a full run" does not count as met.
 
