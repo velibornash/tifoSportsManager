@@ -202,6 +202,10 @@ public class SimulationController {
             payload.put("backgroundSimulating", true);
             payload.put("backgroundSimulated", asyncSimulationRunner.getSimulatedCount());
             payload.put("backgroundTotal", asyncSimulationRunner.getTotalCount());
+            // Reported while it runs and after it finishes. Without it, 148/154 leaves the owner to infer
+            // that six fixtures failed - and those six are matches that will never be played.
+            payload.put("backgroundFailed", asyncSimulationRunner.getFailedCount());
+            payload.put("backgroundFailedIds", asyncSimulationRunner.getFailedIds());
             return ResponseEntity.ok(payload);
         }
         return ResponseEntity.ok(snapshot != null ? snapshot : Map.of("status", "idle"));

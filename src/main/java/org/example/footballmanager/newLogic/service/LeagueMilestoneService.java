@@ -68,11 +68,21 @@ public class LeagueMilestoneService {
         // club, which is why the biggest win and the attendance were right and only the two leaders were
         // not. It is the same "league page answered a club question" mistake as the club page showing the
         // league table.
-        List<GoalEvent> scoringGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear).stream()
+        //
+        // **Read once.** These two were the same call, twice: the season's whole event log walked and
+        // parsed once to find goals and again to find assists, and the second walk threw the first one's
+        // work away. `findByMatchSeasonYearAndScoredTrue` is the heaviest read in the service - it walks
+        // every match of the season and parses each one's event log - so this was the whole cost of the
+        // call paid twice for two answers that come out of the same list.
+        //
+        // One read, two derivations. The filters are unchanged and stay separate, because a goal with no
+        // assist keys is not an assist and must not be invented from the absence.
+        List<GoalEvent> seasonGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear);
+        List<GoalEvent> scoringGoals = seasonGoals.stream()
                 .filter(goal -> goal.scorerName() != null)
                 .filter(goal -> playsForClub(goal.scorerId(), team))
                 .toList();
-        List<GoalEvent> assistGoals = goalEventRepository.findByMatchSeasonYearAndScoredTrue(seasonYear).stream()
+        List<GoalEvent> assistGoals = seasonGoals.stream()
                 .filter(goal -> goal.assistantName() != null && goal.assistantId() != null)
                 .filter(goal -> playsForClub(goal.assistantId(), team))
                 .toList();

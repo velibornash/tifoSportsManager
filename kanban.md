@@ -590,6 +590,8 @@ the code near it has changed.
 | Weekly squad rollover — squad reads | 1 + 14,880 | **2** | P1-4 |
 | AI friendly pass — week reads, per friendly week | ~59,520 | **2** | P1-4 |
 | `/train-all` response | every player as JSON | **`{"trained": n}`** | P1-4 |
+| Club milestone page — season event-log reads | 2 | **1** | P1-7 |
+| Club page blob fetched and discarded | 10 MB | **204 KB** | P1-7 |
 
 **Read the scale column.** The first three rows were measured on a 155-match village; the P1-1 rows on a
 full 89,280-match season. **A number is only comparable to a number measured the same way**, and the
@@ -597,66 +599,49 @@ first three are not comparable to the last five.
 
 ---
 
-### P1-7 — Partly done. The two Elo replays and the blob itself are fixed; three readers are not.
+### P1-7 — DONE. The replays, the blob, the milestone page and the background failures. One item measured and dropped.
 
-`Match.eventJson` is the whole per-tick decision log in one text column. **It was 742 KB – 1,035 KB a
-match: 124 MB for 155 matches, ~66 GB a season.** Two things were wrong with it — the Elo replays read it
-without needing it, and it was 98% noise even for the pages that do read it.
-
-**Landed, both measured in the database:**
+`Match.eventJson` was the whole per-tick decision log in one text column: **742 KB – 1,035 KB a match,
+~66 GB a season.** Four separate things were wrong with it.
 
 | | before | after |
 |---|---:|---:|
-| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB a season** |
+| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB** |
 | `event_json` per match, written by the app | 840,136 B | **17,001 B — 49.4× smaller** |
-| events per match | 3,065 | **21** |
+| Club milestone page — season reads | **2** | **1** |
+| Background fixtures that failed | logged, never counted | **counted and named** |
 
-`SimReportMapper.eventJson` now writes only the types a page can use, from a keep-list derived from
-`MatchDetailService.mapEventToDTO`, `ZoxApiController.buildTimeline` and `GoalEventRepository.isGoal`.
-All three readers were checked against a running app on a real new match: 9 timeline items, 10 scorer
-rows, 46 detail events. **The full log is not lost** — `SimReplayStore` writes it to a file, which is what
-the replay viewer reads.
+**Landed, each measured in the database.** The replays read a `ScoredMatch` projection.
+`SimReportMapper.eventJson` writes only the event types a page can use, from a keep-list derived from
+`MatchDetailService`, `ZoxApiController` and `GoalEventRepository` — **all three** readers were checked
+against a running app on a real new match. `LeagueMilestoneService` reads the season once instead of
+twice. `AsyncSimulationRunner` counts and names the fixtures it could not simulate.
 
-**Still open, all three measured, none fixed:**
+**Measured and DROPPED — the club-history projection this board used to ask for.** The criterion was
+written before the blob was narrowed, when a club page pulled **10 MB**. It now pulls **204 KB**, and
+`MatchDTO.from` reads no JSON at all. Saving 204 KB per page view does not justify a new projection type
+plus three rewrites, on a query **P1-1 already took from 170 ms to 0.26 ms**. The criterion was wrong and
+is corrected rather than met.
 
-| Site | Cost | Why not fixed here |
-|---|---:|---|
-| `TeamController:250` club history, `MatchDTO` carries no JSON | 12 rows × 742 KB = **8.9 MB per page view** | A `MatchDTO` projection is wider than a replay fix |
-| `TeamController:577`, `ScheduleInsightService:70` | same | same |
-| `GoalEventRepository.findByMatchSeasonYearAndScoredTrue` — `LeagueMilestoneService:71,75` | **89,280 × 742 KB, twice** | Needs the query, not the blob |
+**Three defects found here:**
 
-**And two things that are now cheap to fix, because the blob stopped being the problem:**
-`findByMatchCompetitionIdAnd…` was 44 MB per request and is now ~17 KB a match for new matches;
-`LeagueMilestoneService` still calls it **twice**, once for goals and once for assists.
+- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** `contains("GOAL")` matched
+  `GOAL_DISALLOWED` and `VAR_GOAL_OVERTURNED` — 30 credits for goals that do not exist. **Not a product
+  question:** `BallResultHandler` asks VAR *before* `goalScored`, so the scoreline never counted them
+  either. The definition now lives on `MatchEventType`, because **three** call sites had each invented
+  their own substring.
+- **NOT A DEFECT — `simulate-all` does report its background work, and my claim was wrong.** It returns
+  `backgroundSimulating` and `backgroundTotal`; `/current-round/status` reports progress live. My print
+  statement selected four keys out of nine and I concluded from those four.
+- **OPEN, and one line further up than the last one: a fixture with no teams is counted as
+  `simulated`.** The runner returns early for a null home or away side and then increments
+  `simulatedCount` anyway, so a match that was never played is reported as one that was. **Needs a
+  decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status endpoint means,
+  and `AsyncSimulationRunner` sits next to the simulation endpoints other work is in. Exit criteria: a
+  fixture that was not simulated is never counted as one, and the status endpoint distinguishes the two.
 
-**Exit criteria for what is left:**
-- [ ] The club-history paths read a `MatchDTO` projection, not `Match` entities
-- [ ] `LeagueMilestoneService` parses a season once instead of twice
-- [ ] The existing 155 matches keep their big blobs until the world is reset — **no migration was run,
-      deliberately.** Say if a backfill is wanted
-**One defect found here and fixed, and one I reported that was not real:**
-
-- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** It tested
-  `type.contains("GOAL")`, so `GOAL_DISALLOWED` (15) and `VAR_GOAL_OVERTURNED` (15) counted as goals and
-  put a player on the top-scorers page, the top-assists page and the club milestone list. **Not a
-  preference: `BallResultHandler` asks VAR *before* it calls `goalScored`, so the scoreline never counted
-  them either** — a striker on 5 beside a team that scored 3 is a table disagreeing with itself. The
-  definition now lives on `MatchEventType.countsAsGoal`, because **three** call sites had each invented
-  their own answer. `MatchController.extractKeyEvents` had the same substring and was putting
-  `GOAL_KICK` — a restart — on the match report as a key moment.
-- **NOT A DEFECT — `simulate-all` does report the background work, and my claim was wrong.** It returns
-  `backgroundSimulating` and `backgroundTotal`, and `/current-round/status` reports
-  `backgroundSimulated` / `backgroundTotal` live. My print statement selected four keys out of the
-  payload and I concluded from those four. Recorded because the log entry asserted it, and a wrong
-  finding in an append-only log is worth correcting loudly.
-- **A real but minor gap:** `AsyncSimulationRunner` logs a failed background fixture and moves on, and
-  never counts the failures, so `/current-round/status` can show `148/154` without ever saying six
-  failed. Exit criteria: a failed background fixture is counted and reported, not only logged.
-
-
----
-
----
+**Not done, deliberately:** no migration. The existing 155 matches keep their 742 KB blobs, so historical
+pages stay slow until the world is reset while every new match is cheap.
 
 ### P1-1 — DONE. Four indexes on `match`. Two of the three claims on this board were wrong.
 
