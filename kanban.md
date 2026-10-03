@@ -354,7 +354,7 @@ not answer "should this exist at all". **The deletion question is still open** a
 
 ---
 
-### P0-18 — `viewerTeamId` returns an id from the wrong table for the owner — NEW, 2026-10-03
+### P0-18 — DONE: `viewerTeamId` returned an id from the wrong table, and the owner took it
 
 Found because a fixture caught it, and it is worth more than the bug it looked like.
 
@@ -377,9 +377,17 @@ value is **not** a `Team` id, and every caller comparing it against `Team.id` fa
 branch. Only the owner does.
 
 **Exit criteria:**
-- [ ] `viewerTeamId` resolves to a `Team` id in every case, or the `tifoCTeam` branch is removed
-- [ ] The owner can see his own players' talent, verified against a real account
-- [ ] A test asserts the **value** of `viewerTeamId` for a user with a `tifoCTeam`, not just that it is non-null
+- [x] `viewerTeamId` resolves to a `Team` id in every case — the `tifoCTeam` short-circuit is gone, and
+      `clubNameOf` already reads `cTeam` first and falls back to `tifoCTeam`, so one name lookup serves both
+- [x] The owner can see his own players' talent — asserted on the **effect** through `talentOrNull`, not on
+      the intermediate id, so it still holds if every caller stops using `viewerTeamId`
+- [x] A test asserts the **value** of `viewerTeamId` for a user with a `tifoCTeam`, not merely that it is
+      non-null — `ViewerTeamIdIsATeamIdTest`, **6 green**
+- [x] Proven able to fail: restoring the short-circuit fails 2 of 6 with
+      `answered with the CTeam's id (17) where the club's id (1) was needed`
+- [x] **98 green** with `PlusFeatureServiceTest` and all six controller authorization classes
+
+---
 
 ---
 
