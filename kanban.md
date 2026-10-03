@@ -891,19 +891,54 @@ computes but cannot act."* Trust is computed and displayed; nothing acts on it.
 
 **Exit criteria:** mood and expectations are visible, and something in the game responds to them.
 
+---
+
 ### P2-6 — Graduation caps
 
-Half a day. *"Stops the academy flattening the economy."*
+Half a day. *"Stops the academy flattening the economy."* The intake is capped at 10 ACTIVE juniors;
+**graduation has no cap at all** — every ACTIVE junior aged ≥20 in the whole world is promoted in one
+loop — and `createSeniorFromJunior` never consults `canRegister`, so the 25-senior cap cannot bind a
+graduate, who then draws a wage line for a full season before the backfill gives him a contract.
+
+**Also carries:** the `ListingObjectionService.roleOf` fallback that P2-3 exposed. A graduate has no
+contract, so it fell through to a position switch mapping `GK/DEF/MID → STARTER` (reluctance 0.75) and
+a 17-year-old was treated as a senior starter — roughly a 41% objection rate on every automatic
+graduation. `PlayerContractService.inferRole` already encodes the right rule and should have been used.
 
 **Exit criteria:** a capped intake produces capped graduates, verified over a season rather than one run.
 
-### P2-7 — A retirement age
+---
 
-One day, and the analysis calls it *"still the cheapest 1-day item on this list"* and the highest-value
-item in the long game: **without it neither the pyramid nor the market can turn over.**
+### ~~P2-7 — A retirement age~~ ✅ `PlayersRetireTest` 5/5
 
-**Exit criteria:** players retire; squads need replacing; the effect is visible in the league table over a
-season.
+**Nothing existed.** No `retire`/`retirement`/`retired` token anywhere in `src/main` or `src/test`, no
+constant, no age-filtered query, no status field, and no removal path keyed to age. Players aged once
+a year and the only ways out of a squad were a transfer or a contract expiring — so a 32-year-old
+became 60, then 90, and `ClubNeedService.java:173` kept pricing him at 30% of value and bidding. The
+pool only ever grew.
+
+**Owner decision:** a **deterministic age band scaled by quality** (33–36), not a fixed birthday and
+not a dice roll — a club plans a squad around when a player ends. Bands are set on the **real 0–100
+rating scale** (measured on the dev world: peak ~68, range 35–93), so the cut points are 85/75/65, not
+the 0–10 scale the skills use.
+
+**Landed:**
+- [x] `Player.retiredSeason` (nullable, appended at the end of the entity as `@AllArgsConstructor`
+      demands — and two positional call sites in `sim/` were updated, exactly as that file predicted)
+- [x] `RetirementService` hooked into `SeasonService.agePlayersAndJuniorsOneYear()` **between** ageing
+      and graduation, so a player can retire and be replaced by a graduate in one season turn
+- [x] `findActiveClubPlayers()` + `ix_player_team_not_retired (team_id, retired_season, age)` — the
+      sweep would otherwise be a seq scan over every player in the world, once a season
+- [x] **He leaves, he is not deleted.** His row, statistics and history survive
+- [x] **His contract ends too** — `canRegister` counts contracts, so a retired player left holding one
+      would occupy one of the 25 senior slots for ever and the club could never replace him
+- [x] The sweep is idempotent, since a season roll-over must be safe to reason about
+- [x] Every test proven able to fail, including the destructive-delete trap below
+
+**Also fixed — a latent bug retirement would have made routine:** `Lineup.getOrderedStartingPlayers()`
+returned join-table rows regardless of club membership, so a player whose contract had expired could
+still start matches. **This already happened weekly** via `PlayerContractService.expireContracts`. The
+join table now yields only players still at that club.
 
 ### P2-8 — Zero-consequence exhibition mode
 

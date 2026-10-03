@@ -268,7 +268,7 @@ objectedListing(seller, star, 8_000_000);
         transferService.resolveListingObjection(star.getId(),
                 TransferService.ObjectionResolution.PAID, seller.getId());
 
-        Transfer after = transfers.findById(star.getId()).orElseThrow();
+        Transfer after = transfers.findByPlayerId(star.getId()).orElseThrow();
         assertEquals(ListingObjection.NONE, after.getListingObjection(),
                 "the objection is resolved and the player stays on the market");
         assertEquals(TransferStatus.LISTED, after.getStatus(), "so the club can carry on selling him");

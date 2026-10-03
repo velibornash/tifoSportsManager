@@ -25,6 +25,14 @@ import org.hibernate.annotations.ColumnDefault;
                 // is cheap enough that the machinery is not worth it. Revisit if this table ever
                 // carries a million rows at a 2% tired rate.
                 @Index(name = "ix_player_fatigue_tired", columnList = "fatigue"),
+                // The retirement sweep asks "club players at or past their retirement age who have not
+                // retired". Without this it is a seq scan over every player in the world, once a season.
+                // `team_id` leads because a retired player is not on a club any more and must not be
+                // re-examined; `retired_season` follows so a retired row is excluded from the seek
+                // rather than fetched and filtered. The age column is deliberately last: the sweep
+                // filters a range on it, and a range on a trailing column of an index is still a range
+                // on the leading two, which is what makes this an index scan rather than a scan.
+                @Index(name = "ix_player_team_not_retired", columnList = "team_id,retired_season,age"),
         })
 @Entity(name = "Player")
 public class Player {
@@ -178,6 +186,25 @@ public class Player {
      */
     @jakarta.persistence.Column(name = "last_played_at")
     private java.time.LocalDateTime lastPlayedAt;
+
+    /**
+     * The season this player retired, or null while he is still playing (P2-7).
+     *
+     * <p>Null rather than a status enum: {@code Player} has no status column and no CHECK constraint to
+     * add a value to, and "null = still playing" is the honest reading of a career that has not ended.
+     *
+     * <p><b>Declared last on purpose</b>, like {@code sourcePlayerId} and {@code lastPlayedAt}:
+     * {@code @AllArgsConstructor} grows by one parameter per field wherever it is placed, so inserting
+     * it mid-class silently reorders every positional argument in every caller. Two tests construct
+     * {@code Player} with every field spelled out.
+     */
+    @jakarta.persistence.Column(name = "retired_season")
+    private Integer retiredSeason;
+
+    /** Whether he has hung up his boots. */
+    public boolean isRetired() {
+        return retiredSeason != null;
+    }
 
 
 

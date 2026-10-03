@@ -71,4 +71,20 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     @Modifying
     @Query("update Player p set p.age = p.age + 1")
     int incrementAgeForAllPlayers();
+
+    /**
+     * Every player still at a club and still playing — the retirement sweep's whole input.
+     *
+     * <p>Filtered in the query rather than in Java because {@code SeasonService} ages the entire world
+     * with one bulk update, so there is no smaller set to work from. A retired player has no club, so
+     * {@code team is not null} already excludes him and the sweep is idempotent; {@code retiredSeason
+     * is null} states the same thing twice on purpose, so the query is correct even if a future change
+     * ever leaves a retired player attached to a club.
+     *
+     * <p>Served by {@code ix_player_team_not_retired (team_id, retired_season, age)}. The per-player
+     * retirement age is a function of his rating, so the age range cannot be pushed into SQL — this
+     * returns club players and the service decides who is due.
+     */
+    @Query("SELECT p FROM Player p WHERE p.team IS NOT NULL AND p.retiredSeason IS NULL")
+    List<Player> findActiveClubPlayers();
 }

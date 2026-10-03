@@ -58,11 +58,40 @@ public class Lineup {
     }
 
     public List<Player> getOrderedStartingPlayers() {
-        return sortPlayersByOrder(startingPlayers, getOrderedStarterIds());
+        return sortPlayersByOrder(currentPlayers(startingPlayers), getOrderedStarterIds());
     }
 
     public List<Player> getOrderedSubstitutePlayers() {
-        return sortPlayersByOrder(substitutes, getOrderedBenchIds());
+        return sortPlayersByOrder(currentPlayers(substitutes), getOrderedBenchIds());
+    }
+
+    /**
+     * Drops players who no longer belong to this lineup's club.
+     *
+     * <p>The join table keeps naming a player after he has left, because nothing cleans it up when he
+     * goes. {@code PlayerContractService.expireContracts} has been setting {@code team = null} on
+     * expiry for some time, so a saved XI could already start a player who no longer played for that
+     * club — the bug predates retirement, and retirement would have made it routine.
+     *
+     * <p><b>A lineup with no club is left alone.</b> It cannot judge membership, because there is no
+     * membership to judge: {@code RealSquadFactoryTest} and
+     * {@code RealSquadSimulationSmokeTest} build eleven synthetic players with no club at all to
+     * exercise the shape mapping, and dropping them would silently turn those tests into "the squad is
+     * null". Every lineup the product reads has a team.
+     *
+     * <p>Filtering here rather than at each call site is deliberate: {@code SimMatchService},
+     * {@code RealSquadFactory} and {@code ScheduleInsightService} all read this collection. With a row
+     * dropped the list can fall below eleven, which every caller already handles by building from the
+     * club's real squad instead.
+     */
+    private List<Player> currentPlayers(List<Player> players) {
+        if (players == null || players.isEmpty() || team == null || team.getId() == null) {
+            return players == null ? List.of() : players;
+        }
+        Long clubId = team.getId();
+        return players.stream()
+                .filter(p -> p != null && p.getTeam() != null && clubId.equals(p.getTeam().getId()))
+                .toList();
     }
 
     public void setStarterOrderFromIds(List<Long> ids) {

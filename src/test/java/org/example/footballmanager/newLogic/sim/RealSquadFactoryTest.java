@@ -137,6 +137,10 @@ class RealSquadFactoryTest {
                 // sourcePlayerId (national-team call-ups, 2026-09-28) and lastPlayedAt (zone
                 // recovery, 2026-09-29). Both null: these are club players who have not played.
                 null,
+                // retiredSeason (P2-7), appended for the same reason. "Add it at the end" keeps the
+                // order stable but never avoids touching the call sites, exactly as the notes above
+                // predicted. Null: nobody in a squad-building test has retired.
+                null,
                 null);
     }
 

@@ -51,6 +51,7 @@ public class SeasonService {
     private final PlayerRepository playerRepository;
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
+    private final RetirementService retirementService;
     private final TransferService transferService;
     private final FriendlyRequestService friendlyRequests;
     private final LoanService loans;
@@ -698,6 +699,13 @@ public class SeasonService {
         juniorRepository.incrementAgeByStatus(JuniorStatus.ACTIVE);
 
         int season = getActiveSeasonYear();
+
+        // Retirement sits between ageing and graduation, and that order is the point: a player who
+        // turns 33 this year is assessed against his own quality-scaled band in the same pass, so he
+        // can retire and be replaced by a graduate in one season turn. Without this step nobody ever
+        // left a squad by age at all, so the pyramid could not turn over.
+        retirementService.retireOverduePlayers(season);
+
         int graduated = youthAcademyService.promoteJuniorsPastWindow(season, season);
         if (graduated > 0) {
             log.info("Season {}: {} junior(s) graduated on reaching the age of {}",

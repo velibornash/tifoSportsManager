@@ -754,6 +754,104 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-7: players retire, and one dead method was dead because it is destructive
+
+### There was nothing to build on, and that was the finding
+
+No `retire`/`retirement`/`retired` token exists anywhere in `src/main` or `src/test` — not in Java, JS,
+SQL or YAML. No constant, no age-filtered player query, no status field on `Player`, no removal path
+keyed to age, and no test. Ageing *did* exist: one bulk `incrementAgeForAllPlayers()` at
+`SeasonService.java:643`. So a player aged once a year and the only ways out of a squad were a transfer
+or a contract expiring. A 32-year-old became 60, then 90, stayed at his club, stayed on the list, and
+`ClubNeedService.java:173` still priced him at 30% of value and bid for him. The pool only ever grew.
+
+### `Team.removePlayer` is dead because it would DELETE the player
+
+I intended to make it load-bearing. **`Team.players` is mapped
+`@OneToMany(mappedBy = "team", cascade = ALL, orphanRemoval = true)`**, so removing a player from that
+collection makes Hibernate delete the row on flush — statistics, contract history and transfer history
+with it. That is why it has had no callers since it was written.
+
+Proved by doing it: `Referential integrity constraint violation: LINEUP_STARTING_PLAYERS FOREIGN
+KEY(PLAYER_ID) REFERENCES PUBLIC.PLAYER(ID)` — **4 of 5 tests red.** It does not quietly lose history,
+it fails outright for any player who has ever been in a lineup, and silently deletes the ones who have
+not. Retirement does what contract expiry does instead: null the club, end the contract, keep the row.
+
+### Bands on the real rating scale
+
+`Player.rating` is **0-100**, not the 0-10 the skills use. Measured on the dev world: peak around
+67–72, range 35–93, 7,730 club players aged 18–32. So the cut points are 85 / 75 / 65 and the band is
+33–36. A first attempt used the 0-10 scale and would have retired nearly everybody at 33.
+
+Hooked **between** ageing and graduation, not after: a player who turns 33 this year is assessed in the
+same pass, so he can retire and be replaced by a graduate in one season turn.
+
+### The latent bug retirement would have made routine
+
+`Lineup.getOrderedStartingPlayers()` returned join-table rows regardless of club membership.
+`PlayerContractService.expireContracts` has been setting `team = null` on expiry **every week for some
+time**, so a saved XI could already start a player who no longer played for that club. Retirement would
+have turned a weekly oddity into a constant one. The join table now yields only players still at that
+club, and with a row dropped the list can fall under eleven — which every caller already handles by
+building from the club's real squad.
+
+**This broke two engine tests, correctly.** `RealSquadFactoryTest` and
+`RealSquadSimulationSmokeTest` build eleven synthetic players **with no club at all** to exercise shape
+mapping, and the first version of the filter dropped every one of them, so both suites went red with
+`squad is null`. A lineup with **no club** now yields its players unchanged: it cannot judge membership
+because there is none to judge. Every lineup the product reads has a team.
+
+### My own committed test had a latent order-dependent bug
+
+`ListedPlayerCanObjectTest.payingCompensationClearsTheObjection` — mine, shipped in `302b9ea` — read
+`transfers.findById(star.getId())`, looking up a **transfer** by **player** id. It passed alone because a
+fresh database hands out matching ids, and it passed in a full run by luck. It failed as soon as
+`PlayersRetireTest` ran first in the same context:
+
+```
+payingCompensationClearsTheObjection » NoSuchElement No value present
+```
+
+Confirmed from the bound parameters: `update transfer ... where id=1` with `player_id=9`. Fixed to
+`findByPlayerId`. **This was a flake waiting for the right test ordering, in a test whose whole purpose
+was to be trustworthy** — and it was found only because a new test class ran before it. Same class of
+error as the global-count assertions in `PlayersRetireTest`, fixed in the same hour: my tests were
+leaning on database state instead of on the guarantee.
+
+The `@AllArgsConstructor` hazard on `Player` was real and immediate, exactly as the entity's own javadoc
+warned: `RealSquadFactoryTest:124` and `RealSquadSimulationSmokeTest:92` construct `Player` with all 27
+fields positionally and needed the trailing `null`.
+
+### A merge ran through my files mid-task
+
+The P0-1b agent merged a branch that changed `requireSeller`'s signature, colliding with the guard I added
+in P2-3 inside `removeFromTransferList`. `TransferService.java` sat unmerged with conflict markers, which
+blocked every compile. I did not touch it — their merge, their resolution. Afterwards I verified all
+five P2-3 objection guards survived (`requireResolved` on delist and on accept, `clear`, `payCompensation`,
+`raiseIfWarranted`), because a merge can drop a hunk silently and this one had the same line.
+
+### Breaks
+
+| Break | Result |
+|---|---|
+| Use `Team.removePlayer` | 4 fail — FK violation on `lineup_starting_players`, i.e. a DELETE |
+| Do not end the contract | 1 fail — the registration slot stays occupied |
+| One retirement age for everybody | 2 fail — `expected: <33> but was: <34>` |
+
+One earlier break was a **no-op I had to rewrite**: `if (rating >= ELITE && TRUE) return 36;` followed by
+`if (rating >= ELITE) return 36;` is the same code twice, so it proved nothing.
+
+### Regression check
+
+`PlayersRetireTest`, `RealSquadFactoryTest`, `RealSquadSimulationSmokeTest`, `PlayerContractServiceTest`,
+`ListedPlayerCanObjectTest`, `ListingFeeScalesWithTheAskingPriceTest`, `SellerAcceptsANamedOfferTest`,
+`TransferServicePriceGuardTest`, `TransferMarketSquadReadCountTest`, `JuniorDecisionWindowTest`,
+`YouthAcademyGraduationTest`, `JuniorSchoolServiceTest`, `TalentRangeTest`,
+`ScheduleInsightServiceTest` — **104 tests, 0 failures, 0 errors.** `mvn clean package` succeeds. The
+polluting pair was also run in both orders.
+
+---
+
 ## 2026-10-03 — P2-3: a player can refuse to be listed, and the club has to choose
 
 ### Built on two things that were already written and never used
