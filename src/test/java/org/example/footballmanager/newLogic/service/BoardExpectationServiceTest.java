@@ -2,7 +2,10 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Stadium;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -30,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BoardExpectationServiceTest {
 
     @Autowired TeamRepository teams;
+    @Autowired CompetitionRepository competitions;
     @Autowired PlayerRepository players;
     @Autowired CompetitionEntryRepository entries;
     @Autowired FinanceLedgerService ledgerService;
@@ -45,6 +49,11 @@ class BoardExpectationServiceTest {
     private Team aClub(String name, double budget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
+        // A club is a team with a competition. National sides have none, and the weekly settlement
+        // now skips those, so a fixture without one is not a club — it is a shape the game does not
+        // have. PyramidBuilder sets setCompetition(league) on every club it creates, so this is
+        // what a real club looks like.
+        t.setCompetition(aLeague());
         t.setBudget(budget);
         t.setReputation(60.0);
         Stadium s = new Stadium();
@@ -139,5 +148,15 @@ class BoardExpectationServiceTest {
         Map<String, Object> summary = ledgerService.summarise(club, gameSeason());
         assertTrue(Boolean.FALSE.equals(summary.get("settled")), "a fresh club is unsettled");
         assertNotNull(summary.get("notice"), "the page must be told to say so");
+    }
+
+    /** A minimal LEAGUE division, because a club belongs to one. */
+    private Competition aLeague() {
+        Competition competition = new Competition();
+        competition.setName("ZZ Finance league " + System.nanoTime());
+        competition.setType(CompetitionType.LEAGUE);
+        competition.setTier(1);
+        competition.setReputationWeight(20);
+        return competitions.save(competition);
     }
 }

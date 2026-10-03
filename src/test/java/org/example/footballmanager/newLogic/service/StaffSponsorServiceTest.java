@@ -6,7 +6,10 @@ import org.example.footballmanager.newLogic.model.Sponsor;
 import org.example.footballmanager.newLogic.model.StaffMember;
 import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.model.Stadium;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
 import org.example.footballmanager.newLogic.repository.SponsorRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
@@ -36,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class StaffSponsorServiceTest {
 
     @Autowired TeamRepository teams;
+    @Autowired CompetitionRepository competitions;
     @Autowired StaffMemberRepository staff;
     @Autowired SponsorRepository sponsors;
     @Autowired StaffSponsorService service;
@@ -45,6 +49,11 @@ class StaffSponsorServiceTest {
     private Team aClub(String name, double reputation) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
+        // A club is a team with a competition. National sides have none, and the weekly settlement
+        // now skips those, so a fixture without one is not a club — it is a shape the game does not
+        // have. PyramidBuilder sets setCompetition(league) on every club it creates, so this is
+        // what a real club looks like.
+        t.setCompetition(aLeague());
         t.setBudget(1_000_000.0);
         t.setReputation(reputation);
         Stadium s = new Stadium();
@@ -186,5 +195,15 @@ class StaffSponsorServiceTest {
                 .filter(e -> e.getCategory() == FinanceCategory.SPONSORSHIP).findFirst().orElse(null);
         assertNotNull(sponsorLine, "sponsorship income must be in the ledger");
         assertTrue(sponsorLine.getAmount() > 0, "sponsorship is income");
+    }
+
+    /** A minimal LEAGUE division, because a club belongs to one. */
+    private Competition aLeague() {
+        Competition competition = new Competition();
+        competition.setName("ZZ Finance league " + System.nanoTime());
+        competition.setType(CompetitionType.LEAGUE);
+        competition.setTier(1);
+        competition.setReputationWeight(20);
+        return competitions.save(competition);
     }
 }

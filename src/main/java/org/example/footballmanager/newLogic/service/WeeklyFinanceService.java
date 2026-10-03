@@ -97,6 +97,21 @@ public class WeeklyFinanceService {
     public WeekResult applyWeeklyFinances(Team team, Integer seasonYear, Integer week) {
         if (team == null || team.getId() == null) return WeekResult.skipped();
 
+        // **A national side is not a club and has no club's economy.**
+        //
+        // The settlement ran over `teamRepository.findAll()`, so it reached the 96 national sides along
+        // with the 14,880 clubs, and nothing below here objected: `broadcast` reads the competition and
+        // defaults a null one to weight 20, so every national side in the world was paid a league
+        // broadcast share; `gate` projected a home fixture it never plays; `merchandising` sized income
+        // off its 25-player squad; and a budget was written onto the team.
+        //
+        // **A club is a team with a competition**, which is the definition the rest of the codebase
+        // already uses. Deliberately NOT `type == CLUB`: PyramidBuilder creates every club in the world
+        // and never sets `type`, so that flag would match nothing.
+        if (team.getCompetition() == null) {
+            return WeekResult.skipped();
+        }
+
         boolean alreadySettled = ledger
                 .findByTeamIdAndSeasonYearAndWeekNumber(team.getId(), seasonYear, week).stream()
                 .findAny().isPresent();

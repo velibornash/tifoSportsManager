@@ -550,7 +550,12 @@ public class SeasonService {
         GameClock clock = getOrCreateClock();
         Integer season = clock.getCurrentSeason();
         Integer week = clock.getCurrentWeek();
-        List<Team> clubs = teamRepository.findAll();
+        // Clubs only. This read every team in the world, which at target scale is 14,880 clubs and 96
+        // national sides — and each one costs a REQUIRES_NEW transaction, so the 96 were 96 transactions
+        // to settle something that does not exist. applyWeeklyFinances refuses a team with no
+        // competition as well, so the rule is stated in both places rather than in one and assumed in
+        // the other.
+        List<Team> clubs = teamRepository.findAllClubsWithDivision();
         int settled = 0;
         for (Team club : clubs) {
             try {

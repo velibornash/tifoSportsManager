@@ -2,7 +2,10 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Stadium;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MoraleAndBudgetServiceTest {
 
     @Autowired TeamRepository teams;
+    @Autowired CompetitionRepository competitions;
     @Autowired PlayerRepository players;
     @Autowired MoraleService morale;
     @Autowired TransferBudgetService budgets;
@@ -48,6 +52,11 @@ class MoraleAndBudgetServiceTest {
     private Team aClub(String name, double budget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
+        // A club is a team with a competition. National sides have none, and the weekly settlement
+        // now skips those, so a fixture without one is not a club — it is a shape the game does not
+        // have. PyramidBuilder sets setCompetition(league) on every club it creates, so this is
+        // what a real club looks like.
+        t.setCompetition(aLeague());
         t.setBudget(budget);
         t.setReputation(60.0);
         Stadium s = new Stadium();
@@ -210,5 +219,15 @@ class MoraleAndBudgetServiceTest {
         assertNotNull(budgets.budgetFor(999_999L));
         assertTrue(budgets.budgetFor(999_999L).notGranted());
         assertFalse(budgets.canAfford(999_999L, 999_999L).affordable());
+    }
+
+    /** A minimal LEAGUE division, because a club belongs to one. */
+    private Competition aLeague() {
+        Competition competition = new Competition();
+        competition.setName("ZZ Finance league " + System.nanoTime());
+        competition.setType(CompetitionType.LEAGUE);
+        competition.setTier(1);
+        competition.setReputationWeight(20);
+        return competitions.save(competition);
     }
 }
