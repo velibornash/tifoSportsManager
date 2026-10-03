@@ -116,6 +116,42 @@ the tests, not by this run.**
   **disjoint by construction**, since the snapshot is read before the reset. It tested a scenario that
   cannot occur.
 
+### A regression I introduced in step 3, found by reading the code the change touched
+
+Worth its own entry because **a test did not find this one — reading did**, and because it is exactly
+the shape of thing this file keeps recording.
+
+Until step 3, every player in the world wore one of 4-4-2's eleven role keys and the rules were
+4-4-2, so **"a role these rules do not name" could not happen.** Step 3 made a club's formation decide its
+own keys, which made it reachable: a 4-3-3 side facing a 4-4-2's rules asks about `CM`, `WL`, `WR`, `ST`.
+
+Both miss paths returned a hardcoded `new Position(1.5, 3.5)` — **the goalkeeper's own-half corner**. So in
+any mixed-formation match, every unmentioned outfielder of one side was sent to the **same square metre of
+pitch**: a wall of players, and unreadable replays.
+
+It could not simply return null either. `TacticalIntentEngine` does `p.setTarget(desired)` and a
+`SimUtils.distance(desired, …)` immediately after, so all three `RestartManager` restart sites and the tick
+loop needed a guard.
+
+**The contract now: "no rule and no anchor" answers null, and every caller falls back to the player's own
+position** — which `RealSquadFactory` has already placed from *his* formation's anchors. Non-null, and the
+right answer: a player whose role the current tactic does not mention holds his shape, which is what a
+manager who has not authored a rule for him would expect.
+
+`UnnamedRoleFallsBackTest` 3/3, proven able to fail by restoring the hardcoded cell, which prints it:
+
+```
+a 4-3-3 holding midfielder asked a 4-4-2's rules and got an answer.
+  It used to get (1.5, 3.5) ... expected: <null> but was: <(1.50,3.50)>
+```
+
+The third test asserts the two vocabularies **must differ**, so the miss path is genuinely exercised rather
+than quietly satisfied — the shape of assertion that would otherwise have passed on a fix that changed
+nothing.
+
+69/69 across the engine, including `KickoffHalfLineTest` and `RestartTakerArrivalTest`, which go through the
+same call sites.
+
 ### Step 4 — answered, and the answer is that nothing should change
 
 Owner, 2026-10-03: *"WE_HAVE_BALL and OPPONENT_HAS_BALL are currently the same **on purpose**. I have not
