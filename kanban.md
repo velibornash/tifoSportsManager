@@ -1113,10 +1113,38 @@ Three to four days. The six slider fields have **zero readers** today — they a
 
 **Exit criteria:** the sliders change something observable in a match, or they are removed.
 
-### P2-14 — Prize money: `awardPrizeMoney` has no caller
+### ~~P2-14 — Prize money: `awardPrizeMoney` has no caller~~ ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
 
-Small. It is implemented and nothing calls it — either wire it or delete it. It is on this list because
-"implemented and unreachable" is a defect in its own right.
+The board said "wire it or delete it". **Wire it — but not as written, or it pays the wrong clubs.**
+
+`WeeklyFinanceService.awardPrizeMoney` was implemented with zero callers, and the weekly
+`prizeMoney` line beside it deliberately returns `null` ("only paid once the season is finished"). The
+two halves were designed to meet and the meeting never happened: **no club had ever been paid prize
+money in this game.**
+
+**The trap.** The dead method ranked clubs by `CompetitionEntry.position`. **Nothing sets that field
+during a season** — `PyramidBuilder` writes it once when the world is built and it is never updated.
+Wiring it as written would have paid the champion's money to whichever club was seeded first, every
+season, silently, under a correct-looking ledger line reading `"Finished P1 of 10"`. Measured with the
+break in place: the real champion took **384,000** and the club seeded first took **480,000**.
+
+**Landed:**
+- [x] Ranked by `LeagueTableOrder` — already the one definition of a league table (owner decision
+      S8.4), and what promotion, relegation and the playoff draw read, so the money follows the same
+      table the manager is shown. The stale `position` field and its private reader are deleted
+- [x] Called from `SeasonService.performPromotionRelegationAndNewSeason()`, **before** promotion —
+      paid for the season that finished, before clubs are moved between competitions
+- [x] **A competition nobody played in pays nothing**, so a freshly seeded world rolled over before a
+      single match does not mint a prize pool
+- [x] Every club in the table is paid, not only the champion — 45% / 28% / 20% … down the table
+- [x] Written to the ledger (with the finishing position in the note) and to the budget
+- [x] The season's competitions come from **one** query, not one per competition
+- [x] Both breaks proven: ranking on the stored field, and dropping the unplayed-season guard
+
+**Recorded, not changed:** `CompetitionEntry.position` is now written by `PyramidBuilder` and read by
+**nothing** in `src/main`. It is a dead column, and `ix_competition_entry_sc_pos` exists to serve it.
+
+---
 
 ### P2-15 — Basketball, American football, text-based football
 

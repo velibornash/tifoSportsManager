@@ -644,6 +644,17 @@ public class SeasonService {
     @Transactional
     public void performPromotionRelegationAndNewSeason() {
         int endingSeasonYear = getActiveSeasonYear();
+
+        // Prize money first, while the table is the one the season actually produced. Paid before
+        // promotion rather than after, because promotion moves clubs between competitions and the
+        // season that has finished is the one that gets paid. It used to pay nothing at all:
+        // WeeklyFinanceService.awardPrizeMoney had no caller anywhere, and the weekly line
+        // deliberately writes nothing, so no club had ever been paid.
+        int paid = weeklyFinances.awardPrizeMoneyForSeason(endingSeasonYear, seasonCompetitionRepository);
+        if (paid > 0) {
+            log.info("Season {}: paid prize money to {} club(s)", endingSeasonYear, paid);
+        }
+
         applyPromotionRelegation(endingSeasonYear);
         agePlayersAndJuniorsOneYear();
 

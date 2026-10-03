@@ -8,9 +8,13 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Stadium;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.util.LeagueTableOrder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -43,6 +47,8 @@ import java.util.List;
  */
 @Service
 public class WeeklyFinanceService {
+
+    private static final Logger log = LoggerFactory.getLogger(WeeklyFinanceService.class);
 
     /** Broadcast income per club for a league of the given reputation weight. */
     private static final double BROADCAST_PER_WEIGHT_POINT = 145.0;
@@ -294,29 +300,89 @@ public class WeeklyFinanceService {
 
     // --- helpers ---
 
-    /** Pays a season's prize money once the league table is final. */
+    /**
+     * Pays a season's prize money by finishing position, once the table is final.
+     *
+     * <p>The weekly {@link #prizeMoney} line deliberately pays nothing — "only paid once the season is
+     * finished" — and this is the other half. It had <b>no caller at all</b>, so no club has ever been
+     * paid prize money in this game.
+     *
+     * <p><b>Ranked by {@link LeagueTableOrder}, not by the stored {@code position}.</b> The first
+     * version of this method sorted on {@code CompetitionEntry.position}, which nothing sets during a
+     * season: {@code PyramidBuilder} writes it once when the world is built and it is never updated. So
+     * wiring it as written would have paid the champion's money to whichever club happened to be seeded
+     * first, every season, silently. {@code LeagueTableOrder} is already the one definition of a league
+     * table (owner decision S8.4) and is what promotion and relegation read, so the money follows the
+     * same table the manager is shown.
+     *
+     * <p>A competition nobody played in is skipped. Without that, a world that is seeded and then rolled
+     * over before a single match — exactly what a fresh database does — would pay out a full prize pool
+     * for a season that did not happen.
+     */
     @Transactional
-    public void awardPrizeMoney(SeasonCompetition sc, Integer seasonYear) {
-        if (sc == null || sc.getCompetition() == null) return;
+    public int awardPrizeMoney(SeasonCompetition sc, Integer seasonYear) {
+        if (sc == null || sc.getCompetition() == null) return 0;
+        List<CompetitionEntry> played = entryRepository.findBySeasonCompetition(sc);
+        if (played == null || played.isEmpty() || !wasPlayed(played)) {
+            return 0;
+        }
+
         double pool = PRIZE_POOL_BASE * Math.max(1, sc.getCompetition().getTier() == null
                 ? 1 : sc.getCompetition().getTier());
-        List<CompetitionEntry> entries = new ArrayList<>(entryRepository.findBySeasonCompetition(sc));
-        entries.sort((a, b) -> Integer.compare(position(b), position(a)));
-        for (int i = 0; i < entries.size(); i++) {
-            CompetitionEntry e = entries.get(i);
-            double share = i < PRIZE_SHARE.length ? PRIZE_SHARE[i] : 0.03;
-            double amount = pool * share;
+        List<CompetitionEntry> table = LeagueTableOrder.sort(played);
+        int paid = 0;
+        for (int i = 0; i < table.size(); i++) {
+            CompetitionEntry e = table.get(i);
             Team t = e.getTeam();
             if (t == null) continue;
+            double share = i < PRIZE_SHARE.length ? PRIZE_SHARE[i] : 0.03;
+            double amount = pool * share;
             ledger.save(FinanceLedgerEntry.of(t, seasonYear, 0, FinanceCategory.PRIZE_MONEY, amount,
-                    "Finished P" + (i + 1) + " of " + entries.size()));
+                    "Finished P" + (i + 1) + " of " + table.size()));
             t.setBudget(round2(budget(t) + amount));
             teamRepository.save(t);
+            paid++;
         }
+        return paid;
     }
 
-    private int position(CompetitionEntry e) {
-        return e.getPosition() == null ? Integer.MAX_VALUE : e.getPosition();
+    /** Whether anything at all was played in this competition that season. */
+    private boolean wasPlayed(List<CompetitionEntry> entries) {
+        for (CompetitionEntry e : entries) {
+            if (e == null) continue;
+            if (LeagueTableOrder.points(e) > 0
+                    || LeagueTableOrder.goalsScored(e) > 0
+                    || LeagueTableOrder.goalsConceded(e) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Pays prize money across every competition of a finished season.
+     *
+     * <p>The season's competitions come from one query rather than one per competition: the rollover
+     * already does far more per-league work than this, and this is the one place where it can be
+     * counted in a single round trip.
+     *
+     * @return how many clubs were paid
+     */
+    @Transactional
+    public int awardPrizeMoneyForSeason(Integer seasonYear, SeasonCompetitionRepository scRepository) {
+        if (seasonYear == null) return 0;
+        List<SeasonCompetition> competitions = scRepository.findBySeasonYear(seasonYear);
+        if (competitions == null || competitions.isEmpty()) return 0;
+        int paid = 0;
+        for (SeasonCompetition sc : competitions) {
+            try {
+                paid += awardPrizeMoney(sc, seasonYear);
+            } catch (RuntimeException e) {
+                // One competition's payout must not cost every other league its prize money.
+                log.warn("Prize money failed for competition {}: {}", sc.getId(), e.getMessage());
+            }
+        }
+        return paid;
     }
 
     private double budget(Team team) {

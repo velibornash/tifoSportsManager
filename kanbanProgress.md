@@ -1359,6 +1359,81 @@ the meta layer without the consequences, which "is the worst of both worlds".
 
 ### The loop it closes
 
+## 2026-10-03 — P2-14: prize money existed, was unreachable, and would have paid the wrong clubs
+
+### The two halves were designed to meet and never did
+
+`WeeklyFinanceService.awardPrizeMoney` was a complete implementation with **zero callers**. Beside it,
+the weekly `prizeMoney` line returns `null` with the comment *"Prize money is only paid once the season
+is finished, so this is a no-op mid-season."* So the design was coherent and the call was missing:
+**no club had ever been paid prize money in this game.**
+
+Wiring it was not a one-liner, because of what it ranked by.
+
+### It ranked by a field nothing maintains
+
+The dead method sorted on `CompetitionEntry.position`. **`setPosition` on a `CompetitionEntry` is never
+called during a season** — the only writers are `PyramidBuilder:284` (once, when the world is built)
+and `InternationalClubCupDraw` (writing 0). So `position` is a seed-time label that never changes, and
+sorting by it ranks clubs in the order the world was created, not the order they finished.
+
+Measured with that restored, on a fixture where the champion is deliberately seeded **fourth**:
+
+```
+the champion takes the largest share: 384000.0 against 480000.0
+```
+
+The actual champion would have been paid **less** than a club that finished below everyone, and the
+ledger line would have said *"Finished P1 of 4"* while being wrong. This is the shape of defect the board
+warns about: it would have looked correct in a screenshot and been invisible in the data.
+
+There is already **one** definition of a league table — `LeagueTableOrder` (owner decision S8.4),
+documented as having replaced four implementations that disagreed. `SeasonService.sortTable` is a
+one-line delegation to it, and the playoff draw reads it. So prize money now reads it too, rather than
+becoming a fifth. The stale `position` field and `WeeklyFinanceService`'s private reader of it are
+deleted; `position` is now written by the seeder and read by **nothing** in `src/main`.
+
+### A fresh world would have minted money
+
+Nothing stopped a competition that was never played from paying out a full pool. The dev database sits
+at season 1 week 1, so a rollover before a single match would have paid every club in the world a
+champion's purse for a season that did not happen — `expected: <0> but was: <2>` with the guard
+removed. Guarded on any recorded points or goals.
+
+### Where it is called, and why there
+
+`SeasonService.performPromotionRelegationAndNewSeason()`, **before** `applyPromotionRelegation`. Paid
+first because promotion moves clubs between competitions, and the season that has finished is the one
+that gets paid — paying afterwards risks paying a table that promotion has already disturbed. The
+season's competitions come from `findBySeasonYear`, one query; per-competition failures are caught and
+logged so one league's payout cannot cost every other league its money.
+
+### Two test bugs of mine, both caught before they became flaky
+
+1. `SEASON.equals(...)` where `SEASON` is an `int` — *"int cannot be dereferenced"*.
+2. `assertEquals(4, prizeLines(champion))` — counting one club's lines against the number of clubs. The
+   intent was "every club is paid", now asserted per club.
+
+And a fixture lesson: the seeded position is captured **when the fixture builds it** rather than
+re-read from the database, because re-reading hit a lazy `SeasonCompetition` proxy outside a session —
+and the value is the point of the assertion, not the query that fetches it.
+
+### Breaks
+
+| Break | Result |
+|---|---|
+| Rank on the stored seed-time field, as the dead method did | 1 fail — `384000.0 against 480000.0` |
+| Drop the unplayed-season guard | 1 fail — `expected: <0> but was: <2>` |
+
+### Regression check
+
+`PrizeMoneyFollowsTheRealTableTest`, `WeeklyFinanceServiceTest`, `WeeklyFinanceScopeTest`,
+`PromotionRelegationBoundaryTest`, `SeasonRolloverNumberTest`, `SeasonShapeTest`,
+`LeagueMilestoneSingleSeasonReadTest`, plus the four earlier P2 classes — **71 tests, 0 failures, 0
+errors.** `mvn clean package` succeeds.
+
+---
+
 ```
 a player objects to being listed (P2-3)
   → supporters notice the club is selling its own people
