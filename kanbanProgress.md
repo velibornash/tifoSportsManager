@@ -183,7 +183,7 @@ should be readable from the code. `tools/create-match-indexes.sql` states the sa
 `CREATE INDEX` that **holds a write lock for the length of the build** — instant on 155 rows, not instant
 on 89,280 and growing. The fourth test keeps the two from drifting.
 
-**Verified in the database, not asserted:** run against `sokker_db`, and `pg_indexes` afterwards shows all
+**Verified in the database, not asserted** (`e9142ed`): run against `sokker_db`, and `pg_indexes` afterwards shows all
 four alongside `match_pkey`.
 
 ### Left standing for the next session
