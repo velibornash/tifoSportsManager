@@ -108,17 +108,15 @@ A pyramid is affordable **once per JVM**, not once per test. The seams are `Test
 
 ### 7. Parked — owner decisions still open
 
-- **`SimulationController` asks for a round and gets it by game week — four endpoints.** Found while
-  doing D1, **not fixed, because it changes what they return.** `roundNumber` is a round within a
-  league's own season (1–18 for a double round robin); `weekNumber` is the game week, and
-  `LeagueSlotSchedule` puts **two rounds in each week** — rounds 1–10 fill weeks 1–5, 11–18 fill weeks
-  7–10, weeks 6/11/12 hold the mid-season window, the playoff and the break. So
-  `roundNumber == clock.getCurrentWeek()` is right for week 1 and **wrong for most others: week 3 holds
-  rounds 5 and 6, and week 6 holds no league round at all.** Affects `simulate-all`, `advance-week`,
-  the team's next fixture and the fallback feed. **The question is the owner's: should those endpoints
-  answer for the game's week, or for the league's round?** Plausibly related to the week advance
-  "refusing with *Still 5 unplayed fixture(s)*" and the 775/2015 day split — **unverified, do not treat
-  as a diagnosis.**
+- ~~**`SimulationController` asks for a round and gets it by game week — four endpoints.**~~
+  **RULED AND FIXED (`7374c69`).** Owner, 2026-10-03: ***one press plays one matchday.*** The four
+  endpoints read the clock's **week** and used it as a **round**; `LeagueSlotSchedule` puts **two rounds
+  in each week**, so in week 3 they fetched round 3 — week 2's football — skipped rounds 5 and 6, and
+  **rounds 13–18 were never reached at all** because the clock stops at week 12. Measured on the seeded
+  world, the old filter returned 155 fixtures for *every* week and *every* day. Now `(season, week, day)`,
+  which is also what `MatchdayJob` already used and what `ix_match_fixture_season_week_day` already
+  serves — **`ix_match_fixture_season_round` added by `6cd1f2f` is removed as the wrong index.**
+  Days 1 and 5 are honestly empty until B3/B7 draw the international and cup fixtures.
 - **D5 §4.1 / §4.4** (above).
 - `DefensiveShape`, `/demo` routes, and the `Network error during authFetch` on Oracle were listed in the old
   version of this section and have not been re-examined since. Re-check before spending time on them.

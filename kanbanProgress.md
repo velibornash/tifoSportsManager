@@ -24,6 +24,86 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `7374c69` — one press plays one matchday, and rounds 13–18 were never played
+
+**Owner ruling, 2026-10-03:** *"one press = one matchday."* This is the correctness half of the D1 work
+on `SimulationController`. **`61bb1f3` only made the wrong question cheap** — it narrowed the load and
+left the load answering the wrong thing, which is the worst of both.
+
+### What was wrong, in the game's own terms
+
+A league plays 18 rounds and `LeagueSlotSchedule` puts **two in each game week**. Day 3 is one round,
+day 7 is the other. So a game week is **not** a round, and the four endpoints were reading the clock's
+week and using it as a round number.
+
+```
+  week 1 -> rounds 1,2      week 6  -> nothing (mid-season window)
+  week 2 -> rounds 3,4      week 7  -> rounds 11,12
+  week 3 -> rounds 5,6      week 8  -> rounds 13,14
+  week 4 -> rounds 7,8      week 9  -> rounds 15,16
+  week 5 -> rounds 9,10     week 10 -> rounds 17,18
+```
+
+### Measured on the seeded Serbian world — every week, every day
+
+| game week | day | **old, by round** | rounds it returned | **new, by week+day** | correct round |
+|---:|---:|---:|---|---:|---|
+| 1 | 3 | 155 | 1 | 155 | **1** |
+| 1 | 7 | 155 | 1 | 155 | **2** |
+| 3 | 3 | 155 | **3** | 155 | **5** |
+| 3 | 7 | 155 | **3** | 155 | **6** |
+| 6 | 3 / 7 | **155** | 6 | **0** | — |
+| 10 | 3 | 155 | **10** | 155 | **17** |
+| 11 / 12 | any | **155** | 11 / 12 | **0** | — |
+
+**The old filter returned 155 fixtures for every week of the season and every day of the week** — the
+same round, over and over. So:
+
+- **Week 3 day 3 played round 3**, which is week 2's football, and **skipped rounds 5 and 6**.
+- **Week 3 day 7 played round 3 again** — already played, so the unplayed filter dropped it and
+  **nothing happened at all.** Rounds 5 and 6 were never played through this path.
+- **Weeks 6, 11 and 12 returned 155 fixtures** on days deliberately left empty — week 6 is the
+  national-team pause, 11 the playoff, 12 the break.
+- **Rounds 13 to 18 were never reached at all**, because the clock stops at week 12. **The last third of
+  every league season was never played through these buttons.**
+
+That last one is the finding I would not have predicted from reading the code. The bug is not that the
+filter is slightly off; it is that a third of the season is unreachable by it.
+
+### Why `(season, week, day)` is the right axis, and not just a narrower one
+
+**Day 3 and day 7 are league, day 1 is international and day 5 is cup** — which is the job framework's
+own shape. So `(season, week, day)` says *which football is due*, and it is the axis
+`MatchdayJob.findUnplayedOnDay` has always used. The endpoints were the only place in the codebase
+resolving "now" to a **round** instead of to a **day**.
+
+**Days 1 and 5 return nothing today, and that is honest rather than broken:** the international and cup
+draws are not wired (`InternationalFixtureSeeder` creates the competition then gives up and reports
+DONE — B3; the cup bracket has zero callers — B7). The old filter papered over that by returning league
+fixtures on those days. **They will start working the moment B3 and B7 land, with no change here.**
+
+### The index came out again
+
+`ix_match_fixture_season_round`, added an hour earlier by `6cd1f2f` on the strength of a measurement,
+is **removed**. `ix_match_fixture_season_week_day` already served these four paths exactly, so a second
+index on `round_number` would only ever have served a query nobody should be making. **`SchemaIndexTest`
+now asserts the season/week/day index instead, and the reasoning is recorded in `MatchFixture`** —
+including that the index was added and withdrawn on the same day, because "we measured it" and "it is
+the right index" are two different claims.
+
+### The guard pins the ruling, not the query shape
+
+`SimulationControllerFixtureScopeTest` is 3/3, and the new test asserts **the controller named a day,
+and that the day it named is the day the clock is on** — because a day-precise query that asked for the
+wrong day would pass a shape-only check. Proven able to fail: reverting one of the four sites to
+round-based filtering fails it with *"the controller asked for fixtures without naming a day"*.
+
+**The fixture helper had to change too, and that is the part worth keeping.** It built fixtures with the
+week in the **round** column, which a day-scoped controller cannot see. A fixture the code under test is
+blind to makes the whole class vacuous — the same shape as the five inert guards this file already
+records, reached from the other direction: not an assertion that cannot fail, but a fixture that cannot
+be found.
+
 ## `6cd1f2f` — measured against a live database, and the code fix was not enough on its own
 
 **The gap the previous entry admitted:** the four D1 changes were verified as behaviour-preserving and
