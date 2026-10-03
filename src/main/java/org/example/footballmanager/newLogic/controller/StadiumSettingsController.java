@@ -88,7 +88,12 @@ public class StadiumSettingsController {
     @PostMapping("/tickets")
     public ResponseEntity<Map<String, Object>> setTicketPrice(
             @PathVariable Long teamId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal User principal) {
+
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
 
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null || team.getStadium() == null) return ResponseEntity.notFound().build();
@@ -112,7 +117,12 @@ public class StadiumSettingsController {
     @PostMapping("/maintenance")
     public ResponseEntity<Map<String, Object>> setMaintenance(
             @PathVariable Long teamId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal User principal) {
+
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
 
         Object budget = body.get("weeklyBudget");
         if (budget == null) return ResponseEntity.badRequest().build();
@@ -135,7 +145,11 @@ public class StadiumSettingsController {
      */
     @PostMapping("/build")
     public ResponseEntity<?> buildGround(@PathVariable Long teamId,
-                                         @RequestBody(required = false) Map<String, Object> body) {
+                                         @RequestBody(required = false) Map<String, Object> body,
+                                         @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
         Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
@@ -160,13 +174,43 @@ public class StadiumSettingsController {
     /** Repaints the ground. Free, and validated. */
     @PostMapping("/paint")
     public ResponseEntity<?> paint(@PathVariable Long teamId,
-                                   @RequestBody(required = false) Map<String, String> colours) {
+                                   @RequestBody(required = false) Map<String, String> colours,
+                                   @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
         Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
         }
         var result = build.paint(team, colours);
         return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+    }
+
+    /**
+     * May this caller change <b>this</b> club's ground?
+     *
+     * <p>The same rule {@code TeamController} and the stadium's own {@code /image} route already apply. It
+     * was written here once, for one route, and never extended to the five beside it — so {@code /build},
+     * {@code /maintenance}, {@code /tickets}, {@code /paint} and the facility upgrade all accepted any
+     * logged-in manager, and three of them took the club's money with him.
+     *
+     * <p>Fails closed. The owner is let through, because a fix that locks the owner out of his own game is
+     * worse than the hole it closes.
+     */
+    private boolean mayManage(User principal, Long teamId) {
+        if (principal == null || teamId == null) {
+            return false;
+        }
+        if (principal.getRole() != null && principal.getRole().name().equals("OWNER")) {
+            return true;
+        }
+        return plusFeatures.isOwnTeam(principal, teamId);
+    }
+
+    private ResponseEntity<Map<String, Object>> notYourClub() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "You can only change your own club's ground."));
     }
 
     private static int intOf(Object value, int fallback) {
@@ -252,7 +296,12 @@ public class StadiumSettingsController {
     public ResponseEntity<?> upgradeTrainingFacility(
             @PathVariable Long teamId,
             @PathVariable String facility,
-            @org.springframework.web.bind.annotation.RequestParam(required = false) Integer targetLevel) {
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Integer targetLevel,
+            @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "You can only change your own club's ground."));
+        }
         TrainingFacilityService.Facility parsed;
         try {
             parsed = TrainingFacilityService.Facility.valueOf(facility.trim().toUpperCase(Locale.ROOT));

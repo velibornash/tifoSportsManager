@@ -16,6 +16,86 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
+
+**The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`
+is in the entry above.
+
+### `StadiumSettingsController` — a guard on one route is not a guard on the controller
+
+`POST /image` has carried `PlusFeatureService.isOwnTeam` since it was written, with a comment explaining why:
+*"Without it any authenticated manager could overwrite a rival's ground."* **The same reasoning was never
+applied to the five routes beside it**, and all five answered **200** to a manager naming a rival's club:
+
+| Route | Was | Consequence |
+|---|---|---|
+| `POST /build` | 200 | expand, improve seats or roof a rival's ground — **costs money** |
+| `POST /training-facilities/{f}/upgrade` | 200 | a level of rival's gym — **costs money** |
+| `POST /maintenance` | 200 | set a rival's weekly pitch budget — **costs money** |
+| `POST /tickets` | 200 | re-price every tier of a rival's gate |
+| `POST /paint` | 200 | repaint a rival's ground |
+
+The same defect P0-1a closed on `TeamController`, same package, with the ownership helper **already injected
+into the constructor**. Reads stay open — a manager needs capacity and prices to decide whether to sign
+anyone — and the tests assert them 200 on purpose.
+
+### A green status that was not evidence, in miniature
+
+`StadiumBuildService.buildRoof` **refuses** when the roof costs more than the club has, and the controller
+wraps that refusal in a **200**, deliberately, with a comment saying a refusal is a normal answer. So a
+fixture club that could not afford a roof produced a 200 that built nothing, and
+
+```
+aManagerCanStillBuildHisOwnGround  his own build reported success and the ground has no roof
+```
+
+failed on the second half of its assertion for a reason that had nothing to do with authorization. **The
+only reason the difference was visible at all is that the money assertions read the stored ground back out
+of the database instead of trusting the status code.** Every such assertion in this class does now.
+
+That also made the *rival* tests stronger rather than weaker: once the fixtures could afford the work, the
+200s above became a manager genuinely putting a roof on somebody else's ground.
+
+### The other two: no defects, and that is a result worth writing down
+
+**`CommunityController`** (8 tests) and **`DummyDataController`** (8 tests) found **nothing**. Both are
+reported, because a security sweep that only ever reports holes says nothing about which surfaces were
+checked — and `DummyDataController` had no test at all.
+
+- `CommunityController` resolves every caller from the token and has no id in any path for a caller to
+  change. The one write takes a `recipientUserId`, which is a choice of recipient, not a claim over data.
+- `DummyDataController` is fabricated by definition, so its only real property is that `/demo/**` needs a
+  token — `/demo/service/ui/**` is on the permit list, the JSON tree is not, and nothing checked that.
+
+**A weak test was deleted rather than shipped.** The community class first carried a test asserting that the
+chat was reachable to a regular manager, on the grounds that the applicant filter was then the thing under
+test. It asserted nothing beyond non-nullness, so it was cut and the risk written up as **P0-17** instead.
+
+### Two findings recorded rather than fixed
+
+- **P0-16 — every `/demo` mapping has a literal `1` and no `@PathVariable`.** `/demo/teams/1/profile`
+  answers 200; `/demo/teams/57/profile` answers 404. Five frontend files call
+  `/demo/teams/${teamId}/profile`, so **every club except team 1 gets an empty screen**, and club 1 gets a
+  fabricated profile that looks real. Not fixable here — the board rules *"do not wire it to anything"* and
+  deleting the routes breaks five pages.
+- **P0-17 — `shouldHideFromNonAdmin`** is a single boolean deciding whether a pending applicant's username
+  and email reach the chat of every logged-in manager. Untested, and pinning it honestly needs a real
+  pending request rather than a test that asserts almost nothing.
+
+### Mutations
+
+| Mutation | Result |
+|---|---|
+| `StadiumSettingsController.mayManage` always allows | 6 of 14 fail — exactly the five writes plus the paint read-back |
+| `/demo/**` and `/community/**` added to the permit list | 8 of 16 fail — every anonymous test in both classes |
+
+**87 green** across all four P0-1b classes plus `TransferControllerAuthorizationTest`,
+`PitchMaintenanceServiceTest`, `AcademyQualityTest` and `TrainingFacilityServiceTest`.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-1b: the transfer market asked nothing about who was acting
 
 **`TransferController`, 14 mappings, ten of them writes, and the most severe finding in the whole P0

@@ -151,7 +151,7 @@ let any authenticated user delist another club's player" — a named hole rather
 | | Controllers | State |
 |---|---|---|
 | **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `66553b4` |
-| **P0-1b** | `TransferController` ✅ · `StadiumSettingsController`, `DummyDataController`, `CommunityController` open | partial |
+| **P0-1b** | all four — `TransferController`, `StadiumSettingsController`, `DummyDataController`, `CommunityController` | **done**, `b1c04e2` |
 
 **How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
 the injected bean** — Spring Data returns a JDK proxy that Mockito cannot wrap, and this is the single
@@ -209,6 +209,47 @@ already defaults to the viewer's own.
 
 **`TransferController` is the only route in the repository where one manager could move another club's
 money.**
+
+### P0-16 — `DummyDataController`'s callers are all broken except for team 1 — NEW, 2026-10-03
+
+Found while writing P0-1b, and **not fixable here**: the board rules *"do not wire it to anything"*, and
+deleting the routes would break five pages.
+
+**Every mapping carries a literal `1` and there is no `@PathVariable` anywhere in the class.** So
+
+```
+/demo/teams/1/profile     answers 200, "Omladinac FC"
+/demo/teams/57/profile    answers 404
+```
+
+and **five frontend files call `/demo/teams/${teamId}/profile`** — `club-management.js`,
+`staff-directory.js`, `pages.js`, `demo.js`. Every one of them works for club 1 and 404s for every other
+club, so a manager opening his own club page gets an empty screen. The controller returns a fabricated
+profile for the one club that happens to be id 1, which is worse than 404 because it looks real.
+
+**Owner decision needed:** wire these five callers to the real endpoints, or delete the callers. Both are
+outside P0's authority — the first is exactly what the board forbids, the second removes product surface.
+
+**Exit criteria:**
+- [ ] The owner rules: rewire the five callers, or remove them
+- [ ] Whichever it is, no page fetches `/demo/**` for a club id it chose itself
+- [ ] `DummyDataController` then has either a `@PathVariable` and a decision, or no callers
+
+---
+
+### P0-17 — the community chat hides applicant details behind one boolean — NEW, 2026-10-03
+
+`CommunityController.shouldHideFromNonAdmin` decides whether a message bound to a **pending registration
+request** — an applicant's username and email — is shown to a non-administrator. It is a single boolean
+method, `/chat` returns the thread, and **nothing tests it.**
+
+Recorded rather than tested on purpose: pinning it needs a message bound to a pending request, and a test
+built that way would assert almost nothing about authorization. A test that cannot fail is worse than no
+test.
+
+**Exit criteria:**
+- [ ] A message attached to a pending registration request is proven invisible to a `REGULAR` manager
+- [ ] The test asserts on the **absence of the applicant's address**, not on a count or a key
 
 ---
 
