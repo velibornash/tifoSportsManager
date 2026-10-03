@@ -1,14 +1,11 @@
 import { backButtonHtml } from './ui/components.js';
 import { hiddenResultActions, bindHiddenResultActions } from './reveal-ui.js';
+import { escapeHtml } from './ui/escape.js';
 
-function htmlEscape(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
+// Was a third copy of the escaper, byte-for-byte the same as the other two. ui/escape.js exists to be
+// the only one — AGENTS.md asserts it is — so this now imports it. Every extra copy is somewhere a fix
+// lands in one implementation and misses another.
+const htmlEscape = escapeHtml;
 
 function normalizePercent(value, fallback = 78) {
     const numeric = Number(value);

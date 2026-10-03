@@ -1,13 +1,71 @@
 // pages/views/utils.js
 // Pure utility functions extracted from pages.js
 
-export function htmlEscape(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+import { escapeHtml } from '../../ui/escape.js';
+
+/**
+ * Re-exported, not redefined.
+ *
+ * <p>This file used to carry its own copy of the escaper, which made three in the repository while
+ * {@code ui/escape.js} exists precisely to be the only one — and AGENTS.md asserts it is the only one.
+ * Every additional copy is somewhere a fix lands in one implementation and misses another, and an
+ * escaping bug does not fail a test suite: it shows up as broken markup, or as a script injected
+ * through a club name.
+ */
+export const htmlEscape = escapeHtml;
+
+/**
+ * A card that says what actually failed.
+ *
+ * <p>The router's catch-all used to write {@code buildEmptyState("API Error")}: one string, no status,
+ * no code, no explanation, and it replaced whatever the page had already rendered. So a 403 that says
+ * "Only the owning club can accept incoming offers" and a 500 that says the database was unreachable
+ * reached the manager as the same two words.
+ *
+ * <p>The backend already says something useful. {@code ApiException} carries a {@code code} and a
+ * {@code message} written for the person reading it, and {@code authFetch} puts both on the thrown
+ * error. This renders them.
+ *
+ * <p>Everything interpolated here is escaped. The values come from a server, and an error message is
+ * exactly the kind of string that ends up holding a club name.
+ *
+ * @param err    the thrown value, usually an {@code AuthFetchError}
+ * @param context a short description of what was being loaded, e.g. "the transfer centre"
+ */
+export function buildErrorState(err, context) {
+    const status = err?.status ?? null;
+    const code = err?.code ?? null;
+    const detail = err?.message ?? null;
+
+    const title = errorTitle(status);
+    const rows = [];
+    if (context) rows.push(['Looking for', context]);
+    if (code) rows.push(['Reported', code]);
+    if (status) rows.push(['Status', `${status}`]);
+    if (detail && detail !== title) rows.push(['What the server said', detail]);
+
+    const body = rows.length
+        ? `<table style="margin:16px auto 0; border-collapse:collapse; text-align:left;">
+               ${rows.map(([k, v]) => `<tr>
+                   <td style="padding:4px 14px 4px 0; opacity:0.65; vertical-align:top;">${htmlEscape(k)}</td>
+                   <td style="padding:4px 0;">${htmlEscape(v)}</td>
+                 </tr>`).join('')}
+           </table>`
+        : '';
+
+    return `<div class="manager-card" style="padding:32px;">
+        <h2 style="margin:0;">${htmlEscape(title)}</h2>
+        <p class="fm-subtle" style="margin:8px 0 0;">Reload the page. If it keeps failing, the details below are what to report.</p>
+        ${body}
+    </div>`;
+}
+
+function errorTitle(status) {
+    if (status === 401) return 'Your session has expired';
+    if (status === 403) return 'You do not have access to that';
+    if (status === 404) return 'That could not be found';
+    if (status && status >= 500) return 'The server could not answer';
+    return 'Something went wrong loading this page';
 }
 
 export function normalizeLeagueId(value) {
@@ -403,7 +461,7 @@ export function buildLeagueMetaLabel(league) {
 
 export function buildEmptyState(message) {
     return `<div class="manager-card" style="text-align:center; padding:40px;">
-                <h2>${message}</h2>
+                <h2>${htmlEscape(message)}</h2>
             </div>`;
 }
 

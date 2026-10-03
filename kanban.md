@@ -1203,11 +1203,46 @@ Per-mode work. Their agent notes are in `archive/BASKETBALL_PROGRESS.md` and hav
 since the `newLogic` split — **read the archive first, then confirm against the code, because the notes
 predate the split.**
 
-### P2-16 — Visual work
+### ~~P2-16 — Visual work: a load failure now says what failed~~ ✅
 
-Presentation, not correctness. League table and World page already carry the Elo columns. Candidates worth
-naming: the dashboard's empty states, and any page where a load failure renders as a generic error card
-instead of saying what failed.
+Presentation, not correctness. The board named the right candidate and understated it.
+
+**The defect:** `js/pages.js` — the router every page goes through — ended in
+`mainContent.innerHTML = buildEmptyState("API Error")`. One string, no status, no code, no explanation,
+and it **replaced whatever the page had already rendered**. So a 403 saying *"Only the owning club can
+accept incoming offers"* and a 500 saying the database was unreachable both reached the manager as the
+same two words.
+
+**Landed:**
+- [x] `buildErrorState(err, context)` — titles by status (401 / 403 / 404 / 5xx) and shows the
+      `code`, the `status` and the backend's `message`, which `ApiException` already writes for the
+      person reading it
+- [x] `describePage()` names all **41** router cases in words ("the transfer centre", not `firstTeam`),
+      verified against the router's own `case` labels so the two cannot drift
+- [x] Everything interpolated is **escaped** — an error message is exactly the string that ends up
+      holding a club name
+- [x] `buildEmptyState` was interpolating its argument into HTML **unescaped**; it now escapes
+
+**Also fixed, and AGENTS.md was wrong about it:** AGENTS.md states *"`escapeHtml` lives in
+`ui/escape.js` and is the only copy."* There were **three** — `ui/escape.js`, `pages/views/utils.js`
+and `pages-renderers.js`, byte-for-byte identical. `pages.js` imported from one and used the other.
+Both duplicates now import the canonical one; **one implementation remains**, verified identical on
+null, undefined, 0 and an `</script><img onerror=...>` payload.
+
+**Recorded, not changed:** `roundResultsTeletext.js` carries `teletextFetch`, a second implementation
+of `authFetch` with its own Serbian error strings. **It has a caller** — the live-results desk — so this
+is a decision, not a cleanup.
+
+**The verification gap, stated plainly:** this repository has **no JavaScript test infrastructure at
+all** — `package.json` holds one unrelated dependency and no runner, and there is no `*.test.js`. So a
+frontend change here can only be verified by executing the module or by opening the app. Executed: the
+error card renders correctly for 403-with-message, 500-without-code, and an error with neither, and the
+escaper identity was checked case by case.
+
+**A mistake of mine, recorded because the rule exists:** I deleted `teletextFetch` on the strength of a
+caller count, and the count was wrong — my `grep` filtered out the very file I was searching, hiding its
+one caller at line 17. Restored with `git checkout` in under a minute. **P0-10 says to re-verify the
+caller count immediately before deleting, and I broke that rule while citing it.**
 
 ### P2-17 — Match engine realism
 

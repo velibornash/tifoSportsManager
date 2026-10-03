@@ -1376,6 +1376,85 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-16: "API Error", and a claim in AGENTS.md that was not true
+
+### The board named the right defect and understated it
+
+`js/pages.js` is the router every page goes through, and it ended in
+
+```js
+mainContent.innerHTML = buildEmptyState("API Error");
+```
+
+One string. No status, no code, no explanation — and it **replaced whatever the page had already
+rendered**, so a partial page was destroyed as well. A 403 saying *"Only the owning club can accept
+incoming offers"* and a 500 saying the database was unreachable reached the manager as the same two
+words, and whoever read the bug report learned nothing at all.
+
+The backend was already doing the work: `ApiException` carries a `code` and a `message` written for the
+person reading it, and `authFetch` puts both on the thrown error. The card threw them away.
+
+Now `buildErrorState(err, context)` titles by status — *your session has expired* / *you do not have
+access to that* / *that could not be found* / *the server could not answer* — and prints the code, the
+status and what the server said, with the page named in words. `describePage` covers all **41** router
+cases; I checked the names against the router's own `case` labels mechanically, which found two I had
+missed (`analytics`, `stadium`) and then zero.
+
+**Also: `buildEmptyState` was interpolating its argument into HTML unescaped.** It is a shared helper,
+and the new card leans on escaping because an error message is exactly the string that ends up holding
+a club name.
+
+### AGENTS.md was wrong about the escaper
+
+> `escapeHtml` lives in `ui/escape.js` and **is the only copy**.
+
+There were **three**, byte-for-byte identical: `ui/escape.js`, `pages/views/utils.js` and
+`pages-renderers.js`. `pages.js` imported from one of the copies while another module used a different
+one. Both duplicates now import the canonical implementation and one definition remains — checked by
+executing both modules against `escapeHtml` over `null`, `undefined`, `0`, plain text and an
+`</script><img onerror=alert(1)>` payload, all identical.
+
+This is the exact duplication `escape.js` was created to end, and the file's own history says five copies
+existed once. It had grown back to three.
+
+### I deleted working code on a bad caller count
+
+`teletextFetch` in `roundResultsTeletext.js` is a second implementation of `authFetch` — same job, its
+own Serbian error strings, its own idea of what a 401 means. I searched for callers, found none, and
+deleted the function.
+
+**The search was wrong.** I ran `grep -v "roundResultsTeletext.js:"` to exclude noise, which excluded the
+very file I was searching — and its one caller, at line 17, a live-results desk. Restored with
+`git checkout`; the file is byte-identical to `HEAD` again.
+
+P0-10 requires re-verifying a caller count immediately before deleting rather than copying it from the
+board, and I broke that rule in the same breath as citing it. The duplication is real and worth fixing,
+but it is **not** dead code, so it stays and the decision goes to the owner.
+
+### The verification gap, plainly
+
+This repository has **no JavaScript test infrastructure**: `package.json` contains one unrelated
+dependency and no scripts, and there is no `*.test.js` anywhere. So there is no way to assert this
+change in a suite. What I did instead, and it is weaker than a test:
+
+- `node --check` on all three edited modules
+- **executed** `utils.js` and rendered the card for four error shapes, reading the actual output
+- executed the escaper from both modules against the canonical one, case by case
+- verified the 41 page names against the router's `case` labels mechanically
+
+And the honest limit: this is a change to a failure path. **Seeing it fire requires breaking an
+endpoint**, which I have not done — so unlike every backend task in this log, the last mile is unverified
+and only opening the app closes it.
+
+### Regression check
+
+`PrizeMoneyFollowsTheRealTableTest`, `WeeklyFinanceServiceTest`, `SupporterMoodRespondsTest`,
+`PlayersRetireTest`, `GraduationRespectsTheSquadTest`, `ListedPlayerCanObjectTest`,
+`SellerAcceptsANamedOfferTest`, `ComponentScanCoverageTest` — **41 tests, 0 failures, 0 errors.**
+`mvn clean package` succeeds.
+
+---
+
 ## 2026-10-03 — P2-14: prize money existed, was unreachable, and would have paid the wrong clubs
 
 ### The two halves were designed to meet and never did

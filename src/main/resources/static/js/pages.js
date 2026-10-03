@@ -8,7 +8,7 @@ import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
 import { createCommunityFeature } from './pages/features/community.js';
 import {
-    htmlEscape, formatBudget, formatGoalDiff, buildEmptyState, formatPercent,
+    htmlEscape, formatBudget, formatGoalDiff, buildEmptyState, buildErrorState, formatPercent,
     parseMatchDate, getImageFilename, formatMilestoneAttendanceValue,
     buildMilestoneCardHtml, buildMilestoneBoardHtml, formatDateTimeLabel,
     formatFormBadge, formatRatingBadge, getRatingColor, formatCompactPlayerName,
@@ -634,9 +634,69 @@ import {
 
         } catch (err) {
             console.error(err);
-            mainContent.innerHTML = buildEmptyState("API Error");
+            // Was: buildEmptyState("API Error"). One string, no status, no code, no explanation, and
+            // it replaced whatever the page had already rendered — so a 403 saying "Only the owning
+            // club can accept incoming offers" and a 500 saying the database was unreachable both
+            // reached the manager as the same two words. The backend already writes a message for the
+            // person reading it, and authFetch carries it; show it.
+            mainContent.innerHTML = buildErrorState(err, describePage(page));
         }
     }
+    /**
+     * What the manager was trying to reach, in words.
+     *
+     * <p>An error card that says "page: firstTeam" has told the manager nothing they did not know,
+     * and has told whoever reads the bug report nothing at all. These are the page ids the router
+     * switches on, so an id without an entry here falls back to the id rather than to nothing.
+     */
+    const PAGE_NAMES = {
+        firstTeam: 'the first team',
+        juniors: 'the academy',
+        medicalCenter: 'the medical centre',
+        formations: 'formations',
+        tactics: 'team tactics',
+        tacticEditor: 'the tactics editor',
+        staff: 'the staff',
+        finances: 'the finances',
+        transfers: 'the transfer centre',
+        coaches: 'the coaching staff',
+        training: 'training',
+        trainingSetup: 'the training setup',
+        trainingReports: 'the training reports',
+        profile: 'the club profile',
+        upcoming: 'the upcoming fixtures',
+        results: 'the results',
+        schedule: 'the schedule',
+        fixtures: 'the fixtures',
+        leagueTable: 'the league table',
+        leagueSchedule: 'the league schedule',
+        leagueMatches: 'the league matches',
+        cup: 'the cup',
+        international: 'international competitions',
+        friendlies: 'friendlies',
+        world: 'the world',
+        country: 'the country',
+        countryCup: 'the national cup',
+        countryPlayoffs: 'the promotion playoffs',
+        nationalTeam: 'the national team',
+        u21Team: 'the under-21s',
+        forum: 'the forum',
+        chat: 'chat',
+        events: 'events',
+        admin: 'the admin page',
+        playerStats: 'player statistics',
+        teamStats: 'team statistics',
+        topScorers: 'the top scorers',
+        topAssists: 'the top assists',
+        analytics: 'match analytics',
+        stadium: 'the stadium',
+        userProfile: 'your profile'
+    };
+
+    function describePage(page) {
+        return PAGE_NAMES[page] || null;
+    }
+
     // --- Thin wrapper functions that delegate to view modules ---
 
     async function loadPlayer(playerId, callerPage, options = {}) {
@@ -978,7 +1038,7 @@ import {
 
     async function loadCup() {
         console.log(`Loading cup matches for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/cups/${currentUserTeamId}`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?competitionType=CUP`);
         console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Cup");
@@ -986,7 +1046,7 @@ import {
 
     async function loadInternational() {
         console.log(`Loading international matches for ${currentUserTeamId}`);
-        const response = await authFetch(`/demo/internationals/${currentUserTeamId}`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?competitionType=INTERNATIONAL`);
         console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "International Matches");
