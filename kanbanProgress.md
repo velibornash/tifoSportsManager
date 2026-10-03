@@ -288,14 +288,31 @@ meaningless, and cut it. That guarantee was made honestly instead, by querying t
 result is the table at the top. **A test that cannot fail is worse than no test**, and this one would have
 looked like coverage.
 
-### Outstanding
+### The mutation, and why the assertion order is the way it is
 
-**The final run of the new guard class is blocked**, not failed: another agent's untracked
-`AsyncSimulationRunnerCountsFailuresTest` does not compile (`SimMatchService` cannot be resolved), so
-`testCompile` fails for the whole repository. Everything else above is verified — **26 green** across
-`TacticsProfileRestoreTest`, `TacticsRulesProviderTest` and `TeamAuthorizationTest`.
+Removing the `app.tactics-backup-path` override sent the write to the tracked file, and the failure was:
 
-**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+```
+savingTacticsDoesNotTouchTheOwnersFile:90
+  the tactics write never reached the backup service, so the assertion below
+  would pass for the wrong reason ==> expected: <true> but was: <false>
+```
+
+**The anti-vacuous assertion fired first.** That is the entire reason it is written first: with the
+assertions the other way round, "the owner's file is unchanged" would have passed while the write went to the
+tracked file — true, and worthless. `git status` after the mutation showed
+`var/tactics-editor-profiles.json` modified, so the tracked file really is reachable from a test and the
+guard is guarding something real rather than something theoretical.
+
+### Outstanding — closed
+
+The earlier blocker was another agent's untracked `AsyncSimulationRunnerCountsFailuresTest` failing to
+compile. It compiles now, and **12 green**: `TacticsBackupIsNotWrittenByTests` 2,
+`TacticsProfileRestoreTest` 3, `TacticsRulesProviderTest` 7 — plus **26** with `TeamAuthorizationTest`
+earlier. `HEAD` and the working tree hold the same single profile.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met. It remains the one number
+on this board that is still the board's own figure rather than a measurement.
 
 ---
 

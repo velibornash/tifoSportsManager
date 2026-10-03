@@ -480,11 +480,22 @@ commit.** That is the guard working, and the reason the override is code rather 
 **Exit criteria:**
 - [x] `var/tactics-editor-profiles.json` holds one profile, `OFK Omladinac`
 - [x] The restore no longer has any unplaceable profile to report, **and the warning stays**
-- [x] `TacticsRulesProviderTest` and `TacticsProfileRestoreTest` green — **26 green** with `TeamAuthorizationTest`
-- [x] A test now prevents any test from writing the tracked file
-- [ ] **Outstanding:** the final run of the new guard class was blocked by another agent's untracked test file
-      failing to compile (`AsyncSimulationRunnerCountsFailuresTest`, missing `SimMatchService`). Everything
-      above was verified; that one class has not been seen green.
+- [x] A test now prevents any test from writing the tracked file, **and is proven able to fail**
+- [x] **12 green**: `TacticsBackupIsNotWrittenByTests` 2, `TacticsProfileRestoreTest` 3,
+      `TacticsRulesProviderTest` 7 — plus **26** with `TeamAuthorizationTest` earlier
+
+**The mutation, and it settled the argument about assertion order.** Removing the path override made the
+write land on the tracked file, and the failure was:
+
+```
+savingTacticsDoesNotTouchTheOwnersFile:90
+  the tactics write never reached the backup service, so the assertion below
+  would pass for the wrong reason ==> expected: <true> but was: <false>
+```
+
+**The anti-vacuous assertion fired first**, which is the whole reason it is written first — and
+`git status` afterwards showed `var/tactics-editor-profiles.json` modified, confirming the tracked file
+really is reachable from a test and that the guard is guarding something real.
 
 ---
 
