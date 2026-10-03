@@ -24,6 +24,95 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `6cd1f2f` — measured against a live database, and the code fix was not enough on its own
+
+**The gap the previous entry admitted:** the four D1 changes were verified as behaviour-preserving and
+as no-longer-calling-the-wide-load. **None was verified as faster.** This closes that, and the answer
+was not the one the arithmetic predicted.
+
+### Setting up a world to measure against
+
+The local PostgreSQL was down and `sokker_db` did not exist, so: started `postgresql@16`, created the
+`postgres` role and the database (both additive, local only), then `POST /admin/initialize-db` —
+**3 m 56 s** — which builds the Serbian structure.
+
+**`POST /admin/seed-other-nations` was then killed after 26 minutes.** It processed roughly 22
+countries' divisions and had committed **nothing**: 406 teams and 32 competitions before and after,
+because the whole pass runs in one transaction. That is the board's D3 finding reproduced exactly as
+`d4520df` describes it — *"builds the entire world and one class ran 13+ minutes without finishing"* —
+and it is why the initializer was reverted from boot in the first place. **Do not run this expecting a
+world; measure at Serbian scale and say so.**
+
+### The world it did produce is a real one
+
+| | |
+|---|---:|
+| teams | **406** |
+| players | **10,130** |
+| players with `fatigue > 0` | **2,400** |
+| `match_fixture` | **2,790** |
+| competitions / leagues | 32 / 31 |
+
+### What `EXPLAIN ANALYZE` actually said
+
+Each query run warm, on that world. **The middle row of each pair is the finding.**
+
+| Query | | Time | Buffers | Plan |
+|---|---|---:|---:|---|
+| **weekly recovery** | `findAll()` — what it was | 3.77 ms | 753 | Seq Scan |
+| | `fatigue > 0`, **no index** | **4.75 ms** | 753 | Seq Scan |
+| | `fatigue > 0`, indexed | **1.30 ms** | 283 | Index Scan |
+| **SimulationController** | `findAll()` — what it was | 0.84 ms | 35 | Seq Scan |
+| | `(season, round)`, **no index** | 0.51 ms | 35 | Seq Scan |
+| | `(season, round)`, indexed | **0.21 ms** | 33 | Bitmap Index |
+| **clubsIn** | all clubs — what it was | 1.05 ms | 102 | Seq Scan |
+| | one country, **no index** | 1.06 ms | 101 | Seq Scan |
+| | one country, indexed | **0.68 ms** | 21 | Bitmap Index |
+
+**Narrowing the result set does not narrow the scan when nothing can seek it.** `player.fatigue > 0` is
+measurably **slower** than the `findAll()` it replaced — same 753 buffers, because Postgres still reads
+every player to find the tired ones. Same story, less dramatically, for the other two.
+
+So what the four code changes actually bought, before any index:
+
+- **the rows crossing into the JVM** — 2,790 → 155 fixtures (**94% fewer**), 10,130 → 2,400 players
+  (**76% fewer**), and every club in the world → one country's 310;
+- **nothing at all in the database**, which was still reading the whole table.
+
+**That is a real reduction in memory and wire and a nil reduction in query cost**, and calling the
+second one a performance fix would have been wrong. The code and the indexes are one change, not two.
+
+### The indexes, which are D5 §4.3 and nothing new
+
+| Index | For | Guarded by |
+|---|---|---|
+| `ix_player_fatigue_tired` — `player(fatigue)` | weekly recovery | `SchemaIndexTest.theD1IndexesExist` |
+| `ix_team_country` — `team(country_id)` | one country's clubs, 48× per seeding pass | same |
+| `ix_match_fixture_season_round` — `(season_year, round_number)` | the four request paths | same |
+
+The same rule §4.3 already used: an index a query in the app actually depends on. All three verified
+present in the live database **by the app's own schema update**, then re-measured with the real names.
+
+**`SchemaIndexTest` 3/3, and the new guard was proven able to fail by introducing a typo in an index
+*name* with the column still correct.** It fails. That is the whole reason the class reads JDBC
+metadata: a build that is green and a database that is not faster look identical otherwise.
+
+### One thing I did not build, and why
+
+**`ix_player_fatigue_tired` is a plain btree, not the partial index (`WHERE fatigue > 0`) the textbook
+wants.** The partial form was measured and it is the better shape — only 2,400 of 10,130 rows are
+indexed. But `jakarta.persistence.Index` has no way to declare one, so it would mean hand-written DDL
+and a migration path for a single small integer column. **Overengineering for the gain, and the trade
+is recorded in the entity comment** rather than left for someone to wonder about. Revisit if `player`
+ever carries a million rows at a 2% tired rate.
+
+### The round index is the one the parked question decides
+
+`ix_match_fixture_season_round` indexes **`round_number`**, which is what the four endpoints filter on
+today. **If they should answer for the game's *week* instead, this is the wrong index** and the
+existing `(season_year, week_number, day_number, played)` already serves them. Said in the entity
+comment, because an index named after a column nobody has yet decided is the right one is a trap.
+
 ## `36c4d41`, `61bb1f3`, `42f5305`, `037b576` — D1, and the measurement that reframed it
 
 **Task (D1):** *"Nine whole-table loads inside loops or on request paths. Each needs: find the call,
@@ -233,14 +322,12 @@ do on the way to something else.**
 - **The remaining 29 are unfixed.** They are the pre-existing order-dependence and missing-seeded-world
   family recorded at `d4520df`, plus the two Playwright classes. E1's owner decision — rewrite the red
   classes to assert what the product actually guarantees — still applies to them.
-- **No live-database verification of the four performance fixes.** Every cost figure above is the
-  board's own arithmetic (14,880 clubs, 370,000 players), not something measured here. **The four
-  changes are verified as behaviour-preserving and as no-longer-calling-the-wide-load; none is verified
-  as faster against a real world.** That needs the running app and a stopwatch, and it is the obvious
-  next thing to do with one.
+- **No live-database verification of the four performance fixes** — **CLOSED by `6cd1f2f`**, which
+  measured all three queries with and without their indexes on a real seeded world. What remains true
+  is the scale: **measured at Serbian scale (406 teams, 10,130 players, 2,790 fixtures), not at the
+  14,570-club target**, because seeding the other nations ran 26 minutes and committed nothing.
 - **`findByClubTeamsForCountry` and `findBySkillsFatigueGreaterThan` are new index-less queries.**
-  `player.team_id` is indexed (D5) but `player.fatigue` and `team.country_id` are not, so both narrow
-  enormously without being instant. D5's remainder should look at them.
+  — **no longer true**; both are indexed by `6cd1f2f`, and the measurement is the reason.
 - **`(season_year, round_number)` is not covered by any index.** D5 indexed
   `(season_year, week_number, day_number, played)`, and the four controller queries filter on
   `round_number`, so they use only the leading column. That is a large improvement on a full scan and
