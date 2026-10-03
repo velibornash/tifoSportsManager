@@ -76,6 +76,42 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<ScoredMatch> findPlayedClubScoredInOrder();
 
+    /**
+     * One page of the window's matches, as the cursor for the next page.
+     *
+     * <p><b>The keyset is {@code (match_date, id)}, not {@code id}.</b> Paging on the id alone cannot use
+     * an index on the date, so the query reads the primary-key index and heap-filters everything before
+     * the page: measured <b>206 ms a page</b> on an 89,280-match season. With the composite key and an
+     * index on {@code (match_date, id)} the same page is an index-only range scan at <b>0.35 ms</b>.
+     *
+     * <p><b>The row-value comparison is written out rather than as {@code (a, b) > (c, d)}</b> because
+     * JPQL cannot express a row constructor. It is exactly equivalent here: {@code matchDate} is filtered
+     * non-null on the line above, so {@code (match_date, id) > (lastDate, lastId)} is the disjunction
+     * below and nothing else.
+     *
+     * <p><b>First page: pass {@code lastDate = after} and {@code lastId = Long.MIN_VALUE}.</b> The window
+     * filter is strictly {@code matchDate > after}, so the disjunction collapses to it and no match on
+     * the boundary is admitted — the window means exactly what it meant before this was paged.
+     *
+     * <p><b>Why not offset paging.</b> Neither form of it has a stable total order here, and a skipped or
+     * repeated row between pages would silently under-count a player's recovery: no exception, a
+     * plausible number in the log, less work credited than the player did.
+     *
+     * @param after    the window: matches played strictly after this instant
+     * @param lastDate the date of the last row of the previous page, or {@code after} on the first
+     * @param lastId   the id of the last row of the previous page, or {@link Long#MIN_VALUE} on the first
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.MatchPageEntry(m.id, m.matchDate) "
+            + "FROM Match m "
+            + "WHERE m.matchDate IS NOT NULL AND m.matchDate > :after "
+            + "AND (m.matchDate > :lastDate OR (m.matchDate = :lastDate AND m.id > :lastId)) "
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<org.example.footballmanager.newLogic.repository.MatchPageEntry> findMatchPagePlayedSince(
+            @Param("after") java.time.LocalDateTime after,
+            @Param("lastDate") java.time.LocalDateTime lastDate,
+            @Param("lastId") Long lastId,
+            org.springframework.data.domain.Pageable page);
+
 
     @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam WHERE (m.homeTeam.id = :homeId OR m.awayTeam.id = :awayId) AND m.played = true ORDER BY m.matchDate DESC")
     List<Match> findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(@Param("homeId") Long homeId, @Param("awayId") Long awayId);

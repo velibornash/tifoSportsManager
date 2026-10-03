@@ -17,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * What {@code match} is indexed on, asserted on the mapping rather than on the database.
  *
+ * <p><b>One entry here reverses an earlier measurement, deliberately.</b> P1-1 proposed
+ * {@code match(match_date)}, measured it, found it bought nothing and did not create it — correctly, for
+ * the query it was measured against. P1-3 then keyset-paged the recovery read, and the page query walks
+ * {@code (match_date, id)}, where this index is 206 ms a page faster than the id-ordered alternative.
+ * An index can be worthless and then become necessary when the query beside it changes shape.
+ *
  * <p><b>Why the annotation and not {@code pg_indexes}.</b> The schema is derived from the entity —
  * both profiles run {@code ddl-auto=update} — so the annotation <i>is</i> the schema, and asserting
  * it needs neither a running database nor a populated one. {@code tools/create-match-indexes.sql}
@@ -54,6 +60,7 @@ class MatchIndexDeclarationTest {
         expected.put("ix_match_season_week", "season_year, week_number");
         expected.put("ix_match_home_team_date", "home_team_id, match_date");
         expected.put("ix_match_away_team_date", "away_team_id, match_date");
+        expected.put("ix_match_date_id", "match_date, id");
 
         assertEquals(expected, declaredIndexes(),
                 "The declared indexes on Match changed. Each one needs a named query and a measured "

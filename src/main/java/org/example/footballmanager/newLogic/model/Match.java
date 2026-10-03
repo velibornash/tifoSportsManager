@@ -31,7 +31,18 @@ import java.time.LocalDateTime;
         @Index(name = "ix_match_home_team_date", columnList = "home_team_id, match_date"),
         // The away half of the same OR. A predicate of `home = ? OR away = ?` needs an index on each
         // side; with only the home one the planner falls back to scanning the table.
-        @Index(name = "ix_match_away_team_date", columnList = "away_team_id, match_date")
+        @Index(name = "ix_match_away_team_date", columnList = "away_team_id, match_date"),
+        // **Added by P1-3, and P1-1 measured this exact index and rejected it.** On its own it bought
+        // nothing: the recovery query it was proposed for spends 98% of its time on the zone-load side, so
+        // making the match side free changed the total by less than the noise. Keyset paging is what
+        // made it worth having — the page query walks the window in (match_date, id) order, and with only
+        // an id-ordered path it read the primary-key index and heap-filtered everything before the page:
+        // 206 ms a page against 0.35 ms here, on an 89,280-match season.
+        //
+        // So this is not P1-1 being wrong. It is an index whose value depends on a query that did not
+        // exist when it was measured, which is worth recording: "measured, no benefit" is only true for
+        // the query it was measured against.
+        @Index(name = "ix_match_date_id", columnList = "match_date, id")
 })
 public class Match {
 

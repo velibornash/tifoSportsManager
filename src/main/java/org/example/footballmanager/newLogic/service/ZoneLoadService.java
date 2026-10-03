@@ -4,17 +4,21 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.PlayerZoneLoad;
 import org.example.footballmanager.newLogic.model.Zone;
+import org.example.footballmanager.newLogic.repository.MatchPageEntry;
+import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.PlayerZoneLoadRepository;
 import org.example.footballmanager.newLogic.repository.ZoneLoadMinutes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,15 +48,37 @@ public class ZoneLoadService {
     /** How many days of zone load count towards today's recovery. */
     private static final int RECOVERY_WINDOW_DAYS = 2;
 
+    /**
+     * Matches per page when reading the recovery window.
+     *
+     * <p>Deliberately not a round number like 1000. It has to divide the work evenly enough that the
+     * last page is not a remainder, and it has to be small enough that one statement never holds more
+     * than a slice of the table: a page of 500 matches is 99,000 zone-load rows, against 1,473,120 for
+     * the whole window and 17,677,440 for the season.
+     */
+    private static final int RECOVERY_PAGE_MATCHES = 500;
+
+    /**
+     * A ceiling on the paging loop, so a cursor that stops advancing fails the job instead of hanging it.
+     *
+     * <p>Generous on purpose: the window is two game days, a full-scale matchday is 7,440 matches and so
+     * about 15 pages, and even a season-long window would be 180. Ten thousand pages is roughly two
+     * hundred times a season, so it only trips on a genuine fault.
+     */
+    private static final int MAX_RECOVERY_PAGES = 10_000;
+
     private final PlayerZoneLoadRepository loads;
     private final PlayerRepository players;
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+    private final MatchRepository matchesPlayed;
 
     public ZoneLoadService(PlayerZoneLoadRepository loads, PlayerRepository players,
-            org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
+            org.example.footballmanager.newLogic.repository.GameClockRepository clocks,
+            MatchRepository matchesPlayed) {
         this.loads = loads;
         this.players = players;
         this.clocks = clocks;
+        this.matchesPlayed = matchesPlayed;
     }
 
     /**
@@ -133,13 +159,59 @@ public class ZoneLoadService {
         //
         // The arithmetic is identical to recoveryFor(): same window, same sum, same cap, same rate. The
         // per-player method stays for the single-player screens, where one query is correct.
+        //
+        // **Paged on the match id, because the unpaged read scans a whole season to find one matchday.**
+        // `findLoadMinutesPlayedSince` joins the window's matches to a scan of every zone load ever
+        // written: one matchday is 7,440 matches and 1,473,120 rows wanted out of 17,677,440 read,
+        // measured at 4,441 ms. A page of match ids turns that into `match_id IN (:ids)`, which an index
+        // on `match_id` can serve, and the job reads the rows it wants instead of the table it has.
+        //
+        // The arithmetic is untouched: same window, same `merge`, same cap, same rate. Only the order the
+        // rows arrive in changes, and a per-player sum does not care about the order it is summed in.
         Map<Long, Double> workedSinceWindow = new HashMap<>();
-        for (ZoneLoadMinutes load : loads.findLoadMinutesPlayedSince(windowStart)) {
-            if (load.playerId() == null) {
-                continue;
+        // The cursor is the last row of the previous page, both halves of it: the window is walked in
+        // (matchDate, id) order so the page query can use the index on those two columns.
+        LocalDateTime cursorDate = windowStart;
+        long cursorId = Long.MIN_VALUE;
+        int matchesRead = 0;
+        int pages = 0;
+        List<MatchPageEntry> page;
+        do {
+            page = matchesPlayed.findMatchPagePlayedSince(windowStart, cursorDate, cursorId,
+                    PageRequest.of(0, RECOVERY_PAGE_MATCHES));
+            if (page.isEmpty()) {
+                break;
             }
-            workedSinceWindow.merge(load.playerId(), load.effectiveMinutes(), Double::sum);
-        }
+            for (ZoneLoadMinutes load : loads.findLoadMinutesForMatches(idsOf(page))) {
+                if (load.playerId() == null) {
+                    continue;
+                }
+                workedSinceWindow.merge(load.playerId(), load.effectiveMinutes(), Double::sum);
+            }
+            matchesRead += page.size();
+            pages++;
+            MatchPageEntry last = page.get(page.size() - 1);
+            cursorDate = last.matchDate();
+            cursorId = last.id();
+            if (pages >= MAX_RECOVERY_PAGES) {
+                // **A paging loop that cannot end is worse than a job that fails.**
+                //
+                // The window is two game days, so a full-scale matchday is 45 pages and the bound below is
+                // two hundred times that. Reaching it means the cursor is not advancing — the page query is
+                // returning rows at or before where the last page stopped — and the alternative is a loop
+                // that reads the same page forever.
+                //
+                // Stopping quietly would be the worst outcome: recovery would credit less work than the
+                // players did, and the log would report a plausible number of touched players. So it
+                // throws, the job is recorded as failed, and the reason is in the message.
+                throw new IllegalStateException("Daily recovery read " + pages
+                        + " pages of " + RECOVERY_PAGE_MATCHES + " matches without reaching the end of the "
+                        + "window; the page cursor is not advancing. Refusing to loop rather than credit "
+                        + "a fraction of the work.");
+            }
+        } while (page.size() == RECOVERY_PAGE_MATCHES);
+        log.debug("Daily recovery read {} match(es) in the window over {} page(s) of {}.",
+                matchesRead, pages, RECOVERY_PAGE_MATCHES);
         if (workedSinceWindow.isEmpty()) {
             return 0;
         }
@@ -191,5 +263,20 @@ public class ZoneLoadService {
                 .map(GameClock::getCurrentDate)
                 .filter(java.util.Objects::nonNull)
                 .orElse(LocalDateTime.now());
+    }
+
+    /**
+     * The page's match ids, in page order — the only thing the zone-load query needs from a page.
+     *
+     * <p>Kept as a list rather than a set because the zone-load query is an {@code IN} list and its cost
+     * is measured in the length of that list, not in its order. The order is still the window's order,
+     * which is what makes the aggregate reproducible.
+     */
+    private static List<Long> idsOf(List<MatchPageEntry> page) {
+        List<Long> ids = new ArrayList<>(page.size());
+        for (MatchPageEntry entry : page) {
+            ids.add(entry.id());
+        }
+        return ids;
     }
 }

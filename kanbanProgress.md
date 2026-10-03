@@ -382,7 +382,116 @@ first of those is already known to check ownership on `/image` and not on `/tick
 
 ---
 
-## 2026-10-03 — `379cb12` — P1-4: three whole-table reads inside loops, and one that could not run at all
+## 2026-10-03 — P1-3: the recovery read pages, and the index P1-1 rejected turns out to be the one that matters
+
+The board's version of this task is answered: `findByLastPlayedAtIsNotNull()` has no caller any more, so
+there is no `last_played_at` index to add. What was left was the read itself, and it was the wrong table.
+
+### Measured on a full projected season, and the baseline moved
+
+Harness rebuilt: **89,280 matches, 17,677,440 zone-load rows**, with `event_json` at the **17 KB** the app
+actually writes after P1-7b. The first harness used 2.4 KB, seven times narrower than production now is,
+which is why the baseline below is **6,173 ms** where P1-1 measured **4,441 ms** for what looks like the
+same query: the `match` table got ten times wider and the match side of the scan got with it. **Same
+query, same shape, different number — because the harness was wrong, not because the query changed.**
+
+| one matchday's window | |
+|---|---:|
+| matches in the window | 7,440 |
+| zone-load rows wanted | 1,473,120 |
+| zone-load rows read | **17,677,440 — the whole table** |
+| unpaged, no index on `match_id` | **6,173 ms** |
+
+### Three things had to be right, and two of them were not
+
+**1. The index P1-1 refused to land is landed here, and P1-1 was right not to land it.** P1-1 measured
+`player_zone_load(match_id)` as a **68% regression** (4,441 → 7,436 ms) and left it alone, because
+unpaged it flips a hash join the planner wants into index probes it does not. Paged, the same index is
+what makes the read cheap. **The board was right and the fix was incomplete**, not wrong.
+
+**2. How the ids are passed changes the plan by 80×.** The same page of 500 matches, three ways:
+
+| form | time |
+|---|---:|
+| `match_id IN (SELECT … LIMIT 500)` | 5,020 ms — Hash Semi Join, seq scan |
+| `match_id = ANY(array)` | 62 ms |
+| `match_id IN (500 bound values)` — what JPQL's `IN :ids` emits | **44 ms**, Parallel Bitmap Heap Scan |
+
+The subquery form gives the planner a list it will hash rather than probe. **This is why the query is
+`IN :ids` and must not be refactored into a subquery** — the refactor looks identical and costs 100×.
+
+**3. The keyset is `(match_date, id)`, not `id`.** Paging on the id alone cannot use an index on the date,
+so the page query read the primary-key index and heap-filtered everything before the page: **206 ms a
+page**. The composite key, with an index on `(match_date, id)`, is an index-only range scan at **0.35 ms**.
+Every match in a matchday shares one kickoff time, which is exactly the case where an id-only cursor has
+nothing to filter on.
+
+### The numbers
+
+| | before | after |
+|---|---:|---:|
+| one matchday's recovery read | **6,173 ms** | **~539 ms** (15 pages × 36 ms) |
+| rows read | 17,677,440 | 1,473,120 |
+| page query | 206 ms | 0.35 ms |
+
+**11.4× faster, and it reads a ninth of the rows.** The arithmetic is untouched — same window, same
+`merge`, same cap, same rate. Only the order rows arrive in changes, and a per-player sum does not care.
+
+**Page size chosen by measurement, not by taste:**
+
+| page | pages | per page | whole window |
+|---:|---:|---:|---:|
+| 500 | 15 | 36 ms | **539 ms** |
+| 1,000 | 8 | 69 ms | 550 ms |
+| 2,000 | 4 | 132 ms | 527 ms |
+| 5,000 | 2 | **3,239 ms** | 6,478 ms |
+
+5,000 falls off a cliff — the index stops being used and it is back to scanning. 500 is the smallest
+footprint of the three that work, so that is what shipped.
+
+### An index P1-1 measured and rejected, reversed on new evidence
+
+`ix_match_date_id (match_date, id)` is the **fifth** index on `match`, and P1-1 proposed
+`match(match_date)`, measured it, found it bought nothing and did not create it. That was **correct for
+the query it was measured against** — the recovery read spends 98% of its time on the zone-load side.
+Keyset paging is what made it worth having.
+
+**An index can be worthless and then become necessary when the query beside it changes shape**, which is
+worth stating plainly because "measured, no benefit" reads as settled. `MatchIndexDeclarationTest` now
+expects five, and fails on a sixth until that one is measured too.
+
+### The guard, and the two bugs it found in me
+
+`ZoneLoadRecoveryPagingTest` — **5 tests, 1.9 s.** It asserts the read is paged *and* that every match in
+the window is asked for exactly once, because either half alone is satisfiable by something useless: a
+loop that pages and credits nobody, or an unpaged scan that credits everyone.
+
+**Both bugs were mine and both were found by trying to break the thing on purpose:**
+
+1. **The test hung and killed the JVM.** Its stub counted ids up from the cursor, and the first cursor is
+   `Long.MIN_VALUE`, which never reaches 1,207 — so the loop under test never terminated and the run died
+   of heap space. The stub now walks a fixed id space, which is both correct and the better failure mode:
+   a service that fails to advance its cursor gets the same page for ever, and this stub hands it out for
+   ever rather than reporting success.
+2. **Which exposed a real hazard in the service.** An unbounded paging loop over a growing table is worse
+   than a failing job, and stopping quietly would be the worst outcome of all — recovery would credit less
+   work than the players did and the log would report a plausible number. The service now throws after
+   `MAX_RECOVERY_PAGES`, two hundred times a season's worth, with the reason in the message. That bound is
+   the test for case 1, and it is production value rather than test scaffolding.
+
+### Recovery still happens — counted, not timed
+
+The brief for this task was that a faster recovery which recovers fewer players is a new P0 defect. So the
+guard asserts **every match in the window is asked for exactly once — no gaps, no repeats**, because a
+repeated row double-counts a player's recovery and a skipped one under-counts it, and neither throws.
+`ZoneLoadRecoveryTest` 5/5, `ZoneLoadRecoveryPersistenceTest` 1/1, `ZoneLoadWiringTest` 2/2 and
+`ZoneLoadProjectionTest` 2/2 are unchanged, so the arithmetic and the morale write are as they were.
+
+**`sokker_bench` dropped** at the end of this task, as agreed — 3 GB, kept for the whole of P1 rather than
+per task. The setup script is the only thing not in the repository, and every number above depends on it.
+
+---
+
 
 Nineteen call sites matched the board's pattern. Four were fixed, and the board's five named candidates
 had all drifted — two are already gone and two were never N+1s at all.

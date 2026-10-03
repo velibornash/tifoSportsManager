@@ -14,6 +14,9 @@
 --
 -- Measured on a full-scale season (89,280 matches, one row per match per week for twelve weeks):
 --
+-- P1-3 added a fifth, after P1-1 measured and rejected it. See the note on ix_match_date_id in Match.java:
+-- on its own it bought nothing, and keyset paging is what made it worth having.
+--
 --   index                            query                                    before     after
 --   ix_match_competition_season      findByCompetitionIdAndSeasonYear        158.7 ms   0.19 ms
 --   ix_match_season_week             findBySeasonYearAndWeekNumber           156.4 ms  27.8 ms
@@ -28,3 +31,5 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_match_competition_season ON match (co
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_match_season_week        ON match (season_year, week_number);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_match_home_team_date     ON match (home_team_id, match_date);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_match_away_team_date     ON match (away_team_id, match_date);
+-- The recovery window's keyset. Column order is the paging order: match_date then id.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_match_date_id            ON match (match_date, id);

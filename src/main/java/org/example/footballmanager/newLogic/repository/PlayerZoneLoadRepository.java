@@ -55,5 +55,28 @@ public interface PlayerZoneLoadRepository extends JpaRepository<PlayerZoneLoad, 
             + "FROM PlayerZoneLoad load JOIN load.match m "
             + "WHERE m.matchDate IS NOT NULL AND m.matchDate > :after")
     List<ZoneLoadMinutes> findLoadMinutesPlayedSince(@Param("after") java.time.LocalDateTime after);
+
+    /**
+     * The same window as {@link #findLoadMinutesPlayedSince}, for one page of matches.
+     *
+     * <p><b>The window's match ids, keyset-paged — which is what makes the read cheap.</b>
+     * {@code findLoadMinutesPlayedSince} joins the window's matches to a scan of the whole
+     * {@code player_zone_load} table: at full scale, one matchday's window is 7,440 matches and
+     * 1,473,120 rows returned out of <b>17,677,440 read</b>, because the only index that can answer
+     * {@code match_id} leads with {@code player_id}. Measured 4,441 ms.
+     *
+     * <p>Handed a page of ids, this becomes {@code match_id IN (:ids)} — a set of index lookups
+     * against {@code ix_zone_load_match}, reading the 1,473,120 rows that are wanted instead of the
+     * 17,677,440 that exist.
+     *
+     * <p><b>Why the caller pages at all</b> and does not pass 7,440 ids in one go: a single
+     * {@code IN} list that long is its own problem, and the point of the page is that no single
+     * statement holds more than a page's worth of the table.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.ZoneLoadMinutes("
+            + "load.player.id, load.zone, load.minutes, load.intensity) "
+            + "FROM PlayerZoneLoad load "
+            + "WHERE load.match.id IN :matchIds")
+    List<ZoneLoadMinutes> findLoadMinutesForMatches(@Param("matchIds") java.util.Collection<Long> matchIds);
 }
 

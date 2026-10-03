@@ -585,7 +585,7 @@ the code near it has changed.
 | Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | P1-7 |
 | `event_json` written per match | 840,136 B | **17,001 B** | P1-7 |
 | A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
-| Recovery read, one matchday *(17.7M-row table)* | 4,441 ms | **still open, P1-3** | — |
+| Recovery read, one matchday *(17.7M-row table, 17 KB blobs)* | 6,173 ms | **~539 ms** | P1-3 |
 | International Elo replay — whole-world reads | 1 + 3 × matches | **1** | P1-4 |
 | Weekly squad rollover — squad reads | 1 + 14,880 | **2** | P1-4 |
 | AI friendly pass — week reads, per friendly week | ~59,520 | **2** | P1-4 |
@@ -712,38 +712,41 @@ change.
 
 ---
 
-### P1-3 — The recovery job's cost is a sequential scan of `player_zone_load`, not of `match`
+### P1-3 — DONE. The read pages, and the index P1-1 rejected is the one that mattered
 
-**The board's version of this task is settled.** `findByLastPlayedAtIsNotNull()` no longer has a
-caller — `dddf462` replaced it with `findByIdInAndLastPlayedAtIsNotNull(ids)`, which the primary key
-serves. **So there is no index to add on `last_played_at`, because there is no longer a query for it
-to serve.** That part of the board is answered, not open. `findByInjuryDaysRemainingGreaterThan` is
-still a real unindexed scan on `injury_days_remaining` (`SeasonService:577`) and still needs one.
+**The board's version of this task was answered, not open:** `findByLastPlayedAtIsNotNull()` has no caller
+any more, so there is no `last_played_at` index to add. What was left was the read itself, on the wrong
+table.
 
-**What is actually left, measured at full scale** (89,280 matches, 17,677,440 zone-load rows — one
-season at 48 countries, in a throwaway database):
+| one matchday's recovery read, 89,280-match season | before | after |
+|---|---:|---:|
+| elapsed | **6,173 ms** | **~539 ms** |
+| rows read | 17,677,440 | 1,473,120 |
 
-| | |
-|---|---:|
-| `findLoadMinutesPlayedSince`, one matchday window | **4,441 ms** |
-| rows it returns | 1,473,120 |
-| rows it reads | 17,677,440 — the whole table, to find one matchday |
-| the `match` scan the board blamed | **112 ms, 2% of the query** |
+**Three things had to be right, and two of them were not:**
 
-**The fix is not an index, and P1-1 proved it.** The projection's own javadoc names the right answer
-and says it is not written yet: **keyset paging on `match.id`**. Paged, each batch is an index range
-scan and the job reads 1.47M rows instead of 17.7M. Unpaged and forced onto the index, the same query
-runs in **889 ms against 5,318 ms** — so the index is worth having *for this query*, it just cannot be
-landed before the read is paged, which is why P1-1 left `player_zone_load` alone.
+- **`player_zone_load(match_id)` is landed here, and P1-1 was right not to land it then.** Unpaged it is a
+  68% regression; paged it is what makes the read cheap. The board was right and the fix was incomplete.
+- **How the ids are passed changes the plan 80×.** `IN (SELECT … LIMIT 500)` is a 5,020 ms Hash Semi Join;
+  `IN` with 500 bound values — what JPQL emits — is a **44 ms** Parallel Bitmap Heap Scan. **Do not
+  refactor it into a subquery.** It looks identical and costs 100×.
+- **The keyset is `(match_date, id)`, not `id`.** Id-only paging cannot use an index on the date, so the
+  page query heap-filtered everything before the page: **206 ms a page against 0.35 ms**.
 
-**Exit criteria:**
-- [ ] The recovery read is paged, and **the page boundaries are keyset on `match.id`** — offset paging
-      over a join with no total order can skip and duplicate rows, which would silently under-count a
-      player's recovery
-- [ ] **Recovery still happens.** Correctness-adjacent: a faster recovery that recovers fewer players
-      is a new P0 defect. Verified by **counting recovered players**, not by the clock
-- [ ] `findByInjuryDaysRemainingGreaterThan` measured and indexed, or recorded as cheap
-- [ ] The whole job measured on the harness before and after, on the same basis as P1-1's numbers
+**Page size measured, not chosen:** 500 / 1,000 / 2,000 all land at ~530–550 ms for the window;
+**5,000 falls off a cliff to 6,478 ms** because the index stops being used. 500 shipped.
+
+**`ix_match_date_id` is a fifth index on `match`, reversing a P1-1 measurement on new evidence.** P1-1
+proposed `match(match_date)`, measured it, found no benefit and did not create it — correct for the query it
+was measured against, since that query spends 98% of its time on the zone-load side. Paging made it
+necessary. **An index can be worthless and then become necessary when the query beside it changes shape**,
+so "measured, no benefit" is not the settled sentence it looks like.
+
+**Recovery still happens — counted, not timed.** The guard asserts **every match in the window is asked for
+exactly once**: a repeated row double-counts a player's recovery, a skipped one under-counts it, and
+neither throws. An unbounded paging loop would have been worse than a failing job, and stopping quietly
+would credit less work than the players did while logging a plausible number — so the job now **throws**
+after 200× a season's pages, with the reason in the message.
 
 ---
 
