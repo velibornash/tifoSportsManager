@@ -187,18 +187,23 @@ public class ListingObjectionService {
         transfer.setListingObjectionReason(null);
     }
 
+    /**
+     * The role to judge him by, when he has no contract to say.
+     *
+     * <p>Delegates to {@link PlayerContractService#inferRole} rather than switching on his position.
+     * The switch this replaced mapped {@code GK/DEF/MID -> STARTER}, which is right for a senior and
+     * badly wrong for a seventeen-year-old academy graduate — and graduates have no contract, because
+     * {@code createSeniorFromJunior} never makes one. So every automatic graduation rolled a
+     * STARTER's reluctance (0.75) for a kid, putting the objection rate near 41% on a player's first
+     * day. {@code inferRole} already encodes the right rule — a young, cheap player is a YOUTH at 0.12 —
+     * so the fix is to ask the one function that knows.
+     */
     private SquadRole roleOf(Player player) {
         PlayerContract contract = contracts.findByPlayerId(player.getId()).orElse(null);
         if (contract != null && contract.getSquadRole() != null) {
             return contract.getSquadRole();
         }
-        return switch (player.getPosition() == null ? org.example.footballmanager.newLogic.model.Position.MID
-                : player.getPosition()) {
-            case GK, DEF -> SquadRole.STARTER;
-            case ATT -> SquadRole.ROTATION;
-            case WNG -> SquadRole.PROSPECT;
-            case MID -> SquadRole.STARTER;
-        };
+        return contractService.inferRole(player);
     }
 
     private Integer currentSeason() {

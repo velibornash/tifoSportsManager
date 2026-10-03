@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -60,7 +61,7 @@ public class YouthAcademyService {
 
             ensureCoachSkill(team);
             long activeVisible = juniorRepository.countVisibleByTeamIdAndStatus(team.getId(), JuniorStatus.ACTIVE);
-            int freeSlots = Math.max(0, 10 - (int) activeVisible);
+            int freeSlots = Math.max(0, MAX_ACTIVE_JUNIORS - (int) activeVisible);
             if (freeSlots <= 0) {
                 log.info("Youth intake skipped for team {} in season {}: academy already has {} active juniors (max 10).",
                         team.getName(), seasonNumber, activeVisible);
@@ -135,6 +136,19 @@ public class YouthAcademyService {
      * <p>What was genuinely missing is what happens when the window closes. Nothing acted on a junior
      * reaching twenty, so he sat in the academy indefinitely — a twenty-four-year-old "prospect". The
      * window is the rule, and a manager who has had all five years to decide has had the decision.
+     *
+     * <p><b>And what happens when the club has no room for him (P2-6).</b> Graduation used to be
+     * unconditional: every ACTIVE junior aged twenty in the entire world was turned into a senior
+     * {@code Player} in one loop, with no check that the club could field him. {@code canRegister}
+     * could not stop it either, because graduation creates no {@code PlayerContract} and
+     * {@code canRegister} counts contracts — so a graduate was invisible to the 25-senior cap and then
+     * drew a wage for a season before the backfill noticed. A club's academy was therefore an
+     * unlimited source of free players.
+     *
+     * <p>So the cap is the squad, not a number: a graduate is promoted only while his club has room,
+     * and otherwise he is <b>released</b>. That is the football answer and it now has teeth in both
+     * directions — a club that refuses to let players go fills its own squad and blocks its own
+     * academy, which is what P2-7's retirement mechanic is for.
      */
     @Transactional
     public int promoteJuniorsPastWindow(int seasonNumber, int seasonNumberNow) {
@@ -142,8 +156,43 @@ public class YouthAcademyService {
                 JuniorStatus.ACTIVE, GRADUATION_MAX_AGE);
         if (overAge == null || overAge.isEmpty()) return 0;
 
+        Map<Long, Integer> squadSizes = squadSizesOf(overAge);
+
         int promoted = 0;
+        int released = 0;
+        // Room is counted down per club as its graduates are made, so a club with five due juniors and
+        // two places promotes exactly two rather than all five and discovers the overflow later. The
+        // countdown is merge(clubId, -1, Integer::sum): a remapping function of (a, b) -> a returns
+        // the OLD value, so the room never shrank and a squad of twenty-eight got through until the
+        // test below caught it.
+        Map<Long, Integer> roomLeft = new HashMap<>();
         for (Junior junior : overAge) {
+            Long clubId = junior.getTeam() == null ? null : junior.getTeam().getId();
+            if (clubId == null) {
+                // No club to graduate into. Releasing is the honest outcome; a "senior" player with
+                // no team is a row nobody will ever select.
+                releaseUnplaced(junior);
+                released++;
+                continue;
+            }
+            if (roomLeft.computeIfAbsent(clubId, id -> {
+                // Bounded twice: by the senior places the club has free, and by the academy's own
+                // capacity. The second bound is unreachable through intake — which stops at
+                // MAX_ACTIVE_JUNIORS — but the sweep reads rows directly, and fixtures and the
+                // seeder insert juniors without going through it. A graduation pass that can promote
+                // more than the academy holds is relying on an invariant it does not enforce.
+                int seniorRoom = Math.max(0, PlayerContractService.MAX_SENIOR_SQUAD
+                        - squadSizes.getOrDefault(id, 0));
+                return Math.min(MAX_ACTIVE_JUNIORS, seniorRoom);
+            }) <= 0) {
+                log.info("Season {}: {} released {} — no senior places left at his club",
+                        seasonNumber, junior.getName(), PlayerContractService.MAX_SENIOR_SQUAD);
+                releaseUnplaced(junior);
+                released++;
+                continue;
+            }
+            roomLeft.merge(clubId, -1, Integer::sum);
+
             try {
                 PromotionBuild build = createSeniorFromJunior(junior);
                 junior.setStatus(JuniorStatus.PROMOTED);
@@ -161,7 +210,41 @@ public class YouthAcademyService {
             log.info("Season {}: promoted {} junior(s) who reached the age of {}",
                     seasonNumber, promoted, GRADUATION_MAX_AGE);
         }
+        if (released > 0) {
+            log.info("Season {}: released {} junior(s) with no senior place at their club",
+                    seasonNumber, released);
+        }
         return promoted;
+    }
+
+    /**
+     * How many senior players each of these clubs already has, in one query.
+     *
+     * <p>Counted from {@code Team.players} rather than from contracts, because a graduate has no
+     * contract — that is the whole reason {@code canRegister} could not see him. One grouped query for
+     * the world instead of one count per club: at 14,880 clubs the per-club version would be 14,880
+     * round-trips inside the season rollover.
+     */
+    private Map<Long, Integer> squadSizesOf(List<Junior> juniors) {
+        Set<Long> clubIds = juniors.stream()
+                .map(j -> j.getTeam() == null ? null : j.getTeam().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (clubIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> sizes = new HashMap<>();
+        for (Object[] row : playerRepository.countSquadSizesByTeamIds(clubIds)) {
+            sizes.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return sizes;
+    }
+
+    /** He leaves the club rather than occupy a place it cannot give him. */
+    private void releaseUnplaced(Junior junior) {
+        junior.setStatus(JuniorStatus.RELEASED);
+        junior.setLastWeeklyDelta(0.0);
+        juniorRepository.save(junior);
     }
 
     /**
@@ -288,6 +371,17 @@ public class YouthAcademyService {
                 .map(StaffMember::getDevelopment)
                 .orElse(null);
     }
+
+    /**
+     * How many ACTIVE juniors one academy may hold, and therefore how many it can take in and produce
+     * in a season (P2-6).
+     *
+     * <p>This was the bare literal {@code 10} inline in the intake, and the same number was hardcoded
+     * three more times in {@code static/js/pages/features/academy.js} ("{n}/10", "0/10", and the
+     * refusal text). Named here so Java has one source; the frontend copies are recorded as
+     * outstanding rather than silently re-hardcoded a fifth time.
+     */
+public static final int MAX_ACTIVE_JUNIORS = 10;
 
     /**
      * The age window a junior may leave the academy in (owner rule 2026-09-27): <b>15 to 20</b>.

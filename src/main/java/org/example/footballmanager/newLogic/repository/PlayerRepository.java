@@ -68,6 +68,24 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     @Query("SELECT p FROM Player p WHERE p.team.id = :teamId AND p.injured = false")
     List<Player> findAvailableByTeamId(@Param("teamId") Long teamId);
 
+    /**
+     * How many players each of these clubs currently has, in one grouped query.
+     *
+     * <p>The graduation sweep needs this for every club in the world at once. Asking per club would be
+     * one count per club inside the season rollover — at 14,880 clubs, 14,880 round-trips in a single
+     * transaction, to decide who has room for a graduate.
+     *
+     * <p>Counts rows, not contracts, and that is deliberate rather than lazy: a graduate is created
+     * without a {@code PlayerContract}, so a contract count would not see him at all. That is exactly
+     * why {@code PlayerContractService.canRegister} never bounded graduation.
+     *
+     * <p>Clubs with no players simply do not appear, so callers must treat a missing key as zero.
+     *
+     * @return rows of {@code [teamId, squadSize]}
+     */
+@Query("SELECT p.team.id, COUNT(p) FROM Player p WHERE p.team.id IN :teamIds GROUP BY p.team.id")
+    List<Object[]> countSquadSizesByTeamIds(@Param("teamIds") Collection<Long> teamIds);
+
     @Modifying
     @Query("update Player p set p.age = p.age + 1")
     int incrementAgeForAllPlayers();

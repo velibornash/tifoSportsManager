@@ -947,19 +947,39 @@ computes but cannot act."* Trust is computed and displayed; nothing acts on it.
 
 ---
 
-### P2-6 — Graduation caps
+### ~~P2-6 — Graduation caps~~ ✅ `GraduationRespectsTheSquadTest` 4/4
 
-Half a day. *"Stops the academy flattening the economy."* The intake is capped at 10 ACTIVE juniors;
-**graduation has no cap at all** — every ACTIVE junior aged ≥20 in the whole world is promoted in one
-loop — and `createSeniorFromJunior` never consults `canRegister`, so the 25-senior cap cannot bind a
-graduate, who then draws a wage line for a full season before the backfill gives him a contract.
+Graduation was **unconditional**: every ACTIVE junior aged ≥20 in the entire world became a senior
+`Player` in one loop. `canRegister` could not stop it, because graduation creates no `PlayerContract`
+and `canRegister` counts contracts — so a graduate was invisible to the 25-senior cap, and then drew a
+wage for a full season before the backfill noticed. **A club's academy was an unlimited source of free
+players.**
 
-**Also carries:** the `ListingObjectionService.roleOf` fallback that P2-3 exposed. A graduate has no
-contract, so it fell through to a position switch mapping `GK/DEF/MID → STARTER` (reluctance 0.75) and
-a 17-year-old was treated as a senior starter — roughly a 41% objection rate on every automatic
-graduation. `PlayerContractService.inferRole` already encodes the right rule and should have been used.
+**The cap is the squad, not a number.** A graduate is promoted only while his club has room; otherwise
+he is **released**. That gives P2-7 teeth in both directions — a club that refuses to let players go
+fills its own squad and blocks its own academy.
 
-**Exit criteria:** a capped intake produces capped graduates, verified over a season rather than one run.
+**Landed:**
+- [x] Per-club room, counted down **as it is used**, so five due juniors and two places promote exactly
+      two rather than five plus an overflow discovered later
+- [x] Also bounded by `MAX_ACTIVE_JUNIORS` — unreachable through intake, but the sweep reads junior rows
+      directly and fixtures and the seeder insert them without passing through intake
+- [x] `MAX_ACTIVE_JUNIORS = 10` extracted from the inline literal
+- [x] Squad sizes loaded in **one grouped query** for the world, not one count per club — 14,880
+      round-trips inside the season rollover otherwise
+- [x] **Also fixed: the defect P2-3 introduced.** A graduate has no contract, so
+      `ListingObjectionService.roleOf` fell back to a position switch mapping `GK/DEF/MID → STARTER`.
+      A 17-year-old was judged as a senior starter. **Measured: 0.4125 objection likelihood on a
+      graduate's first day**, i.e. ~41% of all automatic graduations drew an objection the club then had
+      to pay 5% to clear. Now delegates to `PlayerContractService.inferRole`, which already encoded the
+      right rule (a cheap 17-year-old is a YOUTH, reluctance 0.12)
+- [x] Every test proven able to fail, including the `merge` bug below
+
+**Recorded, not changed:** the `10` is hardcoded three more times in `static/js/pages/features/academy.js`
+(`{n}/10`, `0/10`, and the refusal text). Java now has one source; the frontend copies still need a DTO
+field, which is a separate piece of work.
+
+---
 
 ---
 

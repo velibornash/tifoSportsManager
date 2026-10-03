@@ -923,6 +923,87 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-6: an academy was an unlimited source of free players
+
+### The cap that did not exist, and could not have existed where it was looked for
+
+`promoteJuniorsPastWindow` turned **every ACTIVE junior aged ≥20 in the entire world** into a senior
+`Player`, in one loop, with no check that the club could field him. The obvious place to look was
+`PlayerContractService.canRegister` — the 25-senior cap — and it is structurally unable to help:
+graduation creates **no `PlayerContract`**, and `canRegister` counts contracts. A graduate was
+therefore invisible to the cap, and then went on to draw a wage for a full season before
+`ContractBackfillService` noticed he existed.
+
+So the cap had to be the squad itself. A graduate is promoted only while his club has room, and
+otherwise **released** — which is the football answer and gives P2-7 teeth in both directions: a club
+that refuses to let players go fills its own squad and blocks its own academy.
+
+### My own bug, caught by the test I had just written
+
+```java
+roomLeft.merge(clubId, -1, (a, b) -> a);   // returns the OLD value
+```
+
+`Map.merge` applies the remapping function to `(oldValue, newValue)`, so `(a, b) -> a` discards the
+`-1` and **the room never shrinks**. The first run promoted all five juniors at a club with two places
+and produced a squad of **28 against a limit of 25**. `Integer::sum` fixes it.
+
+I only found it because the assertion was on a squad size rather than on a return count. Had I asserted
+"2 promotions" it would have read 2 in both cases and told me nothing.
+
+### The defect P2-3 introduced, now measured
+
+A graduate has no contract, so `ListingObjectionService.roleOf` fell through to the position switch I
+wrote in P2-3: `GK/DEF/MID -> STARTER`, reluctance 0.75. A seventeen-year-old academy graduate on his
+first day was therefore judged as a senior starter.
+
+**Read from the code: "roughly 41%". Measured by breaking the fix: `0.41250000000000003`** — exactly
+STARTER-level, as predicted. So ~41% of every automatic graduation drew an objection that the club then
+had to pay 5% of the asking price to clear, on a player who had never asked to be sold.
+
+`PlayerContractService.inferRole` already encoded the right rule — a cheap 17-year-old is a `YOUTH` at
+reluctance 0.12 — so the fix is to ask the one function that knows rather than to write a second,
+disagreeing rule. This is the second time `inferRole` has been the right answer to something `newLogic`
+was getting wrong by hand.
+
+### Two bounds, and why both
+
+- **Senior places.** The real cap, and it is the one that makes P2-7 matter.
+- **`MAX_ACTIVE_JUNIORS`.** Unreachable through intake, which stops at ten — so a club can never hold
+  fourteen overdue juniors. But the sweep reads junior rows **directly**, and fixtures and
+  `DatabaseInitializer.seedInitialJuniorsForOwnerIfMissing` insert them without passing through intake.
+  A graduation pass that could promote more than the academy holds would be relying on an invariant it
+  does not itself enforce. My test builds the impossible state on purpose and says so.
+
+### Scale: one query, not one per club
+
+Squad sizes come from a single grouped query, `countSquadSizesByTeamIds`. The obvious implementation —
+`playerRepository.countByTeam(team)` per club — would be **14,880 round-trips inside the season
+rollover**, in one transaction, to decide who has room for a graduate. The per-player retirement age is a
+function of rating and cannot be pushed into SQL, so the count is as far left as it goes.
+
+The bounded query has a recorded cost: `promoteJuniorsPastWindow` still loads **every** overdue junior
+in the world into one list and one transaction, and at 14,880 clubs that is tens of thousands of
+`Player` inserts in a single unit of work. **Recorded for P1 rather than fixed here** — chunking it
+changes transaction semantics and belongs with the query work, not inside a graduation cap.
+
+### Breaks
+
+| Break | Result |
+|---|---|
+| Unconditional graduation (the old behaviour) | 3 fail — `expected: <25> but was: <28>`, twice |
+| The old `roleOf` position switch | 1 fail — `was 0.41250000000000003, which is STARTER-level` |
+
+### Regression check
+
+`GraduationRespectsTheSquadTest`, `PlayersRetireTest`, `ListedPlayerCanObjectTest`,
+`ListingFeeScalesWithTheAskingPriceTest`, `SellerAcceptsANamedOfferTest`, `JuniorDecisionWindowTest`,
+`JuniorSchoolServiceTest`, `YouthAcademyGraduationTest`, `TalentRangeTest`, `JuniorSchoolRulesTest`,
+`AcademyQualityTest`, `PlayerContractServiceTest`, `TransferServicePriceGuardTest` —
+**117 tests, 0 failures, 0 errors.** `mvn clean package` succeeds.
+
+---
+
 ## 2026-10-03 — P2-7: players retire, and one dead method was dead because it is destructive
 
 ### There was nothing to build on, and that was the finding
