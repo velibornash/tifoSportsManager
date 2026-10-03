@@ -72,6 +72,7 @@ public class SimMatchService {
     private final ObjectMapper objectMapper;
     private final ZoneLoadRecorder zoneLoadRecorder;
     private final NationalRatingService nationalRatingService;
+    private final org.example.footballmanager.newLogic.service.TacticsRulesProvider tacticsRules;
 
     /** Simulate a full match between two DB teams using their real saved squads
      *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
@@ -105,8 +106,20 @@ public class SimMatchService {
         List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench);
         List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench);
 
+        // **The home club's own tactical editor shape, for the first time.**
+        //
+        // This used to construct nothing here at all: MatchOrchestrator built its own TacticsRules, which
+        // opened a raw JDBC connection and read `WHERE team_id = 1 AND formation = '4-4-2'`. Every club
+        // in the world therefore ran team 1's tactics, and because a missing profile and a wrong password
+        // and an unparseable profile were all swallowed into the same silent null, the fallback export
+        // looked like it working.
+        //
+        // The HOME side carries its authored shape and the away side is mirrored from it, which is what
+        // TacticsRules has always done. Giving the away club its own shape is a separate change — it
+        // needs a second rules object and a decision about perspective — and is not smuggled in here.
         var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
-                homeSquad, awaySquad, homeBench, awayBench);
+                homeSquad, awaySquad, homeBench, awayBench,
+                tacticsRules.forTeam(homeTeam.getId()));
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         persistMatchCondition(orchestrator.getState());
 

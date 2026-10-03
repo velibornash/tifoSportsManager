@@ -26,7 +26,16 @@ import java.util.stream.Collectors;
  */
 public final class RealSquadFactory {
 
-    private static final String[] SLOT_ORDER = {
+    /**
+     * The roles the engine can name, in placement order — 4-4-2's eleven.
+     *
+     * <p><b>Public and singular on purpose.</b> This is the vocabulary a tactical profile has to be
+     * authored in for the engine to be able to play it: a rule keyed to a slot that is not in this list
+     * belongs to a player who does not exist. {@code TacticsRulesProvider} derives its accepted-key set
+     * from here rather than keeping a second copy, so the two cannot drift — and the class javadoc's
+     * "the engine itself stays 4-4-2" is why the list has eleven entries and not nine layouts' worth.
+     */
+    public static final String[] SLOT_ORDER = {
             "GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"
     };
 

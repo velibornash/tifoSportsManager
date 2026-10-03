@@ -93,11 +93,62 @@ public class TacticsRules {
     public TacticsRules(Map<String, Map<String, Position>> rules,
                         Map<String, Map<String, Position>> opponentRules,
                         Map<String, Position> anchors) {
+        this(rules, opponentRules, anchors, "direct");
+    }
+
+    /** As above, naming where the rules came from so a match log can say. */
+    public TacticsRules(Map<String, Map<String, Position>> rules,
+                        Map<String, Map<String, Position>> opponentRules,
+                        Map<String, Position> anchors,
+                        String source) {
         this.desiredByRoleByState = rules;
         this.opponentByRoleByState = opponentRules;
         this.anchorByRole = anchors;
-        this.source = "direct";
+        this.source = source;
         this.ruleCount = countRules(rules) + countRules(opponentRules);
+    }
+
+    /**
+     * Builds rules from a tactical-editor profile's persisted {@code rules_json}.
+     *
+     * <p><b>This is the seam the application uses; the constructor above is the standalone launchers'
+     * </b> — the diagnostics, the viewer and the exporter run outside Spring, so they keep the raw-JDBC
+     * tier and its {@code system} property overrides.
+     *
+     * <p>Anchors come from the catalog for the profile's own formation rather than from
+     * {@link #FORMATION}, because a 4-3-3 profile anchored on 4-4-2 slot cells would put its striker on
+     * a left winger's cell.
+     *
+     * @param formation the profile's formation, used only to pick anchors
+     * @return null when the json is absent or unparseable — the caller decides what that means, and
+     *         {@link TacticsRulesProvider} says so in the log rather than swallowing it
+     */
+    public static TacticsRules fromProfileJson(String rulesJson, String formation, String source) {
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return null;
+        }
+        LoadedRules loaded;
+        try {
+            loaded = new TacticsRules().parseRulesJson(rulesJson);
+        } catch (Exception e) {
+            return null;
+        }
+        if (loaded.haveBall().isEmpty() && loaded.opponentHasBall().isEmpty()) {
+            return null;
+        }
+        return new TacticsRules(loaded.haveBall(), loaded.opponentHasBall(),
+                anchorsFor(formation), source);
+    }
+    /** Anchor cells for a formation, falling back to 4-4-2 when the catalog does not know it. */
+    private static Map<String, Position> anchorsFor(String formation) {
+        FormationSlotCatalog catalog = new FormationSlotCatalog();
+        String normalized = catalog.normalizeFormation(formation == null ? FORMATION : formation);
+        Map<String, Position> anchors = new LinkedHashMap<>();
+        for (TacticsSlotDTO slot : catalog.getSlots(normalized)) {
+            Position pos = parseCell(slot.getAnchorCellKey());
+            if (pos != null) anchors.put(slot.getSlotKey(), pos);
+        }
+        return anchors;
     }
 
     /** Fallback rules — only anchor cells. */

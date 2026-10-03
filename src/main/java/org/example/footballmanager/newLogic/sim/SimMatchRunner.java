@@ -41,6 +41,26 @@ public final class SimMatchRunner {
     public static MatchOrchestrator run(String homeName, String awayName, int ticks,
                                         List<Player> homeSquad, List<Player> awaySquad,
                                         List<Player> homeBench, List<Player> awayBench) {
+        return run(homeName, awayName, ticks, homeSquad, awaySquad, homeBench, awayBench, null);
+    }
+
+    /**
+     * Runs a full match with the home club's own tactics (owner, 2026-10-03).
+     *
+     * <p><b>This is the overload the game path uses and the rest are kept for the launchers.</b> The
+     * tactics are passed in rather than read here because this class is deliberately outside Spring —
+     * the diagnostics, the viewer and the exporter all construct a match through it — so a null here
+     * still produces exactly the football it always did.
+     *
+     * <p><b>One set of rules, both sides.</b> Rules are authored from the home perspective and
+     * {@code TacticsRules} mirrors them for AWAY, which is what it has always done. Giving the away
+     * club its <em>own</em> shape needs a second rules object and a change to how perspective is
+     * resolved, and that is deliberately not smuggled in here — see the board on cluster F #1.
+     */
+    public static MatchOrchestrator run(String homeName, String awayName, int ticks,
+                                        List<Player> homeSquad, List<Player> awaySquad,
+                                        List<Player> homeBench, List<Player> awayBench,
+                                        org.example.footballmanager.newLogic.sim.tactics.TacticsRules tactics) {
         MatchState state = new MatchState();
         boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
         boolean awayReal = awaySquad != null && awaySquad.size() >= 11;
@@ -50,7 +70,9 @@ public final class SimMatchRunner {
         if (homeBench != null) state.getBench("HOME").addAll(homeBench);
         if (awayBench != null) state.getBench("AWAY").addAll(awayBench);
 
-        MatchOrchestrator orchestrator = new MatchOrchestrator(state);
+        MatchOrchestrator orchestrator = tactics == null
+                ? new MatchOrchestrator(state)
+                : new MatchOrchestrator(state, tactics);
         orchestrator.getStats().setDisplayNames(homeName, awayName);
         orchestrator.getRestartManager().handleKickoff(state, "HOME");
 
