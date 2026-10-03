@@ -225,30 +225,54 @@ already defaults to the viewer's own.
 **`TransferController` is the only route in the repository where one manager could move another club's
 money.**
 
-### P0-16 — `DummyDataController`'s callers are all broken except for team 1 — NEW, 2026-10-03
+### P0-16 — PARTIAL: six of eight `/demo` callers rewired, two have no real data source
 
-Found while writing P0-1b, and **not fixable here**: the board rules *"do not wire it to anything"*, and
-deleting the routes would break five pages.
+**The owner's ruling:** none of `/demo` should exist on the main app, and never hardcode — take `teamId`
+from the user. Both halves are now true of the eight call sites. `DummyDataController` itself is **not yet
+deleted**, because two callers still need it, and deleting it would turn "fabricated" into "404" for those
+two screens — a product change beyond rewiring.
 
-**Every mapping carries a literal `1` and there is no `@PathVariable` anywhere in the class.** So
+**Six rewired, five of them to endpoints that already existed and were already widely used:**
 
-```
-/demo/teams/1/profile     answers 200, "Omladinac FC"
-/demo/teams/57/profile    answers 404
-```
+| Call site | Was | Now |
+|---|---|---|
+| `club-management.js:45` | `/demo/teams/{id}/profile` | `/teams/{teamId}/profile` |
+| `staff-directory.js:100` | `/demo/teams/{id}/profile` | same |
+| `stats-view.js:36` | `/demo/stats/teams/{id}/players` | `/teams/{teamId}/players` |
+| `fixture-view.js:42` | `/demo/matches/teams/{id}/upcoming` | `/teams/{teamId}/schedule` |
+| `pages.js` `loadCup()` | `/demo/cups/{id}` | `/teams/{id}/schedule?competitionType=CUP` |
+| `pages.js` `loadInternational()` | `/demo/internationals/{id}` | `…?competitionType=INTERNATIONAL` |
 
-and **five frontend files call `/demo/teams/${teamId}/profile`** — `club-management.js`,
-`staff-directory.js`, `pages.js`, `demo.js`. Every one of them works for club 1 and 404s for every other
-club, so a manager opening his own club page gets an empty screen. The controller returns a fabricated
-profile for the one club that happens to be id 1, which is worse than 404 because it looks real.
+`/teams/{teamId}/players` was already called from `team.js`, `club-view.js`, `formations-view.js`,
+`training-view.js` and `league-view.js` — the squad endpoint was real all along and only this screen was
+asking the fake one.
 
-**Owner decision needed:** wire these five callers to the real endpoints, or delete the callers. Both are
-outside P0's authority — the first is exactly what the board forbids, the second removes product surface.
+**New: `GET /teams/{teamId}/schedule?competitionType=`.** The route resolved exactly **one** competition —
+the club's league — so cup and international fixtures were invisible on it. **That is why those two screens
+pointed at fabricated data: there was nothing real to ask for.** Every row already carried
+`competitionType`, so this is a query choice and a filter, not a new endpoint. An unrecognised value falls
+back to the league rather than inventing rows.
+
+**Two callers are blocked on real gaps, and were deliberately left rather than wired to the wrong thing:**
+
+1. **`fixture-view.js` friendlies.** `MatchFixture` has **no friendly flag** and `FRIENDLY` is not a
+   `CompetitionType` — the enum is `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. Asking for `FRIENDLY` filters
+   to nothing, so a naive wiring would show a friendlies screen full of **league** matches. There is
+   nothing to filter on until friendlies are modelled.
+2. **`stats-view.js` team stats.** It renders `{goals, conceded, possession, shots}`. The real
+   `/teams/{teamId}/milestones` is club-season milestones — top scorer, top assist, biggest win, attendance —
+   and **has none of those four fields**, so the screen would render blanks.
+
+**Both were nearly shipped as plausible-but-wrong.** Wiring friendlies to `?competitionType=FRIENDLY` and
+team-stats to `/milestones` would both answer **200 with the wrong data** — which is the precise failure
+this task exists to remove, so both were reverted.
 
 **Exit criteria:**
-- [ ] The owner rules: rewire the five callers, or remove them
-- [ ] Whichever it is, no page fetches `/demo/**` for a club id it chose itself
-- [ ] `DummyDataController` then has either a `@PathVariable` and a decision, or no callers
+- [x] No caller hardcodes a team id; all eight derive it from the signed-in manager
+- [x] Six of eight read real data
+- [x] `competitionType` filter on the schedule, **6 tests green**, mutation-proven
+- [ ] **Owner decision on the last two:** build the two missing reads, or delete the two screens
+- [ ] `DummyDataController` deleted once no caller remains
 
 ---
 
@@ -848,39 +872,56 @@ files, with its own retention.
 
 ---
 
-### P1-6 — The other sports: two of the three matter, and neither has an index but its primary key
+### P1-6 — MEASURED, NOTHING LANDED. The premise was wrong in a way that matters more than any index.
 
-**Confirmed against the live database, 2026-10-03.** Fifteen `bb_` and `af_` tables, and **every one of
-them has exactly one index — the primary key.** Zero `@Index` declarations outside `newLogic`.
+**Three things were checked before proposing anything, and the first two settle it.**
 
-| | rows on the dev database |
-|---|---:|
-| `af_players` | 5,580 |
-| `bb_players` | 3,720 |
-| `af_match_fixtures`, `bb_match_fixtures` | 2,790 each |
-| `bb_teams`, `af_teams`, `af_competition_entries`, `bb_competition_entries` | 310 each |
+**1. These sports do not grow with the world.** All three hardcode a single country:
 
-**Text-based football is not part of this.** Its tables (`csseason_competition`, `csstadium`) hold **0
-rows**, so it is not a scale question — it is three sports on the board and **two** that need anything.
-Splitting it out is the first finding.
+| | |
+|---|---|
+| `BbDataInitializer.java:141` | `String country = "RS";` |
+| `AfDataInitializer.java:135` | `String country = "RS";` |
+| `CSDataInitializer.java:92` | `c.setIsoCode("SRB");` |
 
-**These are genuinely lower priority than P1-1 was** — not simulated on every tick, and 5,580 rows is
-nothing beside `newLogic`'s. But they are not zero, and they will not get cheaper as the world grows.
+The board's premise was that they are "5,580 and 3,720 players on the dev database" and will get costlier
+as the world grows. **They will not.** The 48× growth is `newLogic`'s; these three are one country and
+stay one country. So their sizes are their real sizes, not a snapshot of something bigger.
 
-**Exit criteria — the same treatment P1-1 actually got, which is not the treatment the board first asked
-for.** P1-1 was told to propose indexes with stated column order; what it actually needed was to be asked
-*what queries these tables serve*, because two of its three candidates had no query behind them at all:
+**2. They have never been played.** Teams, players and fixtures are seeded — 310 teams and 310
+competition entries each, 2,790 fixtures each — and **`bb_matches` and `af_matches` hold 0 rows.** Not one
+match has been simulated in either sport.
 
-- [ ] **The queries these tables actually serve are listed first, from the source.** Not the columns that
-      look obviously filterable — the columns that are read.
-- [ ] Each proposed index names its query and carries a **measured** before/after. An index proposed on the
-      argument that a column must be filterable is how `player_zone_load(match_id)` got measured at a 68%
-      regression.
-- [ ] Write cost measured. `newLogic`'s `match` cost 16.8 µs a row for four indexes; these tables are
-      insert-heavy too.
-- [ ] **Text-based football is excluded explicitly, with its row counts as the reason** — not silently
-      skipped.
+**3. So no index is justified.** Fifteen `bb_` and `af_` tables, every one with its primary key as its only
+index, the largest being `af_players` at 5,580 rows — a sequential scan of which is sub-millisecond.
+`bb_player_season_stats` and `af_player_season_stats` hold 0 rows. **Nothing here meets the bar P1-1 set,
+so nothing was created.** Recorded as measured-and-dropped rather than quietly left for someone to
+rediscover.
 
+### The one real thing, and it is not an index
+
+`BbMatchSimulationService.savePlayerStats` and its American football twin do **four queries per player per
+match** — a `findById`, a `save`, a season-stats lookup and a `save` — which is **88 round trips a match**.
+Measured on this machine: **0.1745 ms per round trip**, so **15.4 ms a match** of pure overhead.
+
+**It has never run**, because no match has ever been simulated. When these sports are played, this is the
+first thing to fix, and it is an N+1 of the same family as `TransferService`, `SquadEnvironmentService`
+and `FriendlyRequestService` — **not** a missing index on `bb_players`. The season-stats lookup filters on
+`player_id + season_year + competition_id` with only a primary key, so it is a sequential scan; but that
+table would top out at 3,720 rows a season, where a scan costs ~0.03 ms, so **an index there would not earn
+its write cost either.**
+
+### Two findings that belong to P0
+
+- **P0-9 has a second site.** Basketball and American football use **`season_year = 2025` as a calendar
+  year** where `newLogic` counts twelve weeks from 1. `BbController` hardcodes `2025` in eight places,
+  including four `defaultValue = "2025"` request parameters. **It is self-consistent** — `bb_match_fixtures`
+  is seeded with `season_year = 2025` — which is exactly why it is invisible and why the board's trap
+  wording says "even if it is self-consistent and passing". Recorded here because it was found in P1-6's
+  blast radius; **not fixed here**, it is P0-9's.
+- **`bb_leagues` and `BbLeagueRepository` are vestigial**: a table with 0 rows and a repository with **zero
+  callers** anywhere in `src/main` or `src/test`. The same shape as `match_tick_states`, and the same
+  question for the owner — delete, or leave?
 
 ### P1-7 — DONE. The replays, the blob, the milestone page and the background failures. One item measured and dropped.
 

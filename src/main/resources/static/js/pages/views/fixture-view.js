@@ -39,7 +39,7 @@ export function createFixtureView(deps) {
         const teamId = getTeamId();
         if (!teamId) return;
         console.log(`Loading upcoming matches for ${teamId}`);
-        const response = await authFetch(`/demo/matches/teams/${teamId}/upcoming`);
+        const response = await authFetch(`/teams/${teamId}/schedule`);
         console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Upcoming Matches");

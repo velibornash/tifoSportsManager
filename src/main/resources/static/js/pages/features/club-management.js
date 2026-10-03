@@ -42,7 +42,7 @@ export function createClubManagementFeature(deps) {
         const seasonQuery = requestedSeason ? `?seasonYear=${requestedSeason}` : '';
 
         const [profileRes, financesRes, historyRes, boardRes, playersRes] = await Promise.all([
-            authFetch(`/demo/teams/${teamId}/profile`),
+            authFetch(`/teams/${teamId}/profile`),
             authFetch(`/api/teams/${teamId}/finances${seasonQuery}`),
             authFetch(`/api/teams/${teamId}/finances/history${seasonQuery}`),
             authFetch(`/api/teams/${teamId}/finances/board`),

@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.dto.TacticsEditorSaveRequest;
 import org.example.footballmanager.newLogic.dto.TeamSummaryDTO;
 import org.example.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
@@ -259,6 +260,7 @@ public class TeamController {
     @GetMapping("/{teamId}/schedule")
     public ResponseEntity<List<Map<String, Object>>> getSchedule(@PathVariable Long teamId,
                                                                  @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
+                                                                 @RequestParam(value = "competitionType", required = false) String competitionType,
                                                                  @AuthenticationPrincipal User user) {
         // Who is asking, because this is the surface where a manager is most likely to see his own
         // result by accident: the schedule is the page a manager opens to see what is next.
@@ -270,7 +272,17 @@ public class TeamController {
 
         int currentActiveSeasonYear = seasonService.getActiveSeasonYear();
         int activeSeasonYear = seasonYear != null ? seasonYear : currentActiveSeasonYear;
-        Competition competition = resolveScheduleCompetition(team, activeSeasonYear);
+        // A caller asking for one kind of football cannot be answered from the league alone. This route
+        // resolves a single competition -- the club's league -- so a cup or an international fixture was
+        // invisible here, and the frontend's cup and international screens were pointing at fabricated data
+        // because there was nothing real to ask for. Each row already carries `competitionType`, so the
+        // filter is a query choice and a `filter`, not a new endpoint.
+        //
+        // Read as a single enum name, case-insensitively, and ignored when it names nothing we know. A
+        // filter that silently returned the league instead would be worse than no filter, because the
+        // screen would fill with plausible rows from the wrong competition.
+        CompetitionType wantedType = parseCompetitionType(competitionType);
+        Competition competition = wantedType == null ? resolveScheduleCompetition(team, activeSeasonYear) : null;
         List<MatchFixture> fixtures;
         if (competition != null) {
             // Same rule as CountryController's schedule GET, and the same reasoning: this is a read, and
@@ -292,6 +304,8 @@ public class TeamController {
         List<Map<String, Object>> schedule = fixtures
                 .stream()
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
+                .filter(fixture -> wantedType == null
+                        || (fixture.getCompetition() != null && fixture.getCompetition().getType() == wantedType))
                 .map(fixture -> {
                     Long opponentId = resolveOpponentId(fixture, teamId);
                     return toScheduleRow(teamId, fixture, headToHeadByOpponent.get(opponentId), snapshots, viewerTeamId);
@@ -299,6 +313,18 @@ public class TeamController {
                 .toList();
 
         return ResponseEntity.ok(schedule);
+    }
+
+    /** {@code null} for absent or unrecognised, so the route keeps its old behaviour rather than guessing. */
+    private static CompetitionType parseCompetitionType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return CompetitionType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException notAType) {
+            return null;
+        }
     }
 
     private Competition resolveScheduleCompetition(Team team, int seasonYear) {

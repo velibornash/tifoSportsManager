@@ -97,7 +97,7 @@ export function createStaffDirectoryFeature(deps) {
         const [staffRes, sponsorRes, profileRes] = await Promise.all([
             authFetch(`/api/teams/${teamId}/staff`),
             authFetch(`/api/teams/${teamId}/sponsors`),
-            authFetch(`/demo/teams/${teamId}/profile`)
+            authFetch(`/teams/${teamId}/profile`)
         ]);
 
         const payload = staffRes.ok ? await staffRes.json() : null;

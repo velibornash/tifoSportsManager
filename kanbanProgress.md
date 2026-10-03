@@ -198,6 +198,82 @@ still open and is P0-13's fourth exit criterion.
 
 ---
 
+## 2026-10-03 — P0-16: six of eight `/demo` callers rewired, and two that would have lied
+
+**The owner's ruling, honoured in both halves:** no `/demo` on the main app, and never hardcode a team id.
+Six of eight call sites now read real data. **Two were left alone because wiring them would have answered
+200 with the wrong rows** — which is the exact failure this task exists to remove.
+
+### Why the cup and international screens were pointing at fake data
+
+Not because nobody rewired them. **`GET /teams/{teamId}/schedule` resolves exactly one competition** — the
+club's league — so a cup fixture was invisible on it. There was nothing real to ask for, so the screens went
+to `/demo`.
+
+Every row already carried `competitionType`, so the fix is a query choice and a filter rather than a new
+endpoint:
+
+```java
+CompetitionType wantedType = parseCompetitionType(competitionType);
+Competition competition = wantedType == null ? resolveScheduleCompetition(team, activeSeasonYear) : null;
+```
+
+with a `filter` on the rows. **Six tests green**, and the mutation (dropping the filter) fails 2 of 6.
+
+**A second mutation stayed green and that is worth saying plainly.** Making an unrecognised
+`competitionType` fall back to `LEAGUE` instead of `null` changed nothing observable — both return the
+league's rows. The two are not distinguishable by any assertion, so the "does not guess" test is **not**
+proven against that particular change. It is not a defect I would want caught, and the useful half of it —
+*the response never echoes a type the world does not have* — was among the assertions that did fail first.
+
+### Two wirings reverted because they would have been plausible and wrong
+
+**1. Friendlies.** `MatchFixture` has **no friendly flag**, and `FRIENDLY` is **not** a `CompetitionType` —
+the enum is `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. So `?competitionType=FRIENDLY` filters to nothing, and
+had I shipped it the friendlies screen would have shown... nothing, or, had I "fixed" it by defaulting to
+`LEAGUE`, **a friendlies screen full of league matches**. There is nothing to filter on until friendlies are
+modelled as a thing.
+
+**2. Team stats.** `stats-view.js` renders `{goals, conceded, possession, shots}`. The real
+`/teams/{teamId}/milestones` is club-season milestones — top scorer, top assist, biggest win, attendance —
+and **carries none of those four fields**, so the screen would render blanks behind a 200.
+
+Both were reverted rather than shipped. **A URL that answers 200 with the wrong data is the same defect as
+the fabricated one, wearing a real endpoint's name.** That is the whole reason this task was worth doing
+carefully.
+
+### What was already fine
+
+`/teams/{teamId}/players` is already called from `team.js`, `club-view.js`, `formations-view.js`,
+`training-view.js` and `league-view.js`. The squad endpoint was real and widely used all along — only
+`stats-view.js` was asking the fake one. Which is the pattern: the fake surface was a dead end that a few
+screens fell into, not the app's backbone.
+
+### `DummyDataController` is not deleted, deliberately
+
+Two callers still need it. Deleting it now would turn "fabricated" into "404" for those two screens — a
+product change beyond rewiring, and a worse experience than a blank one that at least admits it. It stays
+until its last caller is gone or its screen is removed. It has **zero overlap with `/demo/service`**, the
+frozen reference engine, which is untouched.
+
+### Two of my own mistakes, both the documented trap
+
+- **Jackson pretty-printing.** Three of the six filter tests failed on `"round" : 5` versus `"round":5`.
+  `CountryTeamPlayersDisclosureTest` records this and I walked into it anyway; there is now a `tight()`
+  helper in the class.
+- **Season defaulting.** `getSchedule` defaults to the *active* season while the fixture wrote season 1, so
+  the first run returned rows my assertions could not see. The tests now pass `seasonYear=1` explicitly
+  rather than depending on a clock that does not exist in the test database.
+
+### Outstanding
+
+**The owner's decision on the last two screens:** build the two missing reads, or delete the two screens.
+Then `DummyDataController` can go.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-15: four profiles that named a club the world does not have, and twelve that it might
 
 **The tactics backup file is tracked in git, holds the only durable copy of a club's tactical-editor work,

@@ -33,7 +33,7 @@ export function createStatsView(deps) {
     async function loadPlayerStats() {
         const teamId = getTeamId();
         console.log(`Loading player stats for userTeamId ${teamId}`);
-        const response = await authFetch(`/demo/stats/teams/${teamId}/players`);
+        const response = await authFetch(`/teams/${teamId}/players`);
         console.log(`Response status: ${response.status}`);
         const players = await response.json();
         renderPlayers(players, "Player Stats");
