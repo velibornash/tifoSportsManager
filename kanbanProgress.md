@@ -16,7 +16,7 @@ deliberately to check.
 
 ---
 
-## 2026-10-03 — P1-7c: the scorer counted goals VAR ruled out, and I reported a defect that was not there
+## 2026-10-03 — `e16ec34` — P1-7c: the scorer counted goals VAR ruled out, and I reported a defect that was not there
 
 Two items, one fixed and one retracted.
 
