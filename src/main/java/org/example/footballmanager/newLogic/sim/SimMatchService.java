@@ -24,6 +24,7 @@ import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.service.NationalRatingService;
+import org.example.footballmanager.newLogic.sim.engine.InjuryService;
 import org.example.footballmanager.newLogic.sim.engine.PenaltyShootout;
 import org.example.footballmanager.newLogic.service.SquadEnvironment;
 import org.example.footballmanager.newLogic.sim.model.Player;
@@ -119,11 +120,17 @@ public class SimMatchService {
         // The HOME side carries its authored shape and the away side is mirrored from it, which is what
         // TacticsRules has always done. Giving the away club its own shape is a separate change — it
         // needs a second rules object and a decision about perspective — and is not smuggled in here.
+        // Injury risk follows the kind of match. Fatigue does not: a practice match costs exactly what
+        // a league match costs, because the player still played ninety minutes.
+        InjuryService.setRiskMultiplier(fixture == null
+                ? 1.0 : fixture.resolvedMatchType().injuryRisk());
         var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
                 homeSquad, awaySquad, homeBench, awayBench,
                 tacticsRules.forTeam(homeTeam.getId()));
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         persistMatchCondition(orchestrator.getState());
+        // Whatever happens next, the next match is a competitive one unless it says otherwise.
+        InjuryService.resetRiskForNextMatch();
 
         long replayId = -1L;
         if (storeReplay) {
@@ -239,6 +246,9 @@ public class SimMatchService {
             match.setHomeTeam(fixture.getHomeTeam());
             match.setAwayTeam(fixture.getAwayTeam());
             match.setCompetition(fixture.getCompetition());
+            // Written on every match, from the fixture's own statement or its competition (P2-8).
+            // Persisted rather than derived on read so results can be filtered by it in SQL.
+            match.setMatchType(fixture.resolvedMatchType());
             match.setSeasonYear(fixture.getSeasonYear());
             match.setRoundNumber(fixture.getRoundNumber());
             match.setWeekNumber(fixture.getWeekNumber());
@@ -300,8 +310,19 @@ public class SimMatchService {
             match = matchRepository.save(match);
 
             if (outcome != null) {
+                // The per-match rows are written for every type: a manager who played an exhibition
+                // should be able to read back what happened in it.
                 persistPlayerStats(match, outcome);
-                bumpCareerStats(outcome);
+                if (match.resolvedMatchType().countsForCareer()) {
+                    bumpCareerStats(outcome);
+                } else {
+                    // No career goals, no career assists, no morale and no form. This is the whole of
+                    // "changes nothing", and it is one branch because both halves lived in the same
+                    // method: splitting them would leave a player whose match was recorded but whose
+                    // morale had moved, which is the "green but did nothing" shape.
+                    log.debug("Match {} is {}: career stats and morale untouched",
+                            match.getId(), match.resolvedMatchType());
+                }
             }
             // Where he worked, not just what he did. The zone table, the recovery rules and the daily
             // recovery job all existed with nothing writing them, so recovery reported zero for every
@@ -334,7 +355,10 @@ public class SimMatchService {
                 }
             }
 
-            updateLeagueTable(match, outcome != null ? outcome.homeGoals() : 0, outcome != null ? outcome.awayGoals() : 0);
+            if (match.resolvedMatchType().countsForTable()) {
+                updateLeagueTable(match, outcome != null ? outcome.homeGoals() : 0,
+                        outcome != null ? outcome.awayGoals() : 0);
+            }
 
             log.info("Persisted sim match to DB: id={}, {} {} - {} {} (replayId={})",
                     match.getId(),

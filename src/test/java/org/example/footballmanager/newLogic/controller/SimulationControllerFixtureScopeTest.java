@@ -194,7 +194,9 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
                 Mockito.mock(TrainingProgressionService.class),
                 Mockito.mock(AsyncSimulationRunner.class),
                 Mockito.mock(SimMatchService.class),
-                Mockito.mock(ClubRatingService.class));
+                Mockito.mock(ClubRatingService.class),
+                // The exhibition endpoint (P2-8). Mocked because this class is about fixture scope.
+                Mockito.mock(org.example.footballmanager.newLogic.service.ExhibitionMatchService.class));
     }
 
     // --- fixture ---

@@ -72,9 +72,20 @@ class ProposalEngineIsTheOnlyFixtureProducerTest extends BaseTest {
 
     private static final Path JAVA = Path.of("src/main/java/org/example/footballmanager");
 
-    /** The two entry points the audit verified, by file name. */
+    /**
+     * The entry points, by file name.
+     *
+     * <p><b>Added deliberately, not loosened.</b> {@code ExhibitionMatchService} is the third path
+     * into the engine (P2-8): a manager's own practice match, played inline so it is never picked up
+     * by the matchday job and never reaches a table. It goes through the same
+     * {@code SimMatchService.persist} as a competitive match, so every rule about what an exhibition
+     * changes is enforced in one place rather than in a second engine path.
+     *
+     * <p>This is still an allow-list, not a lower bound. The next caller fails here.
+     */
     private static final Set<String> SIMULATE_ENTRY_POINTS =
-            Set.of("SimulationController.java", "AsyncSimulationRunner.java");
+            Set.of("SimulationController.java", "AsyncSimulationRunner.java",
+                    "ExhibitionMatchService.java");
 
     // ---------- structural: nothing grows beside the engine ----------
 
@@ -102,7 +113,7 @@ class ProposalEngineIsTheOnlyFixtureProducerTest extends BaseTest {
     }
 
     @Test
-    @DisplayName("the engine is entered from the two audited call sites and no others")
+    @DisplayName("the engine is entered from the audited call sites and no others")
     void onlyTheTwoKnownEntryPointsSimulate() throws IOException {
         Set<String> callers = productionFilesMatching(
                 Pattern.compile("\\bsimMatchService\\.simulate\\s*\\("));

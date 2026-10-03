@@ -47,6 +47,26 @@ public class MatchFixture {
     @ManyToOne(fetch = FetchType.LAZY)
     private Competition competition;
 
+    /**
+     * The type of fixture this is, when it is not implied by a competition (P2-8).
+     *
+     * <p>Left null by every scheduled fixture, because a league or cup fixture's type is exactly its
+     * competition's type and saying so twice is one more thing that can disagree. A friendly or an
+     * exhibition sets it, because those have no competition to imply anything.
+     */
+    @jakarta.persistence.Column(name = "match_type", length = 20)
+    private MatchType matchType;
+
+    /**
+     * The type this fixture will produce, whichever way it was stated.
+     *
+     * <p>An explicit type wins; otherwise the competition decides; a fixture in no competition is a
+     * friendly, which is what {@link MatchType#ofCompetition} returns for null.
+     */
+    public MatchType resolvedMatchType() {
+        return matchType != null ? matchType : MatchType.ofCompetition(competition);
+    }
+
     private Integer seasonYear;
     private Integer roundNumber;
     private Integer weekNumber;

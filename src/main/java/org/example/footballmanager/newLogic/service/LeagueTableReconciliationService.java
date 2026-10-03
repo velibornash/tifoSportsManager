@@ -148,9 +148,15 @@ public class LeagueTableReconciliationService {
         }
 
         Map<Long, Tally> tallies = new HashMap<>();
+        // Filtered by match TYPE, not merely by being played (P2-8). This pass rebuilds a table from
+        // match rows, so it would happily count a practice match that happened to be recorded against
+        // the competition — reintroducing exactly what the write path refused to add. The write path's
+        // own guard cannot help here: a null competition skips it, and anything recorded *with* the
+        // competition is counted here regardless.
         List<Match> played = matches.findByCompetitionIdAndSeasonYear(league.getId(), seasonYear).stream()
                 .filter(Match::isPlayed)
                 .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
+                .filter(m -> m.resolvedMatchType().countsForTable())
                 .toList();
 
         for (Match match : played) {

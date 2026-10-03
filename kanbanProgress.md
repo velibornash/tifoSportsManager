@@ -1828,6 +1828,108 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-8: every match has a type, and an exhibition changes nothing
+
+### The owner answered three questions and settled the fourth
+
+- **A type on every match**, so results can be filtered by it. This also settled the schema question I
+  had put badly: a match recorded only which *competition* it belonged to, so a friendly or exhibition —
+  which belong to none — had nowhere to say what they were. Two labels in one column beat a blank.
+- **Fatigue identical, injury risk reduced.** "Da, fatigue identično a injury smanjiti risk malo."
+  So there is no fatigue term in `MatchType` at all: ninety minutes is ninety minutes whatever the
+  fixture is. Only the injury rate moves, and only downward.
+- **It appears in match history**, visibly typed and filterable.
+- **"Schema or `competition == null`? — objasni, ne razumem."** My fault for asking it in shorthand.
+  In plain terms: do we write the word "Friendly"/"Exhibition" somewhere, or do we leave the
+  competition field empty and infer it? Writing it is what "every match has a type" means.
+
+### Five writes, not one
+
+The exit criteria said "no ratings, no table, no finances and no clock". Tracing the persistence path
+found the consequences are **five separate writes**, and they did not live together:
+
+| Write | Where | Gated by |
+|---|---|---|
+| league table | `SimMatchService.updateLeagueTable` | `countsForTable()` |
+| career goals + assists | `bumpCareerStats` | `countsForCareer()` |
+| morale + form | the same method, a few lines below | `countsForCareer()` |
+| club / national Elo | replay from `match` rows | no competition → excluded |
+| finances | **nothing in the match path writes finance** | already free |
+
+Career and morale lived in one method, so they are gated together — splitting them would leave a
+player whose match was recorded but whose morale had moved, which is the "green but did something"
+shape. **Measured with the gate removed: a striker's career goals went 7 → 8 in a practice match.**
+
+Per-match `match_player_stats` rows are written for **every** type on purpose: a manager who played an
+exhibition should be able to read back what happened in it. Zone loads too, because they are what makes
+fatigue and recovery consistent — the player worked, so the work is recorded.
+
+### The test that passed against unwired code, twice over
+
+First version: an exhibition has **no competition**, so `updateLeagueTable`'s own older guard
+(`if (match.getCompetition() == null) return`) already skips it. **Breaking my type gate left all 8 tests
+green** — the guard they never reached was doing the work.
+
+The dangerous case is a practice match recorded **against** the competition, which the write path will
+not stop. That is `LeagueTableReconciliationService`: it **rebuilds a table from `match` rows** and knew
+nothing about match types. It now filters on `countsForTable()`, and with the filter removed the test
+measures the harm exactly: **before 0.0, after 3.0 points.**
+
+So the type is not only a label for read paths — it is the thing that keeps the *repair* pass honest.
+
+### A static that had to be reset, and a test that says so
+
+`InjuryService` risk is a **static** multiplier: the service is built per match from a `MatchState` and
+pulls everything else from `SimulationRandom`, which is itself a static seeded source, so this follows
+the existing shape rather than inventing a configuration path. The cost is that a leak is possible, and a
+leak here means **every later competitive match in the world is played at practice-match risk**. There
+is an assertion on the multiplier after the match, and it caught the leak when I removed the reset:
+`expected: <1.0> but was: <0.35>`.
+
+### A fixture that made a guarantee look satisfied
+
+The fatigue assertion failed first time at **0.0 → 0.0**, and the product was fine. The test gave each
+club **one** player; a club that cannot field eleven is simulated with synthetic squads whose ids are not
+database ids, so no DB player was written at all. Reading that as "fatigue was not charged" would have
+been exactly the error this log keeps recording — a guarantee that appeared to hold because nothing had
+happened. Each club now gets a real eleven with real skills.
+
+### A guard test updated on purpose
+
+`ProposalEngineIsTheOnlyFixtureProducerTest` pins the set of files that may call
+`simMatchService.simulate(`, and it failed by design with its own instruction: *"A new caller is not
+automatically wrong, but it has to be added here deliberately."* It now allows
+`ExhibitionMatchService.java` **in an allow-list**, with the reasoning recorded — the exhibition goes
+through the same `persist` as a competitive match, so the rules stay in `MatchType`. The next caller
+still fails. `SimulationControllerFixtureScopeTest` builds the controller by hand and needed the new
+dependency.
+
+### Breaks
+
+| Break | Result |
+|---|---|
+| Career/morale gate removed | 1 fail — `expected: <7.0> but was: <8.0>` |
+| Injury multiplier never reset | 1 fail — `expected: <1.0> but was: <0.35>` |
+| `MatchType.countsForCareer()` always true | 2 fail |
+| Reconciliation type filter removed | 1 fail — `before 0.0, after 3.0` |
+| Table gate removed | **0 fail** — caught by the older null-competition guard, which is why the reconciliation test was needed |
+
+### Regression check
+
+`ExhibitionChangesNothingTest`, `ProposalEngineIsTheOnlyFixtureProducerTest`, `SimMatchPersistWiringTest`,
+`LeagueTableReconciliationServiceTest`, `ProposalPhysicsDiagnosticTest`, the six earlier P2 classes,
+`SimulationControllerFixtureScopeTest`, `GoalkeeperEngineTest`, `OffsideBeatsPenaltyTest`,
+`PenaltyEngineTest`, `RestartTakerArrivalTest` — **89 tests, 0 failures, 0 errors.**
+`mvn clean package` succeeds.
+
+### Still open
+
+**A friendly still cannot be played.** `FriendlyRequestService.createFixture` sets no `matchday`, so
+nothing finds it. `MatchType.FRIENDLY` makes it a label instead of a blank, and the fixture now records
+its type, but making it playable needs a day chosen — a decision, not a default.
+
+---
+
 ## 2026-10-03 — P2-8 re-scoped: the feature is missing because friendly fixtures cannot be played
 
 ### The board said one day. It is a decision, and the reason is a defect.

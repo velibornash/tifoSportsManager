@@ -94,6 +94,24 @@ public class Match {
     @ManyToOne(fetch = FetchType.LAZY)
     private Competition competition;
 
+    /**
+     * What kind of match this is — see {@link MatchType}.
+     *
+     * <p><b>Always written, never inferred on read.</b> A match recorded only its competition, so a
+     * friendly or an exhibition had nowhere to say what it was and the two were indistinguishable.
+     * Persisting the type as a column is what lets every read path filter on it in SQL.
+     *
+     * <p>Nullable only because the column is new and historical rows predate it; a match read through
+     * {@link #resolvedMatchType()} always yields a real type.
+     */
+    @jakarta.persistence.Column(name = "match_type", length = 20)
+    private MatchType matchType;
+
+    /** The type of this match, derived from its competition if it was written before the column. */
+    public MatchType resolvedMatchType() {
+        return matchType != null ? matchType : MatchType.ofCompetition(competition);
+    }
+
     @ManyToOne(fetch = FetchType.LAZY)
     private Stadium stadium;
 

@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.model.*;
 import org.example.footballmanager.newLogic.repository.*;
 import org.example.footballmanager.newLogic.service.*;
 import org.example.footballmanager.newLogic.sim.SimMatchService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.example.footballmanager.newLogic.service.GameClockService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
@@ -46,6 +48,7 @@ public class SimulationController {
     private final AsyncSimulationRunner asyncSimulationRunner;
     private final SimMatchService simMatchService;
     private final ClubRatingService clubRatingService;
+    private final ExhibitionMatchService exhibitionMatches;
 
     @Transactional
     @PostMapping("/current-round/prepare")
@@ -73,6 +76,62 @@ public class SimulationController {
         stateService.setPrepareSnapshot(payload);
         stateService.setFeedSnapshot(buildSingleMatchFeed(context, sim));
         return ResponseEntity.ok(payload);
+    }
+
+    /**
+     * Plays a practice match against another club (P2-8).
+     *
+     * <p>A manager's own decision, so it takes the acting club from the authenticated user rather than
+     * from a body parameter: any authenticated manager can play one, and nobody can play one on
+     * somebody else's behalf.
+     *
+     * <p>Played inline rather than scheduled. A fixture in a competition would be picked up by the
+     * matchday job and counted into a table, and then counted <em>again</em> by the table
+     * reconciliation pass, which rebuilds from {@code match} rows and knows nothing about practice
+     * matches. This is also why the friendly fixtures already in the codebase could never be played.
+     */
+    @PostMapping("/exhibition")
+    public ResponseEntity<Map<String, Object>> playExhibition(
+            @AuthenticationPrincipal User user,
+            @RequestParam Long againstTeamId) {
+        Long homeTeamId = resolveUserTeamId(user);
+        if (homeTeamId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("status", "error", "code", "NO_TEAM",
+                            "message", "Your account does not manage a club."));
+        }
+        Long matchId = exhibitionMatches.playExhibition(homeTeamId, againstTeamId,
+                currentSeason(), currentWeek());
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("status", "ok");
+        payload.put("action", "EXHIBITION_PLAYED");
+        payload.put("matchId", matchId);
+        payload.put("message", "Exhibition played. It does not affect the table, ratings, "
+                + "career records or morale. Fatigue and injury risk still apply.");
+        return ResponseEntity.ok(payload);
+    }
+
+    private Integer currentSeason() {
+        GameClock clock = seasonService.getOrCreateClock();
+        return clock.getCurrentSeason() == null ? DEFAULT_SEASON_YEAR : clock.getCurrentSeason();
+    }
+
+    private Integer currentWeek() {
+        GameClock clock = seasonService.getOrCreateClock();
+        return clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+    }
+
+    /**
+     * The acting manager's club, resolved the same way the rest of this controller resolves it — by
+     * name off the authenticated user — rather than from a body parameter, so no manager can play an
+     * exhibition on somebody else's behalf.
+     */
+    private Long resolveUserTeamId(User user) {
+        String name = resolveUserTeamName(user);
+        if (name == null) return null;
+        Team team = teamRepository.findByName(name).orElse(null);
+        return team == null ? null : team.getId();
     }
 
     @GetMapping("/current-round/prepare/status")

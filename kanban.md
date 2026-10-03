@@ -1287,46 +1287,42 @@ returned join-table rows regardless of club membership, so a player whose contra
 still start matches. **This already happened weekly** via `PlayerContractService.expireContracts`. The
 join table now yields only players still at that club.
 
-### P2-8 — Zero-consequence exhibition mode ⏸ **owner decision needed — not one day**
+### ~~P2-8 — Match types, and a zero-consequence exhibition~~ ✅ `ExhibitionChangesNothingTest` 9/9
 
-*"Multiplies the value of 14,880 clubs"* — it is the only feature that makes the world size an asset
-rather than a cost. **Exit criteria:** an exhibition changes no ratings, no table, no finances and no clock.
+**Owner decisions, 2026-10-03:** every match carries a **type** so results can be filtered by it; an
+exhibition costs **fatigue exactly as any other match** but carries **reduced injury risk**; and it
+**does** appear in match history, visibly typed.
 
-**Re-scoped 2026-10-03 against source. The estimate was wrong by a wide margin, and the reason is a
-defect rather than the feature.** While scoping it, three things were verified:
+**Why the type rather than an empty competition.** A match recorded only which *competition* it
+belonged to, so a friendly or exhibition — which belong to no competition — had nowhere to say what
+they were. The two were indistinguishable, unlabelable and unfilterable. `MatchType` makes the rulebook
+one file instead of `if (friendly)` scattered through services, and puts the type in a **column** so
+read paths filter on it in SQL rather than re-deriving intent.
 
-1. **A friendly fixture can never be played.** `FriendlyRequestService.createFixture` sets home, away,
-   season, round, week, date and `played = false` — and **never sets `competition` or `dayNumber`**.
-   Every playback path requires both (`findUnplayedOnDay` filters on `dayNumber`;
-   `MatchdayJob` additionally filters `competition != null`), so accepted friendlies pile up as
-   `match_fixture` rows that stay `played = false` for ever. **The entire friendly feature is inert.**
-   `FriendlyController`'s own javadoc says "there is deliberately no 'play a friendly' button" — the
-   negotiation is honoured, but its consequence is a fixture nobody can play. **No test covers it.**
-2. **There is no way to play a non-counting match, at all.** That is the missing feature friendlies and
-   exhibitions both need, which is why this is one decision rather than two.
-3. **`simulate()` writes rows before `persist()` is called** — lazy squad generation, then fatigue,
-   injuries and injury dates. An exhibition that calls it is not zero-consequence unless those are
-   gated too.
+**Landed:**
+- [x] `MatchType` — `LEAGUE`, `CUP`, `INTERNATIONAL`, `TOURNAMENT`, `FRIENDLY`, `EXHIBITION`, each
+      stating what it counts for, with `ofCompetition` as the only bridge to `CompetitionType` so the
+      two can never disagree
+- [x] `Match.matchType` and `MatchFixture.matchType`, **always resolved** — a type that must be
+      inferred per read is a type that can be absent
+- [x] `POST /simulation/exhibition?againstTeamId=` — the acting club comes from the authenticated
+      user, so no manager can play one on another's behalf
+- [x] **No table, no ratings, no career goals/assists, no morale, no form.** Five separate writes,
+      each asserted separately: asserting only the table passes against code that still inflates a
+      striker's career record
+- [x] **Fatigue is charged anyway** — ninety minutes is ninety minutes, and a free exhibition would be
+      strictly better than a league match
+- [x] **Injury risk lower but not zero** (0.35 exhibition, 0.6 friendly), applied to the base rate
+      only, and **reset after every match** so it cannot leak into the next competitive match
+- [x] **`LeagueTableReconciliationService` now filters by type.** It rebuilds tables from `match` rows
+      and would count a practice match back in — measured at **3 points added from an exhibition**
+- [x] Played inline, never via the matchday job, so nothing can pick it up and schedule it
+- [x] `ProposalEngineIsTheOnlyFixtureProducerTest`'s allow-list **extended deliberately**, not loosened;
+      the next caller still fails
 
-**And the "no consequences" guarantee is not one guard.** `competition == null` already excludes a
-match from the table (`SimMatchService:596`), club Elo and national Elo (inner join on
-`competition.type`), and league top scorers. It does **not** exclude it from **club match history,
-head-to-head, form/last-five, the daily recovery window, club top scorer/assist milestones, training
-percentage, the attendance model, or player appearances** — seven read paths that read `match` with no
-competition filter. `LeagueTableReconciliationService` rebuilds tables from `match` rows and **would
-count an exhibition** if it were given a `LEAGUE` competition.
-
-**Decisions owed by the owner before this can be built:**
-- Does an exhibition count toward a **player's** appearances and career goals/assists? Today every
-  competition counts, deliberately (`MatchPlayerStatsRepository`'s javadoc) — for an exhibition,
-  probably not.
-- Does it give **fatigue, injury and recovery**? An exhibition that wears your players out is not free.
-- Should it appear in **club match history** at all, or only on a results screen?
-- Schema: a real `Match.kind` column, or `competition == null`?
-
-**Two structural guard tests will fail by design** and must be updated deliberately:
-`ProposalEngineIsTheOnlyFixtureProducerTest` pins the set of files that construct a `Match` and the set
-that call `simulate(`.
+**The owner decision this does *not* cover:** the **friendly** fixture still cannot be played — it has
+no matchday, so nothing finds it. `MatchType.FRIENDLY` makes it a label rather than a blank, but making
+it playable is the remaining step, and it needs a day chosen.
 
 ### P2-9 — Pre-match tactical preview
 

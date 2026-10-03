@@ -39,6 +39,36 @@ public class InjuryService {
      */
     private static final double BASE_CHANCE_PER_TICK = 0.000045;
 
+    /**
+     * Scales injury risk for the kind of match being played (P2-8, owner decision 2026-10-03).
+     *
+     * <p>An exhibition costs fatigue exactly like any other match — a player who works ninety minutes
+     * works ninety minutes — but nobody contests a practice match properly, so the risk of picking up
+     * an injury is lower. Not zero, and not a separate injury table: the same rolls, at a lower rate.
+     *
+     * <p><b>Static because the engine is not configured.</b> {@code InjuryService} is constructed per
+     * match from a {@code MatchState} and pulls everything else from {@code SimulationRandom}, which is
+     * itself a static seeded source, so this follows the existing shape rather than inventing a
+     * configuration path. It is set immediately before a match runs and reset immediately after, and
+     * {@link #resetRiskForNextMatch()} exists so a test or a failure cannot leave it skewed.
+     */
+    private static double riskMultiplier = 1.0;
+
+    /** Scales injury risk for the match about to be played. Pass 1.0 for a competitive match. */
+    public static void setRiskMultiplier(double multiplier) {
+        riskMultiplier = Math.max(0.0, multiplier);
+    }
+
+    /** Back to a competitive match. Called after every match and by every test that moves it. */
+    public static void resetRiskForNextMatch() {
+        riskMultiplier = 1.0;
+    }
+
+    /** The multiplier currently in force, so a caller can assert on it rather than assume. */
+    public static double riskMultiplier() {
+        return riskMultiplier;
+    }
+
     /** Fatigue is 0..1 here; above ~0.5 the risk curve starts to bite. */
     private static final double FATIGUE_THRESHOLD = 0.5;
     private static final double FATIGUE_SLOPE = 0.00022;
@@ -112,12 +142,15 @@ public class InjuryService {
 
         // One roll for the team, not one per player: the original's per-player loop would have
         // multiplied the effective risk by the size of the squad.
-        double chance = BASE_CHANCE_PER_TICK;
         Optional<Player> victim = pickInjuryRiskPlayer(onPitch);
         if (victim.isEmpty()) return;
         Player player = victim.get();
-        chance += Math.max(0.0, player.getFatigue() - FATIGUE_THRESHOLD) * FATIGUE_SLOPE;
-        if (isHighRiskPosition(player)) chance += POSITIONAL_BONUS;
+
+        // The multiplier applies to the base rate only. The fatigue and positional terms stay whole,
+        // so an exhibition is a less dangerous match rather than a different game.
+        double chance = BASE_CHANCE_PER_TICK * riskMultiplier
+                + Math.max(0.0, player.getFatigue() - FATIGUE_THRESHOLD) * FATIGUE_SLOPE
+                + (isHighRiskPosition(player) ? POSITIONAL_BONUS : 0);
 
         if (SimulationRandom.nextDouble() >= chance) return;
 
