@@ -16,7 +16,7 @@ deliberately to check.
 
 ---
 
-## 2026-10-03 — P1-7b: the per-tick log stopped being written, and it was 98% of the blob
+## 2026-10-03 — `48c1116` — P1-7b: the per-tick log stopped being written, and it was 98% of the blob
 
 **One filter, in one method.** `SimReportMapper.eventJson` now skips any event type no page can use, and
 the keep-list is derived from the two readers that decide it rather than from what looks tidy.
