@@ -122,6 +122,13 @@ public class FinanceController {
         out.put("concerns", mood.concerns());
         out.put("plaudits", mood.plaudits());
         out.put("sackingReview", mood.sackingReview());
+        // Supporter mood beside board trust, deliberately. The two read from different things — the
+        // board looks at the wage bill, the stand looks at how the club treats its players — and a
+        // manager who can only see one of them is managing half of what is happening to his club
+        // (P2-5).
+        out.put("supporterMood", team.getSupporterMood());
+        out.put("supporterExpectation", team.supporterExpectation().name());
+        out.put("supporterExpectationLabel", team.supporterExpectation().label());
         return ResponseEntity.ok(out);
     }
 

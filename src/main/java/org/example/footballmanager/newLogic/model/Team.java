@@ -241,4 +241,30 @@ public class Team {
         this.slotKeys = new ArrayList<>(slots);
     }
 
+    /**
+     * How the supporters feel, 0-100 (P2-5).
+     *
+     * <p><b>Declared last on purpose.</b> {@code @AllArgsConstructor} grows by one parameter per field
+     * wherever it is placed, so inserting it mid-class silently reorders every positional caller.
+     *
+     * <p>Separate from {@code reputation}, and deliberately so. Reputation is what the club is worth;
+     * mood is how the people in the stand feel about being there. A club can be successful and
+     * unloved, and it is the second one that empties the ground.
+     */
+    @ColumnDefault("60")
+    private int supporterMood = 60;
+
+    /**
+     * What the supporters expect of this season, in their own terms.
+     *
+     * <p>The other half of mood, and the half a manager can act on: mood says how they feel, this says
+     * what they think the club should be doing about it.
+     */
+    public SupporterExpectation supporterExpectation() {
+        if (supporterMood >= 75) return SupporterExpectation.CHAMPIONS;
+        if (supporterMood >= 60) return SupporterExpectation.CONTENT;
+        if (supporterMood >= 45) return SupporterExpectation.PROVE_ITSELF;
+        if (supporterMood >= 30) return SupporterExpectation.PATIENT_ENDURANCE;
+        return SupporterExpectation.DISILLUSION;
+    }
 }

@@ -947,12 +947,34 @@ list automatically; charging those would drain 14,880 budgets for a mechanic tha
 
 ---
 
-### P2-5 — Supporter mood and supporter expectations
+### ~~P2-5 — Supporter mood and supporter expectations~~ ✅ `SupporterMoodRespondsTest` 6/6
 
-One to two days. The analysis calls it *"now the cheapest win in the meta layer, since board trust
-computes but cannot act."* Trust is computed and displayed; nothing acts on it.
+The board's premise verified exactly: `BoardExpectationService` has **one caller**,
+`FinanceController.java:111`, which is a read for display. `sackingReview` is a computed boolean with
+no entity behind it. **A number the player can see that nothing responds to is worse than no number**,
+because it invites the expectation of a consequence.
 
-**Exit criteria:** mood and expectations are visible, and something in the game responds to them.
+**Landed:**
+- [x] `Team.supporterMood` (0-100, default 60) — separate from `reputation` on purpose: reputation is
+      what the club is worth, mood is how the stand feels about being there, and a club can be
+      successful and unloved
+- [x] **Mood bends attendance**, so it bends gate income, so it bends the wage-bill ratio the board
+      reads. This is the missing consequence, and it is the board criterion *"something in the game
+      responds to them"*
+- [x] **The loop back to P2-3**: a player objects to being listed → supporters notice the club is
+      selling its own people → mood falls → fewer come → gate income falls → the board's trust falls.
+      Every step already existed; nothing was connected
+- [x] `SupporterExpectation` — mood says how they feel, the expectation says what they think the club
+      should do about it, which is the half a manager can act on
+- [x] Drifts weekly rather than jumping: **exactly 1.0 at mood 60**, so a club that has not drifted is
+      unchanged. A first formula returned 1.032 at neutral, which would have silently changed gate
+      income for the whole world on day one; a test caught it
+- [x] Visible beside board trust on `/finances/{teamId}/board`
+- [x] One query for all clubs' objections, not one per club — 14,880 round-trips a week otherwise
+- [x] Every test proven able to fail, **including one that had to be rewritten because it was green
+      against unwired code**
+
+---
 
 ---
 

@@ -1032,6 +1032,97 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-5: the meta layer finally has a consequence
+
+### The board's premise, verified
+
+`BoardExpectationService` has **exactly one caller**: `FinanceController.java:111`, a read for
+display. `sackingReview` is a boolean with no entity, no persistence and no end-of-season review. There
+is no supporter mood anywhere in `newLogic` — every grep hit for "supporter" or "mood" is either the
+unrelated `footballtextmanager` application or the word "expectation" in a javadoc.
+
+The competitive analysis §11.2 puts the diagnosis precisely: the project built the *expensive* half of
+the meta layer without the consequences, which "is the worst of both worlds".
+
+### The loop it closes
+
+```
+a player objects to being listed (P2-3)
+  → supporters notice the club is selling its own people
+    → mood falls
+      → fewer of them come (AttendanceService)
+        → gate income falls
+          → the wage bill looks worse against income
+            → the board's trust falls
+```
+
+Every step already existed. Nothing was connected. **An objection now has a price that is not just the
+5% compensation**: a club that treats its squad as merchandise empties its own ground over a season.
+
+### Two design decisions worth keeping
+
+**Mood is not reputation.** Reputation is what the club is worth; mood is how the stand feels about
+being there. A club can be successful and unloved, and it is the second that empties the ground — so
+collapsing them would have made this another number that says nothing new.
+
+**`attendanceEffect` is exactly 1.0 at mood 60.** Every club starts at 60. The first formula,
+`0.78 + mood/100 * 0.42`, returned **1.032** at a neutral mood and would have silently changed gate
+income for the entire world the day this shipped, with nothing in the diff to say so. The test caught
+it: `expected: <1.0> but was: <1.032>`. It is now `1.0 + (mood - 60)/100 * 0.38`, so a furious support
+turns out 23% fewer and a delighted one 15% more — the penalty gentler than the reward, because an
+empty stand is worth nothing to anybody and an angry support still comes.
+
+### The test that was green against unwired code — the second time this session
+
+The first version of `SupporterMoodRespondsTest` asserted `attendanceEffect(...)` arithmetic: monotonic,
+1.0 at neutral, proportionate. Then I deleted the call to it from `AttendanceService` — which is
+*precisely the defect this task exists to fix* — and **all five tests stayed green.** The formula was
+still right; the game still ignored it.
+
+Rewritten to assert the consequence: two clubs identical in every way the model can see, differing only
+in mood, and the ground is emptier at the miserable one. With the wiring removed it now fails with the
+number rather than a boolean:
+
+```
+the moody ground must be the emptier one: 7683 at mood 5 against 7683 at mood 95
+```
+
+That is the second time in one session a test measured the mechanism instead of the behaviour. The
+lesson generalises past this repository: **a test that asserts the helper proves the helper is called
+by you, and nothing else.**
+
+### A fixture that was silently skipped
+
+`driftWeekly()` reads `findAllClubsWithDivision()` — clubs that *have a division*. A test club without
+one is not returned, so "the mood moved" passed against a sweep that had done nothing at all. The
+per-club drift is now a separate method (`drift(List<Team>)`) that the world sweep delegates to, which
+is both testable without a world and a clearer statement of what a sweep does.
+
+### Scale
+
+The weekly pass reads clubs in one query and outstanding objections in one query
+(`findActiveObjectedListings`). It deliberately **does not** ask each club for its recent results:
+`AttendanceService.formOf` does that with a query per club, which is survivable for one match and would
+be 14,880 round-trips a week. Results reach mood through reputation, which `ClubRatingService` already
+maintains and which already sits on the club row.
+
+### Breaks
+
+| Break | Result |
+|---|---|
+| Mood computed and displayed, `AttendanceService` unwired — the original defect | 1 fail, `7683` both ways |
+| No penalty for an objection | 1 fail — `60 -> 60` |
+| `attendanceEffect` returns a constant 1.0 | 3 fail |
+
+### Regression check
+
+`SupporterMoodRespondsTest`, `GraduationRespectsTheSquadTest`, `PlayersRetireTest`,
+`ListedPlayerCanObjectTest`, `ListingFeeScalesWithTheAskingPriceTest`, `SellerAcceptsANamedOfferTest`,
+`AdmissionServiceTest`, `PlayerContractServiceTest`, `JuniorDecisionWindowTest` — **67 tests, 0 failures,
+0 errors.** `mvn clean package` succeeds.
+
+---
+
 ## 2026-10-03 — P2-6: an academy was an unlimited source of free players
 
 ### The cap that did not exist, and could not have existed where it was looked for

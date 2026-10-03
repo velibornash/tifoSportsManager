@@ -52,6 +52,7 @@ public class SeasonService {
     private final JuniorRepository juniorRepository;
     private final YouthAcademyService youthAcademyService;
     private final RetirementService retirementService;
+    private final SupporterMoodService supporterMoods;
     private final TransferService transferService;
     private final FriendlyRequestService friendlyRequests;
     private final LoanService loans;
@@ -544,6 +545,10 @@ public class SeasonService {
         decrementInjuriesByWeek();
         recoverFatigueForWeek();
         expirePlayerContracts();
+        // Mood drifts weekly, after contracts have been settled: a club that has just had players
+        // expire, or that is selling players who object, learns about it in the same week it happens
+        // rather than the week after.
+        supporterMoods.driftWeekly();
     }
 
     public int settleWeeklyFinancesForAllClubs() {

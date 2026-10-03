@@ -137,6 +137,13 @@ public class AttendanceService {
 
         homeBase += occasion + surface;
 
+        // --- supporter mood (P2-5) ---
+        // A crowd that feels ignored stops paying to be in the stand. Applied to the home end, where
+        // the walk-up crowd actually is, and only lightly: an angry support still turns up, it just
+        // stops filling the ground. This is the consequence the meta layer was missing — mood reaches
+        // gate income, gate income reaches the wage bill, the wage bill reaches the board's trust.
+        homeBase *= SupporterMoodService.attendanceEffect(home.getSupporterMood());
+
         // --- price ---
         double price = stadium != null && stadium.getTicketPrice() != null
                 ? stadium.getTicketPrice() : REFERENCE_PRICE;
