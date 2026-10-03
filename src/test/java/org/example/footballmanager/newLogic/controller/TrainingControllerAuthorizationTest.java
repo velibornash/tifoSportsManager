@@ -37,12 +37,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * disclosure P0-1a closed on {@code /players/paged} and P0-1b found on {@code /players}, on a third
  * surface that nobody had looked at.
  *
- * <p><b>{@code /train-all} is a world-scale write with no callers.</b> Not in {@code static/js}, not in
- * {@code src/main}, not in one test. It is also {@code findAll()} + {@code saveAll()} over every player —
- * roughly 300,000 rows at full scale — on a request thread, and it duplicates day 4's {@code TrainingJob},
- * which is how the world is actually trained. It is guarded here as an administrator action and **recorded
- * as a deletion candidate rather than deleted**, by the owner's decision: a role guard answers "who may"
- * without answering "should this exist at all".
+ * <p><b>{@code /train-all} has been deleted, on the owner's decision.</b> It was a world-scale write —
+ * {@code findAll()} + {@code saveAll()} over every player, roughly 300,000 rows at full scale, on a request
+ * thread — with <b>zero callers</b>: not in {@code static/js}, not in {@code src/main}, not in one test. It
+ * duplicated day 4's {@code TrainingJob}, which is how the world is actually trained.
+ *
+ * <p>It was guarded first and deleted second, and that order is deliberate. The guard answered <i>who
+ * may</i>; the deletion answers <i>should this exist at all</i>, which is the question that actually mattered
+ * for a route nobody called. The tests now assert the route is <b>absent</b>, because a guard can be
+ * weakened by whoever edits it next and a deleted mapping cannot.
  */
 @Import(ControllerAuthFixture.class)
 class TrainingControllerAuthorizationTest extends BaseTest {
@@ -107,9 +110,35 @@ class TrainingControllerAuthorizationTest extends BaseTest {
                 .andReturn().getResponse().getStatus());
     }
 
+    /**
+     * The route is <b>gone</b>, and absence is the guarantee now.
+     *
+     * <p>It used to be "an administrator may, a manager may not". That was the second-best answer, and it is
+     * gone with the route. Asserting 404 rather than 403 is the point: a guard can be weakened by whoever
+     * edits it next, and a deleted mapping cannot.
+     */
     @Test
-    @DisplayName("an anonymous caller cannot train the whole world")
-    void anAnonymousCallerCannotTrainEveryone() throws Exception {
+    @DisplayName("the route that trained the whole world no longer exists")
+    void theWorldTrainingRouteIsGone() throws Exception {
+        for (String bearer : new String[]{auth.bearer(UserRole.OWNER), auth.bearer(UserRole.REGULAR)}) {
+            int code = mockMvc.perform(post("/training/train-all").header("Authorization", bearer))
+                    .andReturn().getResponse().getStatus();
+            assertTrue(code == 404 || code == 405,
+                    "/training/train-all answered " + code + ", so the route is still reachable");
+        }
+    }
+
+    /**
+     * And unauthenticated — <b>401, not 404</b>, which is the honest answer and worth pinning.
+     *
+     * <p>The security chain runs before routing, so an anonymous caller never reaches the missing mapping.
+     * An earlier version of this asserted 404 and failed: the route <i>is</i> absent, but the filter never
+     * lets an anonymous request get far enough to find that out. The absence is proved by the authenticated
+     * case above; this only has to prove the call does not succeed.
+     */
+    @Test
+    @DisplayName("an anonymous caller is turned away by the filter, before routing")
+    void anAnonymousCallerIsTurnedAwayByTheFilter() throws Exception {
         assertRefused(mockMvc.perform(post("/training/train-all"))
                 .andReturn().getResponse().getStatus());
     }
@@ -144,41 +173,6 @@ class TrainingControllerAuthorizationTest extends BaseTest {
         assertTrue(!tight.contains("\"skills\""), "the raw skills object should not travel: " + body);
     }
 
-    // ── /train-all: an administrator action ──────────────────────────────────────────────────────────
-
-    /**
-     * The world's training is not a manager's to trigger.
-     *
-     * <p>Asserted as 403 rather than "not 200", because a 500 here would be an equally bad answer and would
-     * satisfy the weaker claim.
-     */
-    @Test
-    @DisplayName("a regular manager cannot train the whole world")
-    void aRegularManagerCannotTrainEveryone() throws Exception {
-        mockMvc.perform(post("/training/train-all")
-                        .header("Authorization", auth.bearer(UserRole.REGULAR)))
-                .andExpect(status().isForbidden());
-    }
-
-    /**
-     * It reports a number, and it does not return the world.
-     *
-     * <p>The count is asserted as a <b>number</b> and not as the absence of a giant array, because
-     * "hundreds of megabytes of JSON" was the previous behaviour and its absence is what matters.
-     */
-    @Test
-    @DisplayName("an administrator trains the world and gets a count, not every player")
-    void anAdministratorCanTrainEveryone() throws Exception {
-        String body = mockMvc.perform(post("/training/train-all")
-                        .header("Authorization", auth.bearer(UserRole.OWNER)))
-                .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-
-        assertTrue(body.contains("trained"),
-                "the response should report how many were trained: " + body);
-        assertTrue(!body.contains("\"skills\""), "no raw players should travel: " + body);
-    }
-
     // ── The guard is a narrowing, not a lockout ───────────────────────────────────────────────────────
 
     @Test
@@ -190,7 +184,7 @@ class TrainingControllerAuthorizationTest extends BaseTest {
     }
 
     @Test
-    @DisplayName("an administrator is not locked out of training")
+    @DisplayName("an administrator is not locked out of training his own club's player")
     void anAdministratorIsNotLockedOut() throws Exception {
         mockMvc.perform(post("/training/train/{playerId}", rivalPlayer.getId())
                         .header("Authorization", auth.bearer(UserRole.OWNER)))

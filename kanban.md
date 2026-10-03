@@ -374,14 +374,20 @@ screen uses `POST /training/weekly/team/{teamId}/run`, and the world is trained 
 P0-1b: `talent`, `earnings`, the injury record, `personality`, `skills`. The test caught `9.1` where the
 entitlement rule says `null`.
 
-**`/train-all` is guarded, not deleted — the owner's decision.** A role guard answers "who may"; it does
-not answer "should this exist at all". **The deletion question is still open** and is criterion 4 below.
+**`/train-all` is DELETED — the owner's ruling.** It was guarded first and deleted second, and **that order
+is the point**: the guard answered *who may*, the deletion answers *should this exist at all*, and for a
+route with zero callers the second is the question that mattered. 36 lines gone, **no production caller** to
+change. The tests now assert the route is **absent** (404/405) rather than merely gated, because a guard can
+be weakened by whoever edits it next and a deleted mapping cannot.
 
 **Exit criteria:**
 - [x] `/train/{playerId}` refuses with 403 unless the player is in the caller's own club
 - [x] `/train-all` is administrator-only
 - [x] Neither returns a raw `Player` entity — `/train-all` returned a count, thanks to another agent
-- [ ] **`/train-all` ruled on:** deleted, or kept with the reason written down — **still the owner's**
+- [x] **`/train-all` ruled on: DELETED**, on the owner's decision. No caller anywhere, so nothing broke.
+      An anonymous caller still gets 401 — the filter chain runs before routing, so it never reaches the
+      missing mapping — and that is pinned separately so the distinction is not mistaken for the route
+      existing
 
 ---
 
