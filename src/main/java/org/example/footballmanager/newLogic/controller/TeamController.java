@@ -26,10 +26,12 @@ import org.example.footballmanager.newLogic.service.LeagueMilestoneService;
 import org.example.footballmanager.newLogic.service.ScheduleInsightService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TeamMedicalService;
+import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.example.footballmanager.newLogic.service.TeamTacticsService;
 import org.springframework.data.domain.PageRequest;
 import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -72,7 +74,7 @@ public class TeamController {
                           SeasonService seasonService,
                           TeamMedicalService teamMedicalService,
                           TeamTacticsService teamTacticsService,
-                          org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures) {
+                          PlusFeatureService plusFeatures) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -337,9 +339,20 @@ public class TeamController {
         return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
     }
 
+    /**
+     * Puts a player through medical recovery.
+     *
+     * <p>Unguarded: any manager could heal any player in the world, by id, with no club involved at all. The
+     * same controller already refuses a stranger's player on the {@code /players/{playerId}} read through
+     * {@code PlusFeatureService}, so the rule existed and this write simply did not use it.
+     */
     @PostMapping("/{teamId}/medical/recovery/{playerId}")
     public ResponseEntity<TeamMedicalOverviewDTO> applyMedicalRecovery(@PathVariable Long teamId,
-                                                                       @PathVariable Long playerId) {
+                                                                       @PathVariable Long playerId,
+                                                                       @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         TeamMedicalOverviewDTO overview = teamMedicalService.applyRecovery(teamId, playerId);
         return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
     }
@@ -365,9 +378,23 @@ public class TeamController {
         ));
     }
 
+    /**
+     * Builds the ground-side squad sheet for a club.
+     *
+     * <p><b>This wrote any club's eleven.</b> The team id in the path says <i>which</i> club; nothing said
+     * <i>whose</i>. So any logged-in manager could open a league table, pick a rival's id, and set up his
+     * team however he liked — and the save is unconditional, so the change survived.
+     *
+     * <p>{@code isOwnTeam} answers "is this your club" the same way the rest of the game answers it, which is
+     * the point of routing it through {@code PlusFeatureService} rather than a local club lookup.
+     */
     @PutMapping("/{teamId}/lineup-template")
     public ResponseEntity<Map<String, Object>> saveLineupTemplate(@PathVariable Long teamId,
-                                                                  @RequestBody Map<String, Object> payload) {
+                                                                  @RequestBody Map<String, Object> payload,
+                                                                  @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return notYourClub();
+        }
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.notFound().build();
@@ -443,11 +470,47 @@ public class TeamController {
         return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
     }
 
+    /**
+     * Saves the club's tactical grid.
+     *
+     * <p>Unguarded, like the lineup template above: any manager could rewrite a rival's roles, and this is
+     * the grid the match engine now reads — {@code TacticsRulesProvider} loads it and hands it to the
+     * orchestrator, so the edit changed how the next match was actually simulated.
+     */
     @PutMapping("/{teamId}/tactics-editor")
     public ResponseEntity<TacticsEditorDTO> saveTacticsEditor(@PathVariable Long teamId,
-                                                              @RequestBody TacticsEditorSaveRequest request) {
+                                                              @RequestBody TacticsEditorSaveRequest request,
+                                                              @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         TacticsEditorDTO dto = teamTacticsService.saveTacticsEditor(teamId, request);
         return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
+    }
+
+    /**
+     * Whether this caller may change <b>this</b> club.
+     *
+     * <p>Fails closed: no principal, no club id, no club and a caller who is neither its manager nor an
+     * administrator are all "not yours". The owner is let through, because a fix that locks the owner out of
+     * his own game is worse than the hole it closes.
+     *
+     * <p>Not an annotation. The rule needs the principal <i>and</i> the row — an ownership check is not a role
+     * — and {@code @PreAuthorize("...")} cannot be given a path variable to compare against.
+     */
+    private boolean mayManage(User user, Long teamId) {
+        if (user == null || teamId == null) {
+            return false;
+        }
+        if (user.getRole() != null && user.getRole().name().equals("OWNER")) {
+            return true;
+        }
+        return plusFeatures.isOwnTeam(user, teamId);
+    }
+
+    private ResponseEntity<Map<String, Object>> notYourClub() {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "You can only change your own club."));
     }
 
     private String normalizeStyle(Object rawStyle) {

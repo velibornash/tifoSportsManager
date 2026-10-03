@@ -21,24 +21,35 @@ import java.util.Optional;
 @Slf4j
 public class TacticsProfileBackupService {
 
-    private static final Path DEFAULT_BACKUP_PATH = Path.of("var", "tactics-editor-profiles.json");
-
     private final ObjectMapper objectMapper;
 
     /**
-     * An instance field, not the constant it was, so a test can point the backup somewhere temporary.
+     * An instance field, not a constant, so a test can point the backup somewhere temporary.
      *
      * <p>This file is the <b>only</b> durable copy of a club's tactical editor work, and the restore path
-     * now reads it — so a test that exercised that path against {@code var/} would be reading and
-     * rewriting the repository's own state to prove something about a method. It is injected instead, and
-     * the production path is unchanged.
+     * now reads it — so a test that exercised that path against {@code var/} would be reading and rewriting
+     * the repository's own state to prove something about a method. It is injected instead, and the
+     * production path is unchanged.
+     *
+     * <p><b>And the field alone was not enough, which is how this was found.</b> The design anticipated a
+     * test pointing it elsewhere and nothing ever did, because the production constructor hard-coded the
+     * constant — so any {@code @SpringBootTest} that reached the editor through HTTP wrote a fixture club
+     * into {@code var/tactics-editor-profiles.json}, <b>a tracked file</b>. It surfaced as a dirty
+     * {@code git status} and a profile for a club named after a test fixture, in a file holding the owner's
+     * real tactics work.
+     *
+     * <p>So the path is now a property with this exact default. A test sets
+     * {@code app.tactics-backup-path} and the repository is never touched; production changes nothing.
      */
     private final Path backupPath;
 
     /** The production constructor. Annotated because the class now has two, and Spring will not guess. */
     @org.springframework.beans.factory.annotation.Autowired
-    public TacticsProfileBackupService(ObjectMapper objectMapper) {
-        this(objectMapper, DEFAULT_BACKUP_PATH);
+    public TacticsProfileBackupService(
+            ObjectMapper objectMapper,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${app.tactics-backup-path:var/tactics-editor-profiles.json}") String backupPath) {
+        this(objectMapper, Path.of(backupPath));
     }
 
     public TacticsProfileBackupService(ObjectMapper objectMapper, Path backupPath) {
