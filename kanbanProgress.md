@@ -213,7 +213,7 @@ first of those is already known to check ownership on `/image` and not on `/tick
 
 ---
 
-## 2026-10-03 — P1-4: three whole-table reads inside loops, and one that could not run at all
+## 2026-10-03 — `379cb12` — P1-4: three whole-table reads inside loops, and one that could not run at all
 
 Nineteen call sites matched the board's pattern. Four were fixed, and the board's five named candidates
 had all drifted — two are already gone and two were never N+1s at all.
