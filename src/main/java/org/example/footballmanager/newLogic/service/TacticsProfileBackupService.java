@@ -2,7 +2,6 @@ package org.example.footballmanager.newLogic.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.model.tactics.TeamTacticsProfile;
@@ -20,21 +19,41 @@ import java.util.Optional;
 
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class TacticsProfileBackupService {
 
-    private static final Path BACKUP_PATH = Path.of("var", "tactics-editor-profiles.json");
+    private static final Path DEFAULT_BACKUP_PATH = Path.of("var", "tactics-editor-profiles.json");
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * An instance field, not the constant it was, so a test can point the backup somewhere temporary.
+     *
+     * <p>This file is the <b>only</b> durable copy of a club's tactical editor work, and the restore path
+     * now reads it — so a test that exercised that path against {@code var/} would be reading and
+     * rewriting the repository's own state to prove something about a method. It is injected instead, and
+     * the production path is unchanged.
+     */
+    private final Path backupPath;
+
+    /** The production constructor. Annotated because the class now has two, and Spring will not guess. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public TacticsProfileBackupService(ObjectMapper objectMapper) {
+        this(objectMapper, DEFAULT_BACKUP_PATH);
+    }
+
+    public TacticsProfileBackupService(ObjectMapper objectMapper, Path backupPath) {
+        this.objectMapper = objectMapper;
+        this.backupPath = backupPath;
+    }
+
     public synchronized List<TacticsProfileBackupEntry> loadAll() {
-        if (!Files.exists(BACKUP_PATH)) {
+        if (!Files.exists(backupPath)) {
             return List.of();
         }
         try {
-            return objectMapper.readValue(Files.readString(BACKUP_PATH), new TypeReference<List<TacticsProfileBackupEntry>>() {});
+            return objectMapper.readValue(Files.readString(backupPath), new TypeReference<List<TacticsProfileBackupEntry>>() {});
         } catch (Exception ex) {
-            log.warn("Failed to load tactics profile backup file {}", BACKUP_PATH, ex);
+            log.warn("Failed to load tactics profile backup file {}", backupPath, ex);
             return List.of();
         }
     }
@@ -75,16 +94,16 @@ public class TacticsProfileBackupService {
 
     private void writeEntries(List<TacticsProfileBackupEntry> entries) {
         try {
-            Path parent = BACKUP_PATH.getParent();
+            Path parent = backupPath.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
             Files.writeString(
-                    BACKUP_PATH,
+                    backupPath,
                     objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(entries)
             );
         } catch (IOException ex) {
-            log.warn("Failed to write tactics profile backup file {}", BACKUP_PATH, ex);
+            log.warn("Failed to write tactics profile backup file {}", backupPath, ex);
         }
     }
 

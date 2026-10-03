@@ -937,15 +937,62 @@ public class DatabaseInitializer {
         return new ArrayList<>(merged.values());
     }
 
+    /**
+     * Restores tactical editor profiles, from the database snapshot <b>and</b> from the backup file.
+     *
+     * <p><b>The file was the missing half.</b> The snapshot is taken from
+     * {@code team_tactics_profile}, so on a world where that table is already empty — which is what a
+     * previous reset leaves behind — the snapshot is empty too and the restore had nothing to give.
+     * Meanwhile {@code TacticsProfileBackupService} has written {@code var/tactics-editor-profiles.json}
+     * on <em>every</em> editor save since it existed, and {@code loadAll()} had <b>zero callers</b>. The
+     * owner's five profiles were in that file and nowhere else, so one Reset destroyed them permanently
+     * and nothing said so: the log line read "Restored 0 tactics editor profiles after reset."
+     *
+     * <p>So both sources are read now, and the database wins where both have the club — it is the
+     * authoritative copy and the file is the durable one.
+     */
     private void restoreTacticsProfiles(List<TacticsProfileSnapshot> snapshots) {
-        if (snapshots == null || snapshots.isEmpty()) {
+        restoreTacticsProfiles(snapshots, tacticsProfileBackupService);
+    }
+
+    /**
+     * The restore, with the backup service supplied.
+     *
+     * <p>Package-private rather than private so {@code TacticsProfileRestoreTest} can point the backup at
+     * a temporary file. The production path passes the injected service and is unchanged; a test that
+     * exercised this against {@code var/tactics-editor-profiles.json} would be reading and rewriting the
+     * repository's own state to prove something about a method.
+     */
+    void restoreTacticsProfiles(List<TacticsProfileSnapshot> snapshots,
+                                TacticsProfileBackupService backupService) {
+        List<TacticsProfileSnapshot> wanted = new ArrayList<>(
+                snapshots == null ? List.of() : snapshots);
+        java.util.Set<String> alreadyNamed = new java.util.HashSet<>();
+        wanted.forEach(snapshot -> alreadyNamed.add(snapshot.teamName));
+        for (TacticsProfileBackupEntry entry : backupService.loadAll()) {
+            if (entry != null && entry.getTeamName() != null && !alreadyNamed.contains(entry.getTeamName())) {
+                TacticsProfileSnapshot fromFile = toTacticsSnapshot(entry);
+                if (fromFile != null) {
+                    wanted.add(fromFile);
+                    alreadyNamed.add(fromFile.teamName);
+                }
+            }
+        }
+
+        if (wanted.isEmpty()) {
             return;
         }
 
         int restored = 0;
-        for (TacticsProfileSnapshot snapshot : snapshots) {
+        List<String> unmatched = new ArrayList<>();
+        for (TacticsProfileSnapshot snapshot : wanted) {
             Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
             if (team == null || team.getId() == null) {
+                // Named rather than skipped. The old `continue` made a profile that could not be placed
+                // indistinguishable from there being none, which is how four of the owner's five
+                // profiles could vanish without a word — the world holds five different Beograd clubs
+                // and no "FK Beograd", so the name simply does not resolve.
+                unmatched.add(snapshot.teamName);
                 continue;
             }
             TeamTacticsProfile profile = teamTacticsProfileRepository.findByTeamId(team.getId()).orElseGet(TeamTacticsProfile::new);
@@ -960,6 +1007,13 @@ public class DatabaseInitializer {
             restored++;
         }
         log.info("Restored {} tactics editor profiles after reset.", restored);
+        if (!unmatched.isEmpty()) {
+            log.warn("{} tactical profile(s) could not be placed because no club has that exact name: "
+                            + "{}. The world holds several clubs with similar names, and which one was "
+                            + "meant is a decision for the owner — the profile is still in "
+                            + "var/tactics-editor-profiles.json.",
+                    unmatched.size(), unmatched);
+        }
     }
 
     private TacticsProfileSnapshot toTacticsSnapshot(TacticsProfileBackupEntry entry) {
