@@ -105,8 +105,26 @@ Measured row counts on a **Serbia-only** dev database, for scale:
 | `player_zone_load` | 18,729 | Largest table. **198 rows written per match, one at a time** |
 | `player` | 10,130 | ~300k at full scale |
 | `match_player_stats` | 3,410 | |
-| `match_fixture` | 2,790 | |
+| `match_fixture` | 2,790 | 310 a matchday, 9 matchdays seeded, **7 days apart** |
 | `team` | 406 | 14,880 at full scale |
+| `match` | **155** | **One matchday. Ever.** See below |
+
+### 🔴 The dev database cannot measure a performance task
+
+**`match` holds 155 rows: a single matchday of a single country.** `match_tick_states` holds **0**, and
+that is not a seeding gap — nothing writes it (P1-1).
+
+So the projected figures are **48×**: **7,440 matches a matchday, 89,280 a season**, and
+`player_zone_load` at **198 rows a match** means **17,677,440 rows a season**, 2.8 GB.
+
+**A sequential scan of 155 rows is the correct plan.** An `EXPLAIN` on the dev database cannot show that
+an index helps, cannot show that one does not, and will confidently report "no problem" about a query that
+costs five seconds at full scale. Every index added under P1 was measured in a throwaway `sokker_bench`
+database built to those numbers; the plans are in `kanbanProgress.md`.
+
+**The first attempt at P1-1 got this wrong** — it proposed three indexes, one of which served a query
+with no caller and another of which made the hot daily job 68% slower. The board's own scale table had
+said `player_zone_load` had 18,729 rows and did not mention `match` at all.
 
 ---
 
@@ -253,7 +271,7 @@ claim "passed" while measuring nothing.**
 |---|---|---|
 | 1.2 | "Simulate all" can silently discard an entire league | unverified — plausible, real trade-off |
 | 1.3 | `@Transactional` on `totalSides()` not `seedIfMissing()` | unverified |
-| 1.4 | `MatchPersistenceService` is dead code, 402 lines, zero callers | unverified — the audit agrees |
+| 1.4 | `MatchPersistenceService` is dead code, 402 lines, zero callers | **CONFIRMED by P1-1** — zero callers in `src/main`, its table holds 0 rows. Deleting it is the owner's call |
 | 1.5 | `MatchEventRepository.save()` is a no-op | unverified — probably a naming choice, badly named |
 
 **Exit criteria:** each is confirmed or refuted **by running it**, and the verdict recorded in
@@ -307,9 +325,12 @@ Two concrete contradictions, both confirmed in source:
 - **§4.1** — the `IDENTITY` generation type disables JDBC batching for **70 of 71 entities**, so
   `batch_size=50` is dead code.
 - **§4.4** — `match_tick_states` says *"Decision needed… Do not index it as-is."*
+  **Answered by P1-1, 2026-10-03: the table is vestigial.** Nothing writes it, nothing reads it, it holds
+  0 rows, and replays are file-backed JSON with their own retention. **No index was created and none
+  should be.** Whether to delete the table and `MatchPersistenceService` is an owner call.
 
-Both are owner decisions. Note that P1-2 proposes a **targeted** index on this table, which is a different
-thing from indexing it blindly — the board's warning is about the second.
+Both are owner decisions. P1-1 no longer proposes an index on this table — it measured that the index
+would serve a query with no caller, so the §4.4 question dissolved rather than being answered.
 
 ---
 
@@ -326,28 +347,57 @@ the code near it has changed.
 
 | Change | Before | After | Commit |
 |---|---:|---:|---|
-| Daily recovery zone-load read | 21.0 ms | **10.8 ms** | `d95da9d` |
+| Daily recovery zone-load read *(155-match dev database)* | 21.0 ms | **10.8 ms** | `d95da9d` |
 | Weekly rollover squad reads (30 clubs, 3 listings) | 180 queries | **0** + 1 bulk | `e310856` |
 | Four fixture endpoints: game week used as a round | 155 fixtures for every week and day | correct matchday | `7374c69` |
+| League top scorers / assists *(89,280-match season)* | 158.7 ms | **0.19 ms** | P1-1 |
+| Club match history, played, ordered *(same)* | 170.3 ms | **0.26 ms** | P1-1 |
+| Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | P1-1 |
+| One week of a season *(same)* | 156.4 ms | **27.8 ms** | P1-1 |
+| A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
+| Recovery read, one matchday *(17.7M-row table)* | 4,441 ms | **still open, P1-3** | — |
+
+**Read the scale column.** The first three rows were measured on a 155-match village; the P1-1 rows on a
+full 89,280-match season. **A number is only comparable to a number measured the same way**, and the
+first three are not comparable to the last five.
 
 ---
 
-### P1-1 — Three hot tables have no usable index. Verified against the live database, 2026-10-03
+### P1-1 — DONE. Four indexes on `match`. Two of the three claims on this board were wrong.
 
-**This is the highest-value P1 task.** These were read out of `pg_indexes`, not inferred.
+**Landed:** `ix_match_competition_season`, `ix_match_season_week`, `ix_match_home_team_date`,
+`ix_match_away_team_date`. Declared on the `Match` entity, with `tools/create-match-indexes.sql` for a
+database that already has rows. Measurements and full `EXPLAIN` plans in `kanbanProgress.md`.
 
-| Table | Indexes that exist | What needs one |
-|---|---|---|
-| `match` | **primary key only** | `findLoadsPlayedSince` joins to `match` and filters `m.matchDate > :after`, and the daily recovery job's entire purpose is a time window. Every zone-load recovery query is a **seq scan on `match`** |
-| `match_tick_states` | **primary key only** | `MatchTickStateRepository.findByMatchOrderByTickAsc` filters `match_id`, orders by `tick`. This is the replay path, and the table grows by ~900 ticks per match |
-| `player_zone_load` | `ix_zone_load_player(player_id)`, unique `(player_id, match_id, zone)` | `findByMatchId` exists, but **the unique index leads with `player_id`**, so a query on `match_id` alone cannot use it. Seq scan on the largest table in the schema |
+| Query | Where it runs | Before | After |
+|---|---|---:|---:|
+| `findByCompetitionIdAndSeasonYear` | top scorers / assists, **request path** | 158.7 ms | **0.19 ms** |
+| `findByHomeTeamIdOrAwayTeamId...PlayedTrue...OrderByMatchDateDesc` | club match history, **request path** | 170.3 ms | **0.26 ms** |
+| `findByHomeTeamIdOrAwayTeamId` | club page, **request path** | 140.6 ms | **0.20 ms** |
+| `findBySeasonYearAndWeekNumber` | `GoalEventRepository`, 12× a season job | 156.4 ms | **27.8 ms** |
 
-**Exit criteria:**
-- [ ] Each index proposed, and **why that column order** — an index on the right columns in the wrong order
-      is the same as no index
-- [ ] `EXPLAIN ANALYZE` before and after, pasted into `kanbanProgress.md`, showing the seq scan gone
-- [ ] Write cost measured too. These are insert-heavy tables and an index is not free
-- [ ] P0-12 §4.4's warning addressed explicitly for `match_tick_states`, not assumed away
+Measured on a full-scale season — **89,280 matches** — in a throwaway database, not on the 155-row dev
+table where a sequential scan is the correct plan and proves nothing. Write cost: **+16.8 µs per match
+row**, +125 ms per matchday at 7,440 matches, 24 MB per 89,280 matches.
+
+**What the board got wrong, all three checked against the source:**
+
+1. **`match_tick_states` — refuted. Nothing writes it and nothing reads it.** `MatchPersistenceService`
+   is its only writer and has **zero callers**; the table holds **0 rows**. Replays are file-backed
+   JSON under `app.replay-dir` with their own retention. **A `(match_id, tick)` index was not created
+   and P1-5's "~900 rows per match" is void** — growth is zero. This also settles **P0-8 §1.4** and
+   **P0-12 §4.4**: no decision needed, the table is vestigial. Deleting it is an owner call.
+2. **`player_zone_load(match_id)` — refuted, twice.** `findByMatchId` has **no caller in `src/main`**,
+   only one test; and adding the index made the one query that *does* run on that table **68% slower**
+   (4,441 ms → 7,436 ms) because it flips a hash join the planner wants into index probes it does not.
+   See P1-3, which now owns the real fix.
+3. **"Every zone-load recovery query is a seq scan on `match`" — true and irrelevant.** That scan costs
+   **112 ms of a 5,318 ms query**: 2%. Indexing `match(match_date)` changed the total by less than the
+   noise. The cost is on the other table.
+
+**`MatchIndexDeclarationTest` guards this.** It asserts the four names and their column order, and
+fails on a fifth index until that one has been measured too. Proven able to fail: swapping
+`competition_id, season_year` and adding an unmeasured fifth both fail it, and both messages print.
 
 ---
 
@@ -367,18 +417,38 @@ change.
 
 ---
 
-### P1-3 — The recovery job walks every player who ever played
+### P1-3 — The recovery job's cost is a sequential scan of `player_zone_load`, not of `match`
 
-`findByLastPlayedAtIsNotNull()` returns the whole table, and there is no index on `last_played_at`.
-`findByInjuryDaysRemainingGreaterThan` and `findBySkillsFatigueGreaterThan` are also unindexed scans, though
-the second is partly served by `ix_player_fatigue_tired`.
+**The board's version of this task is settled.** `findByLastPlayedAtIsNotNull()` no longer has a
+caller — `dddf462` replaced it with `findByIdInAndLastPlayedAtIsNotNull(ids)`, which the primary key
+serves. **So there is no index to add on `last_played_at`, because there is no longer a query for it
+to serve.** That part of the board is answered, not open. `findByInjuryDaysRemainingGreaterThan` is
+still a real unindexed scan on `injury_days_remaining` (`SeasonService:577`) and still needs one.
+
+**What is actually left, measured at full scale** (89,280 matches, 17,677,440 zone-load rows — one
+season at 48 countries, in a throwaway database):
+
+| | |
+|---|---:|
+| `findLoadMinutesPlayedSince`, one matchday window | **4,441 ms** |
+| rows it returns | 1,473,120 |
+| rows it reads | 17,677,440 — the whole table, to find one matchday |
+| the `match` scan the board blamed | **112 ms, 2% of the query** |
+
+**The fix is not an index, and P1-1 proved it.** The projection's own javadoc names the right answer
+and says it is not written yet: **keyset paging on `match.id`**. Paged, each batch is an index range
+scan and the job reads 1.47M rows instead of 17.7M. Unpaged and forced onto the index, the same query
+runs in **889 ms against 5,318 ms** — so the index is worth having *for this query*, it just cannot be
+landed before the read is paged, which is why P1-1 left `player_zone_load` alone.
 
 **Exit criteria:**
-- [ ] The job's real cost measured on a populated world, not extrapolated from a village
-- [ ] Recovery scoped to the window it actually recovers, as `dddf462` began — finish the job rather than
-      reopening it
-- [ ] **Recovery still happens.** This is a correctness-adjacent task: a faster recovery that recovers
-      fewer players is a new P0 defect. Verify by counting recovered players, not by the clock.
+- [ ] The recovery read is paged, and **the page boundaries are keyset on `match.id`** — offset paging
+      over a join with no total order can skip and duplicate rows, which would silently under-count a
+      player's recovery
+- [ ] **Recovery still happens.** Correctness-adjacent: a faster recovery that recovers fewer players
+      is a new P0 defect. Verified by **counting recovered players**, not by the clock
+- [ ] `findByInjuryDaysRemainingGreaterThan` measured and indexed, or recorded as cheap
+- [ ] The whole job measured on the harness before and after, on the same basis as P1-1's numbers
 
 ---
 
@@ -401,15 +471,28 @@ Known remaining candidates, unverified:
 
 ---
 
-### P1-5 — `match` and `match_tick_states` grow without bound
+### P1-5 — `match` grows without bound; `match_tick_states` does not grow at all
 
-No retention policy exists for either. `match_tick_states` gains ~900 rows per match, each carrying two
-JSON blobs. At full scale this becomes the dominant table in the database within a season.
+**Half of this task is refuted.** `match_tick_states` gains **zero** rows per match: nothing writes it.
+Its writer, `MatchPersistenceService`, has no callers, and replays are file-backed JSON with a bounded
+retention of their own. There is nothing to retain and nothing to decide. See P1-1.
+
+What remains is `match`, and the honest question is what a full season costs:
+
+| | |
+|---|---:|
+| matches per matchday, 48 countries | 7,440 |
+| matches per 12-week season | **89,280** |
+| per match row, with P1-1's four indexes | ~1.5 KB + 275 B of index |
+| one season | ~130 MB |
 
 **Exit criteria:**
-- [ ] Growth rate measured per simulated matchday
-- [ ] A retention decision recorded — and if rows are deleted, **what still needs them** answered first.
-      Replay reads them. Deleting them silently breaks the replay path
+- [ ] Growth rate measured per simulated matchday, from the harness rather than extrapolated
+- [ ] A retention decision recorded for `match`. **Before anything is deleted:** the Elo replay
+      (`findPlayedClubMatchesInOrder`) re-reads **every** played club match in date order, and the club
+      Elo history needs its old ratings. Deleting match rows silently breaks both, so the answer is
+      probably "keep them and let it grow" — but it has to be an answer, not an omission
+- [ ] The file-backed replay retention checked against the same question, so the two answers agree
 
 ---
 
@@ -419,8 +502,14 @@ Basketball, American football and text-based football have **zero** `@Index` dec
 and 3,720 players on the dev database and they are not simulated on every tick, so this is genuinely lower
 priority than P1-1 — but it is not zero, and it will not get cheaper to fix after the tables grow.
 
-**Exit criteria:** the same treatment as P1-1 — proposed indexes with stated column order, and
-`EXPLAIN` evidence for the queries that matter.
+**Exit criteria:** the same treatment P1-1 actually got, which is not the treatment the board asked
+for: **every index needs a named query and a before/after.** Two of P1-1's three candidates had no
+query behind them at all, and the third made things worse. So:
+
+- [ ] The queries those tables actually serve are listed first, from the source
+- [ ] Each proposed index names the query it serves and carries a measured before/after on the harness
+      — no index proposed on the argument that the column is obviously filtered on
+- [ ] Write cost measured, as `match` cost 16.8 µs per row
 
 ---
 
@@ -559,6 +648,9 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 - `mvn test`: **992 tests, 13 failures, 16 errors, 29 red**, ~2 h 52 m, app required on `:8080`. Measured
   at `89144e9`; **a re-measurement was in flight on 2026-10-03** and its result is in `kanbanProgress.md`.
-- The full red list and what each failure means is in `archive/kanbanProgress.md`, in the entry recording
+- The full red list and what each red class means is in `archive/kanbanProgress.md`, in the entry recording
   the run that was allowed to finish.
 - **P0-1 and P0-2 are the two tasks that make everything else safer to do.** Do them first.
+- **P1-1 is done, and it is the worked example for the rest of P1:** measure at projected scale, name the
+  query behind every index, and be willing to land two fewer indexes than the board asked for. Two of its
+  three candidates had no query behind them at all.

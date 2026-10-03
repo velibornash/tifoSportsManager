@@ -12,6 +12,27 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity(name = "Match")
+@Table(name = "match", indexes = {
+        // Four indexes, each with one named query that needed it and a measured before/after.
+        // `ddl-auto=update` builds them from here; tools/create-match-indexes.sql is the same four
+        // statements as CREATE INDEX CONCURRENTLY, for a database that already has rows.
+        //
+        // FindByCompetitionIdAndSeasonYear - the top-scorers and top-assists pages, per league.
+        // 158.7 ms -> 0.19 ms. Both columns are equality, so their order is free; competition_id
+        // leads because it is the selective one and the usual way in.
+        @Index(name = "ix_match_competition_season", columnList = "competition_id, season_year"),
+        // FindBySeasonYearAndWeekNumber - GoalEventRepository walks a season twelve times, once a week.
+        // 156.4 ms -> 27.8 ms. Cannot be folded into the index above: this query has no competition_id,
+        // and a season is 89,280 rows here, so leading on season_year alone would not be selective.
+        @Index(name = "ix_match_season_week", columnList = "season_year, week_number"),
+        // FindByHomeTeamIdOrAwayTeamId(AndPlayedTrue...) - the club's own match history, a request path.
+        // 170.3 ms -> 0.26 ms. match_date trails because the same index serves the history page's
+        // ORDER BY match_date DESC, so the rows arrive in order instead of being sorted.
+        @Index(name = "ix_match_home_team_date", columnList = "home_team_id, match_date"),
+        // The away half of the same OR. A predicate of `home = ? OR away = ?` needs an index on each
+        // side; with only the home one the planner falls back to scanning the table.
+        @Index(name = "ix_match_away_team_date", columnList = "away_team_id, match_date")
+})
 public class Match {
 
     @Id

@@ -16,6 +16,186 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P1-1: four indexes on `match`, and two of the board's three claims refuted
+
+**The board asked for three indexes. Two are wrong and one is irrelevant. Four unlisted ones are the
+real win.** Every number below was measured on a throwaway database holding a **full projected season**,
+because the dev database cannot measure this at all: it holds **155** `match` rows, which is one
+matchday of one country, and a sequential scan of 155 rows is the *correct* plan. An `EXPLAIN` there
+proves nothing either way.
+
+### The harness, and the scale it derives rather than assumes
+
+Scale came out of the live dev database, not out of the board's estimate:
+
+| measured on `sokker_db` | |
+|---|---|
+| competitions | 31, all leagues |
+| fixtures per matchday | 310, of which **155** played |
+| matches played, in total | **155** — one matchday, ever |
+| matchday spacing | **7 days** (2026-10-03, -10, -17 …) |
+| weeks in a season | 12 |
+| zone-load rows per match | 198 (22 players × 9 zones) |
+
+So **full scale = 48 × 155 = 7,440 matches a matchday, 89,280 a season**, and `player_zone_load` gains
+**17,677,440 rows a season**. The harness holds exactly that: 89,280 matches, 17,677,440 zone loads,
+2.8 GB. Foreign keys to `competition`/`team`/`player`/`lineup`/`stadium` are dropped — no query under test
+joins them, and their absence cannot change a plan.
+
+**Measurement discipline.** The machine is shared with three other agents' work, so **every figure is the
+minimum of three or five runs**, never a mean. This is not fastidiousness: the same query measured 4,441 ms
+and 8,338 ms on different runs, and an early single-run reading convinced me an index I later dropped had
+saved 154 ms. It had not.
+
+### What was landed
+
+| Query | Where it runs | Before | After | Index |
+|---|---|---:|---:|---|
+| `findByCompetitionIdAndSeasonYear` | top scorers / assists, **request path** | 158.7 ms | **0.19 ms** | `ix_match_competition_season` |
+| `findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc` | club match history, **request path** | 170.3 ms | **0.26 ms** | `ix_match_home_team_date` + `ix_match_away_team_date` |
+| `findByHomeTeamIdOrAwayTeamId` | club page, **request path** | 140.6 ms | **0.20 ms** | the same two |
+| `findBySeasonYearAndWeekNumber` | `GoalEventRepository`, 12× a season job | 156.4 ms | **27.8 ms** | `ix_match_season_week` |
+
+**Every one of those four was a sequential scan of `match`, and three of the four are on a request path
+the manager loads to look at his own club.** None of them was on the board. The board's `match` claim was
+about the daily recovery job, which is one query a day, while these are one per page view.
+
+The plans, before and after:
+
+```
+-- findByCompetitionIdAndSeasonYear, 60 rows out of 89,280
+ Seq Scan on match                                     Execution Time: 158.714 ms
+ Index Scan using ix_match_competition_season on match  Execution Time:   0.276 ms
+
+-- findByHomeTeamIdOrAwayTeamId...PlayedTrue...OrderByMatchDateDesc, 12 rows out of 89,280
+ Sort  (actual time=57.174..57.177 rows=12)
+   ->  Seq Scan on match  (actual time=29.662..57.128 rows=12)     Execution Time:  57.199 ms
+
+ Sort  (Sort Key: match_date DESC, Sort Method: quicksort  Memory: 42kB)   Execution Time: 0.176 ms
+   ->  Bitmap Heap Scan on match  (actual time=0.066..0.073 rows=12)
+         ->  BitmapOr
+               ->  Bitmap Index Scan on ix_match_home_team_date
+               ->  Bitmap Index Scan on ix_match_away_team_date
+```
+
+**Column order, stated per index as the board asked:**
+
+- `(competition_id, season_year)` — both equality, so the order between them is free; `competition_id`
+  leads because it is the selective one and the usual way in.
+- `(season_year, week_number)` — **cannot** be folded into the index above. That query has no
+  `competition_id`, and a season is 89,280 rows, so leading on `season_year` alone is not selective.
+- `(home_team_id, match_date)` and `(away_team_id, match_date)` — a predicate of
+  `home = ? OR away = ?` needs an index on **each** side; one alone cannot be used for the OR at all.
+  `match_date` trails so the same index serves the history page's `ORDER BY match_date DESC`.
+
+### Write cost, measured
+
+| 20,000-row insert into identical clones | Per row |
+|---|---:|
+| no new indexes | 25.7 µs |
+| the four new indexes | 42.5 µs |
+
+**+16.8 µs per match row** — about 4 µs per btree, which is what four of them should cost. At 7,440
+matches a matchday that is **+125 ms once a matchday**, against ~130 ms saved on *each* of the request
+paths above, and 24 MB of index per 89,280 matches.
+
+**A first attempt at this measurement said +3.2 ms per row, a hundred times worse, and it was wrong**:
+one 200,000-row transaction on a machine running three other agents. The 4 µs-per-btree figure is the one
+that survives an independent method. Recorded because the wrong number was nearly the reason to drop all four.
+
+### Refuted 1 — `match_tick_states`. Nothing writes it. Nothing reads it.
+
+Its only writer is `MatchPersistenceService`, and that has **zero callers** in `src/main`: the only
+references are its own javadoc, a comment in `ResetService`, and `ReservedWordColumnTest`, which reflects
+on a field. `findByMatchOrderByTickAsc` and `deleteByMatch` have no callers at all. The table holds
+**0 rows**.
+
+**The replay path is `SimReplayStore`: one JSON file per replay under `app.replay-dir`, with its own
+bounded retention by count and by `app.replay.max-age-days`.** The design that P1-1 and P1-5 describe —
+900 rows a match, two JSON blobs each — was replaced by files.
+
+So no `(match_id, tick)` index was created, **P1-5's growth premise is zero, not 900 a match**, and this
+settles **P0-8 §1.4** and **P0-12 §4.4** without an owner decision. Deleting the table and the service is
+an owner call and I have not touched them.
+
+### Refuted 2 — `player_zone_load(match_id)`. No caller, and it makes things worse.
+
+The board's reasoning was sound and its premise was not: `findByMatchId` exists, the unique index leads
+with `player_id`, so the query cannot use it. But **`PlayerZoneLoadRepository.findByMatchId` has no caller
+in `src/main`.** One test uses it. The 629 ms → 0.29 ms I measured is a test's cost, once.
+
+And landing it anyway would have made the daily job **68% slower**:
+
+| `findLoadMinutesPlayedSince`, one matchday window | |
+|---|---:|
+| with `ix_zone_load_match` | 7,436 ms |
+| without it | **4,441 ms** |
+
+The query returns 1,473,120 rows from a 17,677,440-row table. With the index available the planner picks
+a plan it likes less:
+
+```
+ Hash Join  (actual time=115.513..5222.538 rows=1473120)
+   ->  Seq Scan on player_zone_load load  (actual time=0.055..2501.989 rows=17677440)
+```
+
+Forced onto the index it is nearly six times faster than either:
+
+```
+ Gather  (actual time=6.288..694.455 rows=2946240)
+   ->  Nested Loop
+         ->  Index Only Scan using ix_match_played_date_id on match  (Heap Fetches: 0)
+         ->  Index Scan using ix_zone_load_match  (actual time=0.012..0.067 rows=198 loops=14880)
+   Execution Time: 888.693 ms
+```
+
+**So the index is worth having for this query — it just cannot be landed before the read is paged**, which
+is P1-3's work. Landing it alone would have shipped a slower daily job.
+
+### Refuted 3 — "every zone-load recovery query is a seq scan on `match`" is true and irrelevant
+
+That scan costs **112 ms of a 5,318 ms query: 2%.** Indexing `match(match_date)` changed the total by less
+than the run-to-run noise, so no such index was created. I proposed it, measured it, and dropped it.
+
+| also measured and dropped | |
+|---|---:|
+| `ix_match_played_date_id (played, match_date, id)` for the Elo replay | 421 ms → **449 ms**. No gain. An early single run said 291 → 137 ms; that was noise. |
+| `ix_match_date (match_date)` | no measurable change on any query |
+
+### The guard
+
+`MatchIndexDeclarationTest` — 4 tests, 89 ms, no database. It pins the four names **and their column
+order**, because an index on the right columns in the wrong order is the same as no index, and this
+repository already contains that mistake. It also asserts the **count**, because a fifth index is a write
+tax on every match row and should have to break a test on purpose.
+
+**Proven able to fail, twice:**
+
+1. Swapping `competition_id, season_year` → fails, printing both orders.
+2. Adding an unmeasured fifth index → **two** tests fail, one naming the drift between the entity and
+   `tools/create-match-indexes.sql`.
+
+### Two files, two jobs
+
+The indexes are declared on the `Match` entity, because both profiles run `ddl-auto=update` and the schema
+should be readable from the code. `tools/create-match-indexes.sql` states the same four as
+`CREATE INDEX CONCURRENTLY` for a database that already has rows, because `ddl-auto` issues a plain
+`CREATE INDEX` that **holds a write lock for the length of the build** — instant on 155 rows, not instant
+on 89,280 and growing. The fourth test keeps the two from drifting.
+
+**Verified in the database, not asserted:** run against `sokker_db`, and `pg_indexes` afterwards shows all
+four alongside `match_pkey`.
+
+### Left standing for the next session
+
+- **`sokker_bench` still exists** — the harness, for P1-3 and P1-5. Drop it when P1 is finished.
+- The recovery query's own planner statistics are wrong: `n_distinct` on `player_zone_load.match_id` reads
+  **31,004** against **89,280** distinct values, so the planner predicts 569 rows per match instead of 198.
+  `SET STATISTICS 1000` fixes the estimate and does **not** change the plan. Recorded, not landed — it is
+  not expressible in `@Index`, and on its own it buys nothing.
+
+---
+
 ## 2026-10-03 — restructuring the documentation, and a P1 index finding
 
 ### The board is rebuilt into P0 / P1 / P2
@@ -40,6 +220,10 @@ Also confirmed still open, against the source rather than the board: **`findTier
 `"SRB"`** (`SeasonService.java:1094`), so `buildPlayoffSummary` reports nothing for the other 47 countries.
 
 ### Three hot tables have no usable index — read out of `pg_indexes`, not inferred
+
+> **Superseded by the P1-1 entry above, which measured all three.** Two had no query behind them and one
+> was 2% of the query it was blamed for. Kept as written: reading `pg_indexes` is how the candidates were
+> found, and it is a good way to find candidates. It is not a way to know what a query costs.
 
 Checked while writing P1, and better than expected:
 
