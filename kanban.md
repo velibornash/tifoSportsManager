@@ -31,7 +31,13 @@ The one exception is work with a number attached — a count either meets its ta
 
 ## 🔄 In progress
 
-*Nothing. The last task — settling `dataFixSuggestions.md` §1.1 — is done and committed.*
+**Task 2 — an authoritative full-suite verdict on current HEAD.** A background run was killed after 119
+classes: it had printed nothing for 2.5 h and a thread dump showed it was not hung but grinding through
+`ClubNeedService.clubSquad` inside the weekly rollover. That defect is now fixed (`e310856`, **180 → 0**
+individual squad reads), so the suite can be re-run to completion and the real red list recorded against the
+`89144e9` baseline of **992 tests / 13 F / 16 E**. Needs the app on `:8080`.
+
+Next in line: **Task 3 — the away side plays the home club's shape** (see cluster F).
 
 ---
 
@@ -88,7 +94,7 @@ A pyramid is affordable **once per JVM**, not once per test. The seams are `Test
 |---|---|---|
 | **D1** | **Nine** whole-table loads inside loops or on request paths. Each needs: find the call, replace the load with a query returning only what the loop needs. Not a schema change.<br>**Verified anchors** (the board's older line numbers have drifted): `SeasonService:553` `teamRepository.findAll()`, `:605` `playerRepository.findAll()`, `:1116` `for (Competition league : competitionRepository.findAll())`; `NationalRatingService:239` `for (Country country : countries.findAll())` — **once per international match**; `NationalTeamSeeder:163` `for (Team club : teams.findClubTeamsForOperations())` (now memoised per country — check what remains); `CupFixtureSeeder:129` and `:271` `competitions.findAll().stream()`; `SimulationController:235` `matchFixtureRepository.findAll…ForWeek`; `PlayerZoneLoadRepository` `findLoadsPlayedSince` — **no LIMIT, no pagination**, and its own comment records a **42-minute** recovery job |
 | **D2** | ~1.47 M zone-load rows per game day, loaded whole into a `HashMap` once a day in one transaction | `ZoneLoadRecorder` saves **198 rows per match one at a time** (22 players x 9 zones); the read side loads them all. `PlayerZoneLoadRepository.findLoadsPlayedSince` is the one to make paged or streamed |
-| **D3** | Whole-world day jobs: `RecoveryJob` walks every player who ever played; `FinanceJob` settles every club, each in its own transaction | Recorded under `274d3ff` — *"the jobs are priced for a village, not a world"* |
+| **D3** | Whole-world day jobs: `RecoveryJob` walks every player who ever played; `FinanceJob` settles every club, each in its own transaction | Recorded under `274d3ff` — *"the jobs are priced for a village, not a world"*.<br>**The weekly rollover's transfer market was the worst of them, and it is fixed** — `e310856`. `WeekRolloverJob → simulateWeeklyMarketActivity` asked the database for a squad once per club **per listed player**, then twice more per willing buyer: measured **180 individual squad reads for 30 clubs and 3 listed players**, i.e. millions per rollover on a 14,880-club world. Now **one bulk read per pass**: `180 → 0` per-club, `0 → 1` bulk. Guard: `TransferMarketSquadReadCountTest` asserts those exact counts. |
 | **D5 (rest)** | **Blocked on the owner.** §4.1: `IDENTITY` disables all JDBC batching (70 of 71 entities) so `batch_size=50` is dead code. §4.4: `match_tick_states` says *"Decision needed… Do not index it as-is"*. Basketball/AF/text-football have **no declared indexes** | `dataFixSuggestions.md` §4 |
 
 #### E segment

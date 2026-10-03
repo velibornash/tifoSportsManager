@@ -116,6 +116,71 @@ the tests, not by this run.**
   **disjoint by construction**, since the snapshot is read before the reset. It tested a scenario that
   cannot occur.
 
+### The weekly rollover was priced for a village — the transfer market's cross product
+
+**Found by a thread dump, not by reading the code.** A background full-suite run printed nothing for two
+and a half hours and I assumed it was wedged. It was not: `main` had 15,343 seconds of CPU and 7.4 GB
+resident, and the stack said exactly where it was.
+
+```
+GameClockService.advanceHours -> WeekRolloverJob
+  -> TransferService.simulateWeeklyMarketActivity -> maybeCreateIncomingOffer
+  -> needsInterest -> ClubNeedService.interest -> ClubNeedService.clubSquad
+```
+
+`clubSquad` runs `players.findByTeamId(club.getId())` — one query per call. And the shape is a **cross
+product**: for each listed player the market asks every club whether it is interested, and each of those
+answers loaded that club's squad. Then `weightedBuyer` asked a second time for every club that said yes,
+and `valuation` a third.
+
+Measured on a mock world of 30 clubs and 3 listed players: **180 individual squad reads.** On the real
+14,880-club world with a few hundred listings in a window that is **millions of queries per weekly
+rollover**, which is what turned a season advance into an outage.
+
+**After: `180 → 0` per-club reads, `0 → 1` bulk read.** One `findByTeamIdIn` for the whole pass.
+
+| | before | after |
+|---|---:|---:|
+| per-club squad reads | 180 | **0** |
+| bulk squad reads | 0 | **1** |
+
+Three decisions worth recording:
+
+- **`null` means "load it yourself", an empty list means "this club has nobody."** Both are real answers
+  and must not be conflated — an absent key from the snapshot is a club with no players, not a missing
+  answer. Collapsing them would silently re-introduce the query per call.
+- **The squad is resolved *after* the early guards.** A club has no interest in its own player and a
+  position-less target has no interest at all; answering those without touching the database is the point
+  of the early returns, and hoisting the load above them would have been a quiet regression.
+- **One snapshot per pass is also correct, not merely cheaper.** Nothing in the pass completes a transfer —
+  a bid is only recorded — so there is no mid-pass player move for the snapshot to miss.
+
+`weightedBuyer` also computed each buyer's appetite **twice**, once to sum and once again while walking.
+Now once, into an array.
+
+And an `if/else` whose **two arms were the same call**, so the test on the human-managed id decided
+nothing. Collapsed.
+
+#### The test that passed while measuring nothing
+
+The first version of the guard **passed on the broken code.** Two reasons, both worth keeping in mind:
+
+1. The market gates on `nextRandomDouble() > 0.68`. Unpinned, the test did nothing at all, read **zero**
+   squads, and passed — because a budget of thirty is satisfied by zero. `nextRandomDouble()` is
+   `protected`, so a test subclass pins it.
+2. A first attempt at the measurement was a `@SpyBean` **Spring** test, which **skipped** on the empty H2
+   database and reported green. It was rewritten as a pure mocked unit test: milliseconds, exact counts.
+
+The guard now asserts **exact** numbers rather than a budget — `0` per-club reads and exactly `1` bulk
+read — plus a second case asserting two identical passes read the same count, so accumulated state (how a
+stale cache would announce itself) would fail it. It failed at **180** before the fix.
+
+#### Not mine
+
+`TransferCompletionTest` (3 errors) and `OmladinacTransferJourneyTest` (6 errors) both fail in `setUp`
+with `NoSuchElementException` on an empty test database. **Verified red before this change** by stashing
+it and re-running, rather than assumed.
+
 ### A regression I introduced in step 3, found by reading the code the change touched
 
 Worth its own entry because **a test did not find this one — reading did**, and because it is exactly
