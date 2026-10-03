@@ -82,6 +82,17 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
                             // not a shape to walk to, and the live block would drag a safely-placed
                             // player back across the half-way line as the pass was struck.
                             !state.isKickoffHalfHold());
+            // **No rule and no anchor for this role: hold the shape he is already in.**
+            //
+            // The engine used to be handed a hardcoded (1.5, 3.5) here, which was safe only while every
+            // player wore a 4-4-2 role and the rules were 4-4-2. A club's own formation decides its role
+            // keys now, so a 4-3-3 side facing a 4-4-2's rules asks about CM/WL/WR/ST and all nine of its
+            // outfielders would have been sent to one cell. RealSquadFactory has already placed this
+            // player from HIS formation's anchors, so his current position is the right answer — and it
+            // cannot be null, because this method reads it immediately below.
+            if (desired == null) {
+                desired = p.getPosition();
+            }
 
             // KICKOFF HALF-LINE HOLD (owner rule 2026-09-25): excluding the
             // player taking the kickoff, everyone must be at least 0.5 cells in

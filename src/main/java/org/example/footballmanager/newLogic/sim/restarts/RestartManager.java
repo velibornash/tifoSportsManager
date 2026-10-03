@@ -60,6 +60,20 @@ public class RestartManager {
     public TacticsRules getTactics() { return tactics; }
 
     /**
+     * The tactical target, or the player's own position when the tactic says nothing about his role.
+     *
+     * <p>A restart has to put twenty-two players somewhere specific, so a null here cannot be carried
+     * on. The tactics return null for a role they do not name — which is now reachable, because a club's
+     * own formation decides its role keys and a 4-3-3 side can be asked about a 4-4-2's rules. This
+     * player's position was placed from HIS formation's anchors by {@code RealSquadFactory}, so it is
+     * both non-null and the correct answer: he holds his shape rather than being teleported onto
+     * whatever cell the fallback used to be.
+     */
+    private Position targetOrHold(Player p, Position desired) {
+        return desired != null ? desired : p.getPosition();
+    }
+
+    /**
      * Execute an instant restart. No visible ball flight from OOB.
      * Clock continues running throughout.
      * @param oobExit ball position where it left the pitch — used to place
@@ -144,7 +158,7 @@ public class RestartManager {
 
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(tactics.desiredCell(p.getRole(), spot, p.getTeam()));
+            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), spot, p.getTeam())));
         }
 
         Player taker = findNearestPlayerOfTeam(state, state.getRestartTeam(), spot);
@@ -213,7 +227,7 @@ public class RestartManager {
 
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(tactics.desiredCell(p.getRole(), spot, p.getTeam()));
+            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), spot, p.getTeam())));
         }
 
         pushOpponentsAwayFromBall(state, takingTeam, spot);
@@ -301,7 +315,7 @@ public class RestartManager {
         //    restart spot (players move smoothly, only the ball teleports).
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(tactics.desiredCell(p.getRole(), ballPos, p.getTeam()));
+            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), ballPos, p.getTeam())));
         }
 
         // 3. Select and position the taker — teleport fast-path if far, then walk

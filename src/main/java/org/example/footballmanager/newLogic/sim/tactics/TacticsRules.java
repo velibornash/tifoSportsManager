@@ -193,6 +193,9 @@ public class TacticsRules {
                 ? WE_HAVE_BALL : OPPONENT_HAS_BALL;
         Position targetInEditorPerspective = desiredCellFromContext(
                 role, ballInEditorPerspective, context, deriveDefensiveShape);
+        if (targetInEditorPerspective == null) {
+            return null;
+        }
         Position physical = TacticalPerspectiveTransformer.toPhysical(targetInEditorPerspective, team);
         return clampToField(physical);
     }
@@ -212,16 +215,34 @@ public class TacticsRules {
      * defensive block means the two shapes differ by construction and cannot drift back into
      * agreement at the next data edit. See {@link DefensiveShape}.
      */
+    /**
+     * Where a player stands in one tactical phase, or <b>null</b> when these rules say nothing about
+     * his role.
+     *
+     * <p><b>Null used to be a hardcoded {@code new Position(1.5, 3.5)}</b> — the goalkeeper's own-half
+     * corner. That was harmless while every player in the world wore a 4-4-2 role and the rules were
+     * 4-4-2, because a role the rules did not name could not exist. It can now: a club's own formation
+     * decides its eleven role keys, so a 4-3-3 side facing a 4-4-2's rules asks about {@code CM},
+     * {@code WL}, {@code WR} and {@code ST}, and every one of those nine outfielders would have been
+     * sent to the same cell — stacked on one square metre of pitch.
+     *
+     * <p>So the honest answer when there is no rule and no anchor is <b>no answer</b>, and every caller
+     * falls back to the player's own position, which {@code RealSquadFactory} has already placed from
+     * his own formation's anchors. A player whose role the current tactic does not mention holds his
+     * shape, which is what a manager who has not authored a rule for him would expect.
+     */
     private Position desiredCellFromContext(String role, Position ball, String context,
                                             boolean deriveDefensiveShape) {
         String state = ballStateKey(ball);
         if (!OPPONENT_HAS_BALL.equals(context)) {
-            Position raw = firstNonNull(lookup(role, state, context), anchor(role), new Position(1.5, 3.5));
-            return clampToField(raw);
+            Position raw = firstNonNull(lookup(role, state, context), anchor(role));
+            return raw == null ? null : clampToField(raw);
         }
 
-        Position attacking = firstNonNull(lookup(role, state, WE_HAVE_BALL), anchor(role),
-                new Position(1.5, 3.5));
+        Position attacking = firstNonNull(lookup(role, state, WE_HAVE_BALL), anchor(role));
+        if (attacking == null) {
+            return null;
+        }
         Position authored = lookup(role, state, OPPONENT_HAS_BALL);
 
         // An explicitly authored out-of-possession rule wins, because somebody wrote it on purpose.
@@ -247,10 +268,18 @@ public class TacticsRules {
         return null;
     }
 
-    /** Formation anchor for a role, in physical coordinates for the team. */
+    /**
+     * Formation anchor for a role, in physical coordinates for the team, or null when these rules have
+     * no formation that names it.
+     *
+     * <p>Same reasoning as {@link #desiredCellFromContext}: the old fallback here was the hardcoded
+     * {@code (1.5, 3.5)}, which put every unmentioned role on the goalkeeper's spot. A caller asking
+     * about a role this tactic does not contain is better served by null — and the callers fall back to
+     * the player's own position, which his own formation already placed.
+     */
     public Position anchorCell(String role, String team) {
         Position raw = anchor(role);
-        if (raw == null) raw = new Position(1.5, 3.5);
+        if (raw == null) return null;
         return clampToField(TacticalPerspectiveTransformer.toPhysical(raw, team));
     }
 
