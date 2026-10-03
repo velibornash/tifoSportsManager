@@ -55,16 +55,49 @@ public class TacticsRulesProvider {
     private static final Logger log = LoggerFactory.getLogger(TacticsRulesProvider.class);
 
     /**
-     * The role keys the engine can name — <b>derived from {@code RealSquadFactory.SLOT_ORDER}</b>, which
-     * is the one definition of it.
+     * Every role key the engine can name, across every layout in the catalog.
      *
-     * <p>It was a literal here once, and the pair was guarded by a test asserting they were equal. That is
-     * the wrong shape: a second copy of a rule plus a test watching it is one more thing to keep in step,
-     * and the failure is silent — a rule keyed to a slot no player occupies is a rule nothing reads.
-     * Deriving it means there is nothing to drift.
+     * <p>Derived from the catalog rather than from 4-4-2's eleven, because the engine now plays the
+     * formation a club actually uses: {@code RealSquadFactory.slotOrderFor(formation)} reads the same
+     * nine layouts. It was a literal once and guarded by a test asserting it matched
+     * {@code SLOT_ORDER}; that is the wrong shape, because the answer changes when the engine does.
+     *
+     * <p>A profile is accepted when its keys are a subset of the union <em>and</em> it is playable in the
+     * formation it claims — see {@link #playableKeys}.
      */
-    static final java.util.Set<String> ENGINE_SLOT_KEYS =
-            java.util.Set.of(org.example.footballmanager.newLogic.sim.RealSquadFactory.SLOT_ORDER);
+    /**
+     * The nine layouts the catalog holds. Written once so nothing has to enumerate them again.
+     *
+     * <p><b>Declared before {@link #ENGINE_SLOT_KEYS} on purpose.</b> The keys are built by a static
+     * method that reads this, and Java initialises static fields in declaration order — the first version
+     * had it the other way round and the class died in its initialiser with
+     * {@code FORMATIONS is null}, which took the whole application context with it.
+     */
+    static final java.util.List<String> FORMATIONS = java.util.List.of(
+            "4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "3-5-2", "5-3-2", "3-4-3", "4-5-1", "5-4-1");
+
+    static final java.util.Set<String> ENGINE_SLOT_KEYS = allCatalogSlotKeys();
+
+    private static java.util.Set<String> allCatalogSlotKeys() {
+        java.util.Set<String> keys = new java.util.LinkedHashSet<>();
+        for (String formation : FORMATIONS) {
+            keys.addAll(java.util.Arrays.asList(
+                    org.example.footballmanager.newLogic.sim.RealSquadFactory.slotOrderFor(formation)));
+        }
+        return java.util.Set.copyOf(keys);
+    }
+
+    /**
+     * The role keys playable in one formation — the engine's eleven for <em>that</em> shape.
+     *
+     * <p>This is the check that matters, and the union above is not enough: a 4-3-3 profile keyed
+     * {@code CM/WL/WR/ST} is in the union, but applying it to 4-4-2 players would put a striker in a
+     * left winger's slot. So a profile is measured against its own formation.
+     */
+    static java.util.Set<String> playableKeys(String formation) {
+        return java.util.Set.of(
+                org.example.footballmanager.newLogic.sim.RealSquadFactory.slotOrderFor(formation));
+    }
 
     private final TeamTacticsProfileRepository profiles;
     private final TeamRepository teams;
@@ -112,16 +145,19 @@ public class TacticsRulesProvider {
             return fallback;
         }
 
+        // Against ITS OWN formation, not the union of all nine. A 4-3-3 profile keyed CM/WL/WR/ST is
+        // perfectly playable in 4-3-3 and nonsense in 4-4-2.
+        java.util.Set<String> playable = playableKeys(formation);
         var unknown = slotKeysIn(profile.getRulesJson()).stream()
-                .filter(key -> !ENGINE_SLOT_KEYS.contains(key))
+                .filter(key -> !playable.contains(key))
                 .sorted()
                 .toList();
         if (!unknown.isEmpty()) {
             // Reported, not applied. The engine's players are 4-4-2 roles and a rule keyed to a slot it
             // has no player for is a rule nothing will ever read.
-            log.warn("{} is authored in {} with slot keys the engine cannot name ({}). Its shape is not "
-                            + "applied; the bundled 4-4-2 fallback is. Named so it is a visible gap rather "
-                            + "than a club that quietly plays the wrong formation.",
+            log.warn("{} is authored in {} with slot keys that formation does not have ({}). Its shape is "
+                            + "not applied; the bundled 4-4-2 fallback is. Named so it is a visible gap "
+                            + "rather than a club that quietly plays the wrong formation.",
                     teamName(teamId, formation), formation, unknown);
             return fallback;
         }

@@ -39,6 +39,27 @@ public final class RealSquadFactory {
             "GK", "DL", "DCL", "DCR", "DR", "ML", "CML", "CMR", "MR", "STL", "STR"
     };
 
+    /**
+     * The roles of any formation the catalog knows, in placement order.
+     *
+     * <p><b>Every layout has eleven slots,</b> which is what lets one engine run nine formations: the
+     * number is a constant of the sport, the <em>keys</em> are not. 4-3-3 answers
+     * {@code GK, DL, DCL, DCR, DR, CML, CM, CMR, WL, ST, WR} — and those different keys are why a 4-3-3
+     * tactical profile could not be played before: every one of its rules was keyed to a role the engine
+     * had no player wearing.
+     */
+    public static String[] slotOrderFor(String formation) {
+        FormationSlotCatalog catalog = new FormationSlotCatalog();
+        String normalized = catalog.normalizeFormation(formation == null || formation.isBlank()
+                ? DEFAULT_FORMATION : formation);
+        return catalog.getSlots(normalized).stream()
+                .map(TacticsSlotDTO::getSlotKey)
+                .toArray(String[]::new);
+    }
+
+    /** The formation used when a club has none — the engine's historical shape. */
+    public static final String DEFAULT_FORMATION = "4-4-2";
+
     private RealSquadFactory() {}
 
     /**
@@ -73,13 +94,26 @@ public final class RealSquadFactory {
      */
     public static List<Player> buildSquad(Lineup lineup, String team, List<Player> benchOut,
                                           double coachFactor) {
+        return buildSquad(lineup, team, benchOut, coachFactor, null);
+    }
+
+    /**
+     * As above, in the club's own formation.
+     *
+     * <p>A null formation is 4-4-2, so every existing caller keeps its behaviour exactly. The formation
+     * decides two things and nothing else: <b>which role keys the eleven players wear</b>, and
+     * <b>where each role's anchor cell is</b>. Both come from the catalog, so a 4-3-3 club's striker
+     * stands on 4-3-3's striker anchor rather than a 4-4-2 one.
+     */
+    public static List<Player> buildSquad(Lineup lineup, String team, List<Player> benchOut,
+                                          double coachFactor, String formation) {
         if (lineup == null) return null;
         List<org.example.footballmanager.newLogic.model.Player> ordered =
                 lineup.getOrderedStartingPlayers();
         if (ordered == null || ordered.size() < 11) return null;
         List<org.example.footballmanager.newLogic.model.Player> starters =
                 new ArrayList<>(ordered.subList(0, 11));
-        List<Player> xi = buildFromStarters(starters, team, coachFactor);
+        List<Player> xi = buildFromStarters(starters, team, coachFactor, formation);
         if (benchOut != null && ordered.size() > 11) {
             benchOut.addAll(buildBench(ordered.subList(11, ordered.size()), team, coachFactor));
         }
@@ -143,6 +177,13 @@ public final class RealSquadFactory {
     public static List<Player> buildSquadFromPlayers(
             List<org.example.footballmanager.newLogic.model.Player> players, String team,
             double coachFactor) {
+        return buildSquadFromPlayers(players, team, coachFactor, null);
+    }
+
+    /** As above, in the club's own formation. A null formation is 4-4-2. */
+    public static List<Player> buildSquadFromPlayers(
+            List<org.example.footballmanager.newLogic.model.Player> players, String team,
+            double coachFactor, String formation) {
         if (players == null) return null;
         List<org.example.footballmanager.newLogic.model.Player> valid = players.stream()
                 .filter(p -> p != null && p.getId() != null && p.getName() != null)
@@ -150,20 +191,21 @@ public final class RealSquadFactory {
                 .collect(Collectors.toList());
         if (valid.size() < 11) return null;
         ensureSingleGK(valid);
-        return buildFromStarters(new ArrayList<>(valid.subList(0, 11)), team, coachFactor);
+        return buildFromStarters(new ArrayList<>(valid.subList(0, 11)), team, coachFactor, formation);
     }
 
-    /** Maps an ordered list of exactly-11 DB starters onto the slot grid. */
+    /** Maps an ordered list of exactly-11 DB starters onto the formation's slot grid. */
     private static List<Player> buildFromStarters(
             List<org.example.footballmanager.newLogic.model.Player> starters, String team,
-            double coachFactor) {
-        int[] slotPlayer = assignSlots(starters);
+            double coachFactor, String formation) {
+        String[] slotOrder = slotOrderFor(formation);
+        int[] slotPlayer = assignSlots(starters, slotOrder);
 
         List<Player> squad = new ArrayList<>(11);
-        for (int s = 0; s < SLOT_ORDER.length; s++) {
-            String role = SLOT_ORDER[s];
+        for (int s = 0; s < slotOrder.length; s++) {
+            String role = slotOrder[s];
             org.example.footballmanager.newLogic.model.Player db = starters.get(slotPlayer[s]);
-            Position anchor = anchorForRole(role, team);
+            Position anchor = anchorForRole(role, team, formation);
             squad.add(new Player(
                     String.valueOf(db.getId()),
                     db.getName(),
@@ -179,8 +221,9 @@ public final class RealSquadFactory {
 
     /** Deterministic 11-player -> 11-slot assignment: position match first,
      *  then any remaining starter in lineup order. */
-    private static int[] assignSlots(List<org.example.footballmanager.newLogic.model.Player> starters) {
-        int n = SLOT_ORDER.length;
+    private static int[] assignSlots(List<org.example.footballmanager.newLogic.model.Player> starters,
+                                     String[] slotOrder) {
+        int n = slotOrder.length;
         int[] slotPlayer = new int[n];
         boolean[] used = new boolean[n];
         Arrays.fill(slotPlayer, -1);
@@ -188,7 +231,7 @@ public final class RealSquadFactory {
         for (int s = 0; s < n; s++) {
             for (int i = 0; i < n; i++) {
                 if (used[i]) continue;
-                if (prefersSlot(starters.get(i).getPosition(), SLOT_ORDER[s])) {
+                if (prefersSlot(starters.get(i).getPosition(), slotOrder[s])) {
                     slotPlayer[s] = i;
                     used[i] = true;
                     break;
@@ -213,9 +256,17 @@ public final class RealSquadFactory {
             case GK -> "GK".equals(slot);
             case DEF -> slot.startsWith("D");
             case MID -> slot.startsWith("M") || slot.startsWith("C");
-            case WNG -> "ML".equals(slot) || "MR".equals(slot)
-                    || "STL".equals(slot) || "STR".equals(slot);
-            case ATT -> "STL".equals(slot) || "STR".equals(slot);
+            // The wing and striker keys of BOTH shapes the engine can now play. 4-3-3 names them
+            // WL/ST/WR and 4-4-2 names them ML/STL/MR/STR; before this, a 4-3-3 winger had no slot it
+            // preferred and every wide player was placed by lineup order instead of by position.
+            case WNG -> switch (slot) {
+                case "ML", "MR", "STL", "STR", "WL", "WR" -> true;
+                default -> false;
+            };
+            case ATT -> switch (slot) {
+                case "STL", "STR", "ST" -> true;
+                default -> false;
+            };
         };
     }
 
@@ -257,8 +308,11 @@ public final class RealSquadFactory {
         }
     }
 
-    private static Position anchorForRole(String role, String team) {
-        for (TacticsSlotDTO slot : new FormationSlotCatalog().getSlots("4-4-2")) {
+    private static Position anchorForRole(String role, String team, String formation) {
+        FormationSlotCatalog catalog = new FormationSlotCatalog();
+        String normalized = catalog.normalizeFormation(formation == null || formation.isBlank()
+                ? DEFAULT_FORMATION : formation);
+        for (TacticsSlotDTO slot : catalog.getSlots(normalized)) {
             if (!slot.getSlotKey().equals(role)) continue;
             String[] parts = slot.getAnchorCellKey().split("_");
             double row = Double.parseDouble(parts[1]) + 1.5;

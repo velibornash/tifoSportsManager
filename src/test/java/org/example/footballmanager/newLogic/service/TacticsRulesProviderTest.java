@@ -60,16 +60,39 @@ class TacticsRulesProviderTest extends BaseTest {
     @Autowired private CountryRepository countries;
 
     @Test
-    @DisplayName("the accepted slot keys are the engine's, by derivation rather than by a second copy")
-    void theAcceptedKeysAreTheEngines() {
-        assertEquals(
-                Arrays.stream(ENGINE_SLOTS).collect(Collectors.toSet()),
-                TacticsRulesProvider.ENGINE_SLOT_KEYS,
-                "the provider's accepted slot keys are not the engine's. A rule keyed to a slot the engine "
-                        + "has no player for is a rule nothing will ever read, and it fails quietly.");
-        assertEquals(11, TacticsRulesProvider.ENGINE_SLOT_KEYS.size(),
-                "the engine names eleven roles — 4-4-2. If this is a different number the engine's "
-                        + "formation has moved and the accepted-key set has to move with it.");
+    @DisplayName("the accepted slot keys are derived from the catalog, so the engine can play all nine")
+    void theAcceptedKeysAreDerivedFromTheCatalog() {
+        // Nine layouts x eleven slots. A key set that was a literal would silently cap the engine at
+        // whichever formation it was written for, and the failure is silent: a rule keyed to a slot no
+        // player wears is a rule nothing reads.
+        java.util.Set<String> fromCatalog = new java.util.LinkedHashSet<>();
+        for (String formation : TacticsRulesProvider.FORMATIONS) {
+            fromCatalog.addAll(Arrays.stream(RealSquadFactory.slotOrderFor(formation))
+                    .collect(Collectors.toSet()));
+        }
+        assertEquals(fromCatalog, TacticsRulesProvider.ENGINE_SLOT_KEYS,
+                "the accepted slot keys are not the catalog's. Either the provider is capped at one "
+                        + "formation or the engine has grown a role the provider will not accept.");
+        for (String formation : TacticsRulesProvider.FORMATIONS) {
+            assertEquals(11, RealSquadFactory.slotOrderFor(formation).length,
+                    formation + " does not have eleven slots. Eleven is a constant of the sport — if this "
+                            + "changes, the engine's assumption that every formation fits an XI is wrong.");
+        }
+    }
+
+    @Test
+    @DisplayName("a formation's keys are its own, so a 4-3-3 profile is not judged as 4-4-2")
+    void aProfileIsJudgedAgainstItsOwnFormation() {
+        java.util.Set<String> fortyFourTwo = TacticsRulesProvider.playableKeys("4-4-2");
+        java.util.Set<String> fortyThreeThree = TacticsRulesProvider.playableKeys("4-3-3");
+
+        assertTrue(fortyFourTwo.contains("STL") && !fortyFourTwo.contains("ST"),
+                "4-4-2's keys should name a striker STL");
+        assertTrue(fortyThreeThree.contains("ST") && !fortyThreeThree.contains("STL"),
+                "4-3-3's keys should name a striker ST");
+        assertTrue(fortyThreeThree.contains("CM") && fortyFourTwo.stream().noneMatch("CM"::equals),
+                "4-3-3 has a holding midfielder CM and 4-4-2 does not — that difference is the whole "
+                        + "reason a 4-3-3 profile could not be played before");
     }
 
     @Test
@@ -133,21 +156,29 @@ class TacticsRulesProviderTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("a 4-3-3 profile is refused rather than played on 4-4-2 players")
-    void aProfileInAnotherVocabularyIsRefused() {
-        // The situation the owner actually has: four of the five saved profiles are 4-3-3, authored in
-        // CM/WL/WR/ST, which the engine has no players for. Serving one would put a striker on a left
-        // winger's cell. Falling back is the honest answer; doing it without saying so is the defect.
-        Team club = aClub("Four three three");
-        saveProfile(club, "4-3-3", rulesJson(SLOTS_433, 0));
+    @DisplayName("a 4-3-3 profile is now played, and a mislabelled one is still refused")
+    void aProfileIsAcceptedInItsOwnFormationAndRefusedUnderAWrongLabel() {
+        // Four of the owner's five saved profiles are 4-3-3. They used to be refused, because the engine
+        // only had 4-4-2's eleven role keys and every one of their rules was keyed to a slot nothing wore.
+        Team honest = aClub("Four three three");
+        saveProfile(honest, "4-3-3", rulesJson(SLOTS_433, 0));
 
-        TacticsRules rules = provider.forTeam(club.getId());
+        TacticsRules played = provider.forTeam(honest.getId());
 
-        assertTrue(!rules.getSource().contains("tactics editor"),
-                "a 4-3-3 profile was applied to a 4-4-2 engine. Its keys are CM/WL/WR/ST and the engine's "
-                        + "players are ML/MR/STL/STR, so each of its rules would be keyed to a slot nothing "
-                        + "occupies — the tactics would go quiet instead of wrong, which is worse.");
-        assertTrue(rules.getRuleCount() > 0, "the fallback must still give the club a shape to play");
+        assertTrue(played.getSource().contains("tactics editor"),
+                "a 4-3-3 profile is still refused. Its keys are CM/WL/WR/ST and the engine now builds an "
+                        + "XI wearing exactly those for a 4-3-3, so there is nothing left to refuse on. "
+                        + "Source was: " + played.getSource());
+        assertNotEquals(0, played.getRuleCount(), "the 4-3-3 profile produced no rules");
+
+        // The check stays per formation, so a profile that uses 4-3-3 keys while LABELLING itself 4-4-2
+        // is a mismatch worth naming rather than applying: a midfielder would stand where a winger
+        // belongs and nobody would be a striker.
+        Team mislabelled = aClub("Mislabelled");
+        saveProfile(mislabelled, "4-4-2", rulesJson(SLOTS_433, 0));
+
+        assertTrue(!provider.forTeam(mislabelled.getId()).getSource().contains("tactics editor"),
+                "a profile using 4-3-3 role keys was applied under a 4-4-2 label.");
     }
 
     @Test

@@ -73,6 +73,8 @@ public class SimMatchService {
     private final ZoneLoadRecorder zoneLoadRecorder;
     private final NationalRatingService nationalRatingService;
     private final org.example.footballmanager.newLogic.service.TacticsRulesProvider tacticsRules;
+    private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository
+            teamTacticsProfileRepository;
 
     /** Simulate a full match between two DB teams using their real saved squads
      *  (mapped into the engine's 4-4-2 slot structure). Falls back to synthetic
@@ -143,7 +145,7 @@ public class SimMatchService {
                     lineup.getOrderedStartingPlayers();
             if (ordered != null && ordered.size() >= 11) {
                 return RealSquadFactory.buildSquad(lineup, side, benchOut,
-                        coachFactorFor(team) * cohesionFactorFor(team));
+                        coachFactorFor(team) * cohesionFactorFor(team), formationOf(lineup, team));
             }
         }
         // No usable lineup template → build the XI from the team's real DB
@@ -153,7 +155,36 @@ public class SimMatchService {
                 playerRepository.findByTeamId(team.getId());
         if (squad == null || squad.size() < 11) return null;
         return RealSquadFactory.buildSquadFromPlayers(squad, side,
-                coachFactorFor(team) * cohesionFactorFor(team));
+                coachFactorFor(team) * cohesionFactorFor(team), formationOf(null, team));
+    }
+
+    /**
+     * The shape this club actually plays in.
+     *
+     * <p>The lineup template's own formation first — that is what the manager picked on the screen — and
+     * then the tactical editor profile, because a club can have an editor shape and no saved lineup. The
+     * formation decides the eleven role keys the engine wears and where each role's anchor cell is, so
+     * this is what turns "the editor holds a 4-3-3" into "the striker stands where a 4-3-3 striker
+     * stands".
+     *
+     * <p>Falls back to the engine's 4-4-2 rather than inventing one: a club that has expressed no
+     * preference gets the shape the engine has always given it, which is also what every existing caller
+     * gets when this returns null.
+     */
+    private String formationOf(Lineup lineup, Team team) {
+        if (lineup != null && lineup.getFormation() != null && !lineup.getFormation().isBlank()) {
+            return lineup.getFormation();
+        }
+        if (team != null && team.getId() != null) {
+            String fromEditor = teamTacticsProfileRepository.findByTeamId(team.getId())
+                    .map(org.example.footballmanager.newLogic.model.tactics.TeamTacticsProfile::getFormation)
+                    .filter(f -> f != null && !f.isBlank())
+                    .orElse(null);
+            if (fromEditor != null) {
+                return fromEditor;
+            }
+        }
+        return null;
     }
 
     /**
