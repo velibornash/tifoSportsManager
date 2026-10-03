@@ -281,7 +281,7 @@ public class CupFixtureSeeder {
      * running the national cup's round-for-week arithmetic over them was never going to be right.
      */
     private Competition nationalCup() {
-        return competitions.findFirstDomesticCup(CompetitionType.CUP, CompetitionScope.INTERNATIONAL,
+        return competitions.findFirstNationalScoped(CompetitionType.CUP, CompetitionScope.INTERNATIONAL,
                         org.springframework.data.domain.Limit.of(1))
                 .orElse(null);
     }

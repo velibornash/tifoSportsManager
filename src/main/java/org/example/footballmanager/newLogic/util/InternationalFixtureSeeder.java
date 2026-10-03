@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.util;
 
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
+import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.GameDay;
 import org.example.footballmanager.newLogic.model.MatchFixture;
@@ -53,6 +54,35 @@ public class InternationalFixtureSeeder {
     private final PlayerRepository players;
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
 
+    /**
+     * The country's senior internationals, by what they are rather than by which row comes first.
+     *
+     * <p>Matches on {@code type == INTERNATIONAL} and a scope that is not
+     * {@link CompetitionScope#INTERNATIONAL} — the Champions, Masters and Challenge cups are also
+     * INTERNATIONAL by type and are drawn by their own code on their own calendar. Selecting "the first
+     * INTERNATIONAL row" would let this seeder draw a continental club cup.
+     */
+    private Competition nationalInternationals() {
+        return competitions.findFirstNationalScoped(
+                CompetitionType.INTERNATIONAL, CompetitionScope.INTERNATIONAL,
+                org.springframework.data.domain.Limit.of(1)).orElse(null);
+    }
+
+    /** True when this competition already has a drawn tie for the season. The record of a draw. */
+    private boolean hasFixturesFor(Competition competition, int seasonYear) {
+        return fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
+                competition.getId(), seasonYear, 1) > 0;
+    }
+
+    private Competition createInternationals() {
+        Competition international = new Competition();
+        international.setName("Internationals");
+        international.setType(CompetitionType.INTERNATIONAL);
+        international.setTeamType(CompetitionTeamType.NATIONAL_TEAM);
+        international.setScope(CompetitionScope.NATIONAL);
+        return competitions.save(international);
+    }
+
     /** The running world's season start, which is what a fixture date is measured from. */
     private LocalDateTime seasonStart() {
         return clocks.findById(1L)
@@ -73,15 +103,22 @@ public class InternationalFixtureSeeder {
 
     @Transactional
     public void seedIfMissing(int seasonYear) {
-        if (competitions.findAll().stream().anyMatch(c -> c.getType() == CompetitionType.INTERNATIONAL)) {
+        Competition existing = nationalInternationals();
+
+        // **Idempotent by fixture count, not by the competition existing.**
+        //
+        // This used to open with "does any INTERNATIONAL competition exist", and it saved the competition
+        // on the line after — so the first run created it, found fewer than two sides with a squad, and
+        // returned. The competition was committed, so **every later run took the guard and returned
+        // immediately**: the seeder could never draw, and nothing anywhere reported a failure.
+        // `MatchdayJob` then found the empty competition every week, found no fixtures, and was marked
+        // DONE — so `job_run` recorded a successful international matchday that played nothing, for ever.
+        //
+        // The fixtures are the record of whether the draw happened, which is the rule `CupFixtureSeeder`
+        // and `NationalTeamSeeder` both already use. A flag is a place for a re-run to be quietly wrong.
+        if (existing != null && hasFixturesFor(existing, seasonYear)) {
             return;
         }
-
-        Competition international = new Competition();
-        international.setName("Internationals");
-        international.setType(CompetitionType.INTERNATIONAL);
-        international.setTeamType(CompetitionTeamType.NATIONAL_TEAM);
-        Competition saved = competitions.save(international);
 
         // findByType, not findClubTeamsForOperations: the club query returns no national sides at
         // all, which read as "no squads seeded" rather than "you asked the wrong repository".
@@ -106,10 +143,17 @@ public class InternationalFixtureSeeder {
         }
 
         if (entrants.size() < 2) {
-            log.info("Internationals: {} senior side(s) exist, {} have a squad, so {} tie(s) can be "
-                            + "drawn. More countries need seeding.", nationalSides.size(), entrants.size(), 0);
+            // **Nothing is created on this path, deliberately.** Creating an empty competition here is
+            // what made the seeder unable to run again, and an empty one is also what MatchdayJob finds
+            // and reports as a successful matchday with no fixtures. A world that is not ready to be
+            // drawn is left exactly as it was, so a later seeding pass can still draw it.
+            log.warn("Internationals: {} senior side(s) exist, {} have a squad, so no tie can be drawn "
+                            + "(two are needed). Nothing was created; this will run again once more sides "
+                            + "have squads.", nationalSides.size(), entrants.size());
             return;
         }
+
+        Competition saved = existing != null ? existing : createInternationals();
 
         int made = 0;
         for (int i = 0; i + 1 < entrants.size(); i += 2) {

@@ -34,7 +34,7 @@ public interface CompetitionRepository extends JpaRepository<Competition, Long> 
     List<Competition> findByType(CompetitionType type);
 
     /**
-     * The lowest-id domestic cup.
+     * The lowest-id competition of a type whose scope is <b>not</b> INTERNATIONAL.
      *
      * <p><b>"Lowest id" is the whole rule, and it is a rule rather than an accident of iteration.</b>
      * The seeder used to write {@code findAll().stream().filter(type == CUP).findFirst()}, and
@@ -42,7 +42,12 @@ public interface CompetitionRepository extends JpaRepository<Competition, Long> 
      * come back in. This returns the same cup that rule selects, deterministically, and it reads only
      * the domestic cups rather than the whole competition table.
      *
-     * <p><b>It is still only ever one country's cup</b>, which is a parked owner decision rather than
+     * <p>Named for the discriminator rather than for a competition kind, because the same rule finds the
+     * national cup and the senior internationals competition — and a method called
+     * {@code findFirstDomesticCup} being asked for internationals is the sort of thing that reads like a
+     * mistake even when it is correct.
+     *
+     * <p><b>For the cup it is still only ever one country's</b>, which is a parked owner decision rather than
      * a defect: with one job drawing for forty-eight countries, the lowest-id domestic cup in the
      * database is the only one it can reach. See the board on {@code nationalCup()}.
      *
@@ -61,7 +66,7 @@ public interface CompetitionRepository extends JpaRepository<Competition, Long> 
      */
     @Query("SELECT c FROM Competition c WHERE c.type = :type "
             + "AND (c.scope IS NULL OR c.scope <> :scope) ORDER BY c.id ASC")
-    Optional<Competition> findFirstDomesticCup(@Param("type") CompetitionType type,
+    Optional<Competition> findFirstNationalScoped(@Param("type") CompetitionType type,
                                                @Param("scope") CompetitionScope scope,
                                                Limit limit);
     Optional<Competition> findByName(String name);
