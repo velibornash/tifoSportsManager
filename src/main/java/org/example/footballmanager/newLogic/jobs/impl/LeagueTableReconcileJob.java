@@ -29,13 +29,30 @@ public class LeagueTableReconcileJob implements DayJob {
     /** 01:00 — late enough that a fixture dragged in late by a slow simulation is finished. */
     private static final int RECONCILE_HOUR = 1;
 
+    /**
+     * The hour to use instead of {@link #RECONCILE_HOUR}, for a job that shares a day with the matchday
+     * it repairs. Null for the ordinary case.
+     *
+     * <p>Day 4 at 01:00 genuinely <em>is</em> the morning after the day-3 match, so the default is
+     * right there. The second instance repairs the <b>day-7</b> match and cannot use it: 01:00 on day 7 is
+     * six hours <em>before</em> the match it exists to repair. It passes an hour late enough that the
+     * matchday is finished, and before the 23:00 week and season rollover.
+     */
+    private final Integer hourOverride;
+
     private final String key;
     private final int day;
     private final LeagueTableReconciliationService tables;
 
     public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables) {
+        this(key, day, null, tables);
+    }
+
+    public LeagueTableReconcileJob(String key, int day, Integer hourOverride,
+                                   LeagueTableReconciliationService tables) {
         this.key = key;
         this.day = day;
+        this.hourOverride = hourOverride;
         this.tables = tables;
     }
 
@@ -56,7 +73,7 @@ public class LeagueTableReconcileJob implements DayJob {
 
     @Override
     public int hour() {
-        return RECONCILE_HOUR;
+        return hourOverride != null ? hourOverride : RECONCILE_HOUR;
     }
 
     @Override

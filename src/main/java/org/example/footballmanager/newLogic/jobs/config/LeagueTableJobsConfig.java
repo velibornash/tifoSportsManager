@@ -30,8 +30,28 @@ public class LeagueTableJobsConfig {
     /** Day 3 is the first league day, so this repairs the night after it. */
     private static final int DAY_AFTER_FIRST_LEAGUE_MATCHDAY = 4;
 
-    /** Day 7 is the second league day, so this repairs the night after it. */
-    private static final int DAY_AFTER_SECOND_LEAGUE_MATCHDAY = 8;
+    /**
+     * Day 7 is the second league day — and the repair runs on <b>day 7</b>, late.
+     *
+     * <p>This was <b>8</b>, and <b>day 8 does not exist</b>: the calendar is days 1 to 7
+     * ({@code GameDay.LAST}), so {@code league-table-reconcile-b} could never fire. It had never run, and
+     * nothing said so — the second league matchday's results were never reconciled, by a job that existed
+     * specifically to reconcile them. Caught by {@code EveryGameDayHasAJobTest}, which asks what is
+     * registered rather than what a document claims.
+     *
+     * <p><b>Day 1 of the following week is the day after day 7, and it is wrong here.</b> This job takes
+     * its season from the dispatch context — "the season the runner dispatched in" — and the week rolls
+     * over at day 7 hour 23, so by day 1 it would be handed the <em>new</em> season and rebuild tables
+     * that were created minutes earlier, leaving the week it was meant to repair unrepaired.
+     *
+     * <p>So it runs on day 7 itself, at an hour with only two constraints and both are already fixed
+     * elsewhere in the codebase: <b>after the 16:00 league match</b> it repairs, and <b>before the 23:00
+     * week and season rollover</b> that would move the season out from under it.
+     */
+    private static final int DAY_AFTER_SECOND_LEAGUE_MATCHDAY = 7;
+
+    /** Late enough that every match of the day-7 matchday is finished; before the 23:00 rollover. */
+    private static final int HOUR_AFTER_SECOND_LEAGUE_MATCHDAY = 22;
 
     @Bean
     public LeagueTableReconcileJob leagueTableReconcileAfterFirstMatchday(
@@ -44,6 +64,6 @@ public class LeagueTableJobsConfig {
     public LeagueTableReconcileJob leagueTableReconcileAfterSecondMatchday(
             LeagueTableReconciliationService tables) {
         return new LeagueTableReconcileJob(KEY_AFTER_SECOND_LEAGUE_DAY,
-                DAY_AFTER_SECOND_LEAGUE_MATCHDAY, tables);
+                DAY_AFTER_SECOND_LEAGUE_MATCHDAY, HOUR_AFTER_SECOND_LEAGUE_MATCHDAY, tables);
     }
 }
