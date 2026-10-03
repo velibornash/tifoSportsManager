@@ -145,6 +145,28 @@ public class TransferController {
         return transferService.rejectOffers(playerId, request.getTeamId());
     }
 
+    /**
+ * Settles a player's objection to being on the transfer list (P2-3).
+ *
+ * <p>The manager's decision, and it is a real one: uphold the player and keep him, or pay
+ * compensation and carry on selling him. Doing nothing leaves the objection standing, because a
+ * player does not change his mind because a club relisted him.
+ */
+@PostMapping("/objection/{playerId}/resolve")
+    public TransferDTO resolveObjection(@PathVariable Long playerId,
+                                        @RequestParam String resolution,
+                                        @RequestBody TransferActionRequest request) {
+        TransferService.ObjectionResolution mode;
+        try {
+            mode = TransferService.ObjectionResolution.valueOf(resolution.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new org.example.footballmanager.newLogic.exception.ApiException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "INVALID_RESOLUTION",
+                    "Resolution must be UPHELD (keep the player) or PAID (pay to overrule him).");
+        }
+        return transferService.resolveListingObjection(playerId, mode, request.getTeamId());
+    }
+
     @DeleteMapping("/remove/{playerId}")
     public void removeFromList(@PathVariable Long playerId, @RequestParam Long teamId) {
         transferService.removeFromTransferList(playerId, teamId);

@@ -716,13 +716,37 @@ already send it.
 
 ---
 
-### P2-3 — Player can refuse to be listed — the anti-daytrade mechanic
+### ~~P2-3 — Player can refuse to be listed~~ ✅ `ListedPlayerCanObjectTest` 6/6
 
-One day. The `objection` field already exists to support it. One of the more interesting differentiators
-in the analysis, because it is a mechanic neither competitor has rather than a number being bigger.
+The anti-speculation mechanic. Listing used to cost the player's position nothing at all — a club
+could list anybody at any price and the dressing room had no say.
 
-**Exit criteria:** a listed player can object; the club cannot list him without resolving it; refusal has a
-visible reason.
+**Two pieces of dead code became load-bearing rather than being rewritten:**
+`SquadRole.reluctanceToSell()` (no callers anywhere) now decides how much a club's valuation of a
+player translates into his resistance, and the `PlayerContractService.wageDemand` model — already
+answering "is he paid what he thinks he is worth" for renewals — supplies the grievance.
+
+**Landed:**
+- [x] `ListingObjection` — three distinct reasons (`WAGE_DISPUTE`, `DOES_NOT_WANT_TO_LEAVE`,
+      `UNHAPPY_TO_BE_LISTED`), each with the sentence the player says. **Not** a `TransferStatus`:
+      the `transfer` table has a live Postgres `CHECK` constraint on its four values that
+      `ddl-auto=update` will not recreate
+- [x] Triggered in-game on a human club's listing, from reluctance + whether he is underpaid
+- [x] **The club cannot delist him** (`409 PLAYER_OBJECTION_OPEN`) — delisting is how a club would
+      make the objection go, so it is what has to be blocked
+- [x] **The club cannot accept a bid** while it stands; the refusal carries the reason, not just a code
+- [x] **The objection survives re-listing.** The `transfer` row is unique per player and recycled on
+      every listing, so clearing it there would make "reject the bids, take him off, put him back"
+      a free way to launder a refusal — the exact thing the mechanic exists to prevent
+- [x] Two resolutions, so the manager has a real choice: `UPHELD` (withdraw, keep him — done as part
+      of resolving, so he is not sent to a Remove button the objection just blocked) or `PAID`
+      (5% of the asking price, charged and ledgered, and the sale can continue)
+- [x] `removeFromTransferList` moved onto `requireSeller`, which **requires** a team id; it had the
+      weaker `actingTeamId != null` guard that P2-2 removed elsewhere
+- [x] Every test proven able to fail, including one that had to be **rewritten** because it passed
+      against broken code (see the log)
+
+---
 
 ### ~~P2-4 — Listing fee as a percentage of the asking price~~ ✅ `ListingFeeScalesWithTheAskingPriceTest` 5/5
 

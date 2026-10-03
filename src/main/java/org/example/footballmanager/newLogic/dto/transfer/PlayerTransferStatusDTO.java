@@ -35,5 +35,9 @@ public class PlayerTransferStatusDTO {
     private boolean hasPricedOffer;
     /** The owning club can clear all interest/offers without accepting one (Sprint 0.2). */
     private boolean canClearInterest;
+    /** The player is objecting to being listed; the club must resolve it before selling him. */
+    private String listingObjection;
+    private String listingObjectionReason;
+    private Double objectionCompensation;
     private String summary;
 }

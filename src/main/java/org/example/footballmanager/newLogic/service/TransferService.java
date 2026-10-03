@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TransferOfferDTO;
 import org.example.footballmanager.newLogic.exception.ApiException;
+import org.example.footballmanager.newLogic.model.ListingObjection;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Team;
@@ -43,6 +44,7 @@ public class TransferService {
     private final ClubNeedService clubNeeds;
     private final NegotiationService negotiation;
     private final TransferListingFeeService listingFees;
+    private final ListingObjectionService listingObjections;
 
 
     private final TransferRepository transferRepository;
@@ -60,10 +62,12 @@ public class TransferService {
                            TransferWindowService transferWindows,
                            ClubNeedService clubNeeds,
                            NegotiationService negotiation,
-                           TransferListingFeeService listingFees) {
+                           TransferListingFeeService listingFees,
+                           ListingObjectionService listingObjections) {
         this.clubNeeds = clubNeeds;
         this.negotiation = negotiation;
         this.listingFees = listingFees;
+        this.listingObjections = listingObjections;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -254,14 +258,15 @@ public class TransferService {
         dto.setOffers(offerDtos(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setCanList(ownedByViewer && !listed);
-        dto.setCanRemove(ownedByViewer && listed && !hasPricedOffer(transfer));
+        dto.setCanRemove(ownedByViewer && listed && !hasPricedOffer(transfer) && !objecting(transfer));
         dto.setCanBuyListed(listed && viewerTeamId != null && !ownedByViewer);
         dto.setCanDirectBuy(viewerTeamId != null && !ownedByViewer && !listed);
-        dto.setCanAcceptOffer(ownedByViewer && openOffer);
+        dto.setCanAcceptOffer(ownedByViewer && openOffer && !objecting(transfer));
         dto.setCanRejectOffer(ownedByViewer && openOffer);
         // Bare interest entries must not be able to trap a seller on the list (Sprint 0.2).
         dto.setCanClearInterest(ownedByViewer && listed && !offerSummaries(transfer).isEmpty());
         dto.setHasPricedOffer(hasPricedOffer(transfer));
+        applyObjection(dto, transfer);
         dto.setSummary(buildPlayerSummary(dto));
         return dto;
     }
@@ -294,11 +299,10 @@ public class TransferService {
     @Transactional
     public void removeFromTransferList(Long playerId, Long actingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
-                    "Only the owning club can remove this player from the transfer list.");
-        }
+        requireSeller(transfer, actingTeamId, "remove a player from the transfer list");
+        // A player who is objecting cannot be quietly taken off the list either. Removing is how a
+        // club would make the objection go away, so it is the action the objection has to block.
+        listingObjections.requireResolved(transfer, "remove this player from the transfer list");
         // Only a PRICED offer blocks delisting. A bare "register interest" entry is not an offer,
         // so treating it as one used to soft-lock the player on the list forever: canRemove went
         // false while canRejectOffer stayed false too, leaving no escape route.
@@ -488,6 +492,8 @@ public class TransferService {
     public TransferDTO acceptOffer(Long playerId, Long offerId, Long actingTeamId) {
         Transfer transfer = getOpenOfferTransfer(playerId);
         requireSeller(transfer, actingTeamId, "accept an incoming offer");
+        // Accepting a bid is the act of selling him, so it is exactly what an objection is about.
+        listingObjections.requireResolved(transfer, "accept an offer");
 
         if (offerId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "OFFER_REQUIRED",
@@ -549,7 +555,67 @@ public class TransferService {
         return dto;
     }
 
-    @Transactional
+    /**
+ * How a club settles a player's objection to being listed.
+ *
+ * <p>Two answers, and the club has to choose between them: give the player what he asked for, or pay
+ * him to let it go. Keeping him is always the third option and is what happens if the manager does
+ * nothing — which is why the objection surviving a re-listing matters.
+ */
+public enum ObjectionResolution {
+    /** Uphold the player: withdraw the listing and keep him. */
+    UPHELD,
+    /** Overrule the player: pay compensation and carry on selling him. */
+    PAID
+}
+
+@Transactional
+public TransferDTO resolveListingObjection(Long playerId, ObjectionResolution resolution,
+                                                Long actingTeamId) {
+        Transfer transfer = transferRepository.findByPlayerId(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND",
+                        "This player is not on the transfer list."));
+        requireSeller(transfer, actingTeamId, "resolve an objection");
+        ListingObjection objection = transfer.getListingObjection();
+        if (objection == null || objection.isNone()) {
+            throw new ApiException(HttpStatus.CONFLICT, "NO_OBJECTION",
+                    "This player is not objecting to being listed.");
+        }
+        if (resolution == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "RESOLUTION_REQUIRED",
+                    "Either uphold the player and withdraw the listing, or pay compensation to overrule him.");
+        }
+
+        Team sellerTeam = transfer.getSellerTeam() != null
+                ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
+        Player player = transfer.getPlayer();
+        String saidNo = objection.label();
+
+        if (resolution == ObjectionResolution.UPHELD) {
+            // Withdrawing is the resolution, not a separate step afterwards: a manager who upholds
+            // the player must not have to find the Remove button that an objection just blocked.
+            for (TransferOffer offer : liveOffers(transfer)) {
+                negotiation.reject(offer);
+            }
+            transfer.setBuyerTeam(null);
+            transfer.setStatus(TransferStatus.CANCELLED);
+            transfer.setCompletedAt(LocalDateTime.now());
+            listingObjections.clear(transfer);
+        } else {
+            double paid = listingObjections.payCompensation(sellerTeam, transfer);
+            log.info("{} paid EUR {} to clear {}'s objection and keep him listed",
+                    sellerTeam.getName(), paid, player.getName());
+        }
+
+        TransferDTO dto = toTransferDto(transferRepository.save(transfer), actingTeamId);
+        dto.setActionMessage(resolution == ObjectionResolution.UPHELD
+                ? player.getName() + " was withdrawn from the transfer list. He stays yours."
+                : player.getName() + " accepted a compromise and stays on the list. Said when he "
+                        + "objected: \"" + saidNo + "\"");
+        return dto;
+    }
+
+@Transactional
     public void simulateWeeklyMarketActivity() {
         // The market only runs during a registration window. This is called every week from the
         // season advance, so without the guard it would attempt transfers for most of the season and
@@ -608,6 +674,16 @@ public class TransferService {
         // and never used, so re-pricing an existing listing was free and untracked; a re-listing
         // that only re-sets the price is not a new listing and is not charged.
         listingFees.charge(sellerTeam, player, saved.getAskingPrice(), alreadyListed);
+
+        // The player is a third party to the listing decision. Human clubs only, for the same
+        // reason the fee is: an AI club listing its own player does not get a labour dispute.
+        if (sellerTeam.isHumanControlled()) {
+            ListingObjection raised = listingObjections.raiseIfWarranted(saved, nextRandomDouble());
+            if (raised.isBlocking()) {
+                log.info("{} objects to being listed: {}", player.getName(), raised);
+                transferRepository.save(saved);
+            }
+        }
         return saved;
     }
 
@@ -722,6 +798,37 @@ public class TransferService {
             return false;
         }
         return transfer.getBuyerTeam() == null;
+    }
+
+    /** Whether the player is objecting to being on the list. */
+    private boolean objecting(Transfer transfer) {
+        return transfer != null && transfer.getListingObjection() != null
+                && transfer.getListingObjection().isBlocking();
+    }
+
+    /** The objection and what overruling it would cost, for the screens that sell the player. */
+    private void applyObjection(TransferDTO dto, Transfer transfer) {
+        if (!objecting(transfer)) {
+            dto.setListingObjection(null);
+            dto.setListingObjectionReason(null);
+            dto.setObjectionCompensation(0.0);
+            return;
+        }
+        dto.setListingObjection(transfer.getListingObjection().name());
+        dto.setListingObjectionReason(transfer.getListingObjectionReason());
+        dto.setObjectionCompensation(listingObjections.compensationFor(transfer));
+    }
+
+    private void applyObjection(PlayerTransferStatusDTO dto, Transfer transfer) {
+        if (!objecting(transfer)) {
+            dto.setListingObjection(null);
+            dto.setListingObjectionReason(null);
+            dto.setObjectionCompensation(0.0);
+            return;
+        }
+        dto.setListingObjection(transfer.getListingObjection().name());
+        dto.setListingObjectionReason(transfer.getListingObjectionReason());
+        dto.setObjectionCompensation(listingObjections.compensationFor(transfer));
     }
 
     private boolean hasOpenOffer(Transfer transfer) {
@@ -1194,9 +1301,11 @@ public class TransferService {
         dto.setOffers(offerDtos(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setBuyableByViewer(viewerTeamId != null && !ownedByViewer && isActiveListing(transfer));
-        dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer) && liveOffers(transfer).isEmpty());
-        dto.setCanAcceptOffer(ownedByViewer && hasOpenOffer);
+        dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer)
+                && liveOffers(transfer).isEmpty() && !objecting(transfer));
+        dto.setCanAcceptOffer(ownedByViewer && hasOpenOffer && !objecting(transfer));
         dto.setCanRejectOffer(ownedByViewer && hasOpenOffer);
+        applyObjection(dto, transfer);
         return dto;
     }
 }

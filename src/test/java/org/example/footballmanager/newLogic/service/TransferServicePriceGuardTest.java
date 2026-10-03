@@ -79,7 +79,8 @@ class TransferServicePriceGuardTest {
                 mock(TransferWindowService.class),
                 new ClubNeedService(playerRepository, mock(PlayerContractRepository.class)),
                 negotiation,
-                mock(TransferListingFeeService.class)
+                mock(TransferListingFeeService.class),
+                mock(ListingObjectionService.class)
         );
 
         seller = new Team();

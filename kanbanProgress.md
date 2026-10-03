@@ -292,6 +292,111 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-3: a player can refuse to be listed, and the club has to choose
+
+### Built on two things that were already written and never used
+
+- **`SquadRole.reluctanceToSell()`** — a STAR at 0.92 against a YOUTH at 0.12, and **zero callers
+  anywhere in `src/`**. It is exactly the input an "I don't want to be listed" gate wants, so it is
+  now load-bearing rather than duplicated by a new constant.
+- **`PlayerContractService.wageDemand`** — already answered "is he paid what he thinks he is worth"
+  for renewals and for transfer offers. The grievance term reuses it rather than inventing a second,
+  disagreeing wage model.
+
+Likelihood is `reluctance * 0.55 + grievance * 0.45`: a club does not get a rebellion every time it
+lists a teenager, and a player on or above his own demand does not object over money at all.
+
+### Three reasons, not one boolean
+
+`WAGE_DISPUTE`, `DOES_NOT_WANT_TO_LEAVE`, `UNHAPPY_TO_BE_LISTED` — kept apart because they have three
+different managerial answers. A club pays a man more to answer a wage dispute. A club that cannot
+afford to lose its best player has to choose between paying compensation and keeping him. One
+boolean would leave a manager with a fee to pay and no idea what it bought.
+
+### The loophole, and why the objection deliberately survives re-listing
+
+The `transfer` table has a **UNIQUE constraint on `player_id`** and one row per player, recycled on
+every listing. Clearing the objection in the listing path would therefore have made *"reject the
+bids, take him off the list, put him straight back"* a free way to wipe a player's refusal — which is
+the entire thing the mechanic exists to prevent. The objection is cleared only by resolving it.
+
+It also does not block a **rival** club bidding. The objection is a labour question between a player
+and the club putting him on the list; blocking incoming bids would make the mechanic unreachable in a
+marketplace. Recorded as a design decision, not an oversight.
+
+### `ListingObjection` is not a `TransferStatus`, and that is not a style preference
+
+`\d transfer` on the dev database shows a live `transfer_status_check` CHECK constraint over the four
+status values. `ddl-auto=update` does **not** reliably recreate check constraints, so a fifth constant
+would fail on insert until somebody dropped it by hand. A listing can be `LISTED` *and* objected to at
+the same time, so it was never the same axis.
+
+### The test that passed against broken code, and had to be rewritten
+
+The obvious test — object, relist, assert the objection survives — **passed with the guard removed**,
+because a relisting re-evaluates the player from scratch and re-raised the objection with the *same*
+reason. It could not tell "survived" from "re-raised".
+
+Rewritten so the two are distinguishable: the player's wage grievance is **cured** between the two
+evaluations, so a fresh evaluation would reach a *different* conclusion
+(`DOES_NOT_WANT_TO_LEAVE`). The standing reason must survive that.
+
+Then a second, subtler problem: I tried to assert that precondition ("a fresh evaluation would say
+`DOES_NOT_WANT_TO_LEAVE`") and **it cannot be written** — with the guard working, `raiseIfWarranted`
+returns the standing objection and never performs a fresh evaluation, so what a fresh evaluation
+*would* conclude is unobservable through the API. Rather than assert something unverifiable, the
+setup is validated by the break itself: with the guard removed the test fails with
+`expected: <WAGE_DISPUTE> but was: <DOES_NOT_WANT_TO_LEAVE>`, which is only reachable once the
+grievance really has been cured.
+
+| Break | Result |
+|---|---|
+| Relisting may overwrite a standing objection | 1 fail — `expected: <WAGE_DISPUTE> but was: <DOES_NOT_WANT_TO_LEAVE>` |
+| `requireResolved` never refuses | 3 fail — both "cannot delist" and "cannot accept a bid" throw nothing |
+
+### Two test bugs of my own, both instructive
+
+1. `theClubCannotAcceptABidWhileHeObjects` asserted `PLAYER_OBJECTION_OPEN` and got `NO_OPEN_OFFERS` —
+   I had never created an offer, so the guard was never reached. A refusal from an *earlier* check is
+   not a test of this one.
+2. `payingCompensationClearsTheObjection` asserted an absolute balance of EUR 19,600,000 and got
+   19,400,000, because **the club had also paid the P2-4 listing fee** (2.5% of 8,000,000). Asserting
+   the absolute would have been asserting the other feature as well. Changed to a delta measured across
+   the resolution call only.
+
+### Also fixed in passing
+
+`removeFromTransferList` used `actingTeamId != null && !Objects.equals(...)` — the weak guard that
+P2-2 replaced elsewhere in the same class with `requireSeller`, where an omitted `teamId` skipped the
+ownership check entirely. It now uses the correct one, so it **requires** a team id.
+
+### Recorded, not changed — and this one is load-bearing
+
+`NegotiationService.playerObjection` is **recorded and never enforced.** `playerWouldSign` has zero
+callers in `src/main`; `settle` moves the player and sets his earnings whatever the objection says,
+and `buyListedPlayer` passes the player's existing wage with no wage check at all. The class javadoc
+claims a deal is "recorded-but-refused rather than silently completed" — the recording happens; the
+refusing does not.
+
+**Not fixed here, deliberately.** Enforcing it would change shared settlement used by the AI market at
+14,880 clubs, and it would turn the existing green transfer tests red for a reason that is a *design
+question*, not a bug: should a player who refused the wage be able to be transferred anyway? That is
+the owner's call, and it belongs on the board rather than inside a P2 feature. **Logged for P0.**
+
+Two more pieces of dead code noted by the same investigation, both plausible follow-ups:
+`MoraleService.applyStanding`'s `if (listedForTransfer) morale -= 4.0` has no production caller, so
+**being listed currently costs a player nothing at all**; and `PlayerContractService.renew` still does
+`lengthMonths / 12.0` where `seasonsFor()` uses `MONTHS_PER_SEASON = 3`.
+
+### Regression check
+
+`ListedPlayerCanObjectTest`, `ListingFeeScalesWithTheAskingPriceTest`, `SellerAcceptsANamedOfferTest`,
+`TransferServicePriceGuardTest`, `TransferMarketSquadReadCountTest`, `TransferFeeServiceTest`,
+`TransferWindowServiceTest`, `PlayerContractServiceTest`, `MoraleAndBudgetServiceTest` —
+**76 tests, 0 failures, 0 errors.** `mvn clean package` succeeds.
+
+---
+
 ## 2026-10-03 — P2-4: listing was free, and the flag that would have stopped it was already there
 
 ### "Two lines" was optimistic: there was no fee at all
