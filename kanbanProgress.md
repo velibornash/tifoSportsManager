@@ -24,6 +24,72 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `5df1a88` — B3: the seeder that could never run again
+
+**The board's B3, and its own summary was accurate in every particular:** *"It persists the row at `:75`
+and only checks `entrants.size() < 2` at `:99`; the guard is 'does any INTERNATIONAL competition exist'.
+So the first boot creates it, draws nothing, and can never run again. `MatchdayJob` then finds it, finds no
+fixtures, logs at debug and is marked DONE — every week records a successful international matchday that
+played nothing."*
+
+### What it was
+
+```java
+if (competitions.findAll().stream().anyMatch(c -> c.getType() == CompetitionType.INTERNATIONAL)) return;
+Competition saved = competitions.save(new Competition(/* INTERNATIONAL */));
+...
+if (entrants.size() < 2) { log.info(...); return; }     // <- the competition is already committed
+```
+
+**The first run created the competition, could not draw, and returned with it committed. Every run after
+that took the guard and returned immediately.** The seeder could never draw anything again, for ever, and
+**nothing anywhere reported a failure** — which is what makes it this shape of defect rather than a slow
+one.
+
+### Two changes, and only one of them is the guard
+
+1. **Idempotent by fixture count, not by the competition existing.** That is the rule `CupFixtureSeeder`
+   and `NationalTeamSeeder` both already use, and `NationalTeamSeeder` writes down why: *"a flag is a
+   place for a re-run, a restored backup or a replayed fixture to silently be wrong."*
+2. **Nothing is created on the "not enough sides" path.** This is the half that is easy to miss. Creating
+   an empty competition there *is* the trap, and an empty one is also exactly what `MatchdayJob` finds and
+   records as a successful matchday with no fixtures. A world that is not ready to be drawn is now left
+   **exactly as it was**, so a later seeding pass can still draw it.
+
+### The selection was unscoped too
+
+It asked for *"the first INTERNATIONAL row"*, and the **Champions, Masters and Challenge cups are all
+INTERNATIONAL by type**. So this seeder could have drawn a continental club cup on the senior internationals'
+calendar. It now asks for `findFirstNationalScoped` — which is why that method was **renamed** from
+`findFirstDomesticCup`: the same rule finds the national cup and the senior internationals, and a method
+called "DomesticCup" being asked for internationals reads like a mistake even when it is correct.
+
+### The guard is the SECOND run, and my first mutation passed
+
+**A test that calls the seeder once and asserts a competition exists passes against the broken code**,
+because the broken code does create one. So `InternationalFixtureSeederRetryTest` is about the retry.
+
+**My first mutation passed, and that is the part worth keeping.** I reverted the existence guard but kept
+the create-nothing-on-failure fix — so it was not the original bug, it was half of it. **The original had
+both.** Reproducing only half of a two-part bug measures nothing, and I would have recorded a verified
+guard on the strength of a mutation that never exercised the defect.
+
+Reproducing it faithfully fails two of three:
+
+```
+aFailedDrawLeavesNothingBehind   expected: <0> competitions, was: <1>
+aLaterRunDrawsOnceThereAreSides  expected: <1> tie,          was: <0>
+```
+
+**The second one is the finding.** "Two sides with squads now exist and the seeder still drew nothing. Under
+the old guard the first run had already created the competition, so this run returned at the top without
+looking at a single side." That is the defect stated as a sentence a manager would recognise: **activate
+another country, and the internationals never draw.**
+
+The third test is the counterweight — a seeder that always redraws passes both of the others perfectly
+while duplicating the whole first round every run, and the board calls a half-drawn tournament worse than
+an obviously empty one.
+
 ## `d95da9d` — D2: the zone-load window, measured on a real matchday
 
 **The board's D2:** *"`PlayerZoneLoadRepository.findLoadsPlayedSince` — no LIMIT, no pagination"* and
