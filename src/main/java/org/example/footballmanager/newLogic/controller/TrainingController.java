@@ -136,10 +136,23 @@ public class TrainingController {
 
     // Endpoint: Treniraj sve igrače u sistemu
     @PostMapping("/train-all")
-    public List<Player> trainAllPlayers() {
+    public Map<String, Object> trainAllPlayers() {
+        // **It reports; it does not return the world.**
+        //
+        // This used to return `List<Player>` — every player in the database, serialised. At the scale
+        // this project targets that is roughly 300,000 entities with their positions and skills, so the
+        // response was hundreds of megabytes of JSON that nobody asked for: the caller's only question
+        // is "did it train them", and the log line below already answers it.
+        //
+        // <b>Deliberately not paged.</b> `findAll(Pageable)` with no sort has an undefined order, and
+        // paging an unordered query can skip and repeat rows — which here would silently train some
+        // players twice and others not at all, with a count at the end claiming success. Making this
+        // safe needs a total order on the query first; that is the same hazard the recovery read has,
+        // and it is recorded rather than solved here.
         List<Player> players = playerRepository.findAll();
         players.forEach(progressionService::trainPlayer);
-        return playerRepository.saveAll(players);
+        List<Player> saved = playerRepository.saveAll(players);
+        return Map.of("trained", saved.size(), "action", "ALL_PLAYERS_TRAINED");
     }
 
     // --- New weekly training setup/report API ---

@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -104,10 +105,31 @@ public class SquadEnvironmentService {
     public int advanceWeek(Integer season, Integer week) {
         List<Team> clubs = teams.findAll();
         if (clubs == null) return 0;
+
+        // **Every squad in one query.**
+        //
+        // It read `players.findByTeamId(club.getId())` inside the loop, so a week cost one query per
+        // club — 14,880 of them once the world is 48 countries, every week of every season, to read
+        // 300,000 players that one query already had. `findByTeamIdIn` has existed for the transfer
+        // market's bulk read; this is the same fix in a second caller.
+        //
+        // Grouped by team id rather than looked up per club, because a map lookup per club is free and a
+        // query per club is not. A club with no players is an absent key, which is a fact and not a gap:
+        // `getOrDefault` gives it an empty squad and the loop's own "nothing to do" path.
+        Map<Long, List<Player>> squadsByTeam = new HashMap<>();
+        List<Long> clubIds = new ArrayList<>();
+        for (Team club : clubs) {
+            if (club != null && club.getId() != null) clubIds.add(club.getId());
+        }
+        for (Player player : players.findByTeamIdIn(clubIds)) {
+            if (player == null || player.getTeam() == null || player.getTeam().getId() == null) continue;
+            squadsByTeam.computeIfAbsent(player.getTeam().getId(), k -> new ArrayList<>()).add(player);
+        }
+
         int touched = 0;
         for (Team club : clubs) {
             if (club == null || club.getId() == null) continue;
-            List<Player> squad = players.findByTeamId(club.getId());
+            List<Player> squad = squadsByTeam.getOrDefault(club.getId(), List.of());
             if (squad == null) continue;
             for (Player p : squad) {
                 if (p == null) continue;

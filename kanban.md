@@ -526,6 +526,10 @@ the code near it has changed.
 | `event_json` written per match | 840,136 B | **17,001 B** | P1-7 |
 | A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
 | Recovery read, one matchday *(17.7M-row table)* | 4,441 ms | **still open, P1-3** | — |
+| International Elo replay — whole-world reads | 1 + 3 × matches | **1** | P1-4 |
+| Weekly squad rollover — squad reads | 1 + 14,880 | **2** | P1-4 |
+| AI friendly pass — week reads, per friendly week | ~59,520 | **2** | P1-4 |
+| `/train-all` response | every player as JSON | **`{"trained": n}`** | P1-4 |
 
 **Read the scale column.** The first three rows were measured on a 155-match village; the P1-1 rows on a
 full 89,280-match season. **A number is only comparable to a number measured the same way**, and the
@@ -683,24 +687,50 @@ landed before the read is paged, which is why P1-1 left `player_zone_load` alone
 
 ---
 
-### P1-4 — Whole-table loads still inside loops
+### P1-4 — DONE, four of nineteen. Every one of the board's five named candidates had drifted.
 
-Nine were found in D1 and fixed (`36c4d41`, `42f5305`, `037b576`, `61bb1f3`, `7374c69`). The pattern to
-hunt for is a repository call returning an entire table **inside a loop or on a request path**.
+The pattern: a repository call returning a whole table **inside a loop or on a request path**. Nineteen
+sites matched. Measurements and guards in `kanbanProgress.md`.
 
-Known remaining candidates, unverified:
-- `SeasonService:553` `teamRepository.findAll()`
-- `SeasonService:605` `playerRepository.findAll()`
-- `SeasonService:1116` `for (Competition league : competitionRepository.findAll())`
-- `NationalRatingService:239` `for (Country country : countries.findAll())` — **once per international match**
-- `CupFixtureSeeder:129` and `:271` `competitions.findAll().stream()`
+| Fixed | before | after |
+|---|---:|---:|
+| `NationalRatingService` — whole-world reads per Elo replay | 1 + 3 × matches | **1** |
+| `SquadEnvironmentService.advanceWeek` — squad reads per week | 1 + 14,880 | **2** |
+| `FriendlyRequestService.runAiFriendlyWeek` — week reads per friendly week | ~59,520 in the first loop | **2** |
+| `TrainingController /train-all` — response body | every player entity as JSON | **`{"trained": n}`** |
 
-**Exit criteria:**
-- [ ] Each candidate confirmed as still present, and each **either** fixed **or** recorded as already
-      resolved — the line numbers above are from an old board and have drifted
-- [ ] Each fix measured, as `d95da9d` did
+**Every one of these was invisible to a clock** — 48 countries is a small table, and the loop asking for it
+costs more than the query. The guards count queries, not milliseconds.
 
----
+**The board's five candidates, re-verified against source:**
+
+| Candidate | What is actually there |
+|---|---|
+| `SeasonService:553` `teamRepository.findAll()` | **Gone** — the fatigue work replaced it; `:610` says so in a comment |
+| `SeasonService:605` `playerRepository.findAll()` | **Gone**, same |
+| `SeasonService:1116` `competitions.findAll()` loop | **Gone** — no `findAll()` left in the file |
+| `NationalRatingService:239` `countries.findAll()` | **Fixed** — three per match, and `world` was already loaded at `:102` |
+| `CupFixtureSeeder:129` / `:271` | **Never an N+1.** One query filtered in Java; `:142` is the same |
+
+**Recorded, not fixed, with the reason:**
+
+- **Tier 2, once per matchday or season** — `MatchdayJob:87` (already carries a *"One query, not one per
+  competition"* comment from a previous fix), `LeagueTableReconciliationService:98` (its inner read is now
+  served by P1-1's index), `SeasonRolloverJob:71`, `CupFixtureSeeder:142`, `InternationalClubCups:397`.
+  One query each; none worth a change.
+- **Tier 3, admin buttons, repair, seeding** — `WorldIntegrityService`, `WorldRepairService`,
+  `CountryActivationService`, `SimulatedWorldSeeder`, `BotLeagueStandardBackfill`, `StaffSponsorService`.
+  Reading the world is the point of a repair or a seed. **`StaffSponsorService.seedAllClubs` still has a
+  real 1 + 14,880 N+1** inside its loop — a genuine find, on a seeding path, left as its own decision.
+
+**Two things worth keeping:**
+
+- **Only weeks 6, 11 and 12 have friendly-capable slots.** The AI friendly pass is expensive in **3 weeks
+  of a 12-week season**, not every week. A first test picked week 2, which returns before reading anything
+  and passed on a pass that did nothing.
+- **This is the third instance of one pattern** — `TransferService` (`e310856`), `SquadEnvironmentService`,
+  `FriendlyRequestService`. A collection loaded once, then re-asked inside a loop because the loop could
+  not see the copy. Three instances is a convention, not an accident.
 
 ### P1-5 — `match` grows without bound; `match_tick_states` does not grow at all
 

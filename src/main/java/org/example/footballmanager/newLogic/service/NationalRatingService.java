@@ -109,9 +109,24 @@ public class NationalRatingService {
             }
         }
 
+        // **Which country owns which national side, answered once.**
+        //
+        // It used to be `findOwningCountry(teamId)`, which walked `countries.findAll()` — and it was
+        // called three times per match: twice from `isNationalSide` and once from `isYouth`. So a replay
+        // over N internationals asked the database for the whole world 3N times, having already loaded
+        // it into `world` on the line above and thrown that copy away.
+        //
+        // 96 national sides is a small answer, so it is held in a map for the length of the replay
+        // rather than asked for again. `NationalRatingServiceQueryCountTest` pins the count at one query
+        // however many matches there are, because the shape of this bug is invisible in a clock: it is a
+        // loop inside a loop, over a table with 48 rows, on a machine where the query costs less than
+        // the loop that asks for it.
+        Map<Long, Country> ownerOfSide = ownerOfSide(world);
+
         int replayed = 0;
         for (ScoredMatch match : history) {
-            if (!isNationalSide(match.homeTeamId()) || !isNationalSide(match.awayTeamId())) {
+            if (!isNationalSide(match.homeTeamId(), ownerOfSide)
+                    || !isNationalSide(match.awayTeamId(), ownerOfSide)) {
                 // A national competition with a club in it is a data problem, not a rating. Skipping it
                 // keeps one bad row from corrupting every other country in the world.
                 log.warn("International {} has a non-national side ({} v {}); not rated",
@@ -119,11 +134,34 @@ public class NationalRatingService {
                         match.awayTeamName() != null ? match.awayTeamName() : "?");
                 continue;
             }
-            applyToWorkingRatings(match, senior, youth);
+            applyToWorkingRatings(match, senior, youth, ownerOfSide);
             replayed++;
         }
 
         return persist(world, senior, youth, replayed);
+    }
+
+    /**
+     * Which country owns each national side — senior and U-21 alike, keyed by team id.
+     *
+     * <p>Membership, not the name, and the same rule {@code isNationalSide} has always used. Built from
+     * the countries already in hand, so it costs no query.
+     *
+     * <p>A senior and a U-21 side colliding on one id would be a corrupt world, and this keeps the first
+     * country seen rather than complaining. That is the safe direction: the replay skips a match it
+     * cannot attribute instead of rating a side against the wrong country.
+     */
+    private Map<Long, Country> ownerOfSide(List<Country> world) {
+        Map<Long, Country> bySide = new HashMap<>();
+        for (Country country : world) {
+            if (country.getSeniorNationalTeam() != null) {
+                bySide.putIfAbsent(country.getSeniorNationalTeam().getId(), country);
+            }
+            if (country.getU21NationalTeam() != null) {
+                bySide.putIfAbsent(country.getU21NationalTeam().getId(), country);
+            }
+        }
+        return bySide;
     }
 
     /**
@@ -144,10 +182,11 @@ public class NationalRatingService {
         return requiresNew.execute(status -> recompute());
     }
 
-    private void applyToWorkingRatings(ScoredMatch match, Map<Long, Double> senior, Map<Long, Double> youth) {
+    private void applyToWorkingRatings(ScoredMatch match, Map<Long, Double> senior,
+                                     Map<Long, Double> youth, Map<Long, Country> ownerOfSide) {
         Long homeId = match.homeTeamId();
         Long awayId = match.awayTeamId();
-        Map<Long, Double> ratings = isYouth(homeId) ? youth : senior;
+        Map<Long, Double> ratings = isYouth(homeId, ownerOfSide) ? youth : senior;
 
         double homeRating = ratings.getOrDefault(homeId, START_RATING);
         double awayRating = ratings.getOrDefault(awayId, START_RATING);
@@ -220,30 +259,17 @@ public class NationalRatingService {
      *
      * <p>Membership, not the name. The catalogue names them "{country} U-21" for the world page, and
      * matching on a name is how "Serbia U-21 Women" ends up rated as a senior side.
+     *
+     * <p>A map lookup rather than a walk over {@code countries.findAll()}, which is what this did and
+     * which cost three whole-table reads per match.
      */
-    private boolean isNationalSide(Long teamId) {
-        return teamId != null && findOwningCountry(teamId) != null;
+    private boolean isNationalSide(Long teamId, Map<Long, Country> ownerOfSide) {
+        return teamId != null && ownerOfSide.containsKey(teamId);
     }
 
-    private boolean isYouth(Long teamId) {
-        Country owner = findOwningCountry(teamId);
+    private boolean isYouth(Long teamId, Map<Long, Country> ownerOfSide) {
+        Country owner = ownerOfSide.get(teamId);
         return owner != null && owner.getU21NationalTeam() != null
                 && owner.getU21NationalTeam().getId().equals(teamId);
-    }
-
-    private Country findOwningCountry(Long teamId) {
-        if (teamId == null) {
-            return null;
-        }
-        for (Country country : countries.findAll()) {
-            if (country.getSeniorNationalTeam() != null && country.getSeniorNationalTeam().getId().equals(teamId)) {
-                return country;
-            }
-            if (country.getU21NationalTeam() != null
-                    && country.getU21NationalTeam().getId().equals(teamId)) {
-                return country;
-            }
-        }
-        return null;
     }
 }

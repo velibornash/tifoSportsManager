@@ -213,6 +213,134 @@ first of those is already known to check ownership on `/image` and not on `/tick
 
 ---
 
+## 2026-10-03 — P1-4: three whole-table reads inside loops, and one that could not run at all
+
+Nineteen call sites matched the board's pattern. Four were fixed, and the board's five named candidates
+had all drifted — two are already gone and two were never N+1s at all.
+
+### Fixed 1 — the international Elo replay read the world three times per match
+
+`NationalRatingService.recompute()` loaded `List<Country> world = countries.findAll()` and then threw that
+copy away, because `findOwningCountry(teamId)` walked `countries.findAll()` again — and it was called
+**three times per match**: twice from `isNationalSide`, once from `isYouth`.
+
+| | before | after |
+|---|---:|---:|
+| whole-world reads per replay | **1 + 3 × matches** | **1** |
+
+**A clock would never have found this.** 48 rows is less work than the loop asking for them. The fix is a
+`Map<Long, Country>` built from the `world` that was already loaded, and `findOwningCountry` deleted —
+`putIfAbsent`, so a corrupt world where a senior and a U-21 side share an id keeps the first country seen
+and the replay skips a match it cannot attribute rather than rating against the wrong one.
+
+`NationalRatingServiceQueryCountTest` — 3 tests, 5 s, mocked. Asserts one query for a replay, one for an
+empty replay, and **that tripling the history adds no query**. Proven able to fail by restoring the walk:
+it prints `Wanted 1 time` / `Wanted 2 times`.
+
+### Fixed 2 — the weekly squad rollover read every squad one club at a time
+
+`SquadEnvironmentService.advanceWeek` called `players.findByTeamId(club.getId())` inside the club loop.
+
+| | before | after |
+|---|---:|---:|
+| squad reads per week | **1 + 14,880** | **2** |
+
+`findByTeamIdIn` already existed for the transfer market's bulk read; this is the same fix in a second
+caller. Grouped by team id, so a club with nobody is an **absent key** — a fact, not a gap — rather than a
+query to discover it is empty.
+
+**Two numbers I had to correct while doing it.** `mentoredBy` → `teamOf` → `players.findById` per player
+looks like ~446,000 queries a week; it is **none**, because the players are already in the persistence
+context from the squad read and `findById` does not re-query. And `minutesPlayed` is cached per team-week,
+so it is one query per club, not per player. The honest figure was **~44,641 a week**, not the million I
+first wrote down — which is still three per-club reads, of which this fix removes one.
+
+`SquadEnvironmentWeeklyQueryCountTest` — 4 tests. Asserts one bulk query for 30 clubs, `findByTeamId`
+**never** called, every club still advanced (a query count alone is satisfied by a method that reads
+nothing), and an empty world costing the same one query. Proven able to fail: `NeverWantedButInvoked`.
+
+### Fixed 3 — `/train-all` returned the entire world as JSON
+
+`POST /training/train-all` did `findAll()`, trained everyone, and returned `List<Player>` — **every player
+in the database, serialised**. At 300,000 players with positions and skills that is hundreds of megabytes
+of JSON answering a question the caller did not ask. It now returns `{"trained": n}`.
+
+No test and no frontend caller, so nothing depended on the shape. **Deliberately not paged:**
+`findAll(Pageable)` with no sort has an undefined order, and paging an unordered query can skip and repeat
+rows — which here would train some players twice and others not at all, with a count at the end claiming
+success. Same hazard as the recovery read; recorded, not solved.
+
+### Fixed 4 — the AI friendly pass asked the database thousands of times a week
+
+`isBusy`, `isInPlayoff` and `hasFixtureThatWeek` were three methods with the same body, each walking
+`fixtures.findBySeasonYearAndWeekNumber(season, week)`, and `isBusy` also asked for one club's agreed
+friendlies. They were called **per club** in the first loop and again **per candidate opponent** inside a
+nested loop — and `respond` re-read the week *per side* for every answer.
+
+| | before | after |
+|---|---:|---:|
+| week reads per friendly week | **~59,520 in the first loop alone** | **2** |
+
+Two queries for the pass: the week's fixtures and the week's requests, in a `WeekSnapshot` built once.
+
+**Two things I got wrong here, both caught by the test I wrote to check the fix:**
+
+1. **I broke it, and the guard caught it.** I held a club in the snapshot when it *asked*, then called
+   `respond`, whose re-check asks whether the slot is taken — and it now saw its own pending request and
+   **expired every acceptance**. `arranged` came back 20 and nothing was booked. The original code did not
+   have this problem because its re-check read the database, where its own request was `PENDING` and a
+   pending request does **not** make a club busy. The snapshot now keeps `agreed` and `pending` apart, and
+   `isBusy` asks only about `agreed`.
+2. **My "not booked twice" test proved less than I claimed.** Deleting `agreed()` from the pass, and then
+   deleting `refused()`, each left the test green — the pending set alone already guarantees uniqueness.
+   So the test asserts the real correctness property (no double-booking) and **not** that the write-backs
+   are load-bearing. Both javadocs were corrected to say so rather than left claiming a regression I could
+   not demonstrate.
+
+**And the cost is not "every week".** Probing the season template: **only weeks 6, 11 and 12 have
+friendly-capable slots** — every other week has a league match in both. So this is ~59,520 a week for
+**3 weeks of a 12-week season**, and my first test picked week 2, which returns before reading anything
+and passed on a pass that did nothing. The test now uses week 6 and asserts `arranged > 0` first, so it
+cannot be satisfied by an early return.
+
+`AiFriendlyWeekQueryCountTest` — 2 tests. Proven able to fail by restoring the per-call walk: 41 snapshot
+builds where there should be 1.
+
+### Recorded, not fixed — the board's five named candidates have all drifted
+
+| Board's candidate | What is actually there |
+|---|---|
+| `SeasonService:553` `teamRepository.findAll()` | **Gone.** Replaced by the fatigue work — `SeasonService:610` now says so in a comment |
+| `SeasonService:605` `playerRepository.findAll()` | **Gone**, same |
+| `SeasonService:1116` `for (Competition league : competitionRepository.findAll())` | **Gone** — no `findAll()` left in the file |
+| `NationalRatingService:239` `countries.findAll()` | **Fixed above** |
+| `CupFixtureSeeder:129` / `:271` `competitions.findAll().stream()` | **Not an N+1.** One query, filtered in Java. `CupFixtureSeeder:142` is the same |
+
+### Recorded, not fixed — Tier 2, once per matchday or per season
+
+`MatchdayJob:87` already carries a comment reading *"One query, not one per competition"* — that N+1 was
+fixed previously, and what remains is a single `competitions.findAll()` (1,488 rows) filtered in Java.
+`LeagueTableReconciliationService:98` does the same, and its per-league inner read is now served by
+**P1-1's `ix_match_competition_season`**. `SeasonRolloverJob:71`, `CupFixtureSeeder:142` and
+`InternationalClubCups:397` are one query each. None is worth a change on its own.
+
+### Recorded, not fixed — Tier 3, admin buttons, repair and seeding
+
+`WorldIntegrityService:60/90/107`, `WorldRepairService:42/52`, `CountryActivationService:101`,
+`SimulatedWorldSeeder:69`, `BotLeagueStandardBackfill:84`, `StaffSponsorService:64`. All read the whole
+table, and all run from an admin button or a seed where reading the world is the point. `StaffSponsorService`
+still has a real per-club `staff.countByTeamId` inside its loop (1 + 14,880), which is a genuine N+1 — but
+it is a seeding path and fixing it is a separate decision, not a side effect of this one.
+
+### The pattern, since this is the third time
+
+`TransferService` (fixed in `e310856`), `SquadEnvironmentService` and now `FriendlyRequestService`: a
+collection loaded once, then re-asked inside a loop because the loop could not see the copy. **Three
+instances in one codebase is a convention, not an accident**, and the reason a guard test here counts
+queries rather than milliseconds is that all three were invisible to timing.
+
+---
+
 ## 2026-10-03 — `e16ec34` — P1-7c: the scorer counted goals VAR ruled out, and I reported a defect that was not there
 
 Two items, one fixed and one retracted.
