@@ -116,14 +116,30 @@ the tests, not by this run.**
   **disjoint by construction**, since the snapshot is read before the reset. It tested a scenario that
   cannot occur.
 
-### What is not done
+### Step 4 — answered, and the answer is that nothing should change
 
-- **`DefensiveShape` and `mirrorWeHaveBallRules` — owner ruling.** The mirroring overwrites every
-  out-of-possession rule with its in-possession twin **on every save and every read**, so the editor
-  cannot express a defensive shape. That is *why* `DefensiveShape` is load-bearing rather than
-  decorative. Either the editor authors defence properly and `DefensiveShape` becomes a fallback, or
-  defence is derived by design and the editor should say so. **Both are defensible and they are different
-  games.**
+Owner, 2026-10-03: *"WE_HAVE_BALL and OPPONENT_HAS_BALL are currently the same **on purpose**. I have not
+yet decided whether I will keep both variants, so until then both stay identical."*
+
+**So `mirrorWeHaveBallRules` is a decision, not a defect, and `DefensiveShape` stays load-bearing.**
+That closes step 4 with **no code change**, which is the correct outcome and the one I would not have
+chosen: my recommendation had been to let the editor author defence properly, and that would have
+pre-empted a decision the owner has explicitly not made. **A guard that stops a decision being taken by
+accident is worth more than a fix made three weeks early.**
+
+The second half of the answer is bigger than the task it closes, and it is written up as an agreed
+specification in `kanban.md` — **multiple tactics per team, up to three per match, each with the
+conditions that switch it.** Recorded before any code, for the reason this file keeps repeating: a
+feature specified in a conversation and built later is a feature built twice.
+
+The part of it worth naming here: **the engine's tactics are immutable per match.** `TacticsRules` is
+built once and handed to `MatchOrchestrator`, which gives the same instance to `RestartManager` and
+`TacticalIntentEngine`, and every tick `TacticalIntentEngine.refreshTargets(state)` asks that one object
+where each role should be. **Mid-match switching is therefore a real change and not a wiring change** — and
+its storage is shaped differently depending on whether the two possession contexts survive, which is the
+decision still open.
+
+### What is not done
 - **The away side plays the home club's shape.** Deliberate, and it is the half of the feature that is
   still a mirror.
 - **Four of five profiles cannot be placed** — the world holds five Beograd clubs and no "FK Beograd".

@@ -335,6 +335,77 @@ in dev-days. ✅ marks are re-verified in source on 2026-10-01.
 **Deliberately not a gap:** work permits / foreign limits — built in full, then removed by the owner
 (`a6394f9`, *"No foreigner limit for now"*).
 
+### 📋 Multiple tactics per team, and the conditions that switch them — agreed specification (owner, 2026-10-03)
+
+**Written down before any code, because this feature has been specified wrong twice already** (the
+international cups, twice) and because one part of it is still an open decision.
+
+#### What is true today, and it is deliberate
+
+**WE_HAVE_BALL and OPPONENT_HAS_BALL are identical in every saved profile.** All 319/319 and 506/506
+out-of-possession rules are byte-identical to their in-possession twins, because
+`TeamTacticsService.mirrorWeHaveBallRules` overwrites them on every save **and every read**.
+
+**That is a decision, not a defect.** The owner has not yet decided whether to keep both possession
+variants, so until then both stay identical. `DefensiveShape` is therefore load-bearing rather than
+decorative: it manufactures the defensive shape the data cannot carry. **Do not remove the mirroring, and
+do not remove `DefensiveShape`.**
+
+#### During the test phase
+
+**It is fine that every team plays the same tactical-editor shape.** A club with a profile plays it; a
+club without one gets the bundled export. That is what the code now does and it is the right behaviour for
+a test phase — it is also exactly what happens when nobody has authored anything different.
+
+#### What it becomes
+
+| | |
+|---|---|
+| **Tactics per team** | A team holds **many** — the owner's example is **20**. One is the **default**, and the default is what today's tactical editor holds. |
+| **Per match** | Up to **3 tactics** may be selected, each with the **conditions** under which it takes over. |
+| **The default** | Used when a match sets nothing. So "no tactics chosen" is not "no tactics" — it is the default, and that is the safe default. |
+
+**Conditions as the owner listed them**, each with a minute at which it starts being checked:
+
+| condition | meaning |
+|---|---|
+| `ALWAYS` | switch to this tactic |
+| `FROM_MINUTE n` | from a given minute, when the condition is checked |
+| `WE_LEAD_BY_1` | |
+| `WE_LEAD_BY_3_PLUS` | |
+| `WE_ARE_DOWN_BY_1` | |
+| `WE_ARE_DOWN_BY_3_PLUS` | |
+| `DRAWING` | |
+
+The `...` in the owner's list is real: this is a closed set that wants extending, so it should be modelled
+as data and not as a `switch`.
+
+#### What this needs, and why it is not a small change
+
+The engine's tactics are **immutable per match**. `TacticsRules` is built once and handed to
+`MatchOrchestrator`, which passes the same instance to `RestartManager` and `TacticalIntentEngine`. Every
+tick, `TacticalIntentEngine.refreshTargets(state)` asks that one object where each role should be.
+
+**Mid-match switching is therefore a real change, not a wiring change.** The three parts:
+
+1. **Storage.** A team holds N tactics, not one — so `team_tactics_profile` as it stands (one row per team,
+   one `formation`, one `rules_json`) cannot express it. And a match holds up to 3 selections with
+   conditions, which is new state on the fixture or the match.
+2. **Resolution.** Something must answer "which tactic applies *right now*" from the minute and the score,
+   every tick. That is a small class and it is the heart of the feature.
+3. **Swapping.** `RestartManager` and `TacticalIntentEngine` each hold one `TacticsRules`. Switching means
+   both must see the new one, mid-tick, without a restart or a lost target.
+
+**And it depends on the decision still open**: whether the two possession contexts stay separate. If they
+do, a "tactic" carries two rule sets; if they collapse, it carries one. The storage in (1) is shaped
+differently either way, which is why the spec waits for that answer rather than guessing.
+
+#### The one thing worth building before that answer
+
+Nothing in the schema. The minute-and-score condition evaluation is independent of it — it reads the
+`MatchState` the engine already keeps. **That is the piece with real logic in it, and it is the piece with
+no open questions.**
+
 #### Three notes on the tactics item (#1), because it is the only P0 that is a feature
 
 1. **The bridge already exists and is unwired.** `TacticsBridge.fromRuntimeMap()` has **zero callers**,
