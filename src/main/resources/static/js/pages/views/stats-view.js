@@ -39,27 +39,6 @@ export function createStatsView(deps) {
         renderPlayers(players, "Player Stats");
     }
 
-    async function loadTeamStats() {
-        const teamId = getTeamId();
-        console.log(`Loading team stats for ${teamId}`);
-        const response = await authFetch(`/demo/stats/teams/${teamId}`);
-        console.log(`Response status: ${response.status}`);
-        const stats = await response.json();
-
-        const mainContent = document.getElementById("main-content");
-
-        let html = `
-        <div class="manager-card">
-            <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-            <h2>Team Stats</h2>
-            <p>Goals: ${stats.goals}</p>
-            <p>Conceded: ${stats.conceded}</p>
-            <p>Possession: ${stats.possession}%</p>
-            <p>Shots per game: ${stats.shots}</p>
-        </div>`;
-        mainContent.innerHTML = html;
-    }
-
     async function loadTopScorersAndAssists(mode = "both") {
         try {
             getTeamId();
@@ -182,5 +161,5 @@ export function createStatsView(deps) {
         }
     }
 
-    return { loadTopScorersAndAssists, loadPlayerStats, loadTeamStats };
+    return { loadTopScorersAndAssists, loadPlayerStats };
 }

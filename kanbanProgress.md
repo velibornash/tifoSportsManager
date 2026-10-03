@@ -27,6 +27,7 @@ order of this file drifts away from the order of the work. This is the P1 sequen
 | `513f738` | P1-3 | the recovery read pages |
 | `3c5e111` | P1-7d | the milestone page read the season twice; background failures now counted |
 | *(no commit)* | P1-6 | the other sports: measured, and **nothing was landed** |
+| *(no commit)* | P1-5 | retention answered; growth measurement blocked by P0-19 |
 
 ---
 
@@ -266,10 +267,41 @@ frozen reference engine, which is untouched.
   the first run returned rows my assertions could not see. The tests now pass `seasonYear=1` explicitly
   rather than depending on a clock that does not exist in the test database.
 
-### Outstanding
+### Team Stats — deleted, and the reason it was the right deletion
 
-**The owner's decision on the last two screens:** build the two missing reads, or delete the two screens.
-Then `DummyDataController` can go.
+Four bare scalars: `{goals, conceded, possession, shots}` — no season, no competition, no opponent. Its two
+neighbours in the same file are real, and one of them even handles *"this club is not in a league yet"* with
+a proper message. So this was a placeholder standing beside two working screens, and `/teams/{teamId}/milestones`
+is already wired into `club-view.js` and `league-view.js` — the information is on the site; this was a fourth,
+emptier presentation of it.
+
+**Building a read for it was rejected as the wrong kind of work**, and that is the substantive judgement:
+goals-against and shots-per-game need a definition of possession the codebase may not have, and shots may not
+be recorded per team at all. That is a feature to schedule, not a wiring job.
+
+Removed: the function, its export, the `pages.js` delegator and the `window` global. `grep` for
+`loadTeamStats` across `static/` now returns nothing.
+
+### A claim of mine that was too strong, corrected by tracing it
+
+I wrote *"there is nothing to filter on"* about friendlies and recommended deleting the screen. Tracing it
+showed that was **too strong**: friendlies **are** modelled — `SeasonService.FRIENDLY_WEEK`, a
+`FriendlyRequestService`, and a working `FriendlyController` the dashboard already reads.
+
+What is actually missing is narrower:
+
+- **`FRIENDLY` is not a `CompetitionType`** — `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. The owner has ruled
+  the enum should grow.
+- **But the enum alone buys nothing on its own.** Adding the value makes it *filterable*; it does not make
+  anything *write* it. The fixtures are created by `FriendlyRequestService` and placed by the season
+  calendar, so `?competitionType=FRIENDLY` answers empty until those write the new type — honest, and still a
+  broken screen.
+- **The trace stops there.** Where the friendly fixture row is written, and with what competition, was not
+  established. **That is the next step and it should come first**, because extending an enum that nothing
+  writes is a change that looks finished and is not.
+
+The owner also noted the last two `pages.js` edits landing in another agent's commit is not a problem as
+long as the change is in. Agreed, and recorded once rather than dwelled on.
 
 **A full `mvn test` was not run**, so "green in a full run" does not count as met.
 
@@ -721,6 +753,111 @@ pages stay slow until the world is reset while every new match is cheap. **A sea
 worried about, now measured rather than estimated.
 
 ---
+
+---
+
+## 2026-10-03 — P1-5: the retention answers, and a P0 that made the growth measurement impossible
+
+Four exit criteria. Three answered from what reads what. The fourth — growth per simulated matchday —
+**could not be measured, because the world cannot currently be simulated at all**, for a reason that has
+nothing to do with this task.
+
+### A P0 found while measuring: `Team.supporterMood` has no column
+
+Advancing a matchday on a clone of the dev database fails immediately:
+
+```
+ERROR: column t1_0.supporter_mood does not exist  Position: 294
+```
+
+`Team.supporterMood` was added in `b0493a6` ("P2-5: supporter mood"), which **is in `main`**. The dev
+database's `team` table has 17 columns and none of them is `supporter_mood`; the clone made from it has
+the same 17. `spring.jpa.hibernate.ddl-auto=update` is set in the `dev` and `prod` profiles, and **no DDL
+ran** — the boot log contains not one `alter table`.
+
+The damage is limited and worth stating precisely, because it is easy to over-claim: the app **boots and
+serves pages normally**. `supporterMood` is read only by the matchday-advance path and `FinanceController`,
+so login, the dashboard and every read-only page are fine. **You find out by playing football.**
+
+**Nothing was changed here.** The fix is the documented owner path — `Reset DB`, then `Initialize DB` —
+and those are destructive buttons I do not press. Recorded as **P0-19** and cross-referenced from here.
+
+Worth noting for whoever picks it up: the column's absence is not visible in the schema a casual look
+would take, because `Team` has 17 columns and a new int field is the least remarkable thing in the world.
+It is invisible precisely because it is ordinary.
+
+### Blob retention — keep, and P1-7b is why that is affordable
+
+What actually reads `match.event_json`:
+
+| Reader | Reads |
+|---|---|
+| `MatchDetailService:34` | one match — the match detail page |
+| `ZoxApiController:575` | one match — the external API |
+| `GoalEventRepository` | **every played match of a competition-season, and one variant walks all 12 weeks of a season across every competition** |
+
+`GoalEventRepository` is worth pausing on: **there is no `goal_event` table**, and I took that as evidence
+the top-scorers path did not read the blobs. It is a `@Component`, not a repository — it walks
+`MatchRepository.findByCompetitionIdAndSeasonYear` and parses each match's log, because the log is the
+record and a second table would be two records of one fact. **So deleting blobs does not merely empty the
+match page: it empties top scorers, top assists and the club milestone leaders for that season.**
+
+That is a product decision, so it is not mine to make. What I can give the owner is the bill:
+
+| | now | a full season |
+|---|---:|---:|
+| raw logical | 126 MB / 155 matches | — |
+| **on disk** | **16 MB / 155 matches** | **~126 MB** (7,440 matches × 17 KB) |
+
+TOAST compresses it about 8:1, so the honest number is 16 MB, not 126. **A season of blobs costs about
+126 MB on disk, which is affordable only because P1-7b cut the blob 49×.** Recommendation: **keep, no code,
+no policy.** Before P1-7b this would have been a real question.
+
+### Match-row retention — keep, permanently
+
+Readers, and they are not optional:
+
+- `ClubRatingService:118` — the Elo replay walks **every played club match in date order**.
+- `NationalRatingService:96` — every played international.
+- League tables, fixtures, every stats page, the match list.
+
+Deleting a played match row silently breaks Elo history and the replay, and nothing would say so — the
+pages would just get shorter. And there is nothing to save: the row is a few hundred bytes once the blob
+is excluded, so 89,000 rows over twelve seasons is **single-digit megabytes**.
+
+**Answer: keep. No retention policy, no code.** The board's own guess ("probably keep them — but it has to
+be an answer, not an omission") was right.
+
+### File-backed replay retention — already correct, and the two answers disagree on purpose
+
+`SimReplayStore` expires by age (`app.replay.max-age-days`, default **14**) and evicts least-recently-
+modified down to a count cap. `replay-data` holds **492 MB across 48 files** today.
+
+The fact that makes this cheap: **only the manager's own matches get a file.** `AsyncSimulationRunner:78`
+passes `replayId = -1` for AI matches. So the file store grows with what one human plays, not with the
+48× world — which is why 48 files exist for 155 matches.
+
+**The files expire at 14 days and the database rows never do, and that disagreement is correct.** A replay
+file is a re-renderable convenience; a match row is the record the season is computed from.
+
+### The growth measurement — not taken, and why that is the honest outcome
+
+The board asked for growth "from the harness rather than extrapolated". I could not run the harness: the
+matchday advance fails on the missing column above, so **no simulation of any size is possible on either
+the dev database or a clone of it.**
+
+What I will not do is present the per-match figures I already measured as if they were a per-matchday
+measurement. They are real but they are per match, and the arithmetic from per-match to per-matchday to
+full scale is exactly the extrapolation the board ruled out.
+
+**The per-match figures, for whoever finishes this once the world can be played:** 198 zone-load rows, 22
+player-stat rows and one ~17 KB blob per match, all measured on real simulated matches in P1-3 and P1-7b.
+The unblock is one `Reset DB` and one `Initialize DB`, and then this is a ten-minute measurement.
+
+Also of note while looking: `GoalEventRepository`'s season-wide variant loads every match of a season
+with its blob, which is the same full-season shape P1-7 measured at ~66 GB. **It is survivable now only
+because the blob is 49× smaller** — the two findings are the same finding, and P1-7b is what keeps this
+one from being a P0.
 
 ---
 

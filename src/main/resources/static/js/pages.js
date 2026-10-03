@@ -1007,10 +1007,6 @@ import {
         return statsView.loadPlayerStats();
     }
 
-    async function loadTeamStats() {
-        return statsView.loadTeamStats();
-    }
-
     function renderFixtures(fixtures, title, options = {}) {
         return fixtureView.renderFixtures(fixtures, title, options);
     }
@@ -1180,7 +1176,6 @@ import {
     window.loadChat = loadChat;
     window.loadEvents = loadEvents;
     window.loadPlayerStats = loadPlayerStats;
-    window.loadTeamStats = loadTeamStats;
     window.loadTopScorersAndAssists = loadTopScorersAndAssists;
     window.loadAnalytics = loadAnalytics;
     window.renderPlayers = renderPlayers;

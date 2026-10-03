@@ -225,7 +225,7 @@ already defaults to the viewer's own.
 **`TransferController` is the only route in the repository where one manager could move another club's
 money.**
 
-### P0-16 — PARTIAL: six of eight `/demo` callers rewired, two have no real data source
+### P0-16 — one caller left, and it is a real feature gap rather than a wiring job
 
 **The owner's ruling:** none of `/demo` should exist on the main app, and never hardcode — take `teamId`
 from the user. Both halves are now true of the eight call sites. `DummyDataController` itself is **not yet
@@ -253,26 +253,46 @@ pointed at fabricated data: there was nothing real to ask for.** Every row alrea
 `competitionType`, so this is a query choice and a filter, not a new endpoint. An unrecognised value falls
 back to the league rather than inventing rows.
 
-**Two callers are blocked on real gaps, and were deliberately left rather than wired to the wrong thing:**
+**1. `stats-view.js` team stats — DELETED, on the owner's decision.** It rendered four bare scalars:
+`{goals, conceded, possession, shots}` — no season, no competition, no opponent. Its two neighbours in the
+same file are real (`loadTopScorersAndAssists`, `loadPlayerStats`, both of which even handle "club not in a
+league yet" with a proper message), so this was a placeholder standing beside two working screens. The club's
+real information — `/teams/{teamId}/milestones` — is already wired into `club-view.js` and `league-view.js`.
+Removed: the function, its export, the `pages.js` delegator and the `window` global.
 
-1. **`fixture-view.js` friendlies.** `MatchFixture` has **no friendly flag** and `FRIENDLY` is not a
-   `CompetitionType` — the enum is `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. Asking for `FRIENDLY` filters
-   to nothing, so a naive wiring would show a friendlies screen full of **league** matches. There is
-   nothing to filter on until friendlies are modelled.
-2. **`stats-view.js` team stats.** It renders `{goals, conceded, possession, shots}`. The real
-   `/teams/{teamId}/milestones` is club-season milestones — top scorer, top assist, biggest win, attendance —
-   and **has none of those four fields**, so the screen would render blanks.
+**Building a read for it was rejected as the wrong kind of work.** Goals-against and shots-per-game per club
+need a definition of possession the codebase may not have, and shots may not be recorded per team at all.
+That is a **feature to schedule**, not a wiring job, and it should not be smuggled in here.
+
+**2. `fixture-view.js` friendlies — the last caller, and it is not a wiring job either.** My earlier claim was
+*"there is nothing to filter on"*, and tracing it showed that was **too strong**: friendlies *are* modelled —
+`SeasonService.FRIENDLY_WEEK`, a `FriendlyRequestService`, and a working `FriendlyController` the dashboard
+already reads. What is missing is narrower and more specific:
+
+- **`FRIENDLY` is not a `CompetitionType`** — the enum is `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. The
+  owner's ruling is to **extend the enum**.
+- **But the enum alone is not enough**, and this is the part that matters: adding `FRIENDLY` makes the value
+  *filterable* and does **not** make anything *write* it. The friendly fixtures are created by
+  `FriendlyRequestService` and placed by the season calendar, so until those write `CompetitionType.FRIENDLY`,
+  `?competitionType=FRIENDLY` answers with an empty list — which is honest and is still a broken screen.
+- **The trace is incomplete.** Where the friendly fixture row is written, and what competition it carries, was
+  not established before this was written up. That is the next concrete step, and it should be finished
+  before the enum is extended, because extending an enum nothing writes is a change that looks finished and
+  is not.
 
 **Both were nearly shipped as plausible-but-wrong.** Wiring friendlies to `?competitionType=FRIENDLY` and
-team-stats to `/milestones` would both answer **200 with the wrong data** — which is the precise failure
-this task exists to remove, so both were reverted.
+team-stats to `/milestones` would both answer **200 with the wrong data** — the precise failure this task
+exists to remove.
 
 **Exit criteria:**
 - [x] No caller hardcodes a team id; all eight derive it from the signed-in manager
 - [x] Six of eight read real data
 - [x] `competitionType` filter on the schedule, **6 tests green**, mutation-proven
-- [ ] **Owner decision on the last two:** build the two missing reads, or delete the two screens
-- [ ] `DummyDataController` deleted once no caller remains
+- [x] Team Stats **deleted** on the owner's decision — a fourth, emptier presentation of `/milestones`
+- [ ] **Friendlies:** trace where `FriendlyRequestService` writes its fixtures, then extend
+      `CompetitionType` with `FRIENDLY` **and make the generator write it**. Owner has ruled the enum should
+      grow; the second half is what makes it mean anything
+- [ ] `DummyDataController` deleted once the last caller is rewired
 
 ---
 
@@ -601,6 +621,34 @@ claim "passed" while measuring nothing.**
 
 ---
 
+### P0-19 — `Team.supporterMood` has no column, so the world cannot be played
+
+Found while measuring P1-5, and **it stops the game working**: advancing a matchday throws
+
+```
+ERROR: column t1_0.supporter_mood does not exist  Position: 294
+```
+
+`Team.supporterMood` was added in `b0493a6` ("P2-5: supporter mood"), which **is in `main`**. The `team`
+table has 17 columns and none is `supporter_mood`, and `ddl-auto=update` is set in both the `dev` and
+`prod` profiles while **the boot log contains not one `alter table`**.
+
+The failure is easy to over-claim, so precisely: **the app boots and every read-only page works.**
+`supporterMood` is read by the matchday-advance path and `FinanceController`, so you find out by playing
+football — not by looking at the app.
+
+Exit criteria:
+
+- [ ] `ddl-auto=update` actually runs, **or** the column ships as explicit DDL in a script
+- [ ] A matchday advances end to end on a database built from the current entities
+- [ ] A guard test that boots against the real schema and plays a matchday — the only thing that would
+      have caught this, and the reason 154 test classes did not
+
+**Not fixed here.** `Reset DB` then `Initialize DB` is the documented owner path and they are destructive
+buttons; the missing piece is a guard, not a code change.
+
+---
+
 ### P0-9 — Calendar-year test fixtures pin nothing
 
 `WeeklyFinanceServiceTest`, `StaffSponsorServiceTest` and `PlayerContractServiceTest` pass 2024/2025/2026
@@ -849,39 +897,53 @@ costs more than the query. The guards count queries, not milliseconds.
   `FriendlyRequestService`. A collection loaded once, then re-asked inside a loop because the loop could
   not see the copy. Three instances is a convention, not an accident.
 
-### P1-5 — `match` grows without bound; `match_tick_states` does not grow at all
+### P1-5 — Three answers given. The growth measurement is blocked by P0-19, not by this task.
 
-**Half of this task is refuted.** `match_tick_states` gains **zero** rows per match: nothing writes it.
-Its writer, `MatchPersistenceService`, has no callers, and replays are file-backed JSON with a bounded
-retention of their own. There is nothing to retain and nothing to decide. See P1-1.
+Four exit criteria. Three are answered from what reads what. The fourth could not be measured, because
+**the world cannot currently be simulated at all** — see P0-19.
 
-What remains is `match`, and the honest question is what a full season costs:
+**1. Blobs — keep. No code, no policy.** What reads `match.event_json` is the match detail page
+(`MatchDetailService:34`), the external API (`ZoxApiController:575`), and `GoalEventRepository`, which
+backs **top scorers, top assists and the club milestone leaders** — one variant walking all twelve weeks of
+a season across every competition.
 
-| | |
-|---|---:|
-| matches per matchday, 48 countries | 7,440 |
-| matches per 12-week season | **89,280** |
-| `event_json` per match, **as written today** | **17,001 B** (was 742 KB – 1,035 KB) |
-| one season, raw text | **~1.5 GB** (was ~66 GB) |
-| one season, on disk (TOAST-compressed) | **~240 MB** (was ~9.2 GB) |
+There is no `goal_event` table, and I took that as evidence the scorers path did not read the blobs. **It
+does**: `GoalEventRepository` is a `@Component`, not a repository, and it walks matches and parses each
+log, because the log is the record. **So deleting blobs does not merely empty the match page — it empties
+three stat pages for that season.** That is the owner's call, and the bill for it:
 
-**The per-tick log stopped being written, so the growth question is much smaller than it was.** What is
-left is a season's worth of results and reportable events. `SimReplayStore` keeps the full per-tick log in
-files, with its own retention.
+| | now, 155 matches | a full season, 7,440 |
+|---|---:|---:|
+| raw logical | 126 MB | — |
+| **on disk** | **16 MB** | **~126 MB** |
 
-**Exit criteria:**
-- [ ] Growth rate measured per simulated matchday, from the harness rather than extrapolated
-- [ ] **A retention decision for the existing `event_json` blobs.** 155 rows hold 124 MB of the old
-      format and nothing reads them but the top-scorers and match pages. Reset clears them; a backfill
-      does not exist and probably should not
-- [ ] A retention decision for the `match` row itself. **Before anything is deleted:** the Elo replay
-      (`findPlayedClubScoredInOrder`) re-reads **every** played club match in date order, and the club Elo
-      history needs its old ratings. Deleting match rows silently breaks both, so the answer is probably
-      "keep them" — but it has to be an answer, not an omission
-- [ ] The file-backed replay retention checked against the same question, so the two answers agree
+TOAST compresses about 8:1, so 16 MB is the honest number. **A season of blobs costs ~126 MB on disk, and
+that is affordable only because P1-7b cut the blob 49×.** Before P1-7b this was a real question.
 
+**2. Match rows — keep, permanently.** `ClubRatingService:118` walks every played club match in date order
+for the Elo replay; `NationalRatingService:96` walks every played international; league tables, fixtures
+and every stats page read them. Deleting a played row silently breaks Elo history and nothing says so —
+the pages just get shorter. And there is nothing to save: excluding the blob the row is a few hundred
+bytes, so 89,000 rows over twelve seasons is single-digit megabytes. The board's own guess was right, and
+it is now an answer rather than an omission.
 
----
+**3. Replay files — already correct, and the disagreement with (2) is deliberate.** `SimReplayStore`
+expires by age (`app.replay.max-age-days`, default **14**) and evicts least-recently-modified to a count
+cap; `replay-data` holds **492 MB across 48 files**. The fact that keeps it cheap: **only the manager's own
+matches get a file** — `AsyncSimulationRunner:78` passes `replayId = -1` for AI matches — so the store
+grows with what one human plays, not with the 48× world. **Files expire at 14 days, database rows never
+do, and that is right:** a replay file is a re-renderable convenience, a match row is the record.
+
+**4. Growth per matchday — not taken.** The board asked for it "from the harness rather than
+extrapolated", and the harness cannot run: matchday advance fails on the missing `supporter_mood` column
+(P0-19), so no simulation of any size is possible on the dev database or a clone of it. I will not present
+the per-match figures from P1-3 and P1-7b as a per-matchday measurement — **that is the extrapolation the
+board ruled out.** The unblock is one `Reset DB` and one `Initialize DB`, after which it is a ten-minute
+measurement.
+
+**Carried out of P1-7:** `GoalEventRepository`'s season-wide variant loads every match of a season with
+its blob — the same full-season shape P1-7 measured at ~66 GB. It is survivable now **only** because the
+blob is 49× smaller. P1-7b is the reason this is not a P0.
 
 ### P1-6 — MEASURED, NOTHING LANDED. The premise was wrong in a way that matters more than any index.
 
