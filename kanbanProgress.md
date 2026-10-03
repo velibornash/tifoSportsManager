@@ -24,6 +24,118 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `8b3dff1`, `d4ccfde`, `abef6a2` — cluster F #1: the tactical grid reaches the engine
+
+**The owner's framing, which was right:** *"the engine essentially already uses those positions, because I
+exported them as a fallback while I was building it — it just needs connecting properly."*
+
+**Verified rather than assumed.** `RealSquadFactory.SLOT_ORDER` and the slot keys in
+`tactics_fallback.json` are the **same eleven**, character for character. That is why the engine works at
+all, and it is the fact the whole plan rests on.
+
+### What the survey found, and it was not a missing query
+
+`MatchOrchestrator` already had a constructor taking `TacticsRules`. **It had zero callers.** All 13
+production sites used the one-arg form, which builds its own by opening a raw JDBC connection outside
+Spring and running `WHERE team_id = 1 AND formation = '4-4-2'` with its own hardcoded URL, user and
+password — and swallowing every failure into `catch (Exception) { return null; }`.
+
+So the engine was not missing tactics. **It was running the owner's export for all 14,880 clubs**, and the
+absence of an error is *why* nobody knew.
+
+### Step 1 — the seam (`8b3dff1`)
+
+`TacticsRulesProvider` reads the profile per club through the JPA repository, caches per club, and says
+what happened: no profile at debug, unparseable at WARN naming the club, and a profile whose keys do not
+belong to its formation at WARN naming the club **and the keys**.
+
+`RealSquadFactory.SLOT_ORDER` became public and the provider **derives** its accepted-key set from it. It
+was a literal plus a test asserting the two were equal — a second copy of a rule and a test watching it,
+which is one more thing to keep in step and fails silently.
+
+The **away** side is still mirrored from the home side's rules. That is what `TacticsRules` has always
+done; giving the away club its own shape needs a second rules object and a decision about perspective, so
+it was not smuggled in.
+
+### Step 2 — the profiles could not be read back (`d4ccfde`)
+
+Measured on the live database: **`team_tactics_profile` was empty, 0 rows**, while
+`var/tactics-editor-profiles.json` held 5 profiles. The reset snapshotted the *table* and restored from
+that — so on a world where the table was already empty, which is what the previous reset leaves behind,
+the snapshot was empty too. Meanwhile `TacticsProfileBackupService` had been **writing that file on every
+editor save since it existed and `loadAll()` had zero callers.**
+
+**The owner's five profiles were in that file and nowhere else, and one Reset destroyed them
+permanently** — with a log line reading *"Restored 0 tactics editor profiles after reset."*
+
+Profiles that cannot be placed are now **named**. The old `continue` made "this club does not exist"
+indistinguishable from "there were none", which is how four of the five vanished without a word.
+
+### Step 3 — the real blocker was the vocabulary (`abef6a2`)
+
+Four of the five saved profiles are **4-3-3**, authored in `CM, WL, WR, ST`. The engine's players were
+`ML, MR, STL, STR`. Every rule was keyed to a slot nothing wore, which is why step 1 *refused* them
+rather than applying them.
+
+**Every layout has eleven slots** — the count is a constant of the sport, the keys are not:
+
+```
+4-4-2   GK DL DCL DCR DR ML  CML CMR MR  STL STR
+4-3-3   GK DL DCL DCR DR CML CM  CMR WL ST WR
+```
+
+`RealSquadFactory.slotOrderFor(formation)` reads the catalog and the formation is threaded through to
+decide two things: which role keys the eleven wear, and where each anchor cell is. `prefersSlot` learned
+`WL`/`WR`/`ST`, without which every wide player under a 4-3-3 would have been placed by lineup order.
+
+A profile is judged against **its own formation**, not the union of all nine — so a profile using 4-3-3
+keys while *labelling itself* 4-4-2 is still refused and named.
+
+### Verified live, in the running application
+
+```
+Restored 1 tactics editor profiles after reset.
+WARN  4 tactical profile(s) could not be placed because no club has that exact name:
+      [FK Beograd, GFK Dinamo Šabac, GFK Tamiš Gornji Milanovac 1901, SK Čačak 1912]
+INFO  OFK Omladinac (1) plays its own 4-4-2 tactics: 1012 rules from the tactical editor.
+```
+
+**The honest caveat:** Omladinac *is* team 1, so this one club would also have matched the old hardcoded
+query — the old code failed here only because the table was empty. **The per-club difference is proven by
+the tests, not by this run.**
+
+### Three of my own mistakes, all the same shape as the ones this file already records
+
+- A test that reverts the provider to team 1 passed the first time I tried it, because I had reverted the
+  guard but kept the create-nothing-on-failure fix from step 2. **Half a bug is not the bug.**
+- `ENGINE_SLOT_KEYS` is built by a static method reading `FORMATIONS`, and I declared it **first**. Java
+  initialises static fields in declaration order, so the class died in its initialiser with
+  `FORMATIONS is null` and every `@SpringBootTest` failed with a context error that said nothing about
+  tactics.
+- I asserted a precedence rule between the database snapshot and the backup file — two sources that are
+  **disjoint by construction**, since the snapshot is read before the reset. It tested a scenario that
+  cannot occur.
+
+### What is not done
+
+- **`DefensiveShape` and `mirrorWeHaveBallRules` — owner ruling.** The mirroring overwrites every
+  out-of-possession rule with its in-possession twin **on every save and every read**, so the editor
+  cannot express a defensive shape. That is *why* `DefensiveShape` is load-bearing rather than
+  decorative. Either the editor authors defence properly and `DefensiveShape` becomes a fallback, or
+  defence is derived by design and the editor should say so. **Both are defensible and they are different
+  games.**
+- **The away side plays the home club's shape.** Deliberate, and it is the half of the feature that is
+  still a mirror.
+- **Four of five profiles cannot be placed** — the world holds five Beograd clubs and no "FK Beograd".
+  Which club was meant is the owner's decision.
+- **Verified-dead plumbing not yet deleted**, per the survey: `TacticsBridge` (0 callers),
+  `NewLogicTacticsService` (0 callers, and a `@Service` that boots and returns an empty rule set),
+  `newLogic.model.TacticRules` + `Team.setTacticRules` (only consumers are those two),
+  `TeamTacticsProfileRepository.findAll()`, the `Formation` and `Tactics` entities with
+  `MatchContext` and `PlayerActionProbabilityModel` behind them, and
+  `tactcal_editor_positions.json` — 506 rules, zero readers, misspelled, sitting inside the frozen
+  `demo` tree where nothing can load it.
+
 ## `cc947a7` — B9: a job scheduled on a day that does not exist
 
 **The board's B9 said "day 6 has no job at all".** It does, and that part is a product decision rather
