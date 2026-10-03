@@ -294,11 +294,7 @@ public class TransferService {
     @Transactional
     public void removeFromTransferList(Long playerId, Long actingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
-                    "Only the owning club can remove this player from the transfer list.");
-        }
+        requireSeller(transfer.getPlayer(), actingTeamId, "remove this player from the transfer list");
         // Only a PRICED offer blocks delisting. A bare "register interest" entry is not an offer,
         // so treating it as one used to soft-lock the player on the list forever: canRemove went
         // false while canRejectOffer stayed false too, leaving no escape route.
@@ -348,11 +344,7 @@ public class TransferService {
     @Transactional
     public TransferDTO clearAllInterest(Long playerId, Long actingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
-                    "Only the owning club can clear interest on this player.");
-        }
+        requireSeller(transfer.getPlayer(), actingTeamId, "clear interest on this player");
 
         // Reject the live offers rather than clear a set of strings: an offer is a record with a
         // buyer, a fee and a wage, and pretending it never happened would leave the two disagreeing.
@@ -524,10 +516,7 @@ public class TransferService {
     @Transactional
     public TransferDTO rejectOffers(Long playerId, Long actingTeamId) {
         Transfer transfer = getOpenOfferTransfer(playerId);
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can reject incoming offers.");
-        }
+        requireSeller(transfer.getPlayer(), actingTeamId, "reject incoming offers");
 
         // Rejecting means rejecting: the offers become REJECTED records rather than a cleared set,
         // so the thread still shows what was on the table.
@@ -586,10 +575,7 @@ public class TransferService {
 
     private Transfer listPlayerForTransferEntity(Player player, Long actingTeamId, double askingPrice) {
         Team sellerTeam = requirePlayerTeam(player);
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
-                    "Only the owning club can list this player.");
-        }
+        requireSeller(player, actingTeamId, "list this player");
 
         Transfer transfer = transferRepository.findByPlayerId(player.getId()).orElse(new Transfer());
         boolean alreadyListed = isActiveListing(transfer);
@@ -670,9 +656,38 @@ public class TransferService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TEAM_REQUIRED",
                     "Which club is acting? A club id is required to " + action + ".");
         }
+        // The recorded seller, not the player's current club. They differ once a transfer has completed and
+        // the player has moved on, and "who is allowed to accept an offer on this listing" is a question
+        // about the listing.
         Team sellerTeam = transfer.getSellerTeam() != null
                 ? transfer.getSellerTeam()
                 : requirePlayerTeam(transfer.getPlayer());
+        if (!Objects.equals(sellerTeam.getId(), actingTeamId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Only the owning club can " + action + ".");
+        }
+    }
+
+    /**
+     * The same rule, asked of a player rather than a listing.
+     *
+     * <p><b>Split out because four methods had hand-rolled a weaker version of it</b>, and the weakness was
+     * the interesting part: they all read
+     * {@code if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId))}, so
+     * <b>omitting the club id skipped the comparison entirely</b> and the request went through. A guard that
+     * is strictest when the caller can prove who they are and absent when they cannot is backwards.
+     *
+     * <p>{@code POST /list} with no {@code teamId} listed any player in the world at any price;
+     * {@code DELETE /remove} with no {@code teamId} delisted any player; and {@code /reject-offers} and
+     * {@code /interest/{id}/clear} with no {@code teamId} rejected every live offer on somebody else's
+     * listing. All four now go through here.
+     */
+    private void requireSeller(Player player, Long actingTeamId, String action) {
+        if (actingTeamId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "TEAM_REQUIRED",
+                    "Which club is acting? A club id is required to " + action + ".");
+        }
+        Team sellerTeam = requirePlayerTeam(player);
         if (!Objects.equals(sellerTeam.getId(), actingTeamId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
                     "Only the owning club can " + action + ".");

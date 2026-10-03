@@ -151,7 +151,7 @@ let any authenticated user delist another club's player" — a named hole rather
 | | Controllers | State |
 |---|---|---|
 | **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `66553b4` |
-| **P0-1b** | `CommunityController`, `DummyDataController`, `StadiumSettingsController`, `TransferController` | open |
+| **P0-1b** | `TransferController` ✅ · `StadiumSettingsController`, `DummyDataController`, `CommunityController` open | partial |
 
 **How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
 the injected bean** — Spring Data returns a JDK proxy that Mockito cannot wrap, and this is the single
@@ -178,6 +178,37 @@ were **not** missing guards:
   been green throughout, because a route that cannot bind refuses everyone equally. Now takes a DTO.
 - **`POST /players/create` answered 500 on every call.** `PlayerDTO.from` dereferences `player.getSkills()`
   unconditionally and `createPlayer` never set one.
+
+### The most severe finding in the whole P0 segment — `TransferController`, P0-1b
+
+**Ten writes, and not one of them asked who was acting.** Every write takes the acting club as a
+caller-supplied parameter, and `TransferService` can only compare that parameter against the seller — it
+cannot know who holds the token. So the question "is this your club?" was never asked on the surface. The
+codebase says so itself: `AdminController.forceUnlist` carries a javadoc explaining it lives under `/admin`
+**because** `/transfers` is not role-guarded. The hole was documented in prose and left open.
+
+**And on four routes, omitting the parameter turned the check off.** The seller guards read
+`if (actingTeamId != null && !Objects.equals(...))`, so `null` skipped the comparison entirely. The guard was
+strictest when a caller could prove who they were and absent when they could not — exactly backwards. The
+same file's `requireSeller` already had it right: null is a 400.
+
+What that allowed, all now refused:
+
+| Route | Was |
+|---|---|
+| `POST /list/{playerId}` | list **any** player in the world at **any** price |
+| `DELETE /remove/{playerId}` | delist **any** player |
+| `POST /buy/{playerId}` | spend **any** club's budget — the buyer is named in the body |
+| `POST /interest/{playerId}` | register interest as **any** club |
+| `/accept-offer`, `/reject-offers`, `/interest/{id}/clear` | act on **any** listing |
+
+The rule applied is the one the rest of the game already uses: **the club named in the request must be the
+club the caller runs.** Naming a rival satisfies the service's check and not this one, which is precisely how
+every route was reachable. Reads are untouched — the market page is for every manager, and the country filter
+already defaults to the viewer's own.
+
+**`TransferController` is the only route in the repository where one manager could move another club's
+money.**
 
 ---
 
