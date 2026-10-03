@@ -164,25 +164,80 @@ running the identical command at `42f5305`.
   and the order dependence survives for this combination. It is E1/E3's test-isolation problem.
 - **`SeasonRolloverNumberTest`** — `PessimisticLockingFailure: Timeout trying to lock table "JOB_RUN"`.
 
+### The full suite, run properly — 992 tests, **29 red**, and it takes 2 h 52 m
+
+**The board's "~6 min" is wrong by a factor of thirty.** With the app running on :8080 so the Playwright
+classes can reach it, a clean `mvn test` takes **2 hours 52 minutes** across **159 test classes**.
+
+| | `d4520df` (recorded baseline) | this run |
+|---|---:|---:|
+| Tests run | 981 | **992** |
+| Failures | 23 | **13** |
+| Errors | 26 | **16** |
+| Skipped | 2 | **0** |
+| **Red** | **49** | **29** |
+| Wall clock | "~6 min" | **2 h 52 m** |
+
+Eleven more tests — the three new D1 guard classes, 3 + 2 + 3 — and **twenty fewer red**. **None of the
+29 is in the code this task changed and none is one of the new classes**, which were green in the suite
+run like this:
+
+```
+NationalTeamSeederClubScanTest          3/3
+SimulationControllerFixtureScopeTest    2/2
+WeeklyFatigueRecoveryScopeTest          3/3
+```
+
+**The twenty that stopped being red are not claimed as fixes.** They are the order-dependent family, and
+the most likely reason is that a full run has a different shape from the partial one — the `[ERROR]`
+summary is only printed at the end, so a run that is killed reports a different set than one that
+finishes. **A baseline is only comparable to a baseline measured the same way**, and this is the first
+one that was allowed to finish.
+
+### What the 29 are, in full
+
+| Class | | Why |
+|---|---:|---|
+| `SidLeagueSeedingIntegrationTest` | 10 | *"expected 31 but was 0"* — no seeded world |
+| `OmladinacTransferJourneyTest` | 6 | `setUp` — `NoSuchElement`, needs the seeded world |
+| `CupFixtureSeederCountryTest` | 5 | the order dependence, reproduced identically at HEAD |
+| `CountryCatalogQueryCountTest` | 2 | `CONSTRAINT_INDEX_6` collision on `SRB` |
+| `BotLeagueStandardBackfillTest` | 2 | *"the seeded world has no human club, so this test would pass without proving anything"* |
+| `CountryPageRendersTest`, `SidebarAccordionOpensTest` | 2 | the two Playwright classes — they now **run** instead of hanging, and fail |
+| `PromotionLadderTest`, `CountryActivationTest` | 2 | the world's pyramid, built and asserted in one run |
+
+Two of these are worth naming beyond the table. **`BotLeagueStandardBackfillTest` fails on its own
+guard message** — *"the seeded world has no human club, so this test would pass without proving
+anything"* — which is a test correctly refusing to be green, and it is the clearest example on the board
+of the standing rule working. And **the two Playwright classes failing is new information**: with the
+app up they execute and fail, where before they hung the whole run. They need their own look, and they
+are why a full `mvn test` requires a running server.
+
+### Why it takes nearly three hours — and it is D3, visible from inside the suite
+
+**Two test classes simulate the entire world.** `GameClockDateFollowsGameTimeTest` and
+`SeasonRolloverNumberTest` advance the clock, which fires the matchday jobs, which simulate every
+unplayed fixture of every division of every simulated country. The log shows **986 matches persisted**
+between them, with the proposal engine's per-tick `DECISION` / `EXEC` trace for each — that trace is the
+bulk of the log file, and the bulk of the wall clock.
+
+That is not a test problem, it is the board's D3 finding reproduced in a place where it costs real
+money: *"the jobs are priced for a village, not a world of 14,880 clubs."* `PromotionLadderTest` at
+**321 s** and `CountryActivationTest` at **273 s** are the same thing at smaller scale.
+
+**Running the suite is only affordable with the app up, and it is a deliberate act, not something to
+do on the way to something else.**
+
 ### What is still unverified
 
-- **No completed full-suite run, so the 49-red baseline is still unverified.** A run was attempted and
-  **74 classes in, it blocked for 13 minutes and was killed.** The blocker is environmental and
-  pre-existing: `CountryPageRendersTest`, `SidebarAccordionOpensTest` and `MobilePanelOverflowTest`
-  drive a real browser through Playwright and need **the application running on :8080**, which the board
-  states and which was not up. So `mvn test` cannot complete here without starting the app first, and
-  that is a decision worth making deliberately rather than discovering as a 60-minute timeout.
-- **What the partial run did show: 26 failures across the classes it reached, and none of them is mine.**
-  Every one is the pre-existing order-dependence family the board already records — *"the seeded world
-  has no human club"*, *"Serbia has no pyramid, so this test proves nothing"*, *"expected 31 but was 0"*,
-  a `CONSTRAINT_INDEX_6` collision on `SRB` — plus `CupFixtureSeederCountryTest`, which I reproduced
-  identically at HEAD. **None is in the four sites I changed, and none is one of my new classes.** That
-  is weaker than a green suite and I am not claiming it as one.
-- **The recorded "116 test files" in `AGENTS.md` is wrong twice over**: `src/test/java/.../ui/` does not
-  exist, and the Playwright classes live in `newLogic/service/`. The three browser tests are service-
-  package classes, which is also why nothing in the file list hints that a full `mvn test` needs a server.
-- **No live-database run.** Every cost figure in the table above is the board's own arithmetic
-  (14,880 clubs, 370,000 players), not something measured here.
+- **The remaining 29 are unfixed.** They are the pre-existing order-dependence and missing-seeded-world
+  family recorded at `d4520df`, plus the two Playwright classes. E1's owner decision — rewrite the red
+  classes to assert what the product actually guarantees — still applies to them.
+- **No live-database verification of the four performance fixes.** Every cost figure above is the
+  board's own arithmetic (14,880 clubs, 370,000 players), not something measured here. **The four
+  changes are verified as behaviour-preserving and as no-longer-calling-the-wide-load; none is verified
+  as faster against a real world.** That needs the running app and a stopwatch, and it is the obvious
+  next thing to do with one.
 - **`findByClubTeamsForCountry` and `findBySkillsFatigueGreaterThan` are new index-less queries.**
   `player.team_id` is indexed (D5) but `player.fatigue` and `team.country_id` are not, so both narrow
   enormously without being instant. D5's remainder should look at them.
@@ -191,6 +246,8 @@ running the identical command at `42f5305`.
   `round_number`, so they use only the leading column. That is a large improvement on a full scan and
   is not the same as an indexed lookup — relevant if the round-vs-week question above is settled in
   favour of `round_number`.
+- **The recorded "116 test files" in `AGENTS.md` is wrong**: the run reached **159 test classes**, and
+  `src/test/java/.../ui/` does not exist — the three Playwright classes live in `newLogic/service/`.
 
 
 ### A note on the environment

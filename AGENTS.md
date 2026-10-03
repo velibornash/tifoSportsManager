@@ -102,7 +102,7 @@ written for one country. See cluster A in `kanban.md`.
 ```bash
 mvn clean package -DskipTests      # build
 ./run-app.sh                       # run locally (dev profile, needs PostgreSQL on :5432)
-mvn test                           # full suite (H2, ~6 min)
+mvn test                           # full suite (H2) — 2 h 52 m over 159 classes. Needs the app on :8080
 mvn test -Dtest=RatingEngineTest   # one class
 mvn test -Dtest=RatingEngineTest#theSeedIsTheOwnersScale   # one method
 ```
@@ -300,14 +300,25 @@ src/test/java/org/example/footballmanager/
   newLogic/              → service, util, sim and controller tests, mirroring src/main
   demo/service/          → engine tests for the frozen reference module
   integration/           → REST Assured integration and E2E flows
-  ui/                    → Playwright, needs a running app on :8080
 ```
 
-116 test files, 879 `@Test` methods. **879 is an annotation count, not a passing count** — run `mvn test`
-and write the real number into `kanban.md`.
+**159 test classes, 992 tests — measured 2026-10-03, 13 failures + 16 errors = 29 red.** There is no
+`ui/` package: the three Playwright classes (`CountryPageRendersTest`, `SidebarAccordionOpensTest`,
+`MobilePanelOverflowTest`) live in `newLogic/service/`, which is why nothing in this tree hints that a
+full `mvn test` needs a server.
 
-**Playwright** (`ui/TifoUITest`) needs `mvn exec:java -Dexec.mainClass=com.microsoft.playwright.CLI
--Dexec.args="install"` once, a running app, and `setHeadless(true)` for CI.
+**A full `mvn test` is 2 h 52 m and needs the application running on :8080.** The three Playwright
+classes otherwise **hang the entire run** — they do not fail, they wait. Two further reasons it is slow:
+`GameClockDateFollowsGameTimeTest` and `SeasonRolloverNumberTest` advance the clock, which fires the
+matchday jobs, which simulate **986 matches between them**, engine tick trace and all. That is D3's
+finding costing real wall clock. Budget for it; do not start it on the way to something else.
+
+**Playwright** needs `mvn exec:java -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install"`
+once, a running app, and `setHeadless(true)` for CI.
+
+**A full-suite run only counts if it was allowed to finish.** The `[ERROR]` summary is printed at the
+end, so a run that is killed reports a *different* set of failures than one that completes — and two
+baselines are only comparable if they were measured the same way.
 
 ### What the suite does not cover
 
