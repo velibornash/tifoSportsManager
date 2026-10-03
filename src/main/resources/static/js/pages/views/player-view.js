@@ -6,6 +6,7 @@ import {
     fetchPlayerRatingSummary, buildEmptyState, delay, buildLineupEventBadges
 } from './utils.js';
 import { escapeHtml } from '../../ui/escape.js';
+import { renderOfferButtons, renderOfferTerms } from './transfer-offer-actions.js';
 
 /**
  * The talent figure, when this viewer is entitled to see it.
@@ -243,7 +244,19 @@ export function createPlayerView(deps) {
             actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="direct-buy" data-player-id="${player.id}" data-default-price="${defaultValue}">Send offer</button>`);
         }
         if (transferStatus.canAcceptOffer) {
-            actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>`);
+            // One button per bid, so the manager accepts the bid he means. `transferStatus.offers`
+            // carries the ids; `interestedTeams` never could.
+            const offers = Array.isArray(transferStatus.offers)
+                ? transferStatus.offers.filter(offer => offer && offer.id != null)
+                : [];
+            if (offers.length > 0) {
+                actionButtons.push(renderOfferButtons(
+                    { playerId: player.id, offers },
+                    { escapeHtml: htmlEscape, actionName: 'transfer-panel-action' }
+                ));
+            } else {
+                actionButtons.push(`<button type="button" class="fm-action-btn" data-transfer-panel-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>`);
+            }
         }
         if (transferStatus.canRejectOffer) {
             actionButtons.push(`<button type="button" class="fm-action-btn secondary" data-transfer-panel-action="reject-offers" data-player-id="${player.id}">Reject offers</button>`);
@@ -267,9 +280,21 @@ export function createPlayerView(deps) {
                     <div class="club-profile-detail-row"><span>Completed at</span><strong>${htmlEscape(formatDateTimeLabel(transferStatus.completedAt))}</strong></div>
                 </div>
                 <div class="fm-empty" style="text-align:left; margin-top:16px;">
-                    ${interestedTeams.length
-                        ? `Interested clubs: ${htmlEscape(interestedTeams.join(', '))}`
-                        : 'No bids / registered interest yet.'}
+                    ${(() => {
+                        const offers = Array.isArray(transferStatus.offers)
+                            ? transferStatus.offers.filter(offer => offer && offer.id != null)
+                            : [];
+                        if (offers.length === 0) {
+                            return interestedTeams.length
+                                ? `Interested clubs: ${htmlEscape(interestedTeams.join(', '))}`
+                                : 'No bids / registered interest yet.';
+                        }
+                        // Each bid with what the manager actually receives, rather than one
+                        // comma-joined sentence he cannot act on.
+                        return `<div style="display:grid; gap:10px;">${offers
+                            .map(offer => renderOfferTerms(offer, { escapeHtml: htmlEscape }))
+                            .join('')}</div>`;
+                    })()}
                 </div>
                 ${actionButtons.length ? `<div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:16px;">${actionButtons.join('')}</div>` : ''}
             </section>`;
@@ -642,6 +667,21 @@ export function createPlayerView(deps) {
                 case 'accept-offer': {
                     const result = await performTransferJsonAction(`/transfers/accept-offer/${resolvedPlayerId}`, { teamId });
                     if (result?.actionMessage) window.alert(result.actionMessage);
+                    await (reloadOwned || reloadCurrent)?.();
+                    return;
+                }
+                case 'accept-named': {
+                    // The specific bid, not the richest one. Without an offerId this would silently
+                    // become "accept best", which is the behaviour the per-bid button replaced.
+                    const offerId = button?.dataset?.offerId;
+                    if (!offerId) {
+                        window.alert('That offer could not be identified. Reload the page and try again.');
+                        return;
+                    }
+                    if (!window.confirm('Accept this bid? The player signs immediately and every other bid is refused.')) return;
+                    const named = await performTransferJsonAction(
+                        `/transfers/accept-offer/${resolvedPlayerId}/${offerId}`, { teamId });
+                    if (named?.actionMessage) window.alert(named.actionMessage);
                     await (reloadOwned || reloadCurrent)?.();
                     return;
                 }

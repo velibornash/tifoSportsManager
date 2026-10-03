@@ -22,6 +22,8 @@ public class PlayerTransferStatusDTO {
     private Long buyerTeamId;
     private String buyerTeamName;
     private List<String> interestedTeams = new ArrayList<>();
+    /** The live bids with their ids, so the owning club can accept a chosen one. See TransferOfferDTO. */
+    private List<TransferOfferDTO> offers = new ArrayList<>();
     private boolean ownedByViewer;
     private boolean canList;
     private boolean canRemove;

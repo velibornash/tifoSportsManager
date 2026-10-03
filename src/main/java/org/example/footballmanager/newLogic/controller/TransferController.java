@@ -117,9 +117,27 @@ public class TransferController {
         return transferService.directBuyPlayer(playerId, request.getTeamId(), request.getPrice());
     }
 
+    /**
+     * Accept the highest live offer. Kept for the one-button path; see
+     * {@link #acceptNamedOffer} for the seller choosing.
+     */
     @PostMapping("/accept-offer/{playerId}")
     public TransferDTO acceptBestOffer(@PathVariable Long playerId, @RequestBody TransferActionRequest request) {
         return transferService.acceptBestOffer(playerId, request.getTeamId());
+    }
+
+    /**
+     * The seller accepts one <em>named</em> bid.
+     *
+     * <p>An auction where the seller cannot choose is not an auction. This takes the
+     * {@code offerId} the UI shows, so a manager whose second-choice buyer was simply the better fit
+     * for his squad can say so — and it stops the backend picking the richest offer on his behalf.
+     */
+    @PostMapping("/accept-offer/{playerId}/{offerId}")
+    public TransferDTO acceptNamedOffer(@PathVariable Long playerId,
+                                        @PathVariable Long offerId,
+                                        @RequestBody TransferActionRequest request) {
+        return transferService.acceptOffer(playerId, offerId, request.getTeamId());
     }
 
     @PostMapping("/reject-offers/{playerId}")

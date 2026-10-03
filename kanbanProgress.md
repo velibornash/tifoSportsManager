@@ -16,6 +16,104 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P2-2: a seller could not accept an offer at all, and could not have chosen one if he could
+
+### The board's premise was wrong in both halves
+
+P2-2 read: *"NegotiationService.acceptOffer exists and correctly rejects the wrong offer — no controller
+exposes it."* Neither half survived reading the source.
+
+**A controller did expose it**, at `POST /transfers/accept-offer/{playerId}`, and **it could only ever
+fail.** `TransferService.acceptBestOffer` called `negotiation.acceptOffer(...)`, which settles the
+transfer and marks it `COMPLETED`, and then called `TransferService.completeTransfer(...)`, whose
+second `settle` hit the `COMPLETED` guard, returned false, and threw.
+
+**The status code was not the one I predicted.** Reading the code, I expected
+`409 TRANSFER_NOT_COMPLETED`. Running it, the answer is **`400 "You cannot buy your own player."`** —
+because by the second pass the player has already moved to the buyer, so `requirePlayerTeam` returns
+the buyer, the seller *is* the buyer, and the self-deal guard fires with a nonsense message. Read the
+code, then run it: the two answers differed, and only the runtime one is real.
+
+### Four green test classes, and not one of them went near it
+
+`acceptOffer` is directly tested by `NegotiationServiceTest`, `TransferCompletionTest` and
+`OmladinacTransferJourneyTest`. All three call the **service**. The broken hop was in `TransferService`,
+and **there is no `TransferController` test in the repository at all.** This is the AGENTS.md failure
+shape exactly: the suite was green and the feature was unreachable.
+
+### Two more defects, found while making it work
+
+1. **The Incoming Offers panel was structurally dead.** `getTeamTransferOverview` built that list with
+   `.filter(this::hasOpenOffer).filter(t -> !isActiveListing(t))`. `hasOpenOffer` needs `buyerTeam ==
+   null` and a priced bid; `isActiveListing` needs status `LISTED` and `buyerTeam == null`. A listed
+   player with a bid satisfies the first and is then removed by the second, so **the list was empty
+   for every possible input.** Proven by restoring the filter: `expected: <1> but was: <0>`.
+2. **A refused settlement destroyed the auction.** `acceptOffer` rejected every rival bid *before*
+   settling and threw the verdict away, so a buyer who could no longer afford the fee left the seller
+   with one `ACCEPTED` offer, every rival `REJECTED`, and no transfer. `settleOffer` now unwinds every
+   status when settlement refuses.
+
+### The ownership check had an off switch
+
+Every guard read `actingTeamId != null && !Objects.equals(sellerTeamId, actingTeamId)` — so a caller
+that **omitted** `teamId` skipped the ownership check entirely and got the seller's powers. An absent
+team id is not consent to act as somebody else; `requireSeller` now returns `400 TEAM_REQUIRED`.
+
+### The test that passed while measuring nothing — mine, and it took two attempts
+
+Three break-and-restore cycles were not enough on the first pass:
+
+| Break | What it showed |
+|---|---|
+| Restore the double settle | Test 1 failed — but with `400 "You cannot buy your own player."`, not the 409 I predicted |
+| Make `acceptOffer` ignore the named id | **All 4 still passed.** I had only broken a *local* variable; `settleOffer` still received the named id, so the settlement was unchanged. The test was right and my break was worthless |
+| Break it properly — settle the richest bid | 2 failed with `expected: <1200000.0> but was: <2000000.0>` |
+| Unscope the offer lookup | **Test 3 still passed**, because it asserted only `assertThrows(ApiException.class)` and an incidental `TRANSFER_NOT_COMPLETED` is also an `ApiException`. Tightened it to assert `404` and the `OFFER_NOT_FOUND` code; it then failed with `expected: <404 NOT_FOUND> but was: <409 CONFLICT>` |
+
+**A coarse assertion is a test that cannot fail.** Asserting an exception *type* rather than its
+status and code let a completely different failure satisfy it.
+
+### Two fixtures that were quietly measuring nothing
+
+- **`NegotiationServiceTest` is red 10/10 when run alone.** `inWindow()` does
+  `clocks.findAll().stream().findFirst().orElseThrow()`, and no `GameClock` exists in an empty H2. It
+  is green **only in a full suite**, because some earlier test seeded a clock first. **The board calls
+  this class "already green, 10/10 — it is the worked example of this fix" (P0-2). That is wrong**,
+  and P0-2 should not use it as the reference until its clock is built rather than assumed.
+- **`sellerChoosesAndOtherOffersSurvive` passes without a transfer happening.** Its clubs are built
+  with a cash balance and no settled ledger income, so `TransferBudgetService.canAfford` refuses
+  ("No settled income yet, so no transfer budget has been granted"), `settle` returns false, and the
+  old code accepted the offer regardless. The test asserted statuses on a deal that never settled.
+  With `settleOffer`'s unwind it would now fail — correctly.
+
+**`TransferCompletionTest` (3) and `OmladinacTransferJourneyTest` (6) are red for the same
+`NoSuchElementException`-on-empty-database reason** — confirmed by running each alone, and both were
+verified red before this change rather than assumed. **One fixture defect, 19 of the 29 suite reds.**
+
+A note on comparability: in a 6-class run `TransferCompletionTest` showed green while red alone —
+because my class seeds the `GameClock` its `setUp` needs. Not a fix, an accidental coupling.
+
+### Blast radius, measured the same way both times
+
+| | baseline (my change stashed) | with the change |
+|---|---:|---:|
+| `NegotiationServiceTest` | 10 errors | 10 errors (unchanged — no clock) |
+| `TransferCompletionTest` | 3 errors | 3 errors (unchanged — same cause) |
+| `TransferServicePriceGuardTest` | 10 pass | 10 pass |
+| `TransferFeeServiceTest` / `TransferWindowServiceTest` | 7 / 13 pass | 7 / 13 pass |
+| `SellerAcceptsANamedOfferTest` | did not exist | **4 pass** |
+
+**No regression.** `mvn clean package` succeeds.
+
+### Still not done here
+
+`settle` judges affordability with `budgets.canAfford(buyerId, playerId)`, which computes
+`playerValue * 0.25` rather than the **agreed** fee, and nothing then checks `upfront <= budget`
+before deducting. So a fee above cash is possible. That is shared settlement used by the AI market at
+14,880 clubs — out of scope for a P2 feature, and **recorded rather than touched.**
+
+---
+
 ## 2026-10-03 — P1-1: four indexes on `match`, and two of the board's three claims refuted
 
 **The board asked for three indexes. Two are wrong and one is irrelevant. Four unlisted ones are the

@@ -525,13 +525,37 @@ exactly that reason.
 
 **Exit criteria:** corner taker selected by position relative to the ball; verified on a replay.
 
-### P2-2 — Seller chooses which offer to accept
+### ~~P2-2 — Seller chooses which offer to accept~~ ✅ `SellerAcceptsANamedOfferTest` 4/4
 
-Half a day, and nearly free: `NegotiationService.acceptOffer(transferId, offerId)` **exists and correctly
-rejects the wrong offer** — no controller exposes it. Wire it, and add the owner-facing UI.
+**What the board said, and what was true.** The board said the service method "exists and correctly
+rejects the wrong offer — no controller exposes it". **Both halves were wrong.** A controller did
+expose it (`POST /transfers/accept-offer/{playerId}`), and it was **broken**: `acceptBestOffer`
+settled the transfer and then settled it again, so the endpoint could only ever answer 400
+`"You cannot buy your own player."` A seller could not accept an offer at all.
 
-**Exit criteria:** endpoint reachable, rejects an offer for a different transfer, and a manager with two
-live offers can pick one.
+**Landed:**
+- [x] One settlement. `acceptBestOffer` delegates to the new `acceptOffer`; the squad-number
+      housekeeping `completeTransfer` also did is kept, extracted as `assignSquadNumbersAfterTransfer`
+- [x] `POST /transfers/accept-offer/{playerId}/{offerId}` — the seller names the bid
+- [x] Bids cross the wire with their ids: new `TransferOfferDTO`, on both `TransferDTO` and
+      `PlayerTransferStatusDTO`, including `netToSeller` so the row is not just a headline fee
+- [x] One **Accept** button per bid in the Transfer Centre and the player page, via a single shared
+      renderer (`static/js/pages/views/transfer-offer-actions.js`)
+- [x] A bid on another transfer is refused with `404 OFFER_NOT_FOUND`, not absorbed
+- [x] `NegotiationService.settleOffer` unwinds every status if settlement refuses — the auction
+      survives a failed deal instead of every rival bid being rejected for nothing
+- [x] `requireSeller` no longer treats an **absent** `teamId` as consent to act as the seller
+- [x] **Fixed alongside it:** `getTeamTransferOverview`'s `incomingOffers` had
+      `.filter(hasOpenOffer).filter(t -> !isActiveListing(t))`, and those two predicates are mutually
+      exclusive — the list was empty for every possible input, so the Incoming Offers panel was dead.
+      Proven: `expected: <1> but was: <0>` with the filter restored
+- [x] Every test proven able to fail by deliberate breakage (four break-and-restore cycles)
+
+**Also found and fixed:** `requireSeller` tightening means a caller omitting `teamId` is now
+`400 TEAM_REQUIRED` rather than silently skipping the ownership check. Both frontend call sites
+already send it.
+
+---
 
 ### P2-3 — Player can refuse to be listed — the anti-daytrade mechanic
 

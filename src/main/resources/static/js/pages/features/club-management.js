@@ -1,4 +1,5 @@
 import { createStaffDirectoryFeature } from './staff-directory.js';
+import { renderOfferButtons, renderOfferTerms } from '../views/transfer-offer-actions.js';
 
 export function createClubManagementFeature(deps) {
     const {
@@ -199,6 +200,18 @@ export function createClubManagementFeature(deps) {
         return Object.values(transfer.interestedTeams || {}).filter(Boolean);
     }
 
+    /**
+     * The actionable bids, with their ids.
+     *
+     * <p>Falls back to nothing rather than to {@code interestedTeams}: those are prose strings
+     * ("Rival FC offered EUR 900000") and an id cannot be recovered from one. A screen that shows
+     * "there are bids" with nothing to click is what this replaced.
+     */
+    function getTransferOffers(transfer) {
+        if (!transfer || !Array.isArray(transfer.offers)) return [];
+        return transfer.offers.filter(offer => offer && offer.id != null);
+    }
+
     function formatMoney(value) {
         return escapeHtml(formatBudget(Math.round(Number(value || 0))));
     }
@@ -327,6 +340,22 @@ export function createClubManagementFeature(deps) {
                             maybeShowTransferMessage(await sendTransferRequest(`/transfers/accept-offer/${playerId}`, {
                                 payload: { teamId }
                             }));
+                            break;
+                        }
+                        case 'accept-named': {
+                            // The bid the manager actually clicked, not the richest one. `offerId`
+                            // must be present: without it this would silently fall back to the
+                            // backend's choice, which is the behaviour this button replaced.
+                            const offerId = button.dataset.offerId;
+                            if (!offerId) {
+                                window.alert('That offer could not be identified. Reload the page and try again.');
+                                return;
+                            }
+                            if (!window.confirm('Accept this bid? The player signs immediately and every other bid is refused.')) return;
+                            maybeShowTransferMessage(await sendTransferRequest(
+                                `/transfers/accept-offer/${playerId}/${offerId}`,
+                                { payload: { teamId } }
+                            ));
                             break;
                         }
                         case 'reject-offers': {
@@ -464,20 +493,22 @@ export function createClubManagementFeature(deps) {
                                 </div>
                                 <div class="fm-squad-wrap">
                                     <table class="fm-squad">
-                                        <thead><tr><th class="sq-name">Player</th><th>Pos</th><th>Offers</th><th>Listed</th><th>Actions</th></tr></thead>
+                                        <thead><tr><th class="sq-name">Player</th><th>Pos</th><th>Bids</th><th>Listed</th><th>Actions</th></tr></thead>
                                         <tbody>
                                             ${incomingOffers.map(transfer => {
-                                                const interests = getInterestedTeams(transfer);
+                                                const offers = getTransferOffers(transfer);
                                                 return `
                                                     <tr class="fm-squad-row">
                                                         <td class="sq-name">${escapeHtml(transfer.playerName || 'Unknown')}</td>
                                                         <td>${escapeHtml(transfer.position || '-')}</td>
-                                                        <td>${escapeHtml(interests.length ? interests.join(', ') : 'No offers')}</td>
+                                                        <td>${offers.length
+                                                            ? offers.map(offer => renderOfferTerms(offer, { escapeHtml })).join('')
+                                                            : '<span class="fm-subtle">No offers</span>'}</td>
                                                         <td>${escapeHtml(formatDateTimeLabel(transfer.listedAt))}</td>
                                                         <td>
                                                             <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                                                 <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || teamId}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || myOverview?.teamName || 'Club')}">Open</button>
-                                                                ${transfer.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${transfer.playerId}">Accept best offer</button>` : ''}
+                                                                ${transfer.canAcceptOffer ? renderOfferButtons(transfer, { escapeHtml }) : ''}
                                                                 ${transfer.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${transfer.playerId}">Reject offers</button>` : ''}
                                                             </div>
                                                         </td>
@@ -504,7 +535,7 @@ export function createClubManagementFeature(deps) {
                                                     <td>
                                                         <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                                             <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || teamId}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || myOverview?.teamName || 'Club')}">Open</button>
-                                                            ${transfer.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${transfer.playerId}">Accept best offer</button>` : ''}
+                                                            ${transfer.canAcceptOffer ? renderOfferButtons(transfer, { escapeHtml }) : ''}
                                                             ${transfer.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${transfer.playerId}">Reject offers</button>` : ''}
                                                             ${transfer.canClearInterest ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="clear-interest" data-player-id="${transfer.playerId}">Clear interest</button>` : ''}
                                                             <button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : `disabled title="${transfer.hasPricedOffer ? 'A club has a live offer on this player. Reject or clear it first.' : 'Cannot remove right now.'}"`}>Remove</button>
@@ -546,7 +577,7 @@ export function createClubManagementFeature(deps) {
                                                     <td>
                                                         <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                                             <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${transfer.playerId}" data-seller-team-id="${transfer.sellerTeamId || 0}" data-seller-team-name="${escapeHtml(transfer.sellerTeamName || 'Team')}">${openLabel}</button>
-                                                            ${transfer.ownedByViewer && transfer.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${transfer.playerId}">Accept best offer</button>` : ''}
+                                                            ${transfer.ownedByViewer && transfer.canAcceptOffer ? renderOfferButtons(transfer, { escapeHtml }) : ''}
                                                             ${transfer.ownedByViewer && transfer.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${transfer.playerId}">Reject offers</button>` : ''}
                                                             ${transfer.ownedByViewer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${transfer.playerId}" ${transfer.removalAllowed ? '' : 'disabled title="Cannot remove while another club has already registered interest."'}>Remove</button>` : ''}
                                                             ${transfer.buyableByViewer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="interest" data-player-id="${transfer.playerId}">Interest</button>` : ''}
@@ -587,7 +618,7 @@ export function createClubManagementFeature(deps) {
                                                     <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                                         <button type="button" class="fm-action-btn secondary" data-transfer-open="true" data-player-id="${player.id}" data-seller-team-id="${teamId}" data-seller-team-name="${escapeHtml(myOverview?.teamName || 'Club')}">Open</button>
                                                         ${isListed
-                                                            ? `${listedTransfer?.canAcceptOffer ? `<button type="button" class="fm-action-btn" data-transfer-action="accept-offer" data-player-id="${player.id}">Accept best offer</button>` : ''}${listedTransfer?.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${player.id}">Reject offers</button>` : ''}${listedTransfer?.canClearInterest ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="clear-interest" data-player-id="${player.id}">Clear interest</button>` : ''}<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${player.id}" ${(listedTransfer?.removalAllowed ?? false) ? '' : `disabled title="${listedTransfer?.hasPricedOffer ? 'A club has a live offer on this player. Reject or clear it first.' : 'Cannot remove right now.'}"`}>Remove</button>`
+                                                            ? `${listedTransfer?.canAcceptOffer ? renderOfferButtons(listedTransfer, { escapeHtml }) : ''}${listedTransfer?.canRejectOffer ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="reject-offers" data-player-id="${player.id}">Reject offers</button>` : ''}${listedTransfer?.canClearInterest ? `<button type="button" class="fm-action-btn secondary" data-transfer-action="clear-interest" data-player-id="${player.id}">Clear interest</button>` : ''}<button type="button" class="fm-action-btn secondary" data-transfer-action="remove" data-player-id="${player.id}" ${(listedTransfer?.removalAllowed ?? false) ? '' : `disabled title="${listedTransfer?.hasPricedOffer ? 'A club has a live offer on this player. Reject or clear it first.' : 'Cannot remove right now.'}"`}>Remove</button>`
                                                             : `<button type="button" class="fm-action-btn" data-transfer-action="list" data-player-id="${player.id}" data-default-price="${Math.round(Number(player.value || 1))}">List</button>`}
                                                     </div>
                                                 </td>

@@ -6,6 +6,7 @@ import jakarta.transaction.Transactional;
 import org.example.footballmanager.newLogic.dto.transfer.PlayerTransferStatusDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
+import org.example.footballmanager.newLogic.dto.transfer.TransferOfferDTO;
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
@@ -212,7 +213,6 @@ public class TransferService {
                 .toList();
         List<TransferDTO> incomingOffers = teamTransfers.stream()
                 .filter(this::hasOpenOffer)
-                .filter(transfer -> !isActiveListing(transfer))
                 .map(transfer -> toTransferDto(transfer, viewerTeamId))
                 .toList();
         dto.setListedPlayers(listed);
@@ -248,6 +248,7 @@ public class TransferService {
         dto.setBuyerTeamId(transfer != null && transfer.getBuyerTeam() != null ? transfer.getBuyerTeam().getId() : null);
         dto.setBuyerTeamName(transfer != null && transfer.getBuyerTeam() != null ? transfer.getBuyerTeam().getName() : null);
         dto.setInterestedTeams(offerSummaries(transfer));
+        dto.setOffers(offerDtos(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setCanList(ownedByViewer && !listed);
         dto.setCanRemove(ownedByViewer && listed && !hasPricedOffer(transfer));
@@ -447,10 +448,7 @@ public class TransferService {
     @Transactional
     public TransferDTO acceptBestOffer(Long playerId, Long actingTeamId) {
         Transfer transfer = getOpenOfferTransfer(playerId);
-        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(transfer.getPlayer());
-        if (actingTeamId != null && !Objects.equals(sellerTeam.getId(), actingTeamId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Only the owning club can accept incoming offers.");
-        }
+        requireSeller(transfer, actingTeamId, "accept incoming offers");
 
         // The highest live offer the buyer can still honour. Real offer records, so the buyer is a
         // foreign key rather than a name parsed back out of a sentence.
@@ -462,14 +460,61 @@ public class TransferService {
                 .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NO_VALID_OFFERS",
                         "There are no valid incoming offers to accept."));
 
-        negotiation.acceptOffer(transfer.getId(), best.getId());
-        Team buyerTeam = best.getBuyerTeam();
+        return acceptOffer(playerId, best.getId(), actingTeamId);
+    }
 
-        TransferDTO dto = toTransferDto(
-                completeTransfer(transfer.getPlayer(), buyerTeam, best.getFee(), transfer), actingTeamId);
+    /**
+     * The seller accepts one named bid (P2-2).
+     *
+     * <p>This is the endpoint's whole reason to exist. {@link #acceptBestOffer} picks the richest
+     * offer itself, so a manager whose second-choice buyer was simply the better fit for his squad
+     * had no way to say so — and the UI could not have offered him one, because the bids reached the
+     * browser as prose strings with no ids in them.
+     *
+     * <p><b>One settlement, and only here.</b> This used to call {@code negotiation.acceptOffer}
+     * (which settles the transfer and marks it {@code COMPLETED}) and then call
+     * {@code completeTransfer} again, whose second {@code settle} hit the {@code COMPLETED} guard,
+     * returned false, and threw {@code ApiException(CONFLICT, "TRANSFER_NOT_COMPLETED")}. Because
+     * that is unchecked, the transaction rolled back and the endpoint could only ever answer 409 —
+     * a seller could not accept an offer at all, through the product, while four test classes stayed
+     * green against the service method they bypassed. The squad-number housekeeping that
+     * {@code completeTransfer} also does is kept, because dropping it would be a second, quieter
+     * regression: a signing arriving without a number.
+     */
+    @Transactional
+    public TransferDTO acceptOffer(Long playerId, Long offerId, Long actingTeamId) {
+        Transfer transfer = getOpenOfferTransfer(playerId);
+        requireSeller(transfer, actingTeamId, "accept an incoming offer");
+
+        if (offerId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "OFFER_REQUIRED",
+                    "Which offer? A seller accepts a named bid, not a queue.");
+        }
+        // Scoped to this transfer's own thread on purpose: an offer id belonging to another transfer
+        // is not in the list, and must be refused rather than silently absorbed.
+        TransferOffer chosen = liveOffers(transfer).stream()
+                .filter(o -> o.getId() != null && o.getId().equals(offerId))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "OFFER_NOT_FOUND",
+                        "That offer is not one of the live bids on this player."));
+
+        if (!negotiation.settleOffer(transfer.getId(), offerId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "TRANSFER_NOT_COMPLETED",
+                    "The transfer could not be completed. The buyer may no longer be able to afford it.");
+        }
+
+        Team buyerTeam = chosen.getBuyerTeam();
+        Player player = transfer.getPlayer();
+        Team sellerTeam = transfer.getSellerTeam() != null ? transfer.getSellerTeam() : requirePlayerTeam(player);
+        if (buyerTeam != null) {
+            assignSquadNumbersAfterTransfer(player, sellerTeam, buyerTeam);
+        }
+
+        TransferDTO dto = toTransferDto(transferRepository.findById(transfer.getId()).orElseThrow(), actingTeamId);
         dto.setOfferAccepted(true);
-        dto.setActionMessage("Offer accepted. " + transfer.getPlayer().getName()
-                + " joins " + buyerTeam.getName() + " for EUR " + Math.round(best.getFee()) + ".");
+        dto.setActionMessage("Offer accepted. " + player.getName()
+                + " joins " + (buyerTeam == null ? "the buying club" : buyerTeam.getName())
+                + " for EUR " + Math.round(chosen.getFee() == null ? 0 : chosen.getFee()) + ".");
         return dto;
     }
 
@@ -598,11 +643,46 @@ public class TransferService {
         }
 
         Transfer completed = transferRepository.findById(transfer.getId()).orElseThrow();
+        assignSquadNumbersAfterTransfer(player, sellerTeam, buyerTeam);
+        return completed;
+    }
+
+    /**
+     * Only the owning club may act on its own listings.
+     *
+     * <p>The club id is required rather than optional. Every guard here used to read
+     * {@code actingTeamId != null && !Objects.equals(...)} — so a caller that simply omitted
+     * {@code teamId} skipped the ownership check entirely and got the seller's powers. An absent
+     * team id is not consent to act as somebody else.
+     */
+    private void requireSeller(Transfer transfer, Long actingTeamId, String action) {
+        if (actingTeamId == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "TEAM_REQUIRED",
+                    "Which club is acting? A club id is required to " + action + ".");
+        }
+        Team sellerTeam = transfer.getSellerTeam() != null
+                ? transfer.getSellerTeam()
+                : requirePlayerTeam(transfer.getPlayer());
+        if (!Objects.equals(sellerTeam.getId(), actingTeamId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN",
+                    "Only the owning club can " + action + ".");
+        }
+    }
+
+    /**
+     * Squad numbers after a player changes clubs.
+     *
+     * <p>Split out of {@link #completeTransfer} because the offer-accepting path settles through
+     * {@code NegotiationService.acceptOffer} instead, and would otherwise have skipped this
+     * entirely: the new signing would arrive without a number and the seller's numbers would keep
+     * the gap he left. A settlement that moves the player and forgets the bookkeeping is not a
+     * finished settlement.
+     */
+    private void assignSquadNumbersAfterTransfer(Player player, Team sellerTeam, Team buyerTeam) {
         player.setSquadNumber(squadNumberAssigner.nextNumberForTeam(buyerTeam, player.getPosition()));
         playerRepository.save(player);
         squadNumberAssigner.assignMissingNumbers(sellerTeam);
         squadNumberAssigner.assignMissingNumbers(buyerTeam);
-        return completed;
     }
 
     private Transfer getActiveTransfer(Long playerId) {
@@ -666,6 +746,32 @@ public class TransferService {
             return List.of();
         }
         return negotiation.liveOffers(transfer.getId());
+    }
+
+    /**
+     * The live bids as the seller needs them: with their ids.
+     *
+     * <p>Previously only {@link #offerSummaries} left this service, and it produced prose — a seller
+     * could count the bidders but not name one, because a name is not an identifier and two clubs
+     * may share one. See {@code TransferOfferDTO}.
+     */
+    private List<TransferOfferDTO> offerDtos(Transfer transfer) {
+        return liveOffers(transfer).stream()
+                .map(offer -> {
+                    TransferOfferDTO dto = new TransferOfferDTO();
+                    dto.setId(offer.getId());
+                    dto.setBuyerTeamId(offer.getBuyerTeam() == null ? null : offer.getBuyerTeam().getId());
+                    dto.setBuyerTeamName(offer.getBuyerTeam() == null ? null : offer.getBuyerTeam().getName());
+                    dto.setFee(offer.getFee());
+                    dto.setWage(offer.getWage());
+                    dto.setContractYears(offer.getContractYears());
+                    dto.setAgentFee(offer.getAgentFee());
+                    dto.setNetToSeller(offer.netToSeller());
+                    dto.setStatus(offer.getStatus() == null ? null : offer.getStatus().name());
+                    dto.setRound(offer.getRound());
+                    return dto;
+                })
+                .toList();
     }
 
     /** Human-readable one-liners for the offers on a transfer, for the transfer screen. */
@@ -1075,6 +1181,7 @@ public class TransferService {
         dto.setListedAt(transfer.getListedAt());
         dto.setCompletedAt(transfer.getCompletedAt());
         dto.setInterestedTeams(offerSummaries(transfer));
+        dto.setOffers(offerDtos(transfer));
         dto.setOwnedByViewer(ownedByViewer);
         dto.setBuyableByViewer(viewerTeamId != null && !ownedByViewer && isActiveListing(transfer));
         dto.setRemovalAllowed(ownedByViewer && isActiveListing(transfer) && liveOffers(transfer).isEmpty());

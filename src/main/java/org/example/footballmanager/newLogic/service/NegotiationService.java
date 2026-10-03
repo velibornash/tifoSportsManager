@@ -193,26 +193,67 @@ public class NegotiationService {
      */
     @Transactional
     public List<TransferOffer> acceptOffer(Long transferId, Long offerId) {
+        acceptInternal(transferId, offerId);
+        return offers.findByTransferIdOrderByRoundAsc(transferId);
+    }
+
+    /**
+     * The seller accepts one specific bid, and the caller is told whether the deal settled.
+     *
+     * <p>{@link #acceptOffer} flips the statuses and settles without reporting whether the
+     * settlement happened. A buyer who could no longer afford the fee therefore left the seller with
+     * one {@code ACCEPTED} offer, every rival {@code REJECTED}, and no transfer: the auction was
+     * destroyed and nothing was bought — the exact outcome {@code acceptOffer}'s own javadoc says
+     * must not happen. The statuses are now put back, so a refused deal leaves the bidding open and
+     * the seller free to take a different bid.
+     *
+     * @return whether the transfer completed
+     */
+    @Transactional
+    public boolean settleOffer(Long transferId, Long offerId) {
+        return acceptInternal(transferId, offerId);
+    }
+
+    /**
+     * Accepts one bid, rejects the rivals, and settles — or puts every status back if it cannot.
+     *
+     * @return whether the transfer completed
+     */
+    private boolean acceptInternal(Long transferId, Long offerId) {
         List<TransferOffer> all = offers.findByTransferIdOrderByRoundAsc(transferId);
         TransferOffer chosen = all.stream()
                 .filter(o -> o.getId().equals(offerId))
                 .findFirst().orElse(null);
-        if (chosen == null) return all;
-        if (!chosen.getStatus().isLive()) return all;
+        if (chosen == null || !chosen.getStatus().isLive()) {
+            return false;
+        }
+
+        OfferStatus previous = chosen.getStatus();
+        List<TransferOffer> rivals = all.stream()
+                .filter(o -> !o.getId().equals(chosen.getId()))
+                .filter(o -> o.getStatus().isLive())
+                .toList();
 
         chosen.setStatus(OfferStatus.ACCEPTED);
         offers.save(chosen);
         // Everyone else is told the player has gone, but their own record is preserved.
-        for (TransferOffer other : all) {
-            if (other.getId().equals(offerId)) continue;
-            if (other.getStatus().isLive()) {
-                other.setStatus(OfferStatus.REJECTED);
-                offers.save(other);
-            }
+        for (TransferOffer other : rivals) {
+            other.setStatus(OfferStatus.REJECTED);
+            offers.save(other);
         }
 
-        completeTransfer(transferId, chosen);
-        return offers.findByTransferIdOrderByRoundAsc(transferId);
+        if (!completeTransfer(transferId, chosen)) {
+            log.warn("Transfer {} cannot settle offer {}: refused, so every bid is live again",
+                    transferId, chosen.getId());
+            chosen.setStatus(previous);
+            offers.save(chosen);
+            for (TransferOffer other : rivals) {
+                other.setStatus(OfferStatus.OPEN);
+                offers.save(other);
+            }
+            return false;
+        }
+        return true;
     }
 
     /**

@@ -24,7 +24,13 @@ public class TransferDTO {
     private String status;
     private LocalDateTime listedAt;
     private LocalDateTime completedAt;
+    /** Human-readable "who is interested" lines, for the market board. Not actionable. */
     private List<String> interestedTeams = new ArrayList<>();
+    /**
+     * The live bids on this player, with their ids. The seller accepts one of these by id — see
+     * {@code POST /transfers/accept-offer/{playerId}/{offerId}}.
+     */
+    private List<TransferOfferDTO> offers = new ArrayList<>();
     private boolean ownedByViewer;
     private boolean buyableByViewer;
     private boolean removalAllowed;
