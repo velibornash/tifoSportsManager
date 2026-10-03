@@ -116,7 +116,7 @@ before deducting. So a fee above cash is possible. That is shared settlement use
 
 ## 2026-10-03 — P1-7: the per-tick event log, and the two Elo replays that could not run
 
-**`Match.event_json` is 742 KB to 1,035 KB on every simulated match** (`6e63831`).** It is the whole per-tick decision
+**`Match.event_json` is 742 KB to 1,035 KB on every simulated match** (`6e63831`). It is the whole per-tick decision
 log — every tick, every player, `DECISION` / `PASS` / `RECEIVE` with a human-readable description —
 written into one text column by `SimMatchService:294`. Measured on the live rows:
 
