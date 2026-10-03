@@ -73,6 +73,42 @@ class DailyRecoveryScopeTest extends BaseTest {
                         + "population is the same defect wearing a different name.");
     }
 
+    /**
+     * The window is read as a projection, not as entities.
+     *
+     * <p><b>This assertion exists because {@link ZoneLoadProjectionTest} could not catch its own
+     * wiring.</b> That file proves the projection is arithmetically correct and that the repository
+     * method returns rows — and reverting {@code applyDailyRecovery} to the entity query left it
+     * <b>2/2 green</b>, because it never looks at the service. A guard that cannot fail is worse
+     * than none, so the wiring is checked here where the other half of this method is.
+     *
+     * <p>The cost it protects against is measured: on a real matchday (155 matches, 18,853 zone-load
+     * rows) the entity query with its {@code JOIN FETCH} of the match took <b>21.0 ms</b> against the
+     * projection's <b>10.8 ms</b>, and materialised a managed entity per row for an arithmetic sum over
+     * four numbers.
+     */
+    @Test
+    @DisplayName("the recovery window is read as a projection, not as entities")
+    void theRecoveryWindowIsReadAsAProjection() throws IOException {
+        String code = stripComments(Files.readString(ZONE_LOAD_SERVICE, StandardCharsets.UTF_8));
+        String body = methodBody(code, "applyDailyRecovery");
+
+        assertTrue(body != null, "applyDailyRecovery is not in ZoneLoadService any more.");
+
+        Matcher entities = Pattern.compile("loads\\s*\\.\\s*findLoadsPlayedSince\\s*\\(").matcher(body);
+        assertTrue(!entities.find(),
+                "applyDailyRecovery reads the window as entities again. That loads a managed "
+                        + "PlayerZoneLoad per row plus every column of the joined match, for a sum over four "
+                        + "numbers — measured at 21.0 ms against 10.8 ms on a real matchday's 18,853 rows. "
+                        + "findLoadMinutesPlayedSince returns exactly what the arithmetic reads.");
+
+        Matcher projection = Pattern
+                .compile("loads\\s*\\.\\s*findLoadMinutesPlayedSince\\s*\\(")
+                .matcher(body);
+        assertTrue(projection.find(),
+                "applyDailyRecovery no longer reads the window through the projection.");
+    }
+
     @Test
     @DisplayName("the window is measured on the game clock, not the wall clock")
     void theWindowIsMeasuredOnTheGameClock() throws IOException {

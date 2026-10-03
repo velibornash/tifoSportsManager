@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.model.PlayerZoneLoad;
 import org.example.footballmanager.newLogic.model.Zone;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.PlayerZoneLoadRepository;
+import org.example.footballmanager.newLogic.repository.ZoneLoadMinutes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -133,11 +134,11 @@ public class ZoneLoadService {
         // The arithmetic is identical to recoveryFor(): same window, same sum, same cap, same rate. The
         // per-player method stays for the single-player screens, where one query is correct.
         Map<Long, Double> workedSinceWindow = new HashMap<>();
-        for (PlayerZoneLoad load : loads.findLoadsPlayedSince(windowStart)) {
-            if (load.getPlayer() == null || load.getPlayer().getId() == null) {
+        for (ZoneLoadMinutes load : loads.findLoadMinutesPlayedSince(windowStart)) {
+            if (load.playerId() == null) {
                 continue;
             }
-            workedSinceWindow.merge(load.getPlayer().getId(), load.effectiveMinutes(), Double::sum);
+            workedSinceWindow.merge(load.playerId(), load.effectiveMinutes(), Double::sum);
         }
         if (workedSinceWindow.isEmpty()) {
             return 0;
