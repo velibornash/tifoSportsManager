@@ -16,6 +16,88 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P0-7: the playoff path was the last place in the season that only knew about Serbia
+
+**Six tests, green, one mutation.** The board named `SeasonService.java:1094`; there were three sites.
+
+### Three literals, and the fix needed no new plumbing
+
+| Site | Was |
+|---|---|
+| `ensurePlayoffWeekFixtures` `:372` | asked for tier-2 leagues in `"SRB"` |
+| `findTier2Leagues()` `:1094` | filtered a Serbia-only list a **second** time |
+| `findSerbianLeagues()` `:1115` | the Serbia-only list itself |
+
+Both callers already held the top flight — `buildPlayoffSummary(Competition superLiga, …)` and
+`ensurePlayoffWeekFixtures(Competition superLiga, …)`. **The bug was never a missing parameter; it was a
+hardcoded string where a parameter should have been**, so the fix is to read the country off the competition
+the caller passed. No signature changed.
+
+Of 48 countries, **47 had no promotion or relegation summary and no playoff fixtures.** Serbia worked
+perfectly, which is exactly why the omission survived: the season rollover and the promotion ladder had both
+already been made country-agnostic by an earlier fix, and this was the path that fix missed.
+
+`ensurePlayoffWeekFixtures` **returns without doing anything** when it finds fewer than two tier-2 divisions,
+so for 47 countries the playoff week was empty with no error and no log line.
+
+### The fallback deliberately not taken
+
+A top flight with no country yields nothing. The tempting repair — *"if the country is null, assume SRB"* —
+would put one country's playoff inside another's pyramid, which is worse than the bug it fixes. Asserted, so
+it cannot come back.
+
+### Verification, and its limit — stated rather than glossed
+
+**What was verified.** `PyramidBuilder:151` sets `country` on every competition it creates, and
+`CountryActivationService.activate()` builds its pyramid through that method — so an activated country's
+divisions carry their country, which is the premise the whole fix rests on. The live database agrees: **0 of
+31** leagues have a null `country`. And the test proves a non-Serbian country of exactly that shape receives
+both its summary and its playoff fixtures.
+
+**What was not.** The board's exit criterion says *"verified against a country that is not Serbia, not
+inferred"*, and **that is not met.** The dev database is **Serbia-only** — 31 leagues, 1 distinct country,
+**0** non-Serbian top flights — so there is nothing there to verify against. Seeding one is the owner's
+call: `POST /admin/countries/{isoCode}/activate` writes 31 divisions and roughly 7,750 player rows, and the
+board already records that attempt as a 26-minute operation that committed nothing. **Recorded, not taken.**
+
+### The mutation
+
+Putting `"SRB"` back fails **3 of 6**, and the failures are the two guarantees that matter:
+
+```
+aCountryThatIsNotSerbiaGetsItsSummary   no direct promotions for Abroad c94f50df
+playoffTiesAreDrawnOutsideSerbia         no playoff fixture was drawn for Abroad fc81c64a
+thePromotionsComeFromThisCountrysOwnSecondTier   one promotion per second-tier division: []
+```
+
+Empty lists, not exceptions — which is the whole shape of the bug.
+
+### A test that asserted the wrong thing, and was corrected rather than bent
+
+`thePromotionsComeFromThisCountrysOwnSecondTier` first asserted every promotion came from a division called
+`"Foreign second"`. It failed on the fixture's **third** division, which is also tier 2. That was my
+assertion being wrong about the fixture, not the code being wrong — so the assertion was widened to both
+second-tier divisions and given a *new* check it could not have satisfied before: **no promotion may come
+out of the top flight.**
+
+Naming matters more than counting here. A count of 2 is exactly what a hardcoded Serbia lookup returns if the
+world happens to hold Serbian divisions, so the promotions are asserted **by club and division name** — the
+only thing that distinguishes "this country's second tier" from "some second tier".
+
+### Serbia is a control, not the subject
+
+`PromotionRelegationBoundaryTest` used Serbia *because the lookup demanded it*, and said so in a comment. That
+reason is gone, so the comment is gone rather than reworded — leaving it would tell the next reader the
+lookup is still Serbia-shaped. The boundary test stays on Serbia so a failure there is about the arithmetic;
+a foreign country is covered by the new class.
+
+### Not verified
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met. 8 green across the new
+class and `PromotionRelegationBoundaryTest`.
+
+---
+
 ## 2026-10-03 — `6fd6521` — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
 
 **The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`

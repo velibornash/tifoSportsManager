@@ -368,8 +368,7 @@ public class SeasonService {
         List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
         if (top.size() < 8) return;
 
-        List<Competition> tier2Leagues = competitionRepository
-                .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE, 2);
+        List<Competition> tier2Leagues = tier2LeaguesOf(superLiga);
         if (tier2Leagues.size() < 2) return;
 
         // The two second-placed clubs, each with the table it finished on, so they can be ranked
@@ -997,7 +996,7 @@ public class SeasonService {
         }
 
         List<CompetitionEntry> top = sortTable(competitionEntryRepository.findBySeasonCompetition(topSc));
-        List<Competition> tier2Leagues = findTier2Leagues();
+        List<Competition> tier2Leagues = findTier2Leagues(superLiga);
 
         // **The same boundary the mover uses.** This hardcoded `top.get(8)` and `top.get(9)` — the 9th and
         // 10th — while applyPromotionRelegationForLeague relegated the bottom of the table, which for a
@@ -1091,28 +1090,59 @@ public class SeasonService {
         return resolvePlayoffWinner(topTeam, lowerTeam);
     }
 
-    private List<Competition> findTier2Leagues() {
-        return findSerbianLeagues().stream()
-                .filter(c -> c.getCountry() != null && "SRB".equalsIgnoreCase(c.getCountry().getIsoCode()))
-                .filter(c -> Objects.equals(c.getTier(), 2))
-                .toList();
+    /**
+     * The second tier of <b>the top flight's own country</b>.
+     *
+     * <p><b>This filtered on the literal {@code "SRB"}</b>, and so did the two call sites that reach it.
+     * The season rollover and the promotion ladder had already been made country-agnostic — a country the
+     * owner activated built its 31 divisions and then went silent one season later, which was the bug that
+     * fixed them — but **the playoff path never was**. So of 48 countries, 47 got no promotion or
+     * relegation summary at all, and 47 got no playoff fixtures drawn, while Serbia worked perfectly and
+     * made the omission invisible.
+     *
+     * <p>Both callers already hold the top flight, so nothing had to be threaded in: the country is read
+     * off the competition the caller passed. A top flight with no country attached — a competition that
+     * was never given one — yields nothing rather than silently falling back to Serbia, because a
+     * fallback here would put one country's playoff in another country's pyramid.
+     */
+    private List<Competition> tier2LeaguesOf(Competition topFlight) {
+        String isoCode = isoCodeOf(topFlight);
+        if (isoCode == null) {
+            return List.of();
+        }
+        return competitionRepository
+                .findByCountryIsoCodeAndTypeAndTierOrderByDivisionLevelAscIdAsc(isoCode, CompetitionType.LEAGUE, 2);
+    }
+
+    private List<Competition> findTier2Leagues(Competition topFlight) {
+        return tier2LeaguesOf(topFlight);
+    }
+
+    /** The three-letter code of a competition's country, or null when it has none or the link is uninitialised. */
+    private String isoCodeOf(Competition competition) {
+        if (competition == null || competition.getCountry() == null) {
+            return null;
+        }
+        String isoCode = competition.getCountry().getIsoCode();
+        return isoCode == null || isoCode.isBlank() ? null : isoCode.trim().toUpperCase(Locale.ROOT);
     }
 
     @Transactional(readOnly = true)
     public List<Competition> getSerbianLeaguesInOrder() {
-        return findSerbianLeagues();
+        return leaguesInCountry("SRB");
     }
 
     /**
-     * Serbia's divisions, in ladder order.
+     * One country's divisions, in ladder order.
      *
-     * <p>Kept under its own name because several callers genuinely mean Serbia — the playoff resolution
-     * below only knows how to find a tier-2 league in the same country as the top flight, and the
-     * playoff tie is resolved against "the top flight" as a single competition. Those are Serbia-shaped
-     * assumptions and are called out rather than spread.
+     * <p>The playoff resolution no longer needs a Serbia-shaped name, because it now reads the country off
+     * the top flight it was given. This remains for the callers that genuinely mean Serbia — the
+     * registration and activation flows — and it is named for what it does rather than for the bug it used
+     * to cause.
      */
-    private List<Competition> findSerbianLeagues() {
-        return competitionRepository.findByCountryIsoCodeAndTypeOrderByTierAscDivisionLevelAscIdAsc("SRB", CompetitionType.LEAGUE);
+    private List<Competition> leaguesInCountry(String isoCode) {
+        return competitionRepository
+                .findByCountryIsoCodeAndTypeOrderByTierAscDivisionLevelAscIdAsc(isoCode, CompetitionType.LEAGUE);
     }
 
     /**
