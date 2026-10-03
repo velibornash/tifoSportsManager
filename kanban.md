@@ -225,12 +225,18 @@ already defaults to the viewer's own.
 **`TransferController` is the only route in the repository where one manager could move another club's
 money.**
 
-### P0-16 — one caller left, and it is a real feature gap rather than a wiring job
+### P0-16 — DONE: `/demo` is gone from the main app, and `DummyDataController` with it
 
 **The owner's ruling:** none of `/demo` should exist on the main app, and never hardcode — take `teamId`
-from the user. Both halves are now true of the eight call sites. `DummyDataController` itself is **not yet
-deleted**, because two callers still need it, and deleting it would turn "fabricated" into "404" for those
-two screens — a product change beyond rewiring.
+from the user. **Both halves are now true of all eight call sites, and `DummyDataController` is deleted** —
+281 lines of hardcoded fake data with a literal `1` in every path.
+
+**What the calendar settled.** The owner pointed at the calendar and it answered the friendlies question
+directly: weeks **6, 11 and 12** carry the friendly slots, and *"anything that is not a scheduled fixture is
+an **option**, not an obligation: a club is not handed a friendly, it asks for one and the other club may
+refuse."* So a friendly **belongs to no competition** — which is why `competitionType` could never select one,
+and why the screen was reading fabricated data. `MatchType.FRIENDLY` (another agent's P2-8 work, already
+landed) is the right home for it, and `MatchFixture.resolvedMatchType()` keeps older rows honest.
 
 **Six rewired, five of them to endpoints that already existed and were already widely used:**
 
@@ -289,19 +295,15 @@ exists to remove.
 - [x] Six of eight read real data
 - [x] `competitionType` filter on the schedule, **6 tests green**, mutation-proven
 - [x] Team Stats **deleted** on the owner's decision — a fourth, emptier presentation of `/milestones`
-- [ ] **Friendlies — a parallel worker is on this, and its answer is better than extending
-      `CompetitionType`.** `MatchType` (new, for P2-8, owner decision 2026-10-03) states the problem this
-      entry describes: a match used to record only its *competition*, "which left nowhere to write 'friendly'
-      or 'exhibition' — those belong to no competition, so the field was simply empty and the two were
-      indistinguishable, unlabelable and **unfilterable**." Its `ofCompetition` is described as "the only
-      bridge", so a match's type and its competition's type cannot drift apart.
-      **So: do not extend `CompetitionType` as well.** Two competing type enums is exactly the drift this
-      codebase keeps paying for. The friendlies screen becomes
-      `?competitionType=FRIENDLY` → a match-type filter once `MatchType` lands, and the schedule row needs to
-      carry it alongside `competitionType`.
-      **Open question for the owner:** whether the schedule's filter should take a `matchType` parameter
-      rather than reusing `competitionType`, given a friendly belongs to no competition at all.
-- [ ] `DummyDataController` deleted once the last caller is rewired
+- [x] Friendlies read real data via `?matchType=FRIENDLY`, on the calendar's own weeks 6/11/12
+- [x] **`DummyDataController` deleted** — 281 lines, zero overlap with the frozen `/demo/service` engine,
+      and no caller left. `TeamControllerAuthorizationTest` went with it, since it tested fake data
+- [x] **8 green** on the filter class; **24** with `TeamAuthorizationTest`
+
+**One assertion had to be corrected as friendlies became real.** The "unrecognised type does not guess" test
+forbade the string `FRIENDLY` anywhere in the body — which was right when no friendly row existed and became
+**wrong the moment one did**, because a genuine friendly carries `"matchType":"FRIENDLY"`. It now forbids
+`"competitionType":"FRIENDLY"`, which is the thing that must never appear: no such competition exists.
 
 ---
 

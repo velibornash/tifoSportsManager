@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.dto.TeamSummaryDTO;
 import org.example.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.MatchType;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
@@ -261,6 +262,7 @@ public class TeamController {
     public ResponseEntity<List<Map<String, Object>>> getSchedule(@PathVariable Long teamId,
                                                                  @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
                                                                  @RequestParam(value = "competitionType", required = false) String competitionType,
+                                                                 @RequestParam(value = "matchType", required = false) String matchType,
                                                                  @AuthenticationPrincipal User user) {
         // Who is asking, because this is the surface where a manager is most likely to see his own
         // result by accident: the schedule is the page a manager opens to see what is next.
@@ -282,7 +284,14 @@ public class TeamController {
         // filter that silently returned the league instead would be worse than no filter, because the
         // screen would fill with plausible rows from the wrong competition.
         CompetitionType wantedType = parseCompetitionType(competitionType);
-        Competition competition = wantedType == null ? resolveScheduleCompetition(team, activeSeasonYear) : null;
+        MatchType wantedMatchType = parseMatchType(matchType);
+
+        // Two filters, because a friendly belongs to no competition. The calendar puts friendlies in weeks
+        // 6, 11 and 12 -- "a club is not handed a friendly, it asks for one and the other club may refuse" --
+        // so they have no league to be found through and `competitionType` cannot select them. That is the
+        // whole reason this screen was pointing at fabricated data, and it is why `MatchType` exists.
+        Competition competition = (wantedType == null && wantedMatchType == null)
+                ? resolveScheduleCompetition(team, activeSeasonYear) : null;
         List<MatchFixture> fixtures;
         if (competition != null) {
             // Same rule as CountryController's schedule GET, and the same reasoning: this is a read, and
@@ -306,6 +315,7 @@ public class TeamController {
                 .filter(fixture -> fixture.getHomeTeam() != null && fixture.getAwayTeam() != null)
                 .filter(fixture -> wantedType == null
                         || (fixture.getCompetition() != null && fixture.getCompetition().getType() == wantedType))
+                .filter(fixture -> wantedMatchType == null || fixture.resolvedMatchType() == wantedMatchType)
                 .map(fixture -> {
                     Long opponentId = resolveOpponentId(fixture, teamId);
                     return toScheduleRow(teamId, fixture, headToHeadByOpponent.get(opponentId), snapshots, viewerTeamId);
@@ -313,6 +323,18 @@ public class TeamController {
                 .toList();
 
         return ResponseEntity.ok(schedule);
+    }
+
+    /** {@code null} for absent or unrecognised, so the route keeps its old behaviour rather than guessing. */
+    private static MatchType parseMatchType(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return MatchType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException notAType) {
+            return null;
+        }
     }
 
     /** {@code null} for absent or unrecognised, so the route keeps its old behaviour rather than guessing. */
@@ -620,6 +642,9 @@ public class TeamController {
         // league page. Two divisions can share a name; they do not share a type.
         row.put("competitionType", fixture.getCompetition() != null && fixture.getCompetition().getType() != null
                 ? fixture.getCompetition().getType().name() : null);
+        // The match's own type, which is not the same thing: a friendly belongs to no competition, and
+        // resolvedMatchType falls back to the competition for the rows that predate the column.
+        row.put("matchType", fixture.resolvedMatchType() == null ? null : fixture.resolvedMatchType().name());
         // The game's own calendar, next to the wall-clock date. The owner asked for both: these are
         // different facts, and only this one is what the season is actually built on.
         row.put("day", fixture.getDayNumber());

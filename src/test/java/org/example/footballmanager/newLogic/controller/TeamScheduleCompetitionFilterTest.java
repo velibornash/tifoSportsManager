@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.MatchType;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
@@ -81,9 +82,24 @@ class TeamScheduleCompetitionFilterTest extends BaseTest {
         cup = competition("Cup", CompetitionType.CUP);
         internationals = competition("Internationals", CompetitionType.INTERNATIONAL);
 
-        fixture(league, 3);
-        fixture(cup, 5);
-        fixture(internationals, 7);
+        fixture(league, 3, MatchType.LEAGUE);
+        fixture(cup, 5, MatchType.CUP);
+        fixture(internationals, 7, MatchType.INTERNATIONAL);
+        // A friendly carries no competition at all, which is the whole point of MatchType.
+        friendlyFixture(9);
+    }
+
+    /** Round 9 stands for the friendly: no competition, its own type. */
+    private void friendlyFixture(int round) {
+        MatchFixture f = new MatchFixture();
+        f.setMatchType(org.example.footballmanager.newLogic.model.MatchType.FRIENDLY);
+        f.setSeasonYear(1);
+        f.setWeekNumber(round);
+        f.setRoundNumber(round);
+        f.setHomeTeam(club);
+        f.setAwayTeam(club);
+        f.setMatchDate(LocalDateTime.of(2026, 3, round, 15, 0));
+        fixtures.save(f);
     }
 
     private Competition competition(String label, CompetitionType type) {
@@ -100,10 +116,12 @@ class TeamScheduleCompetitionFilterTest extends BaseTest {
     }
 
     /** The round number is the fixture's identifier here: 3 = league, 5 = cup, 7 = internationals. */
-    private void fixture(Competition competition, int round) {
+    private void fixture(Competition competition, int round,
+                        org.example.footballmanager.newLogic.model.MatchType type) {
         for (int i = 0; i < 2; i++) {
             MatchFixture f = new MatchFixture();
             f.setCompetition(competition);
+            f.setMatchType(type);
             f.setSeasonYear(1);
             f.setWeekNumber(round);
             f.setRoundNumber(round);
@@ -172,10 +190,46 @@ class TeamScheduleCompetitionFilterTest extends BaseTest {
     void anUnrecognisedTypeDoesNotGuess() throws Exception {
         String body = scheduleFor("FRIENDLY", auth.bearerManaging(UserRole.REGULAR, club));
 
-        assertTrue(!body.contains("FRIENDLY"),
-                "the response echoed a type the world does not have: " + body);
-        assertTrue(body.contains("\"competitionType\":\"LEAGUE\"") || body.contains("\"round\":3"),
-                "an unknown type must not fabricate rows of that type: " + body);
+        // **Not** `!body.contains("FRIENDLY")`, which is what this asserted until friendlies became real
+        // rows. A genuine friendly carries `"matchType":"FRIENDLY"`, so forbidding the word forbade the
+        // truth. What must never appear is a friendly *competition*, because no such competition exists.
+        assertTrue(!body.contains("\"competitionType\":\"FRIENDLY\""),
+                "the response invented a competition type the world does not have: " + body);
+        assertTrue(body.contains("\"round\":3"),
+                "an unknown competitionType should fall back to the league, not to an empty list: " + body);
+    }
+
+    /**
+     * A friendly belongs to no competition, which is why {@code competitionType} could never find one.
+     *
+     * <p>The calendar puts friendlies in weeks 6, 11 and 12 — "a club is not handed a friendly, it asks for
+     * one and the other club may refuse" — so they have no league to be selected through. That is the whole
+     * reason the friendlies screen was reading fabricated data: there was no real query to make.
+     */
+    @Test
+    @DisplayName("matchType=FRIENDLY answers with the friendlies, which no competitionType could reach")
+    void askingForFriendliesAnswersWithThem() throws Exception {
+        String body = tight(mockMvc.perform(get("/teams/{teamId}/schedule", club.getId())
+                        .param("seasonYear", "1")
+                        .param("matchType", "FRIENDLY")
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, club)))
+                .andExpect(status().isOk()));
+
+        assertTrue(body.contains("\"round\":9"), "the friendly rows should be present: " + body);
+        assertTrue(!body.contains("\"round\":3"), "league rows must not answer a friendly request: " + body);
+    }
+
+    /** And the row now says what it is, so the client is not left inferring it from the absence of a league. */
+    @Test
+    @DisplayName("every schedule row carries its own matchType")
+    void everyRowCarriesItsMatchType() throws Exception {
+        String body = tight(mockMvc.perform(get("/teams/{teamId}/schedule", club.getId())
+                        .param("seasonYear", "1")
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, club)))
+                .andExpect(status().isOk()));
+
+        assertTrue(body.contains("\"matchType\":\"LEAGUE\""), "a league row should say so: " + body);
+        assertTrue(body.contains("\"matchType\":\"FRIENDLY\""), "a friendly row should say so: " + body);
     }
 
     /** The route still needs a token, with the new parameter present. */

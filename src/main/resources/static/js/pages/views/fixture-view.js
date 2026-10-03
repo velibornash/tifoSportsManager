@@ -252,7 +252,7 @@ export function createFixtureView(deps) {
     async function loadFriendlies() {
         const teamId = getTeamId();
         console.log(`Loading friendlies for ${teamId}`);
-        const response = await authFetch(`/demo/matches/teams/${teamId}/friendlies`);
+        const response = await authFetch(`/teams/${teamId}/schedule?matchType=FRIENDLY`);
         console.log(`Response status: ${response.status}`);
         const matches = await response.json();
         renderMatches(matches, "Friendlies");
