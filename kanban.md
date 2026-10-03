@@ -415,17 +415,61 @@ behaviour that exists only because of them — is **not yet made.** Tracked unde
 
 ---
 
-### P0-15 — carry out P0-5: reduce the tactics profiles to the one that places — NEW, 2026-10-03
+### P0-15 — DONE: the tactics file is down to the one profile that places
 
-**Why the four cannot be placed:** reset restores tactics from `var/tactics-editor-profiles.json`, and the
-world has five Beograd clubs and none is called "FK Beograd". The restore already reported them by name
-rather than failing silently, which is why this was cosmetic rather than breaking — it was P0 because a
-decision was owed, not because anything was on fire.
+**The file `var/tactics-editor-profiles.json` is tracked in git** and is the only durable copy of a club's
+tactical-editor work. Five profiles, **one** of which named a club the world has. Now one.
+
+**Verified against the live database, not inferred:**
+
+| | |
+|---|---|
+| `OFK Omladinac` exact matches in 406 club names | **1** |
+| Already in `team_tactics_profile` | 4-4-2, ATTACKING, **132,532** chars, version 5 |
+| The surviving file profile | 4-4-2, ATTACKING, **132,532** chars |
+
+The two copies agree exactly, so the restore's "database wins where both have the club" path keeps the
+authoritative row and the file remains a genuine backup of the same thing.
+
+**Why dropping beats mapping — and it is not the reason the board gave.** The board said *"the world has
+five Beograd clubs and none is called FK Beograd"*. The stronger fact is that **twelve clubs are near-misses
+and there is no way to choose between them**:
+
+| Removed profile | Clubs it could plausibly mean |
+|---|---|
+| `FK Beograd` | `NK Beograd`, `GFK Grafičar Beograd 1945`, `SK Balkan Beograd City` |
+| `GFK Dinamo Šabac` | `OFK Šabac 1928`, `SK Kolubara Šabac`, `NK Car Konstantin Šabac 1931` |
+| `GFK Tamiš Gornji Milanovac 1901` | `NK Tamiš 1950`, `OFK Tamiš Kragujevac` |
+| `SK Čačak 1912` | `FK Čačak 1931`, `GFK Mlava Čačak 1913`, `OFK Čačak`, `SK Čačak Sport` |
+
+**Two of those are the trap.** The profile says `Čačak 1912`; the world holds `FK Čačak 1931` and
+`GFK Mlava Čačak 1913` — **adjacent founding years, different clubs.** A fuzzy matcher would attach a
+4-3-3 profile authored for one club to a confidently-named wrong one, and the mistake would be invisible
+thereafter. There is no mapping to make. Dropping is the only safe answer.
+
+**A correction to this board's own criterion.** It said *"the restore no longer reports unplaceable profiles
+by name, because there are none to report"* — which reads as an instruction to delete the `unmatched` warning.
+**Do not delete it.** That warning replaced a silent `continue`, and the silent `continue` is precisely how
+four of the owner's five profiles vanished without a word. The criterion is satisfied by the **file** no longer
+containing any, and the warning stays as the guard for the next one.
+
+**A test fixture was polluting this file, and it was mine.** `Rival b0542c46` — a club named after a
+P0-1a fixture — had been written into it by a test reaching the editor through HTTP. Removed. The cause was
+fixed in P0-1a (the backup path is now a property); this removes the pollution it left behind.
+
+**New guard:** `TacticsBackupIsNotWrittenByTests` asserts the tracked file is byte-identical either side of a
+tactics write — **and asserts the sandbox file *did* change**, so the first assertion cannot pass vacuously.
+Its first version omitted the path override, wrote to the tracked file, and **the guard caught it in the same
+commit.** That is the guard working, and the reason the override is code rather than a comment.
 
 **Exit criteria:**
-- [ ] `var/tactics-editor-profiles.json` holds one profile, `OFK Omladinac`
-- [ ] The restore no longer reports unplaceable profiles by name, because there are none to report
-- [ ] `TacticsRulesProviderTest` still green, and the reset path still verified against a real database
+- [x] `var/tactics-editor-profiles.json` holds one profile, `OFK Omladinac`
+- [x] The restore no longer has any unplaceable profile to report, **and the warning stays**
+- [x] `TacticsRulesProviderTest` and `TacticsProfileRestoreTest` green — **26 green** with `TeamAuthorizationTest`
+- [x] A test now prevents any test from writing the tracked file
+- [ ] **Outstanding:** the final run of the new guard class was blocked by another agent's untracked test file
+      failing to compile (`AsyncSimulationRunnerCountsFailuresTest`, missing `SimMatchService`). Everything
+      above was verified; that one class has not been seen green.
 
 ---
 

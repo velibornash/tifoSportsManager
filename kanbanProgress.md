@@ -185,6 +185,107 @@ still open and is P0-13's fourth exit criterion.
 
 ---
 
+## 2026-10-03 — P0-15: four profiles that named a club the world does not have, and twelve that it might
+
+**The tactics backup file is tracked in git, holds the only durable copy of a club's tactical-editor work,
+and five of its six entries pointed at nothing.** Now one. Verified against the live database.
+
+### What the file is, and why it matters more than a fixture
+
+`DatabaseInitializer`'s own javadoc records the incident: the reset snapshot comes from
+`team_tactics_profile`, a previous reset leaves that table empty, so **one Reset destroyed the owner's
+profiles permanently** while logging *"Restored 0 tactics editor profiles after reset."* The file is what
+was added to fix it, and it is tracked.
+
+That combination is why an ordinary test-suite side effect was serious. It is not.
+
+### The live database, queried rather than assumed
+
+| | |
+|---|---|
+| `OFK Omladinac` exact matches, of **406** distinct club names | **1** |
+| The four removed names, exact matches | **0** each |
+| `team_tactics_profile` rows | **1** — `OFK Omladinac`, 4-4-2, ATTACKING, 132,532 chars, v5 |
+| The surviving file profile | 4-4-2, ATTACKING, **132,532** chars |
+
+The two copies agree exactly, so the restore's "database wins where both have the club" path keeps the
+authoritative row and the file is a real backup rather than a divergent copy.
+
+### The finding that justifies dropping rather than mapping
+
+The board's stated reason was *"the world has five Beograd clubs and none is called FK Beograd"*. The real
+reason is sharper: **twelve clubs are near-misses and nothing distinguishes them.**
+
+| Removed | Candidates in the world |
+|---|---|
+| `FK Beograd` | `NK Beograd`, `GFK Grafičar Beograd 1945`, `SK Balkan Beograd City` |
+| `GFK Dinamo Šabac` | `OFK Šabac 1928`, `SK Kolubara Šabac`, `NK Car Konstantin Šabac 1931` |
+| `GFK Tamiš Gornji Milanovac 1901` | `NK Tamiš 1950`, `OFK Tamiš Kragujevac` |
+| `SK Čačak 1912` | `FK Čačak 1931`, `GFK Mlava Čačak 1913`, `OFK Čačak`, `SK Čačak Sport` |
+
+**Two of those are the trap.** The profile says **`Čačak 1912`**; the world holds **`FK Čačak 1931`** and
+**`GFK Mlava Čačak 1913`** — adjacent founding years, different clubs. Any fuzzy match would attach a
+4-3-3 profile authored for one club to a confidently-named wrong one, and nothing afterwards would ever
+reveal it. **There is no mapping to make.** Dropping is the only safe answer, which is what the owner ruled.
+
+### A correction to my own board criterion
+
+The criterion I wrote read *"the restore no longer reports unplaceable profiles by name, because there are
+none to report"* — which reads as an instruction to delete the `unmatched` warning. **That would be wrong,
+and the code says so in a comment:** the warning replaced a silent `continue`, and the silent `continue` is
+exactly how four of the owner's five profiles disappeared without a word.
+
+The criterion is satisfied by the **file** being clean. **The warning stays** as the guard for the next
+orphan. Board text corrected before it could mislead someone.
+
+### A test fixture was in the owner's file, and it was mine
+
+`Rival b0542c46` — a club named after one of my P0-1a fixtures — had been written into the tracked file by a
+test reaching the tactics editor through HTTP. **The only symptom was a dirty `git status`.** I found it
+because I was staging files and noticed; no assertion could have, because nothing asserted about the file.
+
+The cause was fixed in P0-1a by making the backup path a property. The pollution it left behind is removed
+here. **A test's damage to the repository outlived the fix for it**, which is worth stating plainly.
+
+### The new guard, and the guard catching me
+
+`TacticsBackupIsNotWrittenByTests` asserts the tracked file is byte-identical either side of a tactics write.
+
+**Its first version failed, in the same commit that added it.** It did not set `app.tactics-backup-path`, so
+it wrote to `var/tactics-editor-profiles.json` — and its own assertion reported the write. A guard that
+catches the author on the first run is a guard that works; one that is satisfied on the first run is not
+worth having.
+
+It now also asserts the **sandbox file did change**, and that assertion runs **first**:
+
+```java
+assertTrue(!sandboxAfter.equals(sandboxBefore),
+        "the tactics write never reached the backup service, so the assertion below would pass "
+                + "for the wrong reason");
+```
+
+Because otherwise "the owner's file is unchanged" is true for the wrong reason whenever the write goes
+nowhere, and would pass forever.
+
+### One weak test deleted rather than shipped
+
+A third test in that class asserted that every profile in the file names a club the world has. The test
+profile's database holds no clubs, so the assertion **could not fail** — I had started it, found it
+meaningless, and cut it. That guarantee was made honestly instead, by querying the live database, and the
+result is the table at the top. **A test that cannot fail is worse than no test**, and this one would have
+looked like coverage.
+
+### Outstanding
+
+**The final run of the new guard class is blocked**, not failed: another agent's untracked
+`AsyncSimulationRunnerCountsFailuresTest` does not compile (`SimMatchService` cannot be resolved), so
+`testCompile` fails for the whole repository. Everything else above is verified — **26 green** across
+`TacticsProfileRestoreTest`, `TacticsRulesProviderTest` and `TeamAuthorizationTest`.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — `6fd6521` — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
 
 **The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`
