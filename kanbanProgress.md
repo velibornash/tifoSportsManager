@@ -403,6 +403,70 @@ entity, at the live database — rather than from reasoning harder about my own 
 
 ---
 
+## 2026-10-04 — the full suite, measured: **1247 tests, 32 red, 18m22s**
+
+**The board's figure was 992 tests, 29 red, ~2 h 52 m. Every number on it is now wrong, and the wall clock
+is wrong by a factor of nine.** Run with the app up on `:8080` and **allowed to finish** — the only kind of
+baseline that counts, since the `[ERROR]` summary prints at the end.
+
+| | Recorded (`89144e9`) | **This run** |
+|---|---:|---:|
+| Tests run | 992 | **1247** |
+| Failures | 13 | **16** |
+| Errors | 16 | **16** |
+| **Red** | **29** | **32** |
+| Classes | 159 | **200** |
+| Wall clock | ~2 h 52 m | **18 m 22 s** |
+
+### The wall clock is the finding
+
+**Nothing about the suite got 9× faster; the world stopped being built 200 times over.** Boot writes nothing
+(`ensureBaselineDataOnStartup` has no caller), so the tests that used to each pay for a full seeding run no
+longer do. The heavy classes still run — `CountryActivationTest` took **300 s** in this run — so the cost is
+still there, just no longer paid by every class.
+
+**That also means the recorded "~6 min" and "~2 h 52 m" figures in `archive/` describe a different
+application**, and any future comparison against them is meaningless.
+
+### The 32, by class
+
+| Class | Tests | Red | Why |
+|---|---:|---:|---|
+| `SidLeagueSeedingIntegrationTest` | 11 | 10 | *"expected 31 but was 0"* — needs the seeded world |
+| `OmladinacTransferJourneyTest` | 6 | 6 | `setUp`, `NoSuchElement` — needs the seeded world |
+| `CupFixtureSeederCountryTest` | 6 | 5 | order dependence; another class creates a cup at a lower id |
+| `BotLeagueStandardBackfillTest` | 4 | 2 | fails on **its own guard message** — "no human club, so this test would pass without proving anything" |
+| `CSDataInitializerSelfHealingTest` | 4 | 2 | |
+| `CountryCatalogQueryCountTest` | 3 | 2 | `CONSTRAINT_INDEX_6` collision |
+| `CountryActivationTest` | 8 | 1 | builds a pyramid and asserts it in one run (300 s) |
+| `ClubRatingServiceTest` | 10 | 1 | *"exactly the two clubs that played should have moved off their seed, was 4 out of 28"* |
+| `NationalRatingServiceTest` | 10 | 1 | |
+| `NegotiationServiceTest` | 10 | 1 | the missing-`GameClock` trap, 1 of 10 |
+| `DailyRecoveryScopeTest` | 3 | 1 | |
+
+### Three things the run settles that the board had wrong
+
+1. **The Playwright classes pass.** `CountryPageRendersTest` and `SidebarAccordionOpensTest` are green **with
+   the app up**, where the archive records them as "now run instead of hanging, and fail". A full run
+   **requires** `:8080` and with it those two are no longer part of the red list.
+2. **`SquadTrainingServiceTest` passes in a full run** while failing 6/6 alone. It is the missing-`GameClock`
+   trap, and some earlier class leaves a clock row behind — so it is **order-dependent, not broken**, and
+   "per-class green" would have hidden it. This is the clearest example on the board of why the two are not
+   comparable numbers.
+3. **`PromotionRelegationBoundaryTest` and `TransferCompletionTest` are green**, so P0-7's playoff change and
+   the transfer service change hold in a full run.
+
+### What this does not tell us
+
+**Red went up by three, and I am not claiming a regression.** 255 tests were added since the recorded run, so
+the red *count* is not comparable to it — different tests, different code. Each of the 32 needs reading before
+any of them is called a defect, and `BotLeagueStandardBackfillTest` is still failing **on its own guard
+message**, which is a test correctly refusing to be green.
+
+**This closes the one number on the board that was still the board's own figure rather than a measurement.**
+
+---
+
 ## 2026-10-03 — P0-13 criterion 4: `/train-all` deleted, and the guard was the wrong shape for it
 
 **The owner's ruling, after the guard was already in place.** 36 lines gone, no caller, 8 green.
