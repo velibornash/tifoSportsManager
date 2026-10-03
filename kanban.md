@@ -329,7 +329,13 @@ that had never worked. The deletion question is open but is not urgent.
 
 ---
 
-### P0-2 — Six test classes are red and the owner has ruled: rewrite them to assert what the product guarantees
+### P0-2 — Six test classes are red
+
+**Two classes share the same missing-`GameClock` trap**, found while writing P0-13, both **pre-existing**:
+`NegotiationServiceTest` (10 errors) and `SquadTrainingServiceTest` (6 errors) both do
+`clocks.findAll().stream().findFirst().orElseThrow()` in `setUp`. Boot writes nothing, so the test database
+has no clock row and **every method fails before it asserts anything**. Three lines each to fix — create the
+row rather than expect it, as `TransferControllerAuthorizationTest` now does. and the owner has ruled: rewrite them to assert what the product guarantees
 
 **Owner decision, already made:** do not make the red tests pass by changing the product to suit them.
 Rewrite each to assert a guarantee the product actually makes.
