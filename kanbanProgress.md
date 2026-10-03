@@ -24,6 +24,100 @@ Rules for an entry:
 - **What was assumed and not checked.** Stated plainly. Most of the value of this file is in the
   sentences recording what is *still* unverified.
 
+## `dddf462`, `c5fada3` — D3: the two whole-world day jobs
+
+**The board's D3:** *"Whole-world day jobs. `RecoveryJob` walks every player who ever played; `FinanceJob`
+settles every club, each in its own transaction"*, recorded under `274d3ff` as **"the jobs are priced for
+a village, not a world of 716 clubs"**.
+
+**One was slow. The other was wrong.**
+
+### `RecoveryJob` — the loop already knew its population
+
+`applyDailyRecovery` builds `workedSinceWindow`, a map of who worked in the recovery window, on the line
+above the loop. It then asked `findByLastPlayedAtIsNotNull()` — **every player who has ever played** —
+and `continue`d past everyone not in the map it had just built.
+
+That loop was most of what the job cost. The board's `"7408 player(s) recovered … 42 minutes"` is mostly
+this, not the zone-load query underneath it.
+
+`findByIdInAndLastPlayedAtIsNotNull(workedSinceWindow.keySet())` hands the loop exactly its population.
+**The `lastPlayedAt` predicate is kept in the query rather than assumed** from "these ids came from zone
+loads, so they must have played" — true today, and the kind of thing that stops being true. Stated, a
+violation is a missed player rather than a quietly recovered one.
+
+Measured, `EXPLAIN ANALYZE` on the seeded Serbian world (10,130 players):
+
+| | Time | Plan |
+|---|---:|---|
+| every player who ever played | 3.76 ms | Seq Scan |
+| the window's population | **1.96 ms** | Seq Scan |
+
+**Both still scan the table**, because 2,400 index probes on a 10,130-row table is not worth it; the
+crossover is well past this. The definite win is materialisation — 2,400 players instead of 10,130, a
+76% reduction in rows crossing into the JVM, and the gap widens with the world.
+
+**Not measured, and it is the larger cost on this path:** `findLoadsPlayedSince` still loads every
+zone-load row in the window with no LIMIT. That is **D2**.
+
+### `FinanceJob` — it was paying national sides league broadcast money
+
+`settleWeeklyFinancesForAllClubs` iterated `teamRepository.findAll()` — every team in the world — and
+handed each to `applyWeeklyFinances`, which is written for a club and **objected to nothing**. Per
+national side, per week, per country:
+
+| line | what a national side was given |
+|---|---|
+| `broadcast` | reads `team.getCompetition()` and **defaults a null one to weight 20** — so all 96 sides were paid a league broadcast share |
+| `gate` | projected a home fixture it never plays |
+| `merchandising` | sized income off the squad; 25 players qualifies |
+| budget | **written onto the team** |
+
+So it is not only 96 wasted `REQUIRES_NEW` transactions on a world of 14,880 clubs. Every national side in
+the game was accruing a small club economy it has no use for.
+
+**"A club is a team with a competition" — checked, not assumed.** On the live seeded world: **310 teams
+with a competition, 96 without, and the 96 are exactly the national sides.** And `PyramidBuilder` calls
+`setCompetition(league)` on every club it creates (`:262`, `:315`) while **never setting `type`** — so
+`type == CLUB` would have matched nothing, which is the board's own standing warning.
+
+Stated in **both** places rather than one and assumed in the other: `applyWeeklyFinances` refuses a team
+with no competition, and the loop reads `findAllClubsWithDivision()` so it does not open 96 pointless
+transactions to settle something that does not exist.
+
+### Four test classes were wrong, and correcting them is the right answer
+
+`WeeklyFinanceServiceTest`, `MoraleAndBudgetServiceTest`, `BoardExpectationServiceTest` and
+`StaffSponsorServiceTest` each built a club with a stadium and **no competition** — a shape the game does
+not have. They are now given a LEAGUE division. **No assertion was weakened; 37/5 across the five
+classes.**
+
+This is the board's `dataFixSuggestions` §1.1 note reached from the other end: *"a player with no `Skills`
+makes `PlayerDTO.from` throw — that reads exactly like a bug and is not one: every real player is given
+skills by the seeder, so it was an incomplete fixture."* Same shape, same answer.
+
+### The test file took three versions and the first two were wrong for different reasons
+
+1. **`@Transactional` + `REQUIRES_NEW`.** The test's fixtures were uncommitted and the settling
+   transaction cannot see them, so every settlement died on a **foreign-key violation**, the loop caught
+   it, and the national side **looked settled because nothing was settled** — including the real club the
+   file used as its counterweight. An assertion that passed for the wrong reason, found only because the
+   counterweight existed.
+2. **Then it assumed a seeded world** to borrow committed rows from. **The H2 test profile has no seeded
+   world** — the nine-country seeding was removed on 2026-10-01 so that starting the app starts the app.
+   So the fixtures are **committed** now, with their ledger rows cleaned up afterwards.
+3. Final version: 2/2, and **proven able to fail** — removing the guard fails it with *"the national side
+   … was settled"*.
+
+### What is still open on D3
+
+- **`FinanceJob` still opens one `REQUIRES_NEW` transaction per club** — ~14,880 a week at target scale.
+  That is inherent to the per-club isolation `WeeklyFinanceService` documents as deliberate (*"one club
+  failing must not roll back the other 309"*), and removing it is a product decision, not a refactor.
+  The board's option 2 — move the week's work off the request thread — is the honest answer and needs a
+  ruling.
+- **D2, and it is upstream of both jobs**: `findLoadsPlayedSince` has no LIMIT and no pagination.
+
 ## `7374c69` — one press plays one matchday, and rounds 13–18 were never played
 
 **Owner ruling, 2026-10-03:** *"one press = one matchday."* This is the correctness half of the D1 work
