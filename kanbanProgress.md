@@ -16,7 +16,7 @@ deliberately to check.
 
 ---
 
-## 2026-10-03 — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
+## 2026-10-03 — `6fd6521` — P0-1b: one guarded route, five unguarded ones, and four that spend the club's money
 
 **The other three controllers of P0-1b. 30 tests, green, two mutations proven able to fail.** `TransferController`
 is in the entry above.

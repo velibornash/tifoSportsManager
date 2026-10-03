@@ -151,7 +151,7 @@ let any authenticated user delist another club's player" — a named hole rather
 | | Controllers | State |
 |---|---|---|
 | **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `66553b4` |
-| **P0-1b** | all four — `TransferController`, `StadiumSettingsController`, `DummyDataController`, `CommunityController` | **done**, `b1c04e2` |
+| **P0-1b** | all four — `TransferController`, `StadiumSettingsController`, `DummyDataController`, `CommunityController` | **done**, `6fd6521` |
 
 **How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
 the injected bean** — Spring Data returns a JDK proxy that Mockito cannot wrap, and this is the single
