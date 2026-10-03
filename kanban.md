@@ -451,6 +451,7 @@ the code near it has changed.
 | Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | P1-1 |
 | One week of a season *(same)* | 156.4 ms | **27.8 ms** | P1-1 |
 | Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | P1-7 |
+| `event_json` written per match | 840,136 B | **17,001 B** | P1-7 |
 | A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
 | Recovery read, one matchday *(17.7M-row table)* | 4,441 ms | **still open, P1-3** | — |
 
@@ -460,35 +461,53 @@ first three are not comparable to the last five.
 
 ---
 
-### P1-7 — DONE for the two Elo replays. Three other readers still fetch 742 KB a row.
+### P1-7 — Partly done. The two Elo replays and the blob itself are fixed; three readers are not.
 
-`Match.eventJson` is **742 KB to 1,035 KB** on every simulated match — the whole per-tick decision log,
-one text column. 155 matches hold **130 MB** of it; a full season is **~66 GB**.
+`Match.eventJson` is the whole per-tick decision log in one text column. **It was 742 KB – 1,035 KB a
+match: 124 MB for 155 matches, ~66 GB a season.** Two things were wrong with it — the Elo replays read it
+without needing it, and it was 98% noise even for the pages that do read it.
 
-**Landed:** the club Elo replay and the international Elo replay now read a `ScoredMatch` projection —
-nine scalars, no entity, no blob. Measured on the real rows, same 155 matches both ways:
-**443–554 ms → 6.5–11.2 ms**, and one season's replay goes from ~255 s and ~66 GB of Strings to ~3.7 s
-and ~5 MB. `ScoredMatchCarriesNoBlobTest` holds it there.
+**Landed, both measured in the database:**
 
-**Not `matches.findAll()`-style guesswork:** `@Basic(fetch = LAZY)` was rejected because it would fix
-these two callers and hand `GoalEventRepository` an extra query per row for the two places that really do
-parse the log.
+| | before | after |
+|---|---:|---:|
+| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB a season** |
+| `event_json` per match, written by the app | 840,136 B | **17,001 B — 49.4× smaller** |
+| events per match | 3,065 | **21** |
+
+`SimReportMapper.eventJson` now writes only the types a page can use, from a keep-list derived from
+`MatchDetailService.mapEventToDTO`, `ZoxApiController.buildTimeline` and `GoalEventRepository.isGoal`.
+All three readers were checked against a running app on a real new match: 9 timeline items, 10 scorer
+rows, 46 detail events. **The full log is not lost** — `SimReplayStore` writes it to a file, which is what
+the replay viewer reads.
 
 **Still open, all three measured, none fixed:**
 
 | Site | Cost | Why not fixed here |
 |---|---:|---|
-| `TeamController:250` club history, `MatchDTO` carries no JSON | 12 rows × 742 KB = **8.9 MB per page view** | Needs a `MatchDTO` projection, which is a wider change than a replay |
+| `TeamController:250` club history, `MatchDTO` carries no JSON | 12 rows × 742 KB = **8.9 MB per page view** | A `MatchDTO` projection is wider than a replay fix |
 | `TeamController:577`, `ScheduleInsightService:70` | same | same |
-| `GoalEventRepository.findByMatchCompetitionIdAnd…` — **the top scorers page** | 60 × 742 KB = **44 MB parsed per request** | The blob is the data. Needs a data-modelling decision, below |
-| `GoalEventRepository.findByMatchSeasonYearAndScoredTrue` — `LeagueMilestoneService:71,75` | **89,280 × 742 KB, twice** | same |
+| `GoalEventRepository.findByMatchSeasonYearAndScoredTrue` — `LeagueMilestoneService:71,75` | **89,280 × 742 KB, twice** | Needs the query, not the blob |
 
-**The decision those last two need from the owner.** The per-tick log is written to `match.event_json`
-*and* written again as a replay file by `SimReplayStore`, and only two single-match request paths ever
-read the database copy. Either a goals table beside the blob, or a `jsonb` column the database can filter
-— both are schema changes with a migration, so they are not mine to pick. **Exit criteria:** the two
-`GoalEventRepository` methods stop costing 44 MB and 66 GB, and the top-scorers page stops parsing a
-season to list five goals per match.
+**And two things that are now cheap to fix, because the blob stopped being the problem:**
+`findByMatchCompetitionIdAnd…` was 44 MB per request and is now ~17 KB a match for new matches;
+`LeagueMilestoneService` still calls it **twice**, once for goals and once for assists.
+
+**Exit criteria for what is left:**
+- [ ] The club-history paths read a `MatchDTO` projection, not `Match` entities
+- [ ] `LeagueMilestoneService` parses a season once instead of twice
+- [ ] The existing 155 matches keep their big blobs until the world is reset — **no migration was run,
+      deliberately.** Say if a backfill is wanted
+
+**Two defects found here and recorded, not fixed:**
+
+- **`GoalEventRepository.isGoal` credits goals VAR ruled out.** It tests `type.contains("GOAL")`, so
+  `GOAL_DISALLOWED` (15) and `VAR_GOAL_OVERTURNED` (15) count as goals and put a player on the
+  top-scorers list. **A product decision, not a performance one:** does a disallowed goal belong on the
+  list struck through, or not at all? The keep-list preserves today's behaviour on purpose until it is
+  answered.
+- **`simulate-all` under-reports.** It returned `simulatedCount: 5, leaguesProcessed: 1` while **160
+  matches** were written, because `AsyncSimulationRunner` continues in the background.
 
 ---
 
@@ -614,25 +633,25 @@ What remains is `match`, and the honest question is what a full season costs:
 |---|---:|
 | matches per matchday, 48 countries | 7,440 |
 | matches per 12-week season | **89,280** |
-| `event_json` per match | **742 KB – 1,035 KB**, ~106 KB compressed |
-| one season, raw text | **~66 GB** |
-| one season, on disk (TOAST-compressed) | **~9.2 GB** |
-| `match` without `event_json` | ~130 MB a season, +24 MB of index |
+| `event_json` per match, **as written today** | **17,001 B** (was 742 KB – 1,035 KB) |
+| one season, raw text | **~1.5 GB** (was ~66 GB) |
+| one season, on disk (TOAST-compressed) | **~240 MB** (was ~9.2 GB) |
 
-**So the question is not "delete old matches", it is "why is a per-tick log in the database at all".**
-`SimReplayStore` already writes the same replay to a file, and only two single-match request paths read the
-database copy — see P1-7.
+**The per-tick log stopped being written, so the growth question is much smaller than it was.** What is
+left is a season's worth of results and reportable events. `SimReplayStore` keeps the full per-tick log in
+files, with its own retention.
 
 **Exit criteria:**
 - [ ] Growth rate measured per simulated matchday, from the harness rather than extrapolated
-- [ ] **A retention decision for `event_json` specifically.** Before anything is deleted: the top scorers
-      and assists pages read it, and so do the match detail and replay pages. Deleting it breaks four
-      screens, and deleting it *quietly* is worse than not having it
+- [ ] **A retention decision for the existing `event_json` blobs.** 155 rows hold 124 MB of the old
+      format and nothing reads them but the top-scorers and match pages. Reset clears them; a backfill
+      does not exist and probably should not
 - [ ] A retention decision for the `match` row itself. **Before anything is deleted:** the Elo replay
-      (`findPlayedScoredInOrder`) re-reads **every** played club match in date order, and the club Elo
+      (`findPlayedClubScoredInOrder`) re-reads **every** played club match in date order, and the club Elo
       history needs its old ratings. Deleting match rows silently breaks both, so the answer is probably
       "keep them" — but it has to be an answer, not an omission
 - [ ] The file-backed replay retention checked against the same question, so the two answers agree
+
 
 ---
 

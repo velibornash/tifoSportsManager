@@ -16,6 +16,138 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P1-7b: the per-tick log stopped being written, and it was 98% of the blob
+
+**One filter, in one method.** `SimReportMapper.eventJson` now skips any event type no page can use, and
+the keep-list is derived from the two readers that decide it rather than from what looks tidy.
+
+### What exactly changed
+
+**`SimReportMapper.java` — one file, two additions:**
+
+1. **`REPORTABLE_TYPES`**, a `Set.of` of 24 exact type names: `GOAL`, `YELLOW_CARD`, `RED_CARD`, `CARD`,
+   `PENALTY`, `PENALTY_AWARDED`, `PENALTY_GOAL`, `SHOT`, `SHOT_ON_TARGET`, `SHOT_OFF_TARGET`,
+   `SHOT_SAVED`, `SHOT_BLOCKED`, `SHOT_POST`, `SHOT_MISSED`, `CORNER`, `FREE_KICK`, `OFFSIDE`, `SUB`,
+   `SUBSTITUTION`, `INJURY`, `MATCH_START`, `MATCH_END`, `VAR`, `VAR_REVIEW`.
+2. **`isReportable(String)`**, package-private so the test can hold it to the readers' vocabulary:
+   - `contains("GOAL")` — **`GoalEventRepository`'s own rule, not a convenience.** See the findings below.
+   - `startsWith("VAR_")` — `buildTimeline` accepts any `VAR_` entry, so a VAR decision nobody has named
+     yet still reaches the report.
+   - otherwise the exact set, after upper-casing and folding `-` and spaces to `_`, which is what
+     `MatchDetailService.normalizeEventType` does, so the two agree on what a type *is* before either
+     compares it to anything.
+3. **`eventJson` gained one `continue`**, before the map is built. Nothing else in that method moved, and
+   **no other file in `src/main` was touched.**
+
+### Why the keep-list is not simply "drop the noisy types"
+
+**The two readers do not want the same events.** `ZoxApiController.buildTimeline` wants `OFFSIDE` and
+every `VAR_*` entry; `MatchDetailService.mapEventToDTO` drops both. Deriving the list from one reader
+would have quietly removed offsides and VAR decisions from the post-match report. Caught by reading both
+before writing anything — and the guard now fails if `OFFSIDE` is ever removed:
+
+```
+OFFSIDE is added to the timeline by ZoxApiController.buildTimeline, so dropping it
+silently removes it from the post-match report. ==> expected: <true> but was: <false>
+```
+
+### Measured, on all 155 real blobs, applying the identical rule in SQL
+
+| | |
+|---|---:|
+| events before | 475,181 |
+| events after | **10,977 — 2.31%** |
+| raw bytes per match | 840,136 → **14,838** |
+
+The dropped 97.69%, by volume: `DECISION` 143,637 · `PASS` 107,002 · `RECEIVE` 99,980 · `DUEL` 39,877 ·
+`DRIBBLE` 22,994 · `OOB_ENTER` 10,197 · `RESTART` 10,189 · `DEFLECT` 10,161 · `INTERCEPT` 6,941 ·
+`CLEAR` 4,872 · `LOOSE_PICKUP` 4,041 · `FOUL` 2,153 · `GK_CATCH` 1,384 · `POST_HIT` 692.
+
+### Measured again in the database, through the running application
+
+A clone of `sokker_db` (`sokker_narrow`, 43 MB), a second app instance on **port 8091** against it, the
+owner's world untouched, then one simulated round. **160 new matches written by the app running the new
+code:**
+
+| | old 155 matches | new 160 matches |
+|---|---:|---:|
+| `event_json` per match | 840,136 B | **17,001 B** (10,081 – 23,240) |
+| on disk after TOAST | 106 KB | **2,682 B** |
+| events per match | 3,065 | **21** |
+| | | **49.4× smaller — 2.02% of the old size** |
+
+Every type present in the new blobs is on the keep-list; **no noise leaked**. All 18 types seen: `GOAL`,
+`GOAL_DISALLOWED`, `INJURY`, `OFFSIDE`, `PENALTY_AWARDED`, `RED_CARD`, `SHOT`, `SHOT_BLOCKED`,
+`SHOT_MISSED`, `SHOT_POST`, `SHOT_SAVED`, `VAR_GOAL_OVERTURNED`, `VAR_IN_PROGRESS`,
+`VAR_PENALTY_OVERTURNED`, `VAR_RED_CONFIRMED`, `VAR_RED_OVERTURNED`, `VAR_YELLOW_CONFIRMED`,
+`YELLOW_CARD`.
+
+### All three readers checked against that running app, on a real new match
+
+| Reader | Endpoint | Result |
+|---|---|---|
+| `ZoxApiController.buildTimeline` | `/api/zox/post-match-report/156` | **9 timeline items** — 2 goals incl. an assist and the running score, a penalty, a yellow and a red |
+| `GoalEventRepository` — **the 44 MB page** | `/stats/leagues/1/topscorers` | **10 rows** — `Gelu Bajić 5`, `Borislav Negovanović 4`, `Ivan Mladenović 3` |
+| `MatchDetailService.mapEventToDTO` | `/matches/156/detail` | **46 events** — 3 `GoalEvent`, 1 `PenaltyEvent`, 28 `ShotOffTargetEvent`, 11 `ShotOnTargetEvent`, 2 `YellowCardEvent`, 1 `RedCardEvent` |
+
+The top-scorers page was the one parsing **44 MB per request** to list five goals a match. It now does it
+from 17 KB a match.
+
+### The guard
+
+`SimReportMapperReportableTypesTest` — **10 tests, 284 ms, no database.** It holds the list in **both**
+directions, because a one-directional test passes happily against a list that has also dropped every
+goal:
+
+- everything `mapEventToDTO` maps is kept — 21 types, transcribed from its `switch`
+- everything `buildTimeline` adds is kept, including `OFFSIDE` and the `VAR_` family
+- every `VAR_*` spelling survives, because the rule is the prefix and not the list
+- the 15 per-tick noise types are **not** written — that is the entire point
+- `GoalEventRepository`'s goal test is honoured, including the goals VAR ruled out
+- nothing kept is unwanted, so the blob cannot creep back one entry at a time
+- blank and null types are dropped rather than throwing
+- **the mapper's actual output**: 3,065 noise events plus 12 reportable ones produce a blob containing
+  exactly the 12, asserted on bytes and not on the predicate, because a matcher can be right while the
+  writer ignores it
+
+**Proven able to fail:** removing `OFFSIDE` fails two of the ten and prints the reason.
+
+36 related tests green in an isolated worktree: `ProposalAssistAndReportContractTest` 7,
+`GoalEventRepositoryTest` 4, `SimMatchPersistWiringTest` 5,
+`ProposalEngineIsTheOnlyFixtureProducerTest` 5, `ScoredMatchCarriesNoBlobTest` 5,
+`SimReportMapperReportableTypesTest` 10.
+
+### Three things found on the way, none of them mine to fix
+
+1. **`GoalEventRepository.isGoal` credits goals that were ruled out.** It tests
+   `type.contains("GOAL")`, and across the 155 matches the GOAL-containing types are `GOAL` (297),
+   **`GOAL_DISALLOWED` (15)** and **`VAR_GOAL_OVERTURNED` (15)**. A player is put on the top-scorers list
+   for a goal VAR threw out. **This is why the keep-list has a `GOAL` substring rule at all** — dropping
+   those entries would have changed the scorer table as a side effect of a performance fix, which is the
+   one thing this task must not do. Whether a disallowed goal belongs on the list struck through or not at
+   all is a product question, so it is recorded rather than fixed.
+2. **`simulate-all` under-reports what it did.** It returned `simulatedCount: 5, leaguesProcessed: 1`
+   while **160 matches** were being written, because `AsyncSimulationRunner` continues in the background —
+   the count was still climbing 20 seconds later. This repository's recurring shape, code reporting
+   success while doing something else, in a place nobody was watching.
+3. **`PENALTY_SCORED` is dropped, and that is safe — verified, not assumed.** 30 occurrences. Dropping it
+   would lose goals from the scorer list if the engine recorded a penalty goal *instead of* a `GOAL`, so
+   that was checked: **all 26 matches containing one also carry a `GOAL` entry and a `PENALTY_AWARDED`**,
+   so the goal survives, the penalty context survives, and `PENALTY_SCORED` is a duplicate annotation.
+
+**Also dropped, and worth a product opinion rather than a decision of mine:** `FOUL` — 2,153 events
+across the 155 matches. No reader wants it, so it is not written. A football analyst would.
+
+### What this does not do
+
+**The existing 155 matches keep their 742 KB blobs.** No migration was run, deliberately: the owner
+resets the world anyway, and backfilling 124 MB is a migration with its own risk. Historical top-scorer
+pages stay slow until the world is reset while every new match is cheap. **A season of `match` is now
+~1.5 GB raw / ~240 MB on disk, against ~66 GB / ~9.2 GB before** — which is most of what P1-5 was
+worried about, now measured rather than estimated.
+
+---
+
 ## 2026-10-03 — `66553b4` — P0-1a: five controllers, 55 tests, and six defects the annotations did not describe
 
 **The board said these controllers had no tests. What it did not say is that three of them were wide open.**

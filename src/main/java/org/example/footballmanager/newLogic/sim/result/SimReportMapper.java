@@ -8,7 +8,9 @@ import org.example.footballmanager.newLogic.sim.result.ProposalMatchOutcome.Team
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Maps a {@link ProposalMatchOutcome} onto the canonical newLogic match/report
@@ -53,9 +55,72 @@ public final class SimReportMapper {
         return stats;
     }
 
+    /**
+     * The event types a page can actually show. Everything else is not written at all.
+     *
+     * <p><b>Why this list exists.</b> {@code event_json} used to hold every tick of the match: 2,726
+     * events and <b>742 KB to 1,035 KB</b> on a single match, of which <b>1.92 entries are goals</b>.
+     * Two request paths read it — {@code MatchDetailService} and {@code ZoxApiController} — and
+     * <b>both already discard most of it</b>: {@code mapEventToDTO} is a {@code switch} that returns
+     * null for a type it does not know, and {@code buildTimeline} only adds an item inside type
+     * checks. So roughly <b>98% of every blob was parsed and thrown away</b>, and the top-scorers page
+     * was parsing <b>44 MB</b> to list five goals a match. The complete per-tick log is not lost: it
+     * is written to a file by {@code SimReplayStore}, which is the replay viewer's own source.
+     *
+     * <p><b>Derived from the readers, not from what seems tidy</b>, and the two readers do not want the
+     * same things — {@code buildTimeline} wants {@code OFFSIDE} and every {@code VAR_*} entry, which
+     * {@code MatchDetailService} drops. Reading only one of them would have quietly emptied part of the
+     * match report.
+     *
+     * <p><b>The {@code GOAL} substring rule is {@code GoalEventRepository}'s, not a convenience.</b>
+     * {@code isGoal} tests {@code type.contains("GOAL")}, so today it credits a scorer for
+     * {@code GOAL_DISALLOWED} and {@code VAR_GOAL_OVERTURNED} — a goal VAR ruled out. That is a
+     * defect and it is recorded in {@code kanbanProgress.md} rather than fixed here, because whether a
+     * disallowed goal belongs on the scorers list with a strikethrough or not at all is a product
+     * question. Until it is answered the blob must keep carrying those entries, or narrowing would
+     * change the scorer table as a side effect of a performance fix.
+     */
+    private static final Set<String> REPORTABLE_TYPES = Set.of(
+            "GOAL",
+            "YELLOW_CARD", "RED_CARD", "CARD",
+            "PENALTY", "PENALTY_AWARDED", "PENALTY_GOAL",
+            "SHOT", "SHOT_ON_TARGET", "SHOT_OFF_TARGET", "SHOT_SAVED", "SHOT_BLOCKED",
+            "SHOT_POST", "SHOT_MISSED",
+            "CORNER", "FREE_KICK", "OFFSIDE",
+            "SUB", "SUBSTITUTION", "INJURY",
+            "MATCH_START", "MATCH_END", "VAR", "VAR_REVIEW");
+
+    /**
+     * Whether a page can use this event, and therefore whether it is written.
+     *
+     * <p>Package-private so {@code SimReportMapperReportableTypesTest} can hold the list to the
+     * readers' vocabulary in both directions: everything a reader wants must be kept, and everything
+     * kept must be wanted. A keep-list that drifts either way fails that test rather than quietly
+     * emptying a page or quietly carrying 742 KB.
+     */
+    static boolean isReportable(String type) {
+        if (type == null || type.isBlank()) {
+            return false;
+        }
+        String normalised = type.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        // GoalEventRepository matches on the substring, so a goal the engine words differently is a
+        // goal it already counts. Kept for that reason alone.
+        if (normalised.contains("GOAL")) {
+            return true;
+        }
+        // buildTimeline accepts anything starting with VAR_, and VAR review is a real part of a report.
+        if (normalised.startsWith("VAR_")) {
+            return true;
+        }
+        return REPORTABLE_TYPES.contains(normalised);
+    }
+
     public static String eventJson(ObjectMapper om, ProposalMatchOutcome o) {
         List<Map<String, Object>> eventList = new ArrayList<>();
         for (EventEntry ev : o.events()) {
+            if (!isReportable(ev.type())) {
+                continue;
+            }
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("tick", ev.tick());
             m.put("minute", (int) (ev.tick() / TICKS_PER_MINUTE));
