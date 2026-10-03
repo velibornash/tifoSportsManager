@@ -176,42 +176,6 @@ public class TrainingController {
         return plusFeatures.isOwnPlayer(player, plusFeatures.viewerTeamId(principal));
     }
 
-    /**
-     * Trains every player in the world.
-     *
-     * <p><b>An administrator action, and an operator escape hatch.</b> It used to be reachable by any
-     * logged-in manager: {@code findAll()} plus {@code saveAll()} over every player in the database —
-     * roughly 300,000 rows at the scale this project targets — on a request thread.
-     *
-     * <p>It has <b>zero callers</b>: not in {@code static/js}, not in {@code src/main}, not in one test. The
-     * game's training runs through day 4's {@code TrainingJob} and through
-     * {@code POST /training/weekly/team/{teamId}/run}, which is what the training screen actually calls.
-     *
-     * <p><b>So it is guarded, not deleted — by the owner's decision</b>, and the deletion question is
-     * recorded on the board rather than settled here. A role guard answers "who may"; it does not answer
-     * "should this exist at all", and this is the most expensive request in the game with nothing to buy.
-     */
-    @PostMapping("/train-all")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
-    public Map<String, Object> trainAllPlayers() {
-        // **It reports; it does not return the world.**
-        //
-        // This used to return `List<Player>` — every player in the database, serialised. At the scale
-        // this project targets that is roughly 300,000 entities with their positions and skills, so the
-        // response was hundreds of megabytes of JSON that nobody asked for: the caller's only question
-        // is "did it train them", and the log line below already answers it.
-        //
-        // <b>Deliberately not paged.</b> `findAll(Pageable)` with no sort has an undefined order, and
-        // paging an unordered query can skip and repeat rows — which here would silently train some
-        // players twice and others not at all, with a count at the end claiming success. Making this
-        // safe needs a total order on the query first; that is the same hazard the recovery read has,
-        // and it is recorded rather than solved here.
-        List<Player> players = playerRepository.findAll();
-        players.forEach(progressionService::trainPlayer);
-        List<Player> saved = playerRepository.saveAll(players);
-        return Map.of("trained", saved.size(), "action", "ALL_PLAYERS_TRAINED");
-    }
-
     // --- New weekly training setup/report API ---
     @GetMapping("/setup/team/{teamId}")
     public TrainingSetupDTO getCurrentSetup(@PathVariable Long teamId) {

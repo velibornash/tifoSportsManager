@@ -331,6 +331,58 @@ look rather than to act on my own summary.
 
 ---
 
+## 2026-10-03 — P0-13 criterion 4: `/train-all` deleted, and the guard was the wrong shape for it
+
+**The owner's ruling, after the guard was already in place.** 36 lines gone, no caller, 8 green.
+
+### Guarded first, deleted second — and the order is the argument
+
+The previous entry recorded this route as *"guarded, not deleted — the owner's decision"*, on the reasoning
+that a role guard answers **who may** without answering **should this exist at all**. That reasoning was right
+enough to protect the world in the meantime and wrong enough to leave the question open, and both halves are
+worth keeping:
+
+- It was a world-scale write — `findAll()` + `saveAll()` over every player, ~300,000 rows at full scale, on a
+  request thread — with **zero callers** anywhere.
+- It duplicated day 4's `TrainingJob`, which is how the world is actually trained.
+
+So the sequence was: guard it (P0-13), observe that the guard made the world safe, then delete it. **A guard
+is a repair; a deletion is the answer.** Had it been deleted first there would have been nothing to observe,
+and had it been left guarded there would have been a safe route that nobody needs.
+
+### The tests now assert absence, which is a stronger claim
+
+They asserted 403 before. They assert **404 or 405** now, for an administrator and a manager alike.
+
+```java
+for (String bearer : new String[]{auth.bearer(UserRole.OWNER), auth.bearer(UserRole.REGULAR)}) {
+    int code = mockMvc.perform(post("/training/train-all").header("Authorization", bearer))...;
+    assertTrue(code == 404 || code == 405,
+            "/training/train-all answered " + code + ", so the route is still reachable");
+}
+```
+
+**A guard can be weakened by whoever edits it next. A deleted mapping cannot.** Asserting 403 would have kept
+passing if someone widened the role check, which is precisely the failure the deletion removes.
+
+### An assertion that was wrong in an instructive way
+
+`anAnonymousCallerFindsNoRoute` asserted 404 and **failed with 401**. The security chain runs before routing,
+so an anonymous request never reaches the missing mapping. The route genuinely is absent — the authenticated
+case proves that — but "absent" and "not authenticated" are different facts and the second is what an anonymous
+caller is told.
+
+Corrected and kept as its own test, because the distinction is the interesting part: **the absence is proved
+by the authenticated case, and this one only has to prove the call does not succeed.**
+
+**8 green**, with `JuniorDevelopmentTest`, `TrainingProgressionIdempotencyTest` and `TrainingIntensityServiceTest`
+— **47** across the training surface. `SquadTrainingServiceTest` still errors 6/6 on the recorded missing-`GameClock`
+trap, which is P0-2's and not this task's.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-17: one boolean, no test, and the applicant list on the other side of it
 
 **5 tests green, mutation-proven.** Found while writing P0-1b and recorded there as untested; this is that
