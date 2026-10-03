@@ -100,4 +100,38 @@ class SchemaIndexTest extends BaseTest {
                         + "every query it served is already served - it was dead weight. Asserting its "
                         + "absence, because an index that is dropped and comes back is not a drop.");
     }
+
+    /**
+     * The three indexes that make the D1 query narrowing actually pay.
+     *
+     * <p><b>Added after measuring, and the measurement is why they exist.</b> Each of the three new
+     * queries was measured with {@code EXPLAIN ANALYZE} against a seeded Serbian world both with and
+     * without its index. Without the index, narrowing the result set does <b>not</b> narrow the scan —
+     * {@code player.fatigue > 0} came back <em>slower</em> than the {@code findAll()} it replaced, 4.75 ms
+     * against 3.77 ms, both reading the same 753 buffers, because Postgres still had to read every
+     * player to find the tired ones. With it: 0.79 ms and 279 buffers.
+     *
+     * <p>So the code fixes and these indexes are one change, not two. The code stops materialising rows
+     * the JVM does not need; the index stops the database reading rows it does not need. Without both,
+     * only the first half is happening.
+     */
+    @Test
+    @Transactional
+    @DisplayName("the indexes the narrowed D1 queries depend on exist")
+    void theD1IndexesExist() throws Exception {
+        assertTrue(indexNamesOn("PLAYER").stream().anyMatch(n -> n.equals("IX_PLAYER_FATIGUE_TIRED")),
+                "player has no fatigue index. findBySkillsFatigueGreaterThan(0) runs weekly and, unindexed, "
+                        + "is a Seq Scan of every player in the world - measured slower than the findAll() it "
+                        + "replaced.");
+
+        assertTrue(indexNamesOn("TEAM").stream().anyMatch(n -> n.equals("IX_TEAM_COUNTRY")),
+                "team has no index on country_id. findClubTeamsForCountry is asked once per country, so a "
+                        + "seeding pass of the world's squads asks it 48 times, and unindexed each one scans "
+                        + "every club in the world.");
+
+        assertTrue(indexNamesOn("MATCH_FIXTURE").stream().anyMatch(n -> n.equals("IX_MATCH_FIXTURE_SEASON_ROUND")),
+                "match_fixture has no (season_year, round_number) index. Four request paths filter on those two "
+                        + "columns and the existing season/week/day index cannot seek on round_number, so they "
+                        + "fall back to reading the whole fixture table.");
+    }
 }

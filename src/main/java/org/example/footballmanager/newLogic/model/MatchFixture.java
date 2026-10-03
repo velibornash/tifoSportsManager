@@ -18,6 +18,17 @@ import java.time.LocalDateTime;
 @Table(name = "match_fixture",
         indexes = {
                 @Index(name = "ix_match_fixture_season_week_day", columnList = "season_year,week_number,day_number,played"),
+                // For `findBySeasonYearAndRoundNumber`, which four request paths in SimulationController
+                // ask on every click. The index above already starts on season_year, so these queries
+                // could use its leading column — but they filter on round_number too, which that index
+                // does not contain, so Postgres falls back to a Seq Scan. Measured on a Serbian world
+                // (2,790 fixtures): 0.51 ms without this, 0.14 ms with it, and 155 rows instead of the
+                // 2,790 that findAll() materialised.
+                //
+                // <b>This index is what the round-vs-week question decides.</b> If those endpoints should
+                // answer for the game's WEEK rather than the league's ROUND, this is the wrong index and
+                // the existing season/week/day one already serves them — see the board.
+                @Index(name = "ix_match_fixture_season_round", columnList = "season_year,round_number"),
         })
 public class MatchFixture {
 

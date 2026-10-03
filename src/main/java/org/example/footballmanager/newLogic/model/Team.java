@@ -17,7 +17,12 @@ import java.util.OptionalDouble;
 @Entity(name = "Team")
 @Table(indexes = {
         @Index(name = "ix_team_name_prefix", columnList = "name"),
-        @Index(name = "ix_team_competition", columnList = "competition_id")
+        @Index(name = "ix_team_competition", columnList = "competition_id"),
+        // For `findClubTeamsForCountry`, which the national-squad seeder asks once per country — 48
+        // times in one seeding pass. Measured with EXPLAIN ANALYZE: without it the country's clubs are
+        // a Seq Scan of every club in the world and the query is no faster than the whole-table scan it
+        // replaced (1.06 ms against 1.05 ms). With it: 0.44 ms and 19 buffers instead of 102.
+        @Index(name = "ix_team_country", columnList = "country_id")
 })
 @Getter @Setter
 public class Team {

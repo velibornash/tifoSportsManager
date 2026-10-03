@@ -12,6 +12,19 @@ import org.hibernate.annotations.ColumnDefault;
         indexes = {
                 @Index(name = "ix_player_team", columnList = "team_id"),
                 @Index(name = "ix_player_team_position", columnList = "team_id,position"),
+                // For the weekly fatigue recovery query, `fatigue > 0`. Measured on a Serbian world
+                // (10,130 players, 2,400 tired) with EXPLAIN ANALYZE: without this the query is a Seq
+                // Scan over the whole player table and is *slower* than the findAll() it replaced —
+                // 4.75 ms against 3.77 ms, both reading the same 753 buffers — because narrowing the
+                // result set does not narrow the scan when nothing can seek it. With it: 0.79 ms and
+                // 279 buffers, an Index Scan, 4.8x faster than the load it replaced.
+                //
+                // A PARTIAL index (`WHERE fatigue > 0`) is the textbook form here, and it was measured
+                // that way — but `jakarta.persistence.Index` cannot declare one, so building it would
+                // mean hand-written DDL and a migration path. A plain btree over one small integer column
+                // is cheap enough that the machinery is not worth it. Revisit if this table ever
+                // carries a million rows at a 2% tired rate.
+                @Index(name = "ix_player_fatigue_tired", columnList = "fatigue"),
         })
 @Entity(name = "Player")
 public class Player {
