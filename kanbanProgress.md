@@ -516,7 +516,7 @@ worried about, now measured rather than estimated.
 
 ---
 
-## 2026-10-03 — P1-7d: the milestone page read the season twice, and a failed match was only logged
+## 2026-10-03 — `3c5e111` — P1-7d: the milestone page read the season twice, and a failed match was only logged
 
 The three items P1-7 left. Two fixed, one **measured and dropped** — and the reason it dropped is the
 point.
