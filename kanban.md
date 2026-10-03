@@ -1464,24 +1464,18 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
-# 🔖 State at the time of writing
+# 🔖 Suite state — MEASURED 2026-10-04
 
-- `mvn test`: **992 tests, 13 failures, 16 errors, 29 red**, ~2 h 52 m, app required on `:8080`. Measured
-  at `89144e9`; **a re-measurement was in flight on 2026-10-03** and its result is in `kanbanProgress.md`.
-- The full red list and what each red class means is in `archive/kanbanProgress.md`, in the entry recording
-  the run that was allowed to finish.
-- **P0-1 and P0-2 are the two tasks that make everything else safer to do.** Do them first.
-- **Four P1 tasks are done — P1-1, P1-3, P1-4, P1-7 — and together they are the worked example for the
-  rest of this category.** What they share matters more than their individual numbers:
-  - **Measure at projected scale.** The dev database holds 155 `match` rows — one matchday of one country —
-    where a sequential scan is the correct plan and an `EXPLAIN` cannot distinguish anything.
-  - **Name the query behind every change.** Two of P1-1's three candidate indexes had no caller at all,
-    and a third made the hot daily job 68% slower.
-  - **Be willing to land less than the board asked for.** Two proposed pieces of work were measured and
-    dropped; both are recorded as dropped rather than quietly deleted.
-  - **A change can alter the value of the thing beside it.** An index rejected in P1-1 is the one P1-3
-    needed, and one query's plan differs 80× on nothing but how its ids are passed.
-- **P1's remaining work is P1-5 and P1-6; P1-2 is owner-gated.** P1-5 is two retention decisions and a
-  measurement. P1-6 is the other sports, and it should be done the way P1-1 was: enumerate the queries
-  those tables actually serve *first*, because two of the three candidates P1-1 was given had no query
-  behind them.
+**`mvn test`: 1247 tests, 16 failures, 16 errors, 32 red, 200 classes, 18 m 22 s**, run with the app up on
+`:8080` and allowed to finish.
+
+**The previously recorded figures — 992 tests, 29 red, ~2 h 52 m — described a different application** and
+are superseded. The wall clock changed because **boot writes nothing**, so the tests that used to each pay
+for a full seeding run no longer do; the heavy classes still run (`CountryActivationTest` 300 s).
+
+The full red list, with what each means, is in `kanbanProgress.md`. **A full run requires the app on `:8080`** —
+without it three Playwright classes hang the entire run rather than failing.
+
+**Red is 32, not 29 — and that is not a regression claim.** 255 tests were added since the old run, so the
+counts are not comparable. Every one of the 32 needs reading before it is called a defect.
+
