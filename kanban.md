@@ -614,6 +614,17 @@ scheme, so they assert nothing about the thing they name.
 
 ---
 
+
+**A second site, found while doing P1-6 — the other two sports, in production code rather than fixtures.**
+`BbController` hardcodes `season_year = 2025` in eight places, including four
+`defaultValue = "2025"` request parameters, and `bb_match_fixtures` is seeded with `2025` to match. So it
+is **self-consistent and invisible**, which is the whole difficulty: `newLogic` counts seasons from 1 and
+these count them from the calendar, and nothing in either direction complains. Eight call sites, one
+`season_year` column, two conventions. Exit criteria: the other sports use the same season convention as
+`newLogic`, or the difference is documented as deliberate — because right now it is neither.
+
+---
+
 ### P0-10 — Delete the dead tactics plumbing
 
 Verified **zero callers** across `src/main` and `src/test`: `TacticsBridge`, `NewLogicTacticsService`,

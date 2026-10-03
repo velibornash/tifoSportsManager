@@ -26,6 +26,7 @@ order of this file drifts away from the order of the work. This is the P1 sequen
 | `379cb12` | P1-4 | three whole-table reads inside loops, and one endpoint that returned the world |
 | `513f738` | P1-3 | the recovery read pages |
 | `3c5e111` | P1-7d | the milestone page read the season twice; background failures now counted |
+| *(no commit)* | P1-6 | the other sports: measured, and **nothing was landed** |
 
 ---
 
@@ -720,6 +721,83 @@ pages stay slow until the world is reset while every new match is cheap. **A sea
 worried about, now measured rather than estimated.
 
 ---
+
+---
+
+## 2026-10-03 — P1-6: measured, and the premise was wrong before any index was proposed
+
+The board asked for indexes on the other sports because they "are 5,580 and 3,720 players on the dev
+database and they are not simulated on every tick, so this is genuinely lower priority than P1-1 — but it
+is not zero, and it will not get cheaper to fix after the tables grow."
+
+**Two checks, and both settle it. No index was created.**
+
+### They do not grow with the world
+
+All three sports hardcode one country:
+
+| | |
+|---|---|
+| `BbDataInitializer.java:141` | `String country = "RS";` |
+| `AfDataInitializer.java:135` | `String country = "RS";` |
+| `CSDataInitializer.java:92` | `c.setIsoCode("SRB");` |
+
+**The 48× growth is `newLogic`'s.** These three are one country and stay one country, so 3,720 and 5,580
+players are their real sizes rather than a snapshot of something bigger. The board's premise — that they
+will get costlier as the world grows — does not hold.
+
+### They have never been played
+
+Seeded: 310 teams and 310 competition entries each, 2,790 fixtures each. And:
+
+```
+ bb_matches               0        af_matches                0
+ bb_player_season_stats   0        af_player_season_stats    0
+```
+
+**Not one match has ever been simulated in either sport.** So the largest table in the whole area is
+`af_players` at 5,580 rows, a sequential scan of which is sub-millisecond, and the two season-stats
+tables are empty. Fifteen tables, every one with its primary key as its only index — and **none of them
+earns a second index.** Recorded as measured-and-dropped rather than left for the next session to
+rediscover, which is what happened to P1-1's two dead candidates.
+
+### The one real thing, and it is not an index
+
+`BbMatchSimulationService.savePlayerStats` and its American football twin do **four queries per player per
+match** — `findById`, `save`, a season-stats lookup, `save` — so **88 round trips a match**. Measured here:
+
+| | |
+|---|---:|
+| 2,000 sequential lookups, wall clock | 349.0 ms |
+| per round trip | **0.1745 ms** |
+| `savePlayerStats`, 22 players | **15.4 ms a match** |
+
+**It has never run**, because no match has been simulated. When these sports are played this is the first
+thing to fix, and it is the same N+1 family as `TransferService`, `SquadEnvironmentService` and
+`FriendlyRequestService` — **not** a missing index on `bb_players`.
+
+The season-stats lookup filters on `player_id + season_year + competition_id` with only a primary key, so it
+is a sequential scan. **Still no index:** that table would top out at 3,720 rows a season, where a scan
+costs ~0.03 ms, so an index would not earn its write cost.
+
+### Two findings that belong to P0
+
+- **P0-9 has a second site, and it is production code rather than fixtures.** `BbController` hardcodes
+  `season_year = 2025` in eight places including four `defaultValue = "2025"` request parameters, and
+  `bb_match_fixtures` is seeded with `2025` to match — so it is **self-consistent and invisible**, which is
+  exactly the difficulty the board's trap wording names. `newLogic` counts seasons from 1; these count
+  them from the calendar; nothing complains in either direction. Cross-referenced on P0-9, **not fixed
+  here.**
+- **`bb_leagues` and `BbLeagueRepository` are vestigial.** A table with 0 rows and a repository with **zero
+  callers** in `src/main` or `src/test` — the same shape as `match_tick_states`, and the same question for
+  the owner: delete, or leave?
+
+### What this cost to establish
+
+Two hours, and the answer is "nothing". That is the third P1 task to end that way — P1-1 dropped two of its
+three candidate indexes, P1-7 dropped a projection, and P1-6 dropped all of them — and it is the whole
+argument for measuring before proposing. **The board wrote a task whose premise did not survive contact
+with the source**, in the same way P1-1's did.
 
 ---
 
