@@ -331,6 +331,78 @@ look rather than to act on my own summary.
 
 ---
 
+## 2026-10-03 — P0-16 closed: the calendar answered the friendlies question, and `/demo` is gone
+
+**The owner's hint — "proveri kalendar" — was the whole answer.** 281 lines of fake data deleted, the last
+caller rewired, 24 green.
+
+### The calendar already said where friendlies live
+
+`SeasonCalendar`, owner-defined, spells out the season:
+
+```
+week  6   day 3 friendly   day 7 friendly    | mid-season window closes; no league
+week 11   day 3 playoff or friendly, day 7 friendly
+week 12   day 3 friendly   day 7 friendly    | window closes
+```
+
+and, on the rule rather than the dates:
+
+> *"Anything that is not a scheduled fixture is an **option**, not an obligation: a club is not handed a
+> friendly, it asks for one and the other club may refuse."*
+
+**So a friendly belongs to no competition.** That is the whole reason `competitionType` could never select one,
+and therefore the whole reason the friendlies screen was reading fabricated data: **there was no real query to
+make.** Two earlier claims of mine were wrong about this and the calendar corrected both — I had said "there is
+nothing to filter on" and then, when told to extend `CompetitionType`, would have put the value in the wrong
+enum.
+
+### `MatchType` was already the right answer, and it had landed
+
+Another agent's `MatchType` (P2-8) carries `LEAGUE, CUP, INTERNATIONAL, TOURNAMENT, FRIENDLY, EXHIBITION`,
+and `MatchFixture` now has `matchType` with `resolvedMatchType()` falling back to `ofCompetition(competition)`
+for rows predating the column. Its javadoc had already stated this task's problem verbatim — *"nowhere to
+write 'friendly' or 'exhibition' … unfilterable"* — and `ofCompetition` is "the only bridge", so a match's
+type and its competition's type cannot drift.
+
+**So the schedule grew a second filter**, `?matchType=`, beside `?competitionType=`. They answer different
+questions and neither replaces the other: `competitionType` answers *which competition*, and a friendly has
+none. Every row now carries its own type, so the client is not inferring it from an absent league:
+
+```json
+"competitionType": null, "matchType": "FRIENDLY"
+```
+
+**Had the owner's `CompetitionType` instruction been carried out as well, there would now be two competing
+type enums** — one on competitions, one on matches — and the drift this codebase keeps paying for. Recorded in
+the previous entry and avoided.
+
+### `DummyDataController` deleted
+
+281 lines, every mapping carrying a literal `1` and no `@PathVariable`, **zero overlap with the frozen
+`/demo/service` engine** and now **zero callers**. Its test went with it, because what it tested *was* the fake
+data — keeping it would have been asserting that fabrication still works.
+
+`grep` for `/demo/` in `static/js` now returns two **comments** describing the old arrangement, and the only
+`/demo` left in `src/main` is `/demo/service/ui/**`, which is the frozen reference engine and not mine.
+
+### An assertion that had to change because the product got better
+
+The *"an unrecognised type does not guess"* test forbade the string `FRIENDLY` anywhere in the body. That was
+correct while no friendly row existed and became **wrong the moment one did**, because a genuine friendly
+carries `"matchType":"FRIENDLY"` — the test was forbidding the truth.
+
+It now forbids `"competitionType":"FRIENDLY"`, which is the thing that must never appear: **no such
+competition exists**, and a response inventing one would be the exact failure this task exists to remove.
+
+**A pattern worth naming:** three times today a test or a claim of mine was wrong because the product was
+*less* complete than I assumed, and every correction came from going and looking — at the calendar, at the
+entity, at the live database — rather than from reasoning harder about my own summary.
+
+**A full `mvn test` was not run**, so "green in a full run" does not count as met.
+
+---
+
 ## 2026-10-03 — P0-13 criterion 4: `/train-all` deleted, and the guard was the wrong shape for it
 
 **The owner's ruling, after the guard was already in place.** 36 lines gone, no caller, 8 green.
