@@ -16,6 +16,56 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P2-4: listing was free, and the flag that would have stopped it was already there
+
+### "Two lines" was optimistic: there was no fee at all
+
+`listPlayerForTransferEntity` set the listing up, saved it and charged nothing. More usefully,
+`boolean alreadyListed = isActiveListing(transfer)` sat on line 547 of the method and was **never
+used** — the same shape as the unused `alreadyListed` and the two identical `if/else` arms already
+recorded in the weekly-rollover entry. Re-pricing a live listing was free and untracked, so the
+relist loop this mechanic exists to price was free too.
+
+### Human clubs only, and that is a real boundary
+
+AI clubs self-list weekly (`maybeCreateAiListing`) and `YouthAcademyService` lists academy graduates
+through the same two-argument path, so "everyone pays" would have charged 14,880 AI budgets for a
+mechanic aimed at a manager spamming the market. Gated on `Team.humanControlled` — a maintained flag
+(PyramidBuilder false for AI, DatabaseInitializer and RegistrationService true for the owner), not a
+derivation from "did an HTTP request arrive".
+
+Charged off the **clamped** asking price, because a request for EUR 0 is listed at EUR 1 and must be
+charged as EUR 1. The refusal is deliberate: a club that cannot fund the fee is refused outright
+(`409`, nothing listed), because a negative budget would make the fee a speed bump for honest
+managers and nothing at all for dishonest ones.
+
+### Five tests, five deliberate breaks, no surprises
+
+| Break | Result |
+|---|---|
+| Flat fee instead of 2.5% | 3 fail — `expected: <100000.0> but was: <2500.0>` |
+| Charge every call, ignoring `alreadyListed` | 3 fail — `expected: <1> but was: <0>` on the ledger count |
+| Charge AI clubs too | 1 fail — `expected: <0.0> but was: <75000.0>` |
+| Drop the affordability refusal | 1 fail — nothing thrown |
+
+Unlike P2-2 there was no coarse-assertion trap here: every guarantee is a number and each failed on
+its own break. **The Finances page needed no frontend change** — it is driven entirely by
+`FinanceCategory.values()`, so a new category is enumerated automatically. Proved rather than assumed:
+`summarise().get("byCategory")` is asserted to hold `LISTING_FEE` at `-100000.0`, the enum's own sign
+convention for a cost.
+
+Two hand-built `TransferService` tests needed the new constructor argument
+(`TransferServicePriceGuardTest`, `TransferMarketSquadReadCountTest`); both pass and
+`mvn clean package` succeeds.
+
+### Recorded, not changed
+
+`TransferActivitySeeder` builds `Transfer` rows and calls `transfers.save()` directly, bypassing the
+listing path, so seeded listings pay no fee. Seeding is a different concern and the board's own rule
+is that boot and seeding write nothing on their own.
+
+---
+
 ## 2026-10-03 — P2-2: a seller could not accept an offer at all, and could not have chosen one if he could
 
 ### The board's premise was wrong in both halves

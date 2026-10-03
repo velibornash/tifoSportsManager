@@ -609,11 +609,30 @@ in the analysis, because it is a mechanic neither competitor has rather than a n
 **Exit criteria:** a listed player can object; the club cannot list him without resolving it; refusal has a
 visible reason.
 
-### P2-4 — Listing fee as a percentage of the asking price
+### ~~P2-4 — Listing fee as a percentage of the asking price~~ ✅ `ListingFeeScalesWithTheAskingPriceTest` 5/5
 
-Two lines. Named as one of the cheapest wins on the board.
+**The board said "two lines".** It was **no fee at all** — `listPlayerForTransferEntity` charged
+nothing and computed `alreadyListed` without using it, so listing was free and re-listing was free.
 
-**Exit criteria:** fee scales with the asking price; a pittance listing costs a pittance.
+**Scope decision, owner:** **human clubs only.** AI clubs self-list weekly and academy graduations
+list automatically; charging those would drain 14,880 budgets for a mechanic that exists to stop a
+*manager* spamming the market. Gated on `Team.humanControlled`, which is maintained by
+`PyramidBuilder`, `DatabaseInitializer` and `RegistrationService`.
+
+**Landed:**
+- [x] 2.5% of the asking price — the rate `archive/COMPETITIVE_ANALYSIS.md` benchmarks against
+- [x] New `FinanceCategory.LISTING_FEE`, so the charge appears on the Finances page under its own row
+- [x] Budget deducted and one ledger line written; charged off the **clamped** asking price, so a
+      request for EUR 0 is charged as the EUR 1 it was listed at
+- [x] `alreadyListed` honoured — re-pricing a live listing is not a new listing and is not re-charged
+- [x] A club that cannot fund the fee gets `409 INSUFFICIENT_BUDGET_FOR_LISTING_FEE` and **nothing is
+      listed**; otherwise the fee constrains only honest managers
+- [x] Own class (`TransferListingFeeService`) rather than another method on the 1199-line
+      `TransferService`
+- [x] Every test proven able to fail, including a flat fee, a repeated charge, charging the AI, and
+      dropping the affordability refusal
+
+---
 
 ### P2-5 — Supporter mood and supporter expectations
 

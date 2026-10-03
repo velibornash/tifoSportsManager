@@ -42,6 +42,7 @@ public class TransferService {
     private final TransferWindowService transferWindows;
     private final ClubNeedService clubNeeds;
     private final NegotiationService negotiation;
+    private final TransferListingFeeService listingFees;
 
 
     private final TransferRepository transferRepository;
@@ -58,9 +59,11 @@ public class TransferService {
                            SquadNumberAssigner squadNumberAssigner,
                            TransferWindowService transferWindows,
                            ClubNeedService clubNeeds,
-                           NegotiationService negotiation) {
+                           NegotiationService negotiation,
+                           TransferListingFeeService listingFees) {
         this.clubNeeds = clubNeeds;
         this.negotiation = negotiation;
+        this.listingFees = listingFees;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -598,7 +601,14 @@ public class TransferService {
         transfer.setAgreedPrice(null);
         transfer.setListedAt(LocalDateTime.now());
         transfer.setCompletedAt(null);
-        return transferRepository.save(transfer);
+        Transfer saved = transferRepository.save(transfer);
+
+        // Charged off the saved entity's asking price, which is the clamped one — a request for
+        // EUR 0 is listed at EUR 1 and must be charged as such. `alreadyListed` was computed here
+        // and never used, so re-pricing an existing listing was free and untracked; a re-listing
+        // that only re-sets the price is not a new listing and is not charged.
+        listingFees.charge(sellerTeam, player, saved.getAskingPrice(), alreadyListed);
+        return saved;
     }
 
     /**

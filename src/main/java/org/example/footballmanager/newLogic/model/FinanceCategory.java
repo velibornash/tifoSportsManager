@@ -25,6 +25,7 @@ public enum FinanceCategory {
     PITCH_MAINTENANCE(false, "Pitch maintenance"),
     JUNIOR_SCHOOL(false, "Junior school"),
     TRANSFER_FEE_OUT(false, "Transfer fees paid"),
+    LISTING_FEE(false, "Listing fees"),
     LOAN_OUT(false, "Loan payments");
 
     private final boolean income;

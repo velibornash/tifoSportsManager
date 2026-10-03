@@ -78,7 +78,8 @@ class TransferServicePriceGuardTest {
                 mock(SquadNumberAssigner.class),
                 mock(TransferWindowService.class),
                 new ClubNeedService(playerRepository, mock(PlayerContractRepository.class)),
-                negotiation
+                negotiation,
+                mock(TransferListingFeeService.class)
         );
 
         seller = new Team();
