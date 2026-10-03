@@ -1177,12 +1177,46 @@ returned join-table rows regardless of club membership, so a player whose contra
 still start matches. **This already happened weekly** via `PlayerContractService.expireContracts`. The
 join table now yields only players still at that club.
 
-### P2-8 — Zero-consequence exhibition mode
+### P2-8 — Zero-consequence exhibition mode ⏸ **owner decision needed — not one day**
 
-One day. *"Multiplies the value of 14,880 clubs"* — it is the only feature that makes the world size an
-asset rather than a cost.
+*"Multiplies the value of 14,880 clubs"* — it is the only feature that makes the world size an asset
+rather than a cost. **Exit criteria:** an exhibition changes no ratings, no table, no finances and no clock.
 
-**Exit criteria:** an exhibition changes no ratings, no table, no finances and no clock.
+**Re-scoped 2026-10-03 against source. The estimate was wrong by a wide margin, and the reason is a
+defect rather than the feature.** While scoping it, three things were verified:
+
+1. **A friendly fixture can never be played.** `FriendlyRequestService.createFixture` sets home, away,
+   season, round, week, date and `played = false` — and **never sets `competition` or `dayNumber`**.
+   Every playback path requires both (`findUnplayedOnDay` filters on `dayNumber`;
+   `MatchdayJob` additionally filters `competition != null`), so accepted friendlies pile up as
+   `match_fixture` rows that stay `played = false` for ever. **The entire friendly feature is inert.**
+   `FriendlyController`'s own javadoc says "there is deliberately no 'play a friendly' button" — the
+   negotiation is honoured, but its consequence is a fixture nobody can play. **No test covers it.**
+2. **There is no way to play a non-counting match, at all.** That is the missing feature friendlies and
+   exhibitions both need, which is why this is one decision rather than two.
+3. **`simulate()` writes rows before `persist()` is called** — lazy squad generation, then fatigue,
+   injuries and injury dates. An exhibition that calls it is not zero-consequence unless those are
+   gated too.
+
+**And the "no consequences" guarantee is not one guard.** `competition == null` already excludes a
+match from the table (`SimMatchService:596`), club Elo and national Elo (inner join on
+`competition.type`), and league top scorers. It does **not** exclude it from **club match history,
+head-to-head, form/last-five, the daily recovery window, club top scorer/assist milestones, training
+percentage, the attendance model, or player appearances** — seven read paths that read `match` with no
+competition filter. `LeagueTableReconciliationService` rebuilds tables from `match` rows and **would
+count an exhibition** if it were given a `LEAGUE` competition.
+
+**Decisions owed by the owner before this can be built:**
+- Does an exhibition count toward a **player's** appearances and career goals/assists? Today every
+  competition counts, deliberately (`MatchPlayerStatsRepository`'s javadoc) — for an exhibition,
+  probably not.
+- Does it give **fatigue, injury and recovery**? An exhibition that wears your players out is not free.
+- Should it appear in **club match history** at all, or only on a results screen?
+- Schema: a real `Match.kind` column, or `competition == null`?
+
+**Two structural guard tests will fail by design** and must be updated deliberately:
+`ProposalEngineIsTheOnlyFixtureProducerTest` pins the set of files that construct a `Match` and the set
+that call `simulate(`.
 
 ### P2-9 — Pre-match tactical preview
 

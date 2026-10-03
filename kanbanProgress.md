@@ -1530,6 +1530,88 @@ guard holds.
 
 ---
 
+## 2026-10-03 — P2-8 re-scoped: the feature is missing because friendly fixtures cannot be played
+
+### The board said one day. It is a decision, and the reason is a defect.
+
+Scoping exhibition mode against source turned up three verified facts, and none of them is "this will
+take a while".
+
+**1. A friendly fixture can never be played.** `FriendlyRequestService.createFixture` sets home, away,
+season, round, week, date and `played = false`. It does **not** set `competition`, and it does **not**
+set `dayNumber`. Every playback path needs both:
+
+| Playback path | Requirement it fails |
+|---|---|
+| `MatchdayJob` → `findUnplayedOnDay(season, week, day)` | `dayNumber IS NULL` matches no day |
+| `MatchdayJob`'s own filter | `competition IS NULL` |
+| `POST /simulation/current-round/prepare` and `simulate-all` | both filters |
+
+So a manager can negotiate a friendly, the other club can accept it, a `match_fixture` row is written —
+and it stays `played = false` for ever. **`acceptedFixtureId` points at a match that cannot happen.** The
+whole friendly feature is inert: agreements accumulate and nothing is ever played.
+
+`FriendlyController`'s javadoc says *"There is deliberately no 'play a friendly' button."* The intent —
+a negotiation rather than a button — is honoured. The consequence is not what anyone wanted.
+
+**No test covers it.** `FriendlySlotRulesTest` is a pure unit test that never touches the service, and
+`AiFriendlyWeekQueryCountTest` mocks `fixtures.save(...)` and asserts query counts; it never inspects
+the fixture it just created. Its own javadoc is honest about this: *"The query count is what this fix
+buys and the query count is what the first test holds."*
+
+**2. There is no way to play a non-counting match.** That is the thing friendlies need and exhibitions
+need — one missing capability, not two features. `Match` has **no** `kind`, `friendly`, `exhibition` or
+`countsForTable` column; the only booleans are lifecycle and result-revealed.
+
+**3. `simulate()` writes rows before `persist()` is even called** — `LazySquadGenerator.ensureSquadsForMatch`
+generates up to 18 players per empty bot side, and `persistMatchCondition` then writes fatigue,
+injuries and injury dates. Any "zero consequence" mode has to gate those too, not just `persist()`.
+
+### "No consequences" is not one guard
+
+The de-facto marker is `competition == null`, and it already buys some of it:
+
+| Excluded by `competition == null` | How |
+|---|---|
+| League table | `SimMatchService:596` returns early |
+| Club Elo | `findPlayedClubScoredInOrder` inner-joins `competition.type` |
+| National Elo | requires `competition.type = :type` |
+| League top scorers/assists | `GoalEventRepository` filters `competition_id` |
+
+And leaks into **seven** read paths that read `match` with no competition filter: **club match history**,
+**head-to-head W/D/L**, **form / last five** (which feeds the crowd model, which feeds the next real
+match's gate projection), the **daily recovery window** (zone-load minutes would credit recovery),
+**club top scorer/assist milestones**, **training percentage**, and **player appearances**.
+
+Plus one trap worth naming: **`LeagueTableReconciliationService` rebuilds each table from `match` rows**
+and does not know about non-counting matches. An exhibition persisted with a `LEAGUE` competition would
+be counted back in by the repair pass, undoing whatever the write path skipped.
+
+### Two P0-8 claims verified true
+
+Both were "unverified" on the board. Both are as described:
+
+- **`MatchPersistenceService` is dead** — 402 lines, zero callers in `src/main` *or* `src/test`. Only
+  javadoc references and a filename in a test's allow-list. **It is a fossil of the pre-`ProposalMatchOutcome`
+  engine** and diverges from the live path (it serialises stats a different way and *rebuilds* tables
+  where the live code *increments* them). Corollary: **`match_tick_states` has no writer at all.**
+- **`MatchEventRepository.save()` is a no-op** — literally `return event;`. And it is a `@Component`
+  with an in-memory map that is **never written to**, so `findByMatch` returns `emptyList()` for every
+  match, for ever. Any caller would silently get nothing. Events actually live in `Match.eventJson`.
+  The board's guess — "probably a design choice, badly named" — is right, and it is worse than a no-op.
+
+### What I did not do
+
+I did not start building. Every remaining question here is the owner's, because each one changes what a
+manager sees: does an exhibition count toward a player's appearances and career goals? Does it give
+fatigue and injury? Should it appear in club match history at all? Schema or no schema? And two
+structural guard tests will fail by design and have to be updated deliberately rather than loosened.
+
+**Recorded rather than fixed**, per the rule that a finding outside your task is written down, not
+walked past.
+
+---
+
 ## 2026-10-03 — P2-16: "API Error", and a claim in AGENTS.md that was not true
 
 ### The board named the right defect and understated it
