@@ -14,6 +14,19 @@ numbers are only comparable if both were allowed to finish.
 while doing nothing. Where a test passed suspiciously, the entry below says whether it was broken
 deliberately to check.
 
+**The P1 run, in the order it happened.** Entries are appended by several agents at once, so the physical
+order of this file drifts away from the order of the work. This is the P1 sequence, newest last:
+
+| | | |
+|---|---|---|
+| `e9142ed` | P1-1 | four indexes on `match`; two of the board's three claims refuted |
+| `6e63831` | P1-7 | the per-tick event log; the two Elo replays could not run |
+| `48c1116` | P1-7b | the per-tick log stops being written — 49.4× smaller |
+| `e16ec34` | P1-7c | the scorer credited goals VAR ruled out; and a retraction |
+| `379cb12` | P1-4 | three whole-table reads inside loops, and one endpoint that returned the world |
+| `513f738` | P1-3 | the recovery read pages |
+| `3c5e111` | P1-7d | the milestone page read the season twice; background failures now counted |
+
 ---
 
 ## 2026-10-03 — P0-7: the playoff path was the last place in the season that only knew about Serbia
@@ -805,6 +818,7 @@ per task. The setup script is the only thing not in the repository, and every nu
 
 ---
 
+## 2026-10-03 — `379cb12` — P1-4: three whole-table reads inside loops, and one that could not run at all
 
 Nineteen call sites matched the board's pattern. Four were fixed, and the board's five named candidates
 had all drifted — two are already gone and two were never N+1s at all.
@@ -1345,20 +1359,6 @@ guard holds.
 
 ---
 
-## 2026-10-03 — P2-5: the meta layer finally has a consequence
-
-### The board's premise, verified
-
-`BoardExpectationService` has **exactly one caller**: `FinanceController.java:111`, a read for
-display. `sackingReview` is a boolean with no entity, no persistence and no end-of-season review. There
-is no supporter mood anywhere in `newLogic` — every grep hit for "supporter" or "mood" is either the
-unrelated `footballtextmanager` application or the word "expectation" in a javadoc.
-
-The competitive analysis §11.2 puts the diagnosis precisely: the project built the *expensive* half of
-the meta layer without the consequences, which "is the worst of both worlds".
-
-### The loop it closes
-
 ## 2026-10-03 — P2-14: prize money existed, was unreachable, and would have paid the wrong clubs
 
 ### The two halves were designed to meet and never did
@@ -1433,6 +1433,20 @@ and the value is the point of the assertion, not the query that fetches it.
 errors.** `mvn clean package` succeeds.
 
 ---
+
+## 2026-10-03 — P2-5: the meta layer finally has a consequence
+
+### The board's premise, verified
+
+`BoardExpectationService` has **exactly one caller**: `FinanceController.java:111`, a read for
+display. `sackingReview` is a boolean with no entity, no persistence and no end-of-season review. There
+is no supporter mood anywhere in `newLogic` — every grep hit for "supporter" or "mood" is either the
+unrelated `footballtextmanager` application or the word "expectation" in a javadoc.
+
+The competitive analysis §11.2 puts the diagnosis precisely: the project built the *expensive* half of
+the meta layer without the consequences, which "is the worst of both worlds".
+
+### The loop it closes
 
 ```
 a player objects to being listed (P2-3)
@@ -1943,7 +1957,7 @@ before deducting. So a fee above cash is possible. That is shared settlement use
 
 ---
 
-## 2026-10-03 — P1-7: the per-tick event log, and the two Elo replays that could not run
+## 2026-10-03 — `6e63831` — P1-7: the per-tick event log, and the two Elo replays that could not run
 
 **`Match.event_json` is 742 KB to 1,035 KB on every simulated match** (`6e63831`). It is the whole per-tick decision
 log — every tick, every player, `DECISION` / `PASS` / `RECEIVE` with a human-readable description —
@@ -2057,7 +2071,7 @@ the reflex of fixing it would have been wrong.
 
 ---
 
-
+## 2026-10-03 — `e9142ed` — P1-1: four indexes on `match`, and two of the board's three claims refuted
 
 **The board asked for three indexes. Two are wrong and one is irrelevant. Four unlisted ones are the
 real win.** Every number below was measured on a throwaway database holding a **full projected season**,

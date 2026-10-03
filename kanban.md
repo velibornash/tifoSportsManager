@@ -91,6 +91,21 @@ way to something else. A full-suite run only counts if it was allowed to finish.
 - **Boot writes nothing.** No seeding, no backfills, no repair. World building happens on admin buttons.
 - **`DummyDataController` is fake data**, hardcoded to team 1, with zero DB access, and five frontend
   files still fetch it. Awaiting an owner decision. Do not wire it to anything.
+- **A whole table re-read inside a loop is invisible to a clock.** Three instances of one pattern:
+  `TransferService` (`e310856`), `SquadEnvironmentService` and `FriendlyRequestService` (`379cb12`). A
+  collection loaded once and then re-asked per club, because the loop could not see the copy. **48
+  countries is a small table** — the loop costs more than the query does. Count queries, not milliseconds.
+- **`event_json` was 742 KB a match and 98% of it was noise.** `DECISION`, `PASS` and `RECEIVE` are
+  per-tick engine internals that both readers already discarded. It is 17 KB now, and **the full per-tick
+  log lives in a file** written by `SimReplayStore` rather than in the database — see P1-7.
+- **An index can be worthless and then become necessary when the query beside it changes shape.**
+  `match(match_date)` measured as no benefit and was rejected; keyset paging then made it the difference
+  between 206 ms and 0.35 ms a page. "Measured, no benefit" is only true for the query it was measured on.
+- **How ids are passed to a query changes its plan by 80x.** `IN (SELECT ... LIMIT n)` is a Hash Semi Join
+  over a sequential scan; `IN` with n bound values is a bitmap index scan. Same rows, same result,
+  5,020 ms against 44 ms. Do not "simplify" a bound list into a subquery.
+- **`match_tick_states` is dead.** Nothing writes it, nothing reads it, 0 rows, and its only writer has no
+  callers. Do not index it and do not migrate it; deleting it is an owner call.
 
 ## Scale — most of P1 exists because of this
 
@@ -615,6 +630,12 @@ meeting 14,880 of them.
 finished. Where a number is already known it is given here — do not re-derive it, but do re-confirm it if
 the code near it has changed.
 
+**Where this category stands: P1-1, P1-3, P1-4 and P1-7 are done. P1-2 is owner-gated. P1-5 and P1-6 are
+open.** Three of the four finished tasks overturned what this board said — two proposed indexes had no
+query behind them, and a third made the hot daily job 68% slower — so **read the measurements, not the
+task descriptions.** Two proposed pieces of work were measured and deliberately dropped, and both are
+recorded as dropped rather than quietly deleted.
+
 ### Measured already — do not redo
 
 | Change | Before | After | Commit |
@@ -622,70 +643,28 @@ the code near it has changed.
 | Daily recovery zone-load read *(155-match dev database)* | 21.0 ms | **10.8 ms** | `d95da9d` |
 | Weekly rollover squad reads (30 clubs, 3 listings) | 180 queries | **0** + 1 bulk | `e310856` |
 | Four fixture endpoints: game week used as a round | 155 fixtures for every week and day | correct matchday | `7374c69` |
-| League top scorers / assists *(89,280-match season)* | 158.7 ms | **0.19 ms** | P1-1 |
-| Club match history, played, ordered *(same)* | 170.3 ms | **0.26 ms** | P1-1 |
-| Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | P1-1 |
-| One week of a season *(same)* | 156.4 ms | **27.8 ms** | P1-1 |
-| Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | P1-7 |
-| `event_json` written per match | 840,136 B | **17,001 B** | P1-7 |
-| A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | P1-1 |
-| Recovery read, one matchday *(17.7M-row table, 17 KB blobs)* | 6,173 ms | **~539 ms** | P1-3 |
-| International Elo replay — whole-world reads | 1 + 3 × matches | **1** | P1-4 |
-| Weekly squad rollover — squad reads | 1 + 14,880 | **2** | P1-4 |
-| AI friendly pass — week reads, per friendly week | ~59,520 | **2** | P1-4 |
-| `/train-all` response | every player as JSON | **`{"trained": n}`** | P1-4 |
-| Club milestone page — season event-log reads | 2 | **1** | P1-7 |
-| Club page blob fetched and discarded | 10 MB | **204 KB** | P1-7 |
+| League top scorers / assists *(89,280-match season)* | 158.7 ms | **0.19 ms** | `e9142ed` |
+| Club match history, played, ordered *(same)* | 170.3 ms | **0.26 ms** | `e9142ed` |
+| Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | `e9142ed` |
+| One week of a season *(same)* | 156.4 ms | **27.8 ms** | `e9142ed` |
+| Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | `6e63831` |
+| `event_json` written per match | 840,136 B | **17,001 B** | `6e63831` |
+| A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | `e9142ed` |
+| Recovery read, one matchday *(17.7M-row table, 17 KB blobs)* | 6,173 ms | **~539 ms** | `513f738` |
+| International Elo replay — whole-world reads | 1 + 3 × matches | **1** | `379cb12` |
+| Weekly squad rollover — squad reads | 1 + 14,880 | **2** | `379cb12` |
+| AI friendly pass — week reads, per friendly week | ~59,520 | **2** | `379cb12` |
+| `/train-all` response | every player as JSON | **`{"trained": n}`** | `379cb12` |
+| Club milestone page — season event-log reads | 2 | **1** | `6e63831` |
+| Club page blob fetched and discarded | 10 MB | **204 KB** | `6e63831` |
 
-**Read the scale column.** The first three rows were measured on a 155-match village; the P1-1 rows on a
-full 89,280-match season. **A number is only comparable to a number measured the same way**, and the
-first three are not comparable to the last five.
+**Read the scale column, because it is not uniform.** The first three rows were measured on a 155-match
+dev database. The `e9142ed` rows on a full 89,280-match season, and the `513f738` baseline on the same
+season with `event_json` at its **real** 17 KB width — which is why it reads 6,173 ms where `e9142ed`
+recorded 4,441 ms for a query that looks identical. **Same query, different harness.** A number is only
+comparable to a number measured the same way.
 
 ---
-
-### P1-7 — DONE. The replays, the blob, the milestone page and the background failures. One item measured and dropped.
-
-`Match.eventJson` was the whole per-tick decision log in one text column: **742 KB – 1,035 KB a match,
-~66 GB a season.** Four separate things were wrong with it.
-
-| | before | after |
-|---|---:|---:|
-| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB** |
-| `event_json` per match, written by the app | 840,136 B | **17,001 B — 49.4× smaller** |
-| Club milestone page — season reads | **2** | **1** |
-| Background fixtures that failed | logged, never counted | **counted and named** |
-
-**Landed, each measured in the database.** The replays read a `ScoredMatch` projection.
-`SimReportMapper.eventJson` writes only the event types a page can use, from a keep-list derived from
-`MatchDetailService`, `ZoxApiController` and `GoalEventRepository` — **all three** readers were checked
-against a running app on a real new match. `LeagueMilestoneService` reads the season once instead of
-twice. `AsyncSimulationRunner` counts and names the fixtures it could not simulate.
-
-**Measured and DROPPED — the club-history projection this board used to ask for.** The criterion was
-written before the blob was narrowed, when a club page pulled **10 MB**. It now pulls **204 KB**, and
-`MatchDTO.from` reads no JSON at all. Saving 204 KB per page view does not justify a new projection type
-plus three rewrites, on a query **P1-1 already took from 170 ms to 0.26 ms**. The criterion was wrong and
-is corrected rather than met.
-
-**Three defects found here:**
-
-- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** `contains("GOAL")` matched
-  `GOAL_DISALLOWED` and `VAR_GOAL_OVERTURNED` — 30 credits for goals that do not exist. **Not a product
-  question:** `BallResultHandler` asks VAR *before* `goalScored`, so the scoreline never counted them
-  either. The definition now lives on `MatchEventType`, because **three** call sites had each invented
-  their own substring.
-- **NOT A DEFECT — `simulate-all` does report its background work, and my claim was wrong.** It returns
-  `backgroundSimulating` and `backgroundTotal`; `/current-round/status` reports progress live. My print
-  statement selected four keys out of nine and I concluded from those four.
-- **OPEN, and one line further up than the last one: a fixture with no teams is counted as
-  `simulated`.** The runner returns early for a null home or away side and then increments
-  `simulatedCount` anyway, so a match that was never played is reported as one that was. **Needs a
-  decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status endpoint means,
-  and `AsyncSimulationRunner` sits next to the simulation endpoints other work is in. Exit criteria: a
-  fixture that was not simulated is never counted as one, and the status endpoint distinguishes the two.
-
-**Not done, deliberately:** no migration. The existing 155 matches keep their 742 KB blobs, so historical
-pages stay slow until the world is reset while every new match is cheap.
 
 ### P1-1 — DONE. Four indexes on `match`. Two of the three claims on this board were wrong.
 
@@ -858,22 +837,83 @@ files, with its own retention.
 
 ---
 
-### P1-6 — The other three sports have no declared indexes at all
+### P1-6 — The other sports: two of the three matter, and neither has an index but its primary key
 
-Basketball, American football and text-based football have **zero** `@Index` declarations. They are 5,580
-and 3,720 players on the dev database and they are not simulated on every tick, so this is genuinely lower
-priority than P1-1 — but it is not zero, and it will not get cheaper to fix after the tables grow.
+**Confirmed against the live database, 2026-10-03.** Fifteen `bb_` and `af_` tables, and **every one of
+them has exactly one index — the primary key.** Zero `@Index` declarations outside `newLogic`.
 
-**Exit criteria:** the same treatment P1-1 actually got, which is not the treatment the board asked
-for: **every index needs a named query and a before/after.** Two of P1-1's three candidates had no
-query behind them at all, and the third made things worse. So:
+| | rows on the dev database |
+|---|---:|
+| `af_players` | 5,580 |
+| `bb_players` | 3,720 |
+| `af_match_fixtures`, `bb_match_fixtures` | 2,790 each |
+| `bb_teams`, `af_teams`, `af_competition_entries`, `bb_competition_entries` | 310 each |
 
-- [ ] The queries those tables actually serve are listed first, from the source
-- [ ] Each proposed index names the query it serves and carries a measured before/after on the harness
-      — no index proposed on the argument that the column is obviously filtered on
-- [ ] Write cost measured, as `match` cost 16.8 µs per row
+**Text-based football is not part of this.** Its tables (`csseason_competition`, `csstadium`) hold **0
+rows**, so it is not a scale question — it is three sports on the board and **two** that need anything.
+Splitting it out is the first finding.
 
----
+**These are genuinely lower priority than P1-1 was** — not simulated on every tick, and 5,580 rows is
+nothing beside `newLogic`'s. But they are not zero, and they will not get cheaper as the world grows.
+
+**Exit criteria — the same treatment P1-1 actually got, which is not the treatment the board first asked
+for.** P1-1 was told to propose indexes with stated column order; what it actually needed was to be asked
+*what queries these tables serve*, because two of its three candidates had no query behind them at all:
+
+- [ ] **The queries these tables actually serve are listed first, from the source.** Not the columns that
+      look obviously filterable — the columns that are read.
+- [ ] Each proposed index names its query and carries a **measured** before/after. An index proposed on the
+      argument that a column must be filterable is how `player_zone_load(match_id)` got measured at a 68%
+      regression.
+- [ ] Write cost measured. `newLogic`'s `match` cost 16.8 µs a row for four indexes; these tables are
+      insert-heavy too.
+- [ ] **Text-based football is excluded explicitly, with its row counts as the reason** — not silently
+      skipped.
+
+
+### P1-7 — DONE. The replays, the blob, the milestone page and the background failures. One item measured and dropped.
+
+`Match.eventJson` was the whole per-tick decision log in one text column: **742 KB – 1,035 KB a match,
+~66 GB a season.** Four separate things were wrong with it.
+
+| | before | after |
+|---|---:|---:|
+| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB** |
+| `event_json` per match, written by the app | 840,136 B | **17,001 B — 49.4× smaller** |
+| Club milestone page — season reads | **2** | **1** |
+| Background fixtures that failed | logged, never counted | **counted and named** |
+
+**Landed, each measured in the database.** The replays read a `ScoredMatch` projection.
+`SimReportMapper.eventJson` writes only the event types a page can use, from a keep-list derived from
+`MatchDetailService`, `ZoxApiController` and `GoalEventRepository` — **all three** readers were checked
+against a running app on a real new match. `LeagueMilestoneService` reads the season once instead of
+twice. `AsyncSimulationRunner` counts and names the fixtures it could not simulate.
+
+**Measured and DROPPED — the club-history projection this board used to ask for.** The criterion was
+written before the blob was narrowed, when a club page pulled **10 MB**. It now pulls **204 KB**, and
+`MatchDTO.from` reads no JSON at all. Saving 204 KB per page view does not justify a new projection type
+plus three rewrites, on a query **P1-1 already took from 170 ms to 0.26 ms**. The criterion was wrong and
+is corrected rather than met.
+
+**Three defects found here:**
+
+- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** `contains("GOAL")` matched
+  `GOAL_DISALLOWED` and `VAR_GOAL_OVERTURNED` — 30 credits for goals that do not exist. **Not a product
+  question:** `BallResultHandler` asks VAR *before* `goalScored`, so the scoreline never counted them
+  either. The definition now lives on `MatchEventType`, because **three** call sites had each invented
+  their own substring.
+- **NOT A DEFECT — `simulate-all` does report its background work, and my claim was wrong.** It returns
+  `backgroundSimulating` and `backgroundTotal`; `/current-round/status` reports progress live. My print
+  statement selected four keys out of nine and I concluded from those four.
+- **OPEN, and one line further up than the last one: a fixture with no teams is counted as
+  `simulated`.** The runner returns early for a null home or away side and then increments
+  `simulatedCount` anyway, so a match that was never played is reported as one that was. **Needs a
+  decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status endpoint means,
+  and `AsyncSimulationRunner` sits next to the simulation endpoints other work is in. Exit criteria: a
+  fixture that was not simulated is never counted as one, and the status endpoint distinguishes the two.
+
+**Not done, deliberately:** no migration. The existing 155 matches keep their 742 KB blobs, so historical
+pages stay slow until the world is reset while every new match is cheap.
 
 # 🟢 P2 — features and visual work
 
@@ -1185,6 +1225,17 @@ that has since changed, so they are not a specification. Re-measure, then decide
 - The full red list and what each red class means is in `archive/kanbanProgress.md`, in the entry recording
   the run that was allowed to finish.
 - **P0-1 and P0-2 are the two tasks that make everything else safer to do.** Do them first.
-- **P1-1 is done, and it is the worked example for the rest of P1:** measure at projected scale, name the
-  query behind every index, and be willing to land two fewer indexes than the board asked for. Two of its
-  three candidates had no query behind them at all.
+- **Four P1 tasks are done — P1-1, P1-3, P1-4, P1-7 — and together they are the worked example for the
+  rest of this category.** What they share matters more than their individual numbers:
+  - **Measure at projected scale.** The dev database holds 155 `match` rows — one matchday of one country —
+    where a sequential scan is the correct plan and an `EXPLAIN` cannot distinguish anything.
+  - **Name the query behind every change.** Two of P1-1's three candidate indexes had no caller at all,
+    and a third made the hot daily job 68% slower.
+  - **Be willing to land less than the board asked for.** Two proposed pieces of work were measured and
+    dropped; both are recorded as dropped rather than quietly deleted.
+  - **A change can alter the value of the thing beside it.** An index rejected in P1-1 is the one P1-3
+    needed, and one query's plan differs 80× on nothing but how its ids are passed.
+- **P1's remaining work is P1-5 and P1-6; P1-2 is owner-gated.** P1-5 is two retention decisions and a
+  measurement. P1-6 is the other sports, and it should be done the way P1-1 was: enumerate the queries
+  those tables actually serve *first*, because two of the three candidates P1-1 was given had no query
+  behind them.
