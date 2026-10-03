@@ -16,7 +16,7 @@ deliberately to check.
 
 ---
 
-## 2026-10-03 — P0-1a: five controllers, 55 tests, and six defects the annotations did not describe
+## 2026-10-03 — `66553b4` — P0-1a: five controllers, 55 tests, and six defects the annotations did not describe
 
 **The board said these controllers had no tests. What it did not say is that three of them were wide open.**
 Five test classes, **55 tests**, all green, and every guard proven able to fail.

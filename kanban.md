@@ -150,7 +150,7 @@ let any authenticated user delist another club's player" — a named hole rather
 
 | | Controllers | State |
 |---|---|---|
-| **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `96e0f26` |
+| **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `66553b4` |
 | **P0-1b** | `CommunityController`, `DummyDataController`, `StadiumSettingsController`, `TransferController` | open |
 
 **How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
