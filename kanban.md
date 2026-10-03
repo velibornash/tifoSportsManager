@@ -138,22 +138,88 @@ Ordered by leverage. **P0-1 and P0-2 are the two tasks that make everything else
 security defects were previously found by reading source, not by a failing test. Writing these tests
 against the current code is how the *next* five get caught.
 
-**Scope:** `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController`,
-`CommunityController`, `DummyDataController`, `CompetitionController`, `StadiumController`.
+**Scope, corrected against the source on 2026-10-03:** `LineupController`, `PlayerController`,
+`TeamController`, `UserController`, `AdminController`, `CommunityController`, `DummyDataController`,
+`TransferController`. **Two names on this list never existed** — there is no `CompetitionController` and no
+`StadiumController`. The real ones are `StadiumSettingsController` (for the stadium) and, for competitions,
+no controller of their own. `TransferController` was substituted **on the owner's decision**, because
+`AdminController`'s own javadoc records that `/transfers` is "not role-guarded, so putting it there would
+let any authenticated user delist another club's player" — a named hole rather than a coverage tick.
+
+**Split in two, because one commit was not a reviewable unit:**
+
+| | Controllers | State |
+|---|---|---|
+| **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `96e0f26` |
+| **P0-1b** | `CommunityController`, `DummyDataController`, `StadiumSettingsController`, `TransferController` | open |
 
 **How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
 the injected bean** — Spring Data returns a JDK proxy that Mockito cannot wrap, and this is the single
 most common way a test of this kind fails for the wrong reason.
 
 **Exit criteria:**
-- [ ] Every one of the nine has at least one test that calls it **without** a JWT and asserts 401/403
-- [ ] Every world-moving or admin-only route asserts the role check, not just authentication
-- [ ] At least one test per controller asserts a **successful** path, so the guard tests cannot all pass
-      against a controller that returns 500 for everything
-- [ ] Each new test class is proven able to fail by breaking the authorization annotation and watching it
+- [x] Every one of the eight has at least one test that calls it **without** a JWT and asserts 401/403 — **P0-1a**
+- [x] Every world-moving or admin-only route asserts the role check, not just authentication — **P0-1a**
+- [x] At least one test per controller asserts a **successful** path, so the guard tests cannot all pass
+      against a controller that returns 500 for everything — **P0-1a**
+- [x] Each new test class is proven able to fail by breaking the authorization annotation and watching it
+      — **P0-1a, five mutations, all in `kanbanProgress.md`**
+- [ ] The same four, for the four P0-1b controllers
 
 **Not:** a coverage percentage. A test that asserts 401 on a route that was always going to 401 proves
 nothing about authorization.
+
+**Six defects P0-1a found and closed.** Recorded in full in `kanbanProgress.md`; the two that mattered most
+were **not** missing guards:
+
+- **`POST /lineups` had never accepted a request body at all.** It took the raw `Lineup` entity, and Jackson
+  cannot deserialise that graph — every caller, including an administrator, got
+  `HttpMediaTypeNotSupportedException` before the controller was entered. A test asserting only 403 would have
+  been green throughout, because a route that cannot bind refuses everyone equally. Now takes a DTO.
+- **`POST /players/create` answered 500 on every call.** `PlayerDTO.from` dereferences `player.getSkills()`
+  unconditionally and `createPlayer` never set one.
+
+---
+
+### P0-13 — `TrainingController` writes the whole world on a request thread — NEW, 2026-10-03
+
+Found while writing P0-1a, outside its scope, reported rather than absorbed.
+
+**Both routes have zero callers** — not in `static/js`, not in `src/main`, not in one test:
+
+| Route | What it does |
+|---|---|
+| `POST /training/train-all` | `playerRepository.findAll()` → `trainPlayer` on each → `saveAll`, returning every player as a raw entity. **~300,000 rows at full scale.** It also duplicates day 4's `TrainingJob`, which is how the world is actually trained |
+| `POST /training/train/{playerId}` | Trains and returns **any** player in the world, by id, as a raw entity |
+
+**The rule already exists in the same file, 40 lines below `trainPlayer`.** `setIntensity` documents
+*"a player who does not play for this club is a 403, not a bad request"* — and `plusFeatures` is already
+injected. So the inconsistency is the finding: half this controller enforces ownership and half does not.
+
+**Owner's decision, 2026-10-03:** fix both and **record `/train-all` as a deletion candidate.** A role
+guard was explicitly *not* treated as the answer, because it makes an operation nobody wants reachable on
+purpose — it is still the most expensive request in the game and it still duplicates a scheduled job. A role
+check answers "who may" without answering "should this exist".
+
+**Exit criteria:**
+- [ ] `/train/{playerId}` refuses with 403 unless the player is in the caller's own club
+- [ ] `/train-all` is administrator-only, and returns a DTO rather than `List<Player>`
+- [ ] Neither returns a raw `Player` entity
+- [ ] **`/train-all` ruled on:** deleted, or kept with the reason written down
+
+---
+
+### P0-14 — `LineupController`'s writes are unreachable from the frontend — OWNER-GATED
+
+Ruled on 2026-10-03 as **guard, do not delete.** Recorded because the reasoning matters more than the ruling:
+the frontend files a squad sheet through `TeamController`'s `lineup-template`, and `grep` over `static/js`
+finds no caller for `POST /lineups` or `DELETE /lineups/{id}`. They are now guarded and working.
+
+**Unreachable is not the same as harmless** — three defects lived in exactly these routes, including one
+that had never worked. The deletion question is open but is not urgent.
+
+**Also found here and fixed in passing:** `LineupController`'s sort whitelist offered `"name"`, a column
+`Lineup` does not have, so a caller could ask for a sort on a property that does not exist.
 
 ---
 
@@ -197,52 +263,82 @@ hardcoded cell `(1.5, 3.5)` — nine players on one square metre.
 
 ---
 
-### P0-4 — OWNER DECISION: do the two possession contexts survive?
+### P0-4 — ANSWERED 2026-10-03, deferred by the owner: both stay identical for now
 
-**This blocks the largest single piece of tactics work** and nothing else in P0.
+**The owner:** both stay identical *until* he decides whether a user should be able to build a separate
+tactic for each phase. **Not a defect, and not a deferral of the work — a deliberate hold.**
 
-`TeamTacticsService.mirrorWeHaveBallRules` makes `WE_HAVE_BALL` and `OPPONENT_HAS_BALL` identical on
-**every save and every read**. All 506/506 out-of-possession rules in the shipped data are byte-identical
-to their in-possession twins.
+**What that holds in place, and it is the same hold as before:**
 
-**The owner has not decided whether to keep both variants.** So both stay identical, and `DefensiveShape`
-is **load-bearing rather than decorative** — it manufactures the defensive shape the data cannot carry.
+- `TeamTacticsService.mirrorWeHaveBallRules` keeps mirroring on every save and every read
+- `DefensiveShape` stays **load-bearing rather than decorative** — it manufactures the defensive shape the
+  data cannot carry
+- the multi-tactics work stays unwritten, because the storage design depends on the answer
 
-**The decision changes the storage design**, which is why the multi-tactics work is written up in
-`archive/kanban.md` and not started:
+**What it unblocks:** **P0-3.** The away side carrying its own `TacticsRules` is a runtime concern about
+perspective, not a storage decision, so it does not wait on this.
 
-- **Keep both** → the tactic table is keyed by `(tactic, possession_context)`, roughly double the rows
-- **Drop to one** → `mirrorWeHaveBallRules` and the duplication both go away, and the data model gets
-  simpler than it is today
+**Still open, and it is a different question from the one answered here:** whether a manager should ever be
+*able* to author two phases. If yes, the tactic table becomes keyed by `(tactic, possession_context)` and
+roughly doubles the rows; if no, `mirrorWeHaveBallRules` and the duplication both go away and the data model
+gets simpler than it is today. That is the follow-up, not this task.
 
-**Exit criteria:** the owner states the answer. Record it here, then the multi-tactics work in P0-5 can be
-scoped.
-
----
-
-### P0-5 — OWNER DECISION: four saved tactics profiles cannot be placed
-
-Reset restores tactics from `var/tactics-editor-profiles.json`. Four of five profiles name clubs that do
-not exist in the current world, because the world has five Beograd clubs and none is called "FK Beograd":
-
-- `FK Beograd`
-- `GFK Dinamo Šabac`
-- `GFK Tamiš Gornji Milanovac 1901`
-- `SK Čačak 1912`
-
-**Exit criteria:** the owner either supplies the mapping, or confirms the profiles should be dropped. The
-restore already reports them by name rather than failing silently, so this is cosmetic **until** it is
-decided — it is P0 because it is a decision owed, not because it is breaking anything.
+**The evidence the decision rests on, unchanged:** `TeamTacticsService.mirrorWeHaveBallRules` makes
+`WE_HAVE_BALL` and `OPPONENT_HAS_BALL` identical on **every save and every read**. All 506/506
+out-of-possession rules in the shipped data are byte-identical to their in-possession twins. That is why
+`DefensiveShape` is **load-bearing rather than decorative** — it manufactures the defensive shape the data
+cannot carry.
 
 ---
 
-### P0-6 — OWNER DECISION: what should day 6 compute?
+### P0-5 — ANSWERED 2026-10-03: drop the four, keep `OFK Omladinac`
 
-Day 6 is honestly empty and nobody has decided what belongs there. **Not a bug to be filled in — an
-undecided design question.** Days 1 and 5 are empty for the same reason until the fixture generators are
-wired to their competitions.
+**The owner drops the four orphans.** Verified against the file rather than the board: five profiles, and
+**only `OFK Omladinac` (4-4-2) names a club that exists.** All four orphans are 4-3-3 — `FK Beograd`,
+`GFK Dinamo Šabac`, `GFK Tamiš Gornji Milanovac 1901`, `SK Čačak 1912`.
 
-**Exit criteria:** the owner says what day 6 does, or says it stays empty on purpose.
+**This closes the decision, not the work.** The code change — editing
+`var/tactics-editor-profiles.json` down to one profile, and dropping the restore's "reports them by name"
+behaviour that exists only because of them — is **not yet made.** Tracked under P0-15.
+
+---
+
+### P0-15 — carry out P0-5: reduce the tactics profiles to the one that places — NEW, 2026-10-03
+
+**Why the four cannot be placed:** reset restores tactics from `var/tactics-editor-profiles.json`, and the
+world has five Beograd clubs and none is called "FK Beograd". The restore already reported them by name
+rather than failing silently, which is why this was cosmetic rather than breaking — it was P0 because a
+decision was owed, not because anything was on fire.
+
+**Exit criteria:**
+- [ ] `var/tactics-editor-profiles.json` holds one profile, `OFK Omladinac`
+- [ ] The restore no longer reports unplaceable profiles by name, because there are none to report
+- [ ] `TacticsRulesProviderTest` still green, and the reset path still verified against a real database
+
+---
+
+### P0-6 — ANSWERED 2026-10-03: day 6 is form & morale
+
+**The answer was already written down**, in the Country tab's calendar, which the owner quoted:
+
+> Day 1 20:45 International · Day 2 Finance update · Day 3 19:00 League · Day 4 Training ·
+> Day 5 18:00 Cup · **Day 6 Form & morale** · Day 7 16:00 League
+
+**Verified against the code, and the calendar is right about everything except day 6.** Registered matchdays
+and jobs: day 1 internationals 20:45, day 2 `FinanceJob` and `CupDrawJob`, day 3 league 19:00, day 4
+`TrainingJob`, day 5 cup 18:00, day 7 league 16:00 (`MatchdayJobsConfig`, plus `WeekRolloverJob` and
+`SeasonRolloverJob` on day 7). **Nothing at all is registered for day 6** — no `DayJob` returns 6.
+
+So the decision is made and **the gap it names is now a known omission rather than an open question.** It is
+feature work, not a correctness defect, so it belongs in P2 — but it should not be lost, because the calendar
+now promises a manager something the server does not do.
+
+**Also confirmed from the same calendar, and both are absences rather than bugs:** weeks 6 and 12 carry no
+league football and are "reserved for national-team qualifiers" and "the World Cup", neither of which is
+built (that is P2-10); week 11 is playoff week.
+
+**Exit criteria:** the owner says what day 6 does, or says it stays empty on purpose. **— met. Carried to
+P2 as a job to build.**
 
 ---
 

@@ -16,6 +16,150 @@ deliberately to check.
 
 ---
 
+## 2026-10-03 — P0-1a: five controllers, 55 tests, and six defects the annotations did not describe
+
+**The board said these controllers had no tests. What it did not say is that three of them were wide open.**
+Five test classes, **55 tests**, all green, and every guard proven able to fail.
+
+| Class | Tests | What it found |
+|---|---:|---|
+| `AdminAuthorizationTest` | 11 | **nothing** — the `/admin/**` matcher is intact |
+| `UserControllerAuthorizationTest` | 8 | **nothing** — `/auth/me`'s method-level 401 is load-bearing and correct |
+| `PlayerAuthorizationTest` | 10 | the always-500 create, and the `/players/paged` talent leak |
+| `TeamAuthorizationTest` | 16 | **three unguarded writes that decide a season** |
+| `LineupAuthorizationTest` | 10 | **zero guards on four mappings**, and a route that never worked |
+
+### The board's scope was wrong in a way worth recording
+
+**`CompetitionController` and `StadiumController` do not exist.** The real names are
+`StadiumSettingsController`, and — for competitions — no controller of their own. `TransferController` was
+substituted **on the owner's decision**, because `AdminController`'s own javadoc already records that
+`/transfers` is "not role-guarded, so putting it there would let any authenticated user delist another
+club's player". A named hole beats a coverage tick.
+
+### The two that were not missing guards
+
+Both would have been missed by a test that only asserts 403, and both are the argument for the board's
+"one successful path per controller" criterion being the load-bearing one.
+
+**`POST /lineups` had never accepted a request body.** It took the raw `Lineup` entity, and Jackson cannot
+deserialise that graph at all — `Cannot handle managed/back reference 'defaultReference'` — so **no**
+message converter would claim the body and every caller, administrator included, got
+`HttpMediaTypeNotSupportedException` before the controller was entered. A test asserting 403 would have been
+green the whole time: a route that cannot bind refuses everyone equally. It now takes
+`LineupSaveRequestDTO`, whose shape is the one `TeamController`'s `lineup-template` already accepts.
+
+**`POST /players/create` answered 500 on every call.** `PlayerDTO.from` dereferences
+`player.getSkills().getFatigue()` with no null check, and `createPlayer` built a `Player` with a name, an
+age, a position and a club — and no `Skills`. Every *seeded* player has skills because the seeder gives them
+skills, so nothing had ever noticed that the one route which mints a player by hand could not answer.
+
+**Both reads on `LineupController` also answered 500**, for a reason that is not a fixture: both returned the
+raw entity, `Team.country` is `FetchType.LAZY`, and Jackson walked
+`lineup.team.country.hibernateLazyInitializer`. The rows are written by the match engine, so in any real
+world the endpoint answered nothing but 500.
+
+### The talent leak, and why three separate readers missed it
+
+`GET /players/paged` returned raw `Page<Player>` — `talent`, `earnings`, the injury record, `personality`,
+the `skills` object — for every player in the world, to any logged-in manager. The test caught
+`"talent":9.87` in the body.
+
+**Talent is the number this codebase built `PlusFeatureService` to withhold.** A scouting subscription pays
+for exactly that, and this route handed it over. The sibling on `/countries/teams/{teamId}/players` was
+closed for precisely this and given a test; **this one was missed because it has no frontend caller** —
+`grep` over `static/js` finds no request to it. Unreachable is not the same as harmless, and that is the
+third time in this repository that "nobody calls it" has been the reason a defect survived.
+
+### `TeamController`: three writes with no ownership check, out of seventeen mappings
+
+`PUT /teams/{teamId}/lineup-template`, `PUT /teams/{teamId}/tactics-editor` and
+`POST /teams/{teamId}/medical/recovery/{playerId}` all answered **200** to a manager acting on a rival's id.
+`isOwnTeam` already existed and `StadiumSettingsController` already used it — the rule the game applies
+everywhere was simply not applied here. The tactics one matters most: since `8b3dff1` that grid is what the
+match engine reads, so the edit changed how the next match was actually simulated.
+
+**Reads were left open, deliberately.** Who is in a rival's eleven is a league-table fact, and the line the
+game draws is at *secrets*, not at visibility. The tests assert those reads as 200 on purpose: a fix that
+closed them would be a lockout, and the tests say so out loud.
+
+### Five mutations, all of which failed loudly
+
+The board requires each class to be *proven able to fail*. Every guard was removed in turn:
+
+| Mutation | Result |
+|---|---|
+| Remove `@PreAuthorize` from `PlayerController.createPlayer` | 2 of 10 fail — 403 became 200 |
+| Downgrade `/admin/**` to `permitAll` in `SecurityConfig` | **10 of 11 fail** — and `reset-db` answered **202**, i.e. a regular manager's reset *started a database job* |
+| `TeamController.mayManage` always allows | 3 of 16 fail, exactly the three writes |
+| `LineupController.mayManage` always allows | 2 of 10 fail, create and delete |
+| Put raw `Player` back on `/players/paged` | the disclosure test fails on the value, not the key |
+
+The `/admin/**` mutation took **293 s** against **0.8 s** unmutated, because a refused reset is cheap and an
+accepted one runs.
+
+### Three fixture traps, all mine, all worth the log
+
+1. **The shared H2 database does not roll back.** A player I created without `Skills` 500'd *four other
+   classes'* `/players` reads for the rest of the run. An incomplete fixture presenting as a product defect
+   is expensive — `CountryTeamPlayersDisclosureTest` had already written this warning down and I read past it.
+2. **`country.iso_code` is three characters with a unique index.** 46,656 codes, one shared database, and a
+   full suite draws a hundred times: `CONSTRAINT_INDEX_6` collisions are the recorded
+   `CountryCatalogQueryCountTest` failure. The fixture now redraws up to 20 times.
+3. **Jackson pretty-prints.** `"role" : "REGULAR"` never matches `"role":"REGULAR"`. Every substring
+   assertion here strips whitespace first, and the club-name fixture joins its random marker with a hyphen
+   so a stripped body can still find it.
+
+### A test was writing to a tracked file in the repository
+
+`TeamAuthorizationTest` reaches the tactics editor through HTTP, and that route persists through
+`TacticsProfileBackupService`, whose production path is **`var/tactics-editor-profiles.json` — a tracked
+file holding the owner's real tactics work.** The run left a profile for a club named `Rival-a730d70b` in
+it, and **the only symptom was a dirty `git status`.** No test failed.
+
+`TacticsProfileBackupService`'s own javadoc says the path *"is an instance field, not the constant it was,
+so a test can point the backup somewhere temporary"* — the design was right and **the wiring was never
+finished**, because the production constructor hard-coded the constant, so no test could point it anywhere.
+
+`backupPath` is now `@Value("${app.tactics-backup-path:var/tactics-editor-profiles.json}")`. Production is
+unchanged; the test sets the property. The general lesson is the one the board already keeps: **a test that
+damages the repository is a defect that no assertion will ever catch.**
+
+### Two process notes
+
+**The builds collided.** Two agents running Maven against one `target/` produced
+`cannot find symbol` for `PyramidBuilder`, `WorldCatalogSeeder`, `CountryRepository` and `SeasonService` —
+classes present and unmodified in git. Nothing was wrong with the code; two builds were deleting and
+rewriting each other's output. This task ran in a `git worktree` with its own `target/` for that reason, and
+it is the reason a P0 task took an afternoon rather than an hour.
+
+**I destroyed my own fix with `git checkout`.** Reverting a mutation with `git checkout <file>` restores the
+file from `HEAD`, which wipes the fix along with the mutation — `PlayerController` lost all of its work and
+was rewritten. The remaining mutations used a backup copy. Worth knowing before doing it once.
+
+### The number, and what is not covered
+
+**55 tests across five classes, green. 77 green including the three pre-existing controller test classes and
+the two tactics test classes touched by the `backupPath` change.**
+
+**A full `mvn test` was not run**, so "green in a full run" is outstanding by the owner's explicit decision,
+and it does not count as met. Two known reasons it might not hold: `TeamAuthorizationTest` took **41 s** on
+its first run and **7.5 s** warm, so ordering against the heavy classes is untested; and the whole point of
+`AdminAuthorizationTest`'s reset assertion is that a refused reset is cheap, which is only true when the
+guard holds.
+
+### Not done here, and why
+
+- **P0-1b** — `CommunityController`, `DummyDataController`, `StadiumSettingsController`, `TransferController`.
+  `StadiumSettingsController` already checks ownership on `/image` and **not** on `/tickets`, `/maintenance`
+  or `/build`, so it is the same defect as `TeamController` and is expected to behave the same way.
+- **P0-2** — per-class green only. **A full `mvn test` was not run**, so "green in a full run" is
+  outstanding by the owner's explicit decision. It does not count as met.
+- **`/training/train-all` and `/training/train/{playerId}`** — recorded as P0-13. Both have zero callers;
+  `train-all` is `findAll()` + `saveAll()` over ~300k rows on a request thread.
+
+---
+
 ## 2026-10-03 — P1-1: four indexes on `match`, and two of the board's three claims refuted
 
 **The board asked for three indexes. Two are wrong and one is irrelevant. Four unlisted ones are the
