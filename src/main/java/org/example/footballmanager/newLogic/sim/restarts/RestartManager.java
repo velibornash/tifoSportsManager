@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.sim.restarts;
 
 import org.example.footballmanager.newLogic.sim.engine.TacticalIntentEngine;
 import org.example.footballmanager.newLogic.sim.model.*;
+import org.example.footballmanager.newLogic.sim.tactics.SideTactics;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 
@@ -45,7 +46,7 @@ public class RestartManager {
     /** FIFA Law 13 minimum distance for opponents at a restart: 9.15 m = 0.65 cells. */
     public static final double RESTART_OPPONENT_DISTANCE = 0.65;
 
-    private final TacticsRules tactics;
+    private final SideTactics tactics;
     private final TacticalIntentEngine tacticalEngine;
 
     public RestartManager() {
@@ -53,11 +54,27 @@ public class RestartManager {
     }
 
     public RestartManager(TacticsRules tactics) {
+        this(new SideTactics(tactics));
+    }
+
+    /**
+     * Each side restarts against its own vocabulary.
+     *
+     * <p>The single-rules constructor is kept and delegates, so every existing caller — and every existing
+     * test — behaves exactly as before.
+     */
+    public RestartManager(SideTactics tactics) {
         this.tactics = tactics;
         this.tacticalEngine = new TacticalIntentEngine(tactics);
     }
 
-    public TacticsRules getTactics() { return tactics; }
+    /**
+     * The home side's rules, for callers that predate each side having its own.
+     *
+     * <p>Deliberately the <b>home</b> set and not "whichever": a caller with no player in hand has no side to
+     * ask about, and home is what every one of them used to get.
+     */
+    public TacticsRules getTactics() { return tactics.home(); }
 
     /**
      * The tactical target, or the player's own position when the tactic says nothing about his role.
@@ -158,7 +175,7 @@ public class RestartManager {
 
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), spot, p.getTeam())));
+            p.setTarget(targetOrHold(p, tactics.forPlayer(p).desiredCell(p.getRole(), spot, p.getTeam())));
         }
 
         Player taker = findNearestPlayerOfTeam(state, state.getRestartTeam(), spot);
@@ -227,7 +244,7 @@ public class RestartManager {
 
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), spot, p.getTeam())));
+            p.setTarget(targetOrHold(p, tactics.forPlayer(p).desiredCell(p.getRole(), spot, p.getTeam())));
         }
 
         pushOpponentsAwayFromBall(state, takingTeam, spot);
@@ -315,7 +332,7 @@ public class RestartManager {
         //    restart spot (players move smoothly, only the ball teleports).
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            p.setTarget(targetOrHold(p, tactics.desiredCell(p.getRole(), ballPos, p.getTeam())));
+            p.setTarget(targetOrHold(p, tactics.forPlayer(p).desiredCell(p.getRole(), ballPos, p.getTeam())));
         }
 
         // 3. Select and position the taker — teleport fast-path if far, then walk

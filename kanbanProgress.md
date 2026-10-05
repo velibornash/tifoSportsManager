@@ -403,6 +403,85 @@ entity, at the live database — rather than from reasoning harder about my own 
 
 ---
 
+## 2026-10-04 — P0-3: each side plays its own shape, and the board had the difficulty backwards
+
+**6 tests green, mutation fails 2 of 6, 26 green with the engine and tactics suites.**
+
+### The perspective question was already answered
+
+The board said *"the perspective question is the actual design problem here, not the plumbing"*. It was
+already made, consistently, and by code that predates the task:
+
+- `TacticalPerspectiveTransformer` is purely geometric: *"HOME: direct. AWAY: mirror both axes"*, with a
+  comment recording a bug **already found and fixed** there — the column mirror was `7-c` rather than `8-c`,
+  which pushed away's right-sided players to col 0.5, *outside the touchline*.
+- **Every call site already passed the player's side** — `RestartManager:161,230,318` and
+  `TacticalIntentEngine:171` all call `desiredCell(role, ball, p.getTeam())`.
+- The editor has **one frame** and no per-side awareness.
+
+The capability existed and was unused. `SimMatchService:121` said so at the time: *"it needs a second rules
+object and a decision about perspective — and is not smuggled in here."* The decision turned out to be made;
+only the second object was missing.
+
+### The defect, precisely
+
+`tacticsRules.forTeam(homeTeam.getId())` was handed to the whole match. **One grid, both clubs.** So a 4-3-3
+visitor was resolved against the home 4-4-2's vocabulary and asked about `CM`, `WL`, `WR` and `ST` — names
+that grid never contains.
+
+`1420306` is why this survived: it made an unnamed role return null and the player hold his own shape. That
+prevented the crash **and hid the defect** — the visitor "worked", he simply played no shape at all. The
+board's own note on P0-3 calls the miss path safe, and it is; it is just not the same as a shape.
+
+### What changed, and what deliberately did not
+
+`SideTactics` holds both and selects on the side asking. **No mirror was added there**, because every club's
+grid is stored in the same home-perspective frame and the mirror is applied once at lookup — mirroring again
+would mirror **twice** and put the away shape in the wrong corners, which is precisely the bug the
+transformer's javadoc records about its own earlier life.
+
+Additive throughout. `RestartManager`, `TacticalIntentEngine`, `MatchOrchestrator` and `SimMatchRunner.run`
+all keep their single-grid constructors and delegate. So a caller with one grid produces exactly the football
+it always did, and every launcher, diagnostic and exporter is untouched.
+
+### The mutation the board asked for
+
+Collapsing both sides onto the home grid — the old behaviour — fails 2 of 6:
+
+```
+eachSideGetsItsOwnGrid              AWAY should get the away grid ==> expected: <true> but was: <false>
+aRoleFromTheOtherGridIsNotAnswered  the away 4-3-3 grid names CAM and should answer for it ==> expected: not <null>
+```
+
+### Three assertions that stop it being a lockout
+
+A change that only works when **both** clubs have saved profiles would stop half the world playing football,
+which at 14,880 clubs and one real profile is most of it:
+
+| | |
+|---|---|
+| `oneGridForBothSidesStillWorks` | the single-grid path is unchanged |
+| `aMissingAwayGridFallsBack` | a club with no profile still gets a shape |
+| `anUnknownSideFallsBack` | an unrecognised side, and a null player, fall back rather than to nothing |
+
+`RestartManager.getTactics()` now answers **home's** grid, and says why: a caller with no player in hand has
+no side to ask about, and home is what all of them used to get.
+
+**26 green** with `UnnamedRoleFallsBackTest`, `TacticsRulesProviderTest`, `RealSquadFactoryTest`,
+`RealSquadSimulationSmokeTest` and `ScheduleInteractionContractTest` — **including the smoke test that
+simulates real matches**, which is the only evidence here that a 4-4-2 against a 4-3-3 still produces a match
+rather than an exception.
+
+### Not done
+
+**A replay of a 4-4-2-v-4-3-3 showing two shapes** was on the board's list and has not been done: it needs
+the app up and a seeded world with both profiles saved, which is a manual verification. Recorded rather than
+claimed.
+
+**A full `mvn test` was not run** after this change.
+
+---
+
 ## 2026-10-04 — the full suite, measured: **1247 tests, 32 red, 18m22s**
 
 **The board's figure was 992 tests, 29 red, ~2 h 52 m. Every number on it is now wrong, and the wall clock
