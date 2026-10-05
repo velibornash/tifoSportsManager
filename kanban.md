@@ -457,6 +457,15 @@ Rewrite each to assert a guarantee the product actually makes.
 
 `ScoutingServiceTest` is **already green, 10/10** — it is the worked example of this fix. Read it first.
 
+**Progress, 2026-10-04.** Two classes triaged and fixed: **`SquadTrainingServiceTest` 6/6** and
+**`NegotiationServiceTest` 9/10**. Both were failing in `setUp` for want of a `GameClock` row that boot no
+longer creates — 16 of the 32 red, and **not one of them an assertion about the thing under test.**
+
+**The fix uncovered a tenth failure that had been masked**, and it is P0-9's trap: the test passes `2026` to
+a parameter named `int season`, in eleven places. The trap does not stay in the file it was found in.
+
+The remaining ~25 need reading individually; each states what it is before anything is changed.
+
 **Exit criteria, per class:**
 - [ ] The failure is read and the *intended* guarantee is written down in the test's javadoc
 - [ ] The test asserts a **value**, not that a key exists (a test checking `rating` exists passes happily

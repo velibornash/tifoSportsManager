@@ -41,7 +41,17 @@ class SquadTrainingServiceTest {
 
     @BeforeEach
     void setUp() {
-        var clock = clocks.findAll().stream().findFirst().orElseThrow();
+        // **Create the clock rather than expect one.** Boot writes nothing (DatabaseInitializer's
+        // ensureBaselineDataOnStartup has no caller), so the test database has no GameClock row and
+        // `findFirst().orElseThrow()` failed in *every* method of this class before a single assertion ran.
+        //
+        // It also made the class look broken when it is only unseeded: the same code is **green in a full
+        // run**, because some earlier class leaves a clock row behind. That is the clearest example on the
+        // board of why "per-class green" and "green in a full run" are not the same measurement -- and why
+        // neither is a substitute for reading the failure.
+        var clock = clocks.findAll().stream()
+                .findFirst()
+                .orElseGet(org.example.footballmanager.newLogic.model.GameClock::new);
         clock.setCurrentSeason(1);
         clock.setCurrentWeek(1);
         clocks.save(clock);

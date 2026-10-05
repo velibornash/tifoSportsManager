@@ -403,6 +403,59 @@ entity, at the live database — rather than from reasoning harder about my own 
 
 ---
 
+## 2026-10-04 — P0-2, first pass: seven of the 32 were one missing row, and unmasking a ninth
+
+**Two classes, one fix, and one defect the fix uncovered.**
+
+### Both were failing in `setUp`, before a single assertion ran
+
+`NegotiationServiceTest` and `SquadTrainingServiceTest` both did:
+
+```java
+var clock = clocks.findAll().stream().findFirst().orElseThrow();
+```
+
+**Boot writes nothing** — `DatabaseInitializer.ensureBaselineDataOnStartup` has no caller — so the test
+database has no `GameClock` row and `orElseThrow()` failed in **every method**: 10 errors and 6 errors, 16 of
+the 32 red, none of them an assertion about the thing under test.
+
+Both now create the row instead of expecting it. **`SquadTrainingServiceTest` is 6/6**, and
+`NegotiationServiceTest` is **9/10**.
+
+### The pair is the clearest proof on the board that two numbers are not one number
+
+`SquadTrainingServiceTest` **passed in the full run I measured** and failed 6/6 alone, while
+`NegotiationServiceTest` failed 10/10 in the same run. Identical cause, identical code shape, opposite results
+— because some earlier class leaves a clock row behind and the order decides.
+
+**So "per-class green" would have hidden this one and "green in a full run" would have hidden the other.**
+Neither number is evidence on its own; only reading the failure tells you which one you have.
+
+### What the fix uncovered, and it is P0-9's trap exactly
+
+With `NegotiationServiceTest` no longer dying in `setUp`, its tenth test now runs and fails on a real
+assertion:
+
+```
+sellerChoosesAndOtherOffersSurvive  expected: <ACCEPTED> but was: <OPEN>
+```
+
+**`assignToClub(Player, Team, int season, SquadRole role)` — the third parameter is a season — and the
+test passes `2026` in eleven places.** A season is twelve weeks counted from 1; there is no calendar year
+anywhere. The fixture is internally consistent, which is why it passed before it ran at all, and it is
+**wrong on the same point P0-9 names.**
+
+This is the argument for doing P0-9 rather than leaving it: the trap does not stay in the file it was found
+in. It was latent in a class that could not execute, and one unrelated fix made it execute.
+
+**Not fixed here.** Replacing eleven call sites with a season number needs the surrounding fixture checked
+against `PlayerContractService`, and a guess at the right season would trade a visible failure for an
+invisible one. Recorded against P0-9 with the evidence.
+
+**A full `mvn test` was not run** after this, so the board's 32 is now **at most 25** and unmeasured.
+
+---
+
 ## 2026-10-04 — P0-3: each side plays its own shape, and the board had the difficulty backwards
 
 **6 tests green, mutation fails 2 of 6, 26 green with the engine and tactics suites.**
