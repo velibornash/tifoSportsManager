@@ -4875,3 +4875,118 @@ body {
         align-self: flex-end;
     }
 }
+
+/*
+ * The notification bell and its dropdown (owner, 2026-10-05).
+ *
+ * <p>Built on the account corner's `.user-menu-panel` vocabulary so it reads as part of the top bar
+ * rather than a widget bolted onto it: same surface, same border, same shadow, same radius.
+ */
+
+.notification-bell-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.notification-bell {
+    position: relative;
+}
+
+.notification-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #e5484d;
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px #16202e;
+}
+
+.notification-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(400px, calc(100vw - 32px));
+    max-height: 70vh;
+    overflow-y: auto;
+    background: #16202e;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+    z-index: 400;
+}
+
+.notification-dropdown-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: 0;
+    background: #16202e;
+}
+
+.notification-list {
+    display: flex;
+    flex-direction: column;
+}
+
+/*
+ * Read rows stay in the list but recede. Deleting them on read was the alternative and it is wrong:
+ * "what happened to me" should survive the badge clearing.
+ */
+.notification-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 11px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    border-left: 3px solid #7fd0ff;
+}
+
+.notification-row.is-read {
+    border-left-color: transparent;
+    opacity: 0.55;
+}
+
+.notification-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.notification-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.notification-kind {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7fd0ff;
+}
+
+.notification-summary {
+    color: #eef4ff;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.notification-empty {
+    padding: 20px 16px;
+    color: #99a6bb;
+    font-size: 0.88rem;
+    text-align: center;
+}

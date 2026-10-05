@@ -2,6 +2,60 @@
 
 ---
 
+## P2-20 Phase 3 — the notification store, built because there was nothing to extend
+
+Owner decision, 2026-10-05. A notification system that did not exist: no entity, no table, no service.
+The dashboard ticker was recomputed from eight live endpoints on every render and thrown away, so a badge
+could not be cleared, could not say what it was about, and could not tell one unread message from four.
+
+### Why polling, restated with the evidence
+
+The owner chose polling. The codebase backs that: **all four WebSocket endpoints are dead.** No frontend
+connects, nothing broadcasts, and `JwtHandshakeInterceptor` puts a username into session attributes that
+no handler reads. Routing is by `matchId`, so there is no per-user channel to hang a notification on.
+30 s matches the game-clock poll in `clock.js`, so this is one more timer rather than a new pattern.
+
+### Every read names its recipient
+
+Not tidiness — it is the whole authorization story for this table. A method that could list notifications
+without saying who they are for is a method whose caller has to remember a filter, and both the forum and
+the messages feature call it. The isolation tests build two accounts and read as one, because a
+notification system whose read does not filter will show one manager another manager's messages and there
+is no other way to catch that.
+
+`markRead` checks ownership **inside** the query rather than beside it: somebody else's notification is a
+404, not a silent no-op. A silent no-op there is a badge that never clears and a support ticket reading
+"the read button does nothing".
+
+### A test that could not catch the thing it was written for
+
+**`markAllReadIsCapped` first seeded 5 rows and asserted they were all cleared.** Raising the documented
+cap from 200 to 100000 — the exact "just remove the limit" edit — left it green, because 5 is under every
+cap. It now seeds 230 rows and asserts the cap is applied and that a second call finishes the job, so the
+cap is a chunking limit rather than a residue the manager cannot clear.
+
+The other three mutations were caught on the first attempt: dropping the ownership filter on `markRead`,
+returning every row unfiltered, and the email leak in Phase 2.
+
+### Verified against the database
+
+`ddl-auto=update` created `nl_notification` and both indexes:
+
+```
+created_at  id  kind  read_at  recipient_id  summary  target_id  target_page
+idx_nl_notification_recipient_created  btree (recipient_id, created_at)
+idx_nl_notification_recipient_unread   btree (recipient_id, read_at)
+```
+
+A row inserted directly, read through the API, marked read, and confirmed still present — marking read
+keeps the row, so "what happened to me" survives the badge clearing. Anonymous is refused (302 to login).
+
+### Not done
+
+**No browser.** The bell, badge and dropdown were verified by parsing the served module and by the API
+responses; the click handlers, the dropdown open/close and the keyboard Escape path have not been driven.
+
+
 ## P2-20 Phase 2 — a manager you can click, and a name he can choose
 
 The owner's path: **click a club, see who runs it, click him, see his profile.** Two halves, and the

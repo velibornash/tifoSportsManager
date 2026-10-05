@@ -1138,10 +1138,13 @@ between `User` and `Team`. See `kanbanProgress.md` for what was measured and wha
 - [x] **A real bug found and fixed here**: two boot-time initializers rewrote account rows without
       mentioning the new key, so `football_team_id` came back null on the next start
 
-### Phase 3 — notifications
-- [ ] `Notification` entity with a `(recipient, readAt)` index — **nothing of this shape exists today**
-- [ ] `GET /notifications`, `/unread-count`, `POST /notifications/{id}/read`, `/read-all`
-- [ ] 30 s poll, badge and dropdown, ticker rewired off the dead `/community/summary`
+### Phase 3 — DONE: notifications
+
+- [x] `Notification` entity with `(recipient_id, created_at)` and `(recipient_id, read_at)` indexes
+- [x] `GET /notifications`, `/unread-count`, `POST /notifications/{id}/read`, `/read-all`
+- [x] 30 s poll, bell + badge + dropdown in the top bar, mobile-safe
+- [x] Ticker rewired off the dead `/community/summary`
+- [x] Marking read is scoped **inside** the query, so somebody else's notification is a 404
 
 ### Phase 4 — the forum
 - [ ] `ForumSection` (`TIFO`, `GENERAL`), `ForumTopic`, `ForumPost` with `editedAt` and `deletedAt`

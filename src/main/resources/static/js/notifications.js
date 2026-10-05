@@ -1,0 +1,291 @@
+// notifications.js
+//
+// The badge, the dropdown, and the 30-second poll (owner, 2026-10-05).
+//
+// WHY POLLING AND NOT A WEBSOCKET
+//
+// The owner chose polling, and the reason is in the codebase rather than in taste: all four WebSocket
+// endpoints registered by WebSocketConfig are dead — no frontend connects, nothing broadcasts, and the
+// handshake interceptor puts a username into session attributes that no handler ever reads. Routing is
+// by matchId, so there is no per-user channel to hang a notification on. Building one is a week of work
+// and it would be the first thing in the application carrying a live socket for a feature that has not
+// been watched running yet.
+//
+// 30 seconds matches the existing game-clock poll in clock.js, so this is one more timer rather than a
+// new pattern.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO
+//
+// It does not delete notifications. Marking one read is a POST the backend performs; the row stays, so
+// "what happened to me" survives the badge clearing. The dropdown shows read and unread alike, newest
+// first, with read ones dimmed.
+
+import { authFetch, handleAuthFailure } from './auth.js';
+import { escapeHtml } from './ui/escape.js';
+
+const POLL_MS = 30 * 1000;
+const DROPDOWN_PAGE = 30;
+
+/**
+ * Starts the poll. Called once, after the session is known.
+ *
+ * <p>Not started at import time: a 401 from an anonymous session would send the manager to the login
+ * page for no reason, and the login page does not want a notification poll running against it.
+ */
+export function startNotificationPolling() {
+    if (document.getElementById('notification-bell')) {
+        // Already started. pages.js can be reached twice in a session and a second interval would
+        // double the request rate for the rest of the browser's life.
+        return;
+    }
+    // First paint immediately rather than after 30 seconds of nothing, because a badge that appears
+    // half a minute late looks broken even when it is only late.
+    void refreshNotifications();
+    window.setInterval(refreshNotifications, POLL_MS);
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            // A tab left open in the background for an hour should not show a badge from when it was
+            // last visible. Polling continues while hidden on purpose — a laptop asleep is not a
+            // laptop idle — but the first thing done on return is a fresh read.
+            void refreshNotifications();
+        }
+    });
+}
+
+/**
+ * Reads the notifications and repaints the bell.
+ *
+ * <p>One request serves both the badge and the dropdown, deliberately: two requests are two chances for
+ * the count and the list to disagree, and a badge that says 3 above a list showing 2 is the kind of bug
+ * that gets reported as "it's just wrong sometimes".
+ */
+export async function refreshNotifications() {
+    try {
+        const response = await authFetch(`/notifications?size=${DROPDOWN_PAGE}`);
+        if (!response.ok) return;
+        const payload = await response.json();
+        paintBell(payload);
+    } catch (err) {
+        // A failed poll is not worth interrupting the manager for. The next one is 30 seconds away, and
+        // an alert box every 30 seconds is how a manager learns to ignore alerts.
+        if (err && err.status === 401) {
+            handleAuthFailure(err, 'Your session expired.');
+        }
+    }
+}
+
+/** Reads the unread count out of a payload, treating anything unexpected as zero. */
+export function readUnreadCount(payload) {
+    const count = Number(payload?.unreadCount);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function paintBell(payload) {
+    const bell = document.getElementById('notification-bell');
+    const badge = document.getElementById('notification-badge');
+    const dropdown = document.getElementById('notification-dropdown');
+    if (!bell || !badge) return;
+
+    const unread = readUnreadCount(payload);
+
+    if (badge) {
+        badge.textContent = unread > 99 ? '99+' : String(unread);
+        badge.hidden = unread === 0;
+    }
+    bell.setAttribute('aria-label',
+        unread > 0 ? `Notifications, ${unread} unread` : 'Notifications, none unread');
+
+    if (dropdown && !dropdown.hidden) {
+        dropdown.innerHTML = buildDropdownHtml(payload);
+        bindDropdown(dropdown);
+    }
+}
+
+/**
+ * The dropdown body.
+ *
+ * <p>Every value goes through {@link escapeHtml}. A notification summary is built from a forum topic
+ * title or a message subject — both of which are typed by another manager — so this is the one place in
+ * the notification UI where untrusted text arrives, and it is the place a stored XSS would land.
+ */
+export function buildDropdownHtml(payload) {
+    const rows = Array.isArray(payload?.notifications) ? payload.notifications : [];
+    const unread = readUnreadCount(payload);
+
+    if (!rows.length) {
+        return `<div class="notification-empty">Nothing yet. Replies to your forum posts and your
+            private messages will appear here.</div>`;
+    }
+
+    const items = rows.map(row => {
+        const isRead = row.read === true;
+        const destination = targetActionHtml(row);
+        return `
+            <div class="notification-row${isRead ? ' is-read' : ''}" data-notification-id="${escapeHtml(row.id)}">
+                <div class="notification-row-head">
+                    <span class="notification-kind">${escapeHtml(kindLabel(row.kind))}</span>
+                    <span class="fm-subtle">${escapeHtml(formatWhen(row.createdAt))}</span>
+                </div>
+                <div class="notification-summary">${escapeHtml(row.summary || '')}</div>
+                ${destination}
+            </div>`;
+    }).join('');
+
+    return `
+        <div class="notification-dropdown-head">
+            <strong>${unread} unread</strong>
+            <button type="button" class="fm-link-btn js-read-all"${unread === 0 ? ' disabled' : ''}>
+                Mark all read
+            </button>
+        </div>
+        <div class="notification-list">${items}</div>`;
+}
+
+/**
+ * Where a click goes.
+ *
+ * <p>Unknown or missing destinations render nothing rather than a link that goes nowhere. A notification
+ * of a kind this build does not understand is still worth reading; it just is not clickable.
+ */
+function targetActionHtml(row) {
+    const page = row?.targetPage;
+    const id = row?.targetId;
+    if (!page || !id) return '';
+    if (page === 'forumTopic') {
+        return `<button type="button" class="fm-link-btn js-go js-go-topic"
+            data-topic-id="${escapeHtml(id)}">Open the topic</button>`;
+    }
+    if (page === 'messageThread') {
+        return `<button type="button" class="fm-link-btn js-go js-go-thread"
+            data-thread-id="${escapeHtml(id)}">Open the conversation</button>`;
+    }
+    return '';
+}
+
+function kindLabel(kind) {
+    const labels = {
+        FORUM_REPLY: 'Forum',
+        PM_RECEIVED: 'Message',
+        FORUM_BANNED: 'Moderation',
+        REGISTRATION_DECIDED: 'Registration'
+    };
+    return labels[kind] || 'Notice';
+}
+
+/**
+ * A short relative time.
+ *
+ * <p>Relative because a notification list is read by scanning, and "4 minutes ago" is scanned; a
+ * timestamp is read one at a time. Falls back to the raw value rather than "Invalid Date" when the
+ * string is not a date this browser can parse, which happens when the field is missing.
+ */
+function formatWhen(iso) {
+    if (!iso) return '';
+    const then = new Date(iso);
+    if (Number.isNaN(then.getTime())) return String(iso);
+
+    const seconds = Math.max(0, Math.round((Date.now() - then.getTime()) / 1000));
+    if (seconds < 60) return 'just now';
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 7) return `${days} d ago`;
+    return then.toLocaleDateString();
+}
+
+/** Wires the dropdown's buttons. Re-bound on every paint because the markup is replaced. */
+function bindDropdown(dropdown) {
+    dropdown.querySelectorAll('.js-read-all').forEach(button => {
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                const response = await authFetch('/notifications/read-all', { method: 'POST' });
+                if (response.ok) await refreshNotifications();
+            } finally {
+                button.disabled = false;
+            }
+        });
+    });
+
+    dropdown.querySelectorAll('.js-go').forEach(button => {
+        button.addEventListener('click', () => {
+            const topicId = button.dataset.topicId;
+            const threadId = button.dataset.threadId;
+            closeDropdown();
+            if (topicId && typeof window.openForumTopic === 'function') {
+                window.openForumTopic(topicId);
+            } else if (threadId && typeof window.openMessageThread === 'function') {
+                window.openMessageThread(threadId);
+            }
+        });
+    });
+
+    dropdown.querySelectorAll('.notification-row').forEach(row => {
+        row.addEventListener('click', async (event) => {
+            if (event.target.closest('.js-go')) return;
+            const id = row.dataset.notificationId;
+            if (!id) return;
+            try {
+                const response = await authFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+                if (response.ok) await refreshNotifications();
+            } catch {
+                // A read that fails stays unread. Better a badge that is one too high than one that
+                // clears a notification the manager never saw.
+            }
+        });
+    });
+}
+
+function closeDropdown() {
+    const dropdown = document.getElementById('notification-dropdown');
+    if (dropdown) dropdown.hidden = true;
+}
+
+/**
+ * Opens and closes the dropdown, and renders it the first time it is opened.
+ *
+ * <p>Rendered on open rather than on every poll: a closed dropdown nobody can see does not need its
+ * markup rebuilt 120 times an hour.
+ */
+export function wireNotificationBell() {
+    const bell = document.getElementById('notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    if (!bell || !dropdown) return;
+
+    bell.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const willOpen = dropdown.hidden;
+        dropdown.hidden = !willOpen;
+        bell.setAttribute('aria-expanded', String(willOpen));
+        if (willOpen) {
+            try {
+                const response = await authFetch(`/notifications?size=${DROPDOWN_PAGE}`);
+                if (response.ok) {
+                    const payload = await response.json();
+                    dropdown.innerHTML = buildDropdownHtml(payload);
+                    bindDropdown(dropdown);
+                }
+            } catch {
+                dropdown.innerHTML = '<div class="notification-empty">Could not load notifications.</div>';
+            }
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        if (dropdown.hidden) return;
+        if (dropdown.contains(event.target) || bell.contains(event.target)) return;
+        dropdown.hidden = true;
+        bell.setAttribute('aria-expanded', 'false');
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !dropdown.hidden) {
+            dropdown.hidden = true;
+            bell.setAttribute('aria-expanded', 'false');
+            bell.focus();
+        }
+    });
+}

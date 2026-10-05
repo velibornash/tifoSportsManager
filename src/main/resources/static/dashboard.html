@@ -17,7 +17,20 @@
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="showMyCountry()">&#127758; Country</div>
 	    <div class="menu-button desktop-only" onclick="loadPage('world')">🌍 World</div>
-    <div class="menu-button desktop-only" onclick="loadPage('chat')">&#128172; Community</div>
+    <div class="menu-button desktop-only" onclick="loadPage('forum')">&#128172; Forum</div>
+    <div class="menu-button desktop-only" onclick="loadPage('messages')">&#9993; Messages</div>
+    <!-- The notification bell. Not a menu button: it opens a panel rather than navigating, and it is
+         the only part of the top bar that changes without the manager doing anything. -->
+    <div class="notification-bell-wrap">
+        <button type="button" class="menu-button notification-bell" id="notification-bell"
+                aria-haspopup="true" aria-expanded="false" aria-controls="notification-dropdown"
+                aria-label="Notifications">
+            <span aria-hidden="true">&#128276;</span>
+            <span class="notification-badge" id="notification-badge" hidden>0</span>
+        </button>
+        <div class="notification-dropdown" id="notification-dropdown" role="dialog"
+             aria-label="Notifications" hidden></div>
+    </div>
 	    <div id="admin-menu-button" class="menu-button desktop-only" data-admin-only hidden onclick="loadPage('admin')">&#128295; Admin</div>
     <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
          no way out of a session at all on a phone. This is the account corner: who you are, your
@@ -104,8 +117,11 @@
 	        </div>
 
 	        <div class="mobile-accordion">
-	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('chat')">
-	                &#128172; Community Chat
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('forum')">
+	                &#128172; Forum
+	            </div>
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('messages')">
+	                &#9993; Messages
 	            </div>
 	        </div>
 

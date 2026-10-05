@@ -1,6 +1,7 @@
 // dashboard.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility } from './auth.js';
+import { startNotificationPolling, wireNotificationBell } from './notifications.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
@@ -320,7 +321,7 @@ function buildTimeboxedUpdates(friendlyWeek, clock, trainingReports) {
     return updates;
 }
 
-function buildImportantUpdates(medical, lineupTemplate, transferOverview, communitySummary, windowState,
+function buildImportantUpdates(medical, lineupTemplate, transferOverview, notifications, windowState,
                                friendlyWeek, clock, trainingReports) {
     const updates = [];
 
@@ -332,22 +333,23 @@ function buildImportantUpdates(medical, lineupTemplate, transferOverview, commun
     const listedPlayers = Array.isArray(transferOverview?.listedPlayers) ? transferOverview.listedPlayers : [];
     const interestedListings = listedPlayers.filter(player => Array.isArray(player?.interestedTeams) && player.interestedTeams.length > 0);
 
-    if (communitySummary?.hasNewMessages) {
-        const total = Number(communitySummary.newMessageCount || 0);
-        const privateCount = Number(communitySummary.newPrivateCount || 0);
-        const sharedCount = Number(communitySummary.newSharedCount || 0);
-        const breakdown = [
-            privateCount > 0 ? `${privateCount} private` : null,
-            sharedCount > 0 ? `${sharedCount} shared` : null
-        ].filter(Boolean).join(' · ');
-        const latest = communitySummary.latestAuthor
-            ? `${communitySummary.latestAuthor}: ${communitySummary.latestMessage || 'sent a new message.'}`
-            : 'Open Community to read the latest message.';
-
+    // The unread notifications, not a recomputation.
+    //
+    // <p>Was `/community/summary`, which counted chat rows newer than one timestamp on the account. A
+    // single cursor cannot answer "which of my four unread messages did I see", and it is gone in Phase
+    // 6 along with the chat. What is here now reads a real per-notification store.
+    //
+    // <p>Only the newest is put in the ticker, because the bar is one flat string and six summaries from
+    // a busy forum would crowd out a transfer deadline. The badge carries the count.
+    const unread = Array.isArray(notifications?.notifications)
+        ? notifications.notifications.filter(row => row && row.read === false)
+        : [];
+    if (unread.length) {
+        const latest = unread[0];
         updates.push({
-            severity: privateCount > 0 ? 'alert' : 'warning',
-            title: privateCount > 0 ? 'New private/community message' : 'New chat/community activity',
-            meta: `${total} new ${total === 1 ? 'message' : 'messages'}${breakdown ? ` (${breakdown})` : ''}. ${latest}`
+            severity: 'alert',
+            title: unread.length === 1 ? 'New notification' : `${unread.length} new notifications`,
+            meta: latest.summary || 'Open the bell to read it.'
         });
     }
 
@@ -412,12 +414,14 @@ async function loadImportantUpdates() {
     const ticker = host.closest('.fm-dashboard-ticker');
 
     try {
-        const [medical, lineupTemplate, transferOverview, communitySummary, windowState,
+        const [medical, lineupTemplate, transferOverview, notifications, windowState,
                friendlyWeek, clock, trainingReports] = await Promise.all([
             authFetch(`/teams/${currentUserTeamId}/medical`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/teams/${currentUserTeamId}/lineup-template`).then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch(`/transfers/team/${currentUserTeamId}`).then(response => response.ok ? response.json() : null).catch(() => null),
-            authFetch('/community/summary').then(response => response.ok ? response.json() : null).catch(() => null),
+            // The notification page rather than the cheap count, because the ticker needs the summary
+            // text and the badge needs the count, and one response cannot disagree with itself.
+            authFetch('/notifications?size=6').then(response => response.ok ? response.json() : null).catch(() => null),
             authFetch('/transfers/window').then(response => response.ok ? response.json() : null).catch(() => null),
             // The two time-boxed items the owner ranked first, because both expire silently.
             authFetch(`/api/season/friendlies/${currentUserTeamId}/week`).then(response => response.ok ? response.json() : null).catch(() => null),
@@ -426,8 +430,8 @@ async function loadImportantUpdates() {
         ]);
 
         const updates = buildImportantUpdates(medical, lineupTemplate, transferOverview,
-            communitySummary, windowState, friendlyWeek, clock, trainingReports);
-        ticker?.classList.toggle('is-community-alert', Boolean(communitySummary?.hasNewMessages));
+            notifications, windowState, friendlyWeek, clock, trainingReports);
+        ticker?.classList.toggle('is-community-alert', readUnreadCount(notifications) > 0);
         if (!updates.length) {
             host.innerHTML = buildImportantTickerMarkup('No urgent club updates right now.');
             return;
@@ -509,6 +513,11 @@ window.addEventListener('load', async () => {
         if (typeof window.paintAccountMenu === 'function') {
             window.paintAccountMenu(user, currentUserCompetitionName || '');
         }
+        // Started here rather than at module load, and after /auth/me has answered: a poll running
+        // against an anonymous session gets a 401 every 30 seconds and, on the login page, that is a
+        // redirect loop that looks like the app is broken.
+        wireNotificationBell();
+        startNotificationPolling();
         console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
         loadDashboard();
