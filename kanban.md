@@ -1474,6 +1474,11 @@ existed and already had its own `catch`. That also removes a pointless HTTP roun
 - `academy.js:138` and `stats-view.js:67` have the same unreachable guards, but both are already inside
   a `try/catch` that returns null, so their behaviour is correct and only the dead line is misleading.
 
+**All three fixed.** `matches.js` catches and renders its own error card — which is what its own comment
+already claimed — and **`loadFixtures` never had a guard at all**, so the Schedule page had the same
+symptom with nothing handling it. The two harmless ones had their dead lines removed, so the code stops
+inviting a fourth copy of the mistake.
+
 ### P2-17 — Match engine realism
 
 **Last, per the owner, and re-baseline first.** The numbers recorded for realism were measured against code

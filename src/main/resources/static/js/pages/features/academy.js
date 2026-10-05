@@ -134,9 +134,13 @@
      * it, and a manager looking at his prospects should not be blocked by a budget panel failing.
      */
     async function loadSchoolState(teamId) {
+        // The catch below is what handles a failure. There used to be an `if (!res.ok) return null;`
+        // in front of it, which could never run: authFetch throws on every non-2xx, so the throw went
+        // straight past it. Behaviour was correct by accident and the dead line said the opposite,
+        // which is how the same mistake got made twice elsewhere (match-view.js fetched a deliberate
+        // '/nonexistent'; matches.js kept an equivalent guard). To tolerate a failed request, catch it.
         try {
             const res = await authFetch(`/juniors/school/team/${teamId}`);
-            if (!res.ok) return null;
             return await res.json();
         } catch (e) {
             console.warn('Could not load the junior school state:', e);

@@ -63,14 +63,16 @@ export function createStatsView(deps) {
             const teamIdByName = new Map();
             leagueTeams.forEach(t => teamIdByName.set(t.name, t.id));
             const playerIdByKey = new Map();
+            // The empty catch is the guard. There was an `if (directoryRes.ok)` inside it that could
+            // never be false, because authFetch throws on every non-2xx — so a missing player
+            // directory threw rather than being skipped, and the line claimed otherwise. A club with
+            // no directory listed simply has no ids to map, which is what leaving the map empty means.
             try {
-                const directoryRes = await authFetch(`/countries/leagues/${leagueId}/player-directory${seasonParam}`);
-                if (directoryRes.ok) {
-                    const directory = await directoryRes.json();
-                    directory.forEach(player => {
-                        playerIdByKey.set(`${player.teamName}|${player.name}`, player.id);
-                    });
-                }
+                const directory = await (await authFetch(
+                    `/countries/leagues/${leagueId}/player-directory${seasonParam}`)).json();
+                directory.forEach(player => {
+                    playerIdByKey.set(`${player.teamName}|${player.name}`, player.id);
+                });
             } catch (e) {}
 
             const mainContent = document.getElementById("main-content");

@@ -2083,7 +2083,24 @@ models the bug rather than something adjacent to it.
   inside a `try/catch` that returns null. Their behaviour is already correct; only the dead line
   misleads.
 
-**The general rule, now written into `match-view.js`:** to tolerate a failed request, catch it. A
+### Fixed, not just recorded
+
+Asked to, so:
+
+- **`pages/features/matches.js`** — `loadResults` now catches and renders its own error card, which is
+  what its own comment claimed it did. **`loadFixtures` never had a guard at all**, so the Schedule
+  page had the identical symptom with nothing even pretending to handle it; it catches now too.
+- **`pages/features/academy.js:138`** and **`pages/views/stats-view.js:67`** — the unreachable
+  `if (!res.ok)` / `if (directoryRes.ok)` lines are removed. **No behaviour change**: both were already
+  inside a `try/catch` that returns null or continues, so they were correct by accident. What changed
+  is that the code now says what it does, which is the part that misled the next reader into copying
+  the pattern into `match-view.js`.
+
+**Verified against a throwing `authFetch`:** healthy paths render both pages; a 500 on one renders that
+page's own error card and leaves the other page working — before, either would have replaced the whole
+page with the router's generic card.
+
+**The general rule, now written into all four files:** to tolerate a failed request, catch it. A
 `response.ok` check after `await authFetch(...)` is unreachable code, and unreachable code that reads
 like a guard is worse than no guard — it says the failure was handled.
 
