@@ -1590,18 +1590,42 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
-# 🔖 Suite state — MEASURED 2026-10-04
+## ✅ P2-20 browser check — DONE
 
-**`mvn test`: 1247 tests, 16 failures, 16 errors, 32 red, 200 classes, 18 m 22 s**, run with the app up on
-`:8080` and allowed to finish.
+`CommunityScreensRenderTest`: a real Chromium, a real login, and clicks through every screen P2-20 added.
+It asserts on the page's own text and **fails on any uncaught or console error**.
 
-**The previously recorded figures — 992 tests, 29 red, ~2 h 52 m — described a different application** and
-are superseded. The wall clock changed because **boot writes nothing**, so the tests that used to each pay
-for a full seeding run no longer do; the heavy classes still run (`CountryActivationTest` 300 s).
+**This exists because of what the full-suite run found.** Phase 6's run of all 1,359 tests caught
+`dashboard.js` calling `readUnreadCount` without importing it — a ReferenceError thrown on the dashboard
+for every manager, every page load, for three phases. Nothing else noticed: the endpoint returned 200, the
+module parsed, and the markup rendered. `CountryPageRendersTest`'s console-error assertion caught it,
+because it runs a browser.
 
-The full red list, with what each means, is in `kanbanProgress.md`. **A full run requires the app on `:8080`** —
-without it three Playwright classes hang the entire run rather than failing.
+That is the same shape as the bug `CountryPageRendersTest` was written for: an escaping function called
+from a template string where it was not in scope, a name that exists elsewhere in the project, so it looked
+right. Both were found by a browser and by nothing else.
 
-**Red is 32, not 29 — and that is not a regression claim.** 255 tests were added since the old run, so the
-counts are not comparable. Every one of the 32 needs reading before it is called a defect.
+The test is mutation-proven: routing `loadPage('forum')` to a wrong section fails it.
+
+---
+
+# 🔖 Suite state — MEASURED 2026-10-06
+
+**`mvn test`: 1359 tests, 15 failures, 7 errors, 22 red, ~21 min**, run with the app up on `:8080` and
+allowed to finish.
+
+**22 red, down from 32** on 2026-10-04. **One of the twenty-two was this work's**, and the full run is what
+found it: `dashboard.js` called `readUnreadCount` without importing it, which is a ReferenceError thrown on
+the dashboard for every manager on every page load. The endpoint returned 200, the module parsed, and every
+markup check passed. Only a browser noticed — see the browser-check item above.
+
+The remaining 21 were already red before P2-20. **Net: eleven fewer, one introduced by this work and fixed
+inside it.** The full red list with what each means is in `kanbanProgress.md`.
+
+**A full run requires the app on `:8080`** — without it three Playwright classes hang the entire run rather
+than failing. This run had it up, and `CommunityScreensRenderTest` is a fourth.
+
+**The earlier figures — 992 tests, 29 red, ~2 h 52 m — described a different application** and are
+superseded twice over. The wall clock changed because boot writes nothing; the test count changed because
+P2-20 added 112.
 

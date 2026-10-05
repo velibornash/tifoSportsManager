@@ -1,7 +1,7 @@
 // dashboard.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility } from './auth.js';
-import { startNotificationPolling, wireNotificationBell } from './notifications.js';
+import { startNotificationPolling, wireNotificationBell, readUnreadCount } from './notifications.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;

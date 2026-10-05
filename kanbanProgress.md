@@ -2,6 +2,65 @@
 
 ---
 
+## The full suite, run — and the one bug it found that nothing else did
+
+**1,359 tests, 15 failures, 7 errors, 22 red, ~21 minutes**, app up on `:8080`, allowed to finish.
+
+**One of the twenty-two was this work's, and the full run is the only thing that found it.**
+
+```
+CountryPageRendersTest.countryPageRendersWithTheSchedule:142
+  console errors on the page: [Error loading important updates:
+  ReferenceError: readUnreadCount is not defined
+```
+
+`dashboard.js` called `readUnreadCount` — a function Phase 3 wrote in `notifications.js` and exported — from
+`loadImportantUpdates`, **without importing it**. That is a ReferenceError on every dashboard load, for
+every manager, since Phase 3. Three phases.
+
+Everything else said it was fine:
+
+| Check | Result |
+|---|---|
+| `node --check` on the module | passes |
+| `GET /notifications` | 200 |
+| The ticker rendered its markup | yes |
+| Phase 3's own 14 tests | green |
+| Every markup check I wrote by extracting renderers from the served module | green |
+
+Because a call to an undefined identifier inside a try/catch-adjacent block is caught and printed rather
+than thrown, and because `loadImportantUpdates` has a catch that renders "Important updates are temporarily
+unavailable", **the dashboard was silently showing a degraded ticker instead of notifications, and every
+check I had built was measuring something that did not depend on the broken line.**
+
+**This is the second time this repository has been bitten by exactly this shape.** `CountryPageRendersTest`
+was written because the country page once called an escaping function that was not in that file's scope — a
+name that exists elsewhere in the project, so it looked right — and rendered its error card instead of the
+page. Two bugs, one cause: a function name used in a template string where it was not imported, and no test
+that runs the code.
+
+So the fix is a browser, not another assertion:
+
+**`CommunityScreensRenderTest`** — real Chromium, real login, real clicks through the bell, the forum, a
+section, a topic, the inbox, a conversation, the club page's manager link, a public profile and the admin
+tab. It asserts on the page's own text and **fails on any uncaught error or console error**, which is the
+assertion that would have caught this on day one.
+
+Mutation-proven: routing `loadPage('forum')` at the wrong section fails it.
+
+### The remaining 21
+
+Pre-existing, unchanged by this work. `ClubRatingServiceTest`, `DailyRecoveryScopeTest`,
+`NationalRatingServiceTest`, `StaffSponsorServiceTest`, `BotLeagueStandardBackfillTest`,
+`CountryActivationTest`, `CupFixtureSeederCountryTest` (5), `CSDataInitializerSelfHealingTest` (2),
+`OmladinacTransferJourneyTest` (6), plus a country ISO-code collision in `ClubRatingServiceTest`.
+
+Several of them report their own preconditions failing — "Serbia has no pyramid, so this test proves
+nothing", "the seeded world has no human club", "the cup drew nothing at all". **Those are honest about
+being vacuous rather than passing quietly**, which is the behaviour this board asks for and is worth
+recording as such rather than as 21 undifferentiated failures.
+
+
 ## P2-20 Phase 6 — the chat is gone, and the queue it hid is not
 
 The owner's decision on day one was to **wipe** the old chat: no migration, no announcements topic, no
