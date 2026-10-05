@@ -97,6 +97,29 @@ class ManagerIsVisibleOnAClubTest extends BaseTest {
 
     @Test
     @Transactional
+    @DisplayName("the manager comes from the foreign key, not a stale club name")
+    void theManagerComesFromTheForeignKeyAndNotTheName() throws Exception {
+        // The regression this fixture exists for. The account's legacy CTeam points at a club name
+        // that no longer exists, so any lookup that goes through the name-join returns nobody — and
+        // the club profile renders with no manager at all, or worse, with somebody else's.
+        Team club = auth.club("Renamed club");
+        User manager = aManagerOf(club, "Velja");
+
+        String body = mockMvc.perform(get("/teams/{id}/profile", club.getId())
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertNotNull(manager);
+        // Regex rather than `contains("\"managerUserId\":" + id)`: Jackson's pretty printer inserts
+        // spaces around the colon, so a substring match would fail on a body that is entirely correct.
+        // A body assertion has to be about the value, not about the serialiser's whitespace.
+        assertTrue(body.matches("(?s).*\"managerUserId\"\\s*:\\s*" + manager.getId() + ".*"),
+                "the club profile did not name its manager, because it followed the stale name: " + body);
+    }
+
+    @Test
+    @Transactional
     @DisplayName("a manager who never chose a name shows his login, flagged so the page can say why")
     void anUnnamedManagerShowsHisLoginAndIsFlagged() throws Exception {
         Team club = auth.club("Unnamed");
@@ -180,10 +203,19 @@ class ManagerIsVisibleOnAClubTest extends BaseTest {
         user.setPlusSubscription(false);
         user.setFootballTeam(club);
 
-        // The legacy name-join as well, deliberately: the FK is what must be read, and a fixture that
-        // set only one of the two would pass whether the code used the right one or the wrong one.
+        // The legacy name-join too — but pointing at NOTHING.
+        //
+        // <p>This is the correction. The fixture originally set the legacy CTeam's name to the club's
+        // real name, which meant a name-join and a foreign-key lookup returned the same answer and the
+        // test could not tell which one the code used. Swapping the name-join for a direct
+        // repository call left all five tests green; so did swapping it for the exact
+        // `User.cTeam.name == Team.name` join that P0-18 was about.
+        //
+        // <p>Two sources that disagree is the only fixture that can tell them apart, so the legacy
+        // name is deliberately wrong. A real account looks like this whenever a club is renamed, which
+        // is the whole reason the FK exists.
         CTeam legacy = new CTeam();
-        legacy.setName(club.getName());
+        legacy.setName(club.getName() + "-renamed-ages-ago");
         user.setCTeam(csTeams.save(legacy));
 
         return users.save(user);

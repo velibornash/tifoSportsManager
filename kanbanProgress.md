@@ -2,6 +2,90 @@
 
 ---
 
+## P2-20 Phase 2 — a manager you can click, and a name he can choose
+
+The owner's path: **click a club, see who runs it, click him, see his profile.** Two halves, and the
+second half needed something the codebase had never had — a way to look up a club's manager.
+
+### The route is a new prefix on purpose
+
+`/auth/**` is `permitAll` with a null-check per method, and `UserController`'s own javadoc says "a new
+endpoint here is public by default, silently". A public profile does not belong on that prefix even with a
+guard on every method — that is one thing to forget per method instead of one thing to forget overall.
+
+**The important part is what the DTO does not have.** No email, no username, no last-seen. P0-17 was the
+community chat correctly gating an applicant's email while still exposing his username, so the answer here
+is structural rather than a boolean somebody forgets. `theEmailIsAbsentRatherThanGated` asserts on the
+**body string**, not on a JSON path — a path assertion passes against a body that omits the key, and only
+the string catches a field added back.
+
+`lastSeenAt` was written, then removed. Presence is already answered on the World page *with its five-minute
+window stated*; repeating it per-stranger disclosed a timeline nobody asked for, and the test caught it.
+
+### `displayName` has never been writable
+
+Four call sites in the repository wrote it, all seeders. No `PUT` or `PATCH` on any user existed. So every
+account that came through registration has a null name and shows **an email address** beside every post it
+will ever write. `PATCH /users/me/display-name` — no id in the path, because an id is an invitation to a
+future copy-paste.
+
+### Three things that passed while measuring nothing
+
+**A fixture whose two sources agreed could not tell the FK from the name-join.** The first
+`ManagerIsVisibleOnAClubTest` fixture set the legacy `CTeam` name to the club's real name, so a name-join
+and a foreign-key read returned the same answer. Two mutations — swapping `managerOf` for a direct repository
+call, and then for the exact `User.cTeam.name == Team.name` join P0-18 was about — **both left all five tests
+green.** The fixture now points the legacy name at a club that does not exist; the name-join mutation then
+fails three tests. Two disagreeing sources are the only fixture that can tell them apart.
+
+**`ChangeRole`'s own test class could not be trusted for a missing `save`** — recorded in Phase 1, unchanged.
+
+**A substring assertion on a JSON body is a whitespace trap.** `""managerUserId":" + id` failed against a
+body that was entirely correct, because Jackson's pretty printer puts spaces around the colon. Now a
+regex: a body assertion has to be about the value, not about the serialiser.
+
+### A real bug, found by running it rather than by testing it
+
+The owner's row came back with **`football_team_id` null** on the first Phase 2 start, while the seeded second
+manager's was fine. Two boot-time initializers rewrite account rows — `StartupInitializer.updateExistingOwner`
+and `DatabaseInitializer.applyOwnerIdentity` — and **neither mentioned the new column**, so it went stale the
+moment anything else touched the row.
+
+This is a class of defect worth naming: **a method that rewrites an account silently drops every column it does
+not know about.** The FK work made it visible; it was there for any field added since 2026-09-28. Both
+initializers now set it, and `newLogicTeamFor` returns null rather than creating a club at boot — an
+initializer that builds the world to satisfy a foreign key is the thing `AGENTS.md` forbids.
+
+Verified by nulling both rows, restarting, and watching them come back:
+
+```
+ id | display_name | football_team_id        1 | Velja        |                1
+----+--------------+------------------        2 | Kecko        |                    <- repaired on first read
+```
+
+The second row was repaired by `ClubOwnershipLinker` reading it, which is the intended behaviour: the backfill
+is not a boot step, it happens the first time the account is looked at.
+
+### 18 tests, and four mutations that mattered
+
+| Mutation | Result |
+|---|---|
+| email leaks into the public profile (the exact P0-17 mistake) | `theEmailIsAbsentRatherThanGated` fails |
+| `displayName` honours a `userId` from the request body | `aUserIdInTheBodyIsIgnored` fails |
+| club profile resolves its manager through the name-join | **3 of 6** fail |
+| club profile emits manager fields for an AI-run club | `anAiRunClubSaysSo` fails |
+
+`theStandingsColumnsDidNotShift` exists because `LeagueTableDTO` is constructed positionally: three fields
+**inserted** after `points` rather than appended would have compiled cleanly and put points into
+goalDifference on every row, rendering a table that looked right and was wrong.
+
+### Not done, and recorded
+
+**No browser.** The markup was rendered from the served modules against the live payload — escaping
+verified with hostile display names in both renderers, manager link confirmed to carry its id — but the
+click handlers have not been driven. The save-name form and the ban prompt are untested by execution.
+
+
 ## `dafd6e9` — P2-20 Phase 1: the forum's foundation — a real FK, and a role that can be given to a person
 
 **Owner request, 2026-10-05. Phase 1 of six.** `ClubOwnershipLinker`, `UserRoles`, `ModerationService`,

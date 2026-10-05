@@ -1128,15 +1128,15 @@ between `User` and `Team`. See `kanbanProgress.md` for what was measured and wha
 - [x] Admin tab **Accounts** panel: role select, ban, lift ban, repair club links
 - [x] 51 tests across 5 classes, mutation-proven
 
-### Phase 2 — the user profile and the club → manager link
+### Phase 2 — DONE: the user profile and the club → manager link
 
-- [ ] `GET /users/{id}/profile` — name, role, club, league, country, post count. **No email** (that gate is
-      why the old chat needed admin-only fields)
-- [ ] A public profile page reusing the `renderUserProfile` skeleton
-- [ ] **"Managed by X"** on the club profile, the league table, and `TeamSummaryDTO`
-- [ ] **`displayName` becomes user-writable.** It never has been: 4 seeder writes, no endpoint, so every
-      self-registered manager shows an email address where a name belongs. The owner called his own profile
-      unfinished; this is the part of it that is
+- [x] `GET /users/{id}/profile` — name, role, club, league, country. **No email, no username, no last-seen**,
+      and not because they are gated: the DTO has no such field to gate
+- [x] `PATCH /users/me/display-name` — the field was never user-writable in the repository's history
+- [x] A public profile page, plus the moderator's ban action reached from it
+- [x] **"Managed by X"** on the club profile and on every league-table row
+- [x] **A real bug found and fixed here**: two boot-time initializers rewrote account rows without
+      mentioning the new key, so `football_team_id` came back null on the next start
 
 ### Phase 3 — notifications
 - [ ] `Notification` entity with a `(recipient, readAt)` index — **nothing of this shape exists today**

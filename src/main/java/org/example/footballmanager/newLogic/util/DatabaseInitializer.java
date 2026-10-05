@@ -822,6 +822,10 @@ public class DatabaseInitializer {
             user.setRole(UserRole.REGULAR);
             user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
             user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            // The club by id as well as by name (P2-20 Phase 1). Without it this account is one of
+            // the rows "Repair club links" exists for, and a fresh install ships with a seeded
+            // manager whose profile has no club.
+            user.setFootballTeam(sremac);
             user.setCountryCode(SEEDED_COUNTRY_CODE);
             userRepository.save(user);
             log.info("Kreiran korisnik '{}' sa timom {}", SECOND_EMAIL, SREMAC_TEAM_NAME);
@@ -829,6 +833,10 @@ public class DatabaseInitializer {
             User user = existing.get();
             user.setCTeam(csTeamNamed(SREMAC_TEAM_NAME));
             user.setTifoCTeam(csTeamNamed(SREMAC_TEAM_NAME));
+            // Same reason as the create branch above, and this is the branch that runs on an existing
+            // database: the owner's row came back with a null football_team_id for exactly this
+            // reason — a method that rewrites the account without mentioning the key.
+            user.setFootballTeam(sremac);
             user.setCountryCode(SEEDED_COUNTRY_CODE);
             if (user.getRole() == null) {
                 user.setRole(UserRole.REGULAR);
@@ -897,6 +905,15 @@ public class DatabaseInitializer {
                 });
         owner.setCTeam(csTeam);
         owner.setTifoCTeam(csTeam);
+        // The newLogic club by id, which is what every reader now uses (P2-20 Phase 1).
+        //
+        // <p>Set here because this method runs on a path that <b>wrote the owner back</b>: it is called
+        // from both branches of the owner setup, including the "already exists" one. Without this the
+        // column depended on somebody having run the repair by hand after the column was added —
+        // which is exactly what happened: the owner's row came back with a null
+        // {@code football_team_id} on the first Phase 2 start, while the seeded second manager's was
+        // fine because {@code createSecondUserIfNotExists} set it differently.
+        owner.setFootballTeam(ownerTeam);
     }
 
     private List<TacticsProfileSnapshot> snapshotTacticsProfiles() {

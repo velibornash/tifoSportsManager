@@ -28,6 +28,7 @@ public class StartupInitializer implements org.springframework.boot.CommandLineR
     private final org.example.footballtextmanager.repository.CSTeamRepository csTeamRepository;
     private final org.example.basketballmanager.repository.BbTeamRepository bbTeamRepository;
     private final org.example.americanfootballmanager.repository.AfTeamRepository afTeamRepository;
+    private final org.example.footballmanager.newLogic.repository.TeamRepository newLogicTeamRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Value("${app.owner.username:velibor@example.com}")
@@ -104,6 +105,10 @@ public class StartupInitializer implements org.springframework.boot.CommandLineR
         owner.setTifoCTeam(footballTeam);
         owner.setBasketballTeam(basketballTeam);
         owner.setAmericanFootballTeam(americanFootballTeam);
+        // A brand-new owner still gets the newLogic club by id. See updateExistingOwner for why this
+        // column has to be written here and not left to a repair: this class rewrites the owner on
+        // every boot, so a column it does not mention is a column that goes stale.
+        owner.setFootballTeam(newLogicTeamFor(footballTeamName));
         // The seeded owner plays in Serbia (owner, 2026-09-28), stated rather than derived - see the
         // note in DatabaseInitializer on why a null country is not a neutral default.
         owner.setCountryCode("SRB");
@@ -144,8 +149,38 @@ public class StartupInitializer implements org.springframework.boot.CommandLineR
         owner.setAmericanFootballTeam(americanFootballTeam);
         owner.setRole(org.example.commonmanager.model.UserRole.OWNER);
         owner.setPassword(passwordEncoder.encode(ownerPassword));
+        // The newLogic club by id, kept in step with the CTeam above (P2-20 Phase 1).
+        //
+        // <p>This method overwrites the owner row on every boot, so a column it does not mention goes
+        // stale. That is not hypothetical: the owner's football_team_id came back null on the first
+        // Phase 2 start, while the seeded second manager's was fine — because this is the path that
+        // rewrites the owner, and it knew nothing about the key every reader now uses. It is resolved
+        // by name here rather than by id because at this point in boot the club exists but the owner
+        // has no link to it; the name is the only thing both sides share. ClubOwnershipLinker owns
+        // every other read of this column.
+        owner.setFootballTeam(newLogicTeamFor(footballTeamName));
 
         userRepository.save(owner);
         log.info("Updated owner user '{}'", ownerUsername);
+    }
+
+    /**
+     * The newLogic club with this name, or null when there is not one yet.
+     *
+     * <p>Returns null rather than creating anything: at boot time the football pyramid may not exist,
+     * and an initializer that creates a club to satisfy a foreign key would be building the world as a
+     * side effect of starting the application. A null here is repaired by the Admin tab's "Repair club
+     * links", which is where every other repair lives.
+     */
+    private org.example.footballmanager.newLogic.model.Team newLogicTeamFor(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return newLogicTeamRepository.findAllByNameIgnoreCase(name.trim()).stream()
+                .filter(org.example.footballmanager.newLogic.model.Team::isHumanControlled)
+                .findFirst()
+                .orElseGet(() -> newLogicTeamRepository.findAllByNameIgnoreCase(name.trim()).stream()
+                        .findFirst()
+                        .orElse(null));
     }
 }
