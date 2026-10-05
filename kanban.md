@@ -624,6 +624,35 @@ buttons; the missing piece is a guard, not a code change.
 
 ---
 
+### P0-9b — FOUND IN PRODUCT CODE: `FinanceLedgerService.activeSeason` falls back to `Year.now()`
+
+**Seasons start at 1 and there is no calendar year anywhere.** This is the one place the product itself
+breaks that rule:
+
+```java
+private Integer activeSeason(Team team) {
+    GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
+    if (clock != null && clock.getCurrentSeason() != null) return clock.getCurrentSeason();
+    return Year.now().getValue();          // <-- 2026, used as a season
+}
+```
+
+**Why it matters beyond tidiness.** `summarise()` reads the ledger for that season, and
+`TransferBudgetService` grants a club's transfer budget *from settled ledger income*. So with no
+`GameClock`, every club is assessed on **season 2026** while the game settles season 1 — income that was
+really earned becomes invisible, and the club is refused with "No settled income yet".
+
+This is the mechanism behind the red tests in P0-2. It is **not fixed here**, because the correct fallback is
+an owner decision: with no clock there is no season, so arguably nothing has been settled and the honest
+answer is a refusal — which matches `TransferBudgetService`'s own existing reasoning ("a club in its first
+week has not been given anything yet"). Changing it alters affordability for every clockless club.
+
+- [ ] Owner decides the fallback: **`null` → no season, no settled income** (recommended), or a fixed `1`
+- [ ] Whichever is chosen, `PlayerContractServiceTest.signingMovesThePlayerToTheClub` and the negotiation
+      affordability path become satisfiable, and both are asserted with the reason attached
+
+---
+
 ### P0-9 — DONE, and it found three tests that were asserting a calendar assumption
 
 Seasons run **1, 2, 3 …** and there is no calendar year anywhere. Four test classes passed one anyway.

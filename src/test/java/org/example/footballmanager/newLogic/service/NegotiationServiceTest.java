@@ -1,5 +1,8 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.model.OfferStatus;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.SquadRole;
@@ -39,6 +42,9 @@ class NegotiationServiceTest {
     @Autowired TransferOfferRepository offers;
     @Autowired org.example.footballmanager.newLogic.repository.PlayerRepository players;
     @Autowired org.example.footballmanager.newLogic.repository.TeamRepository teams;
+    @Autowired CompetitionRepository competitions;
+    @Autowired WeeklyFinanceService finances;
+    @Autowired TransferBudgetService budgets;
     @Autowired TransferRepository transfers;
     @Autowired NegotiationService negotiation;
     @Autowired PlayerContractService contracts;
@@ -71,9 +77,37 @@ class NegotiationServiceTest {
         clockRepository.save(clock);
     }
 
+    private Competition aLeague() {
+        Competition competition = new Competition();
+        competition.setName("ZZ Negotiation league " + System.nanoTime());
+        competition.setType(CompetitionType.LEAGUE);
+        competition.setTier(1);
+        competition.setReputationWeight(20);
+        return competitions.save(competition);
+    }
+
+    /**
+     * Settles a week so the club actually has a transfer budget, the way the game grants one.
+     *
+     * <p>Cash on its own does nothing. {@code TransferBudgetService} deliberately refuses to read the
+     * balance -- "a club with EUR20m in the bank has not got EUR20m to spend" -- and derives the
+     * board's grant from settled income less wages and a reserve, capped at half the cash. So a
+     * buyer that looks rich and has played no week is refused, correctly, with the reason
+     * "No settled income yet".
+     */
+    private Team withTransferBudget(Team club) {
+        finances.applyWeeklyFinances(club, 1, 1);
+        return club;
+    }
+
     private Team aClub(String name, double budget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
+        // A club is a team with a competition. Without one this fixture is not a club but a shape
+        // the game does not have, and it silently breaks affordability: TransferBudgetService grants
+        // its budget from *settled ledger income*, never from the cash balance, so a team with no
+        // league is granted nothing however rich it looks.
+        t.setCompetition(aLeague());
         t.setBudget(budget);
         t.setReputation(70.0);
         Stadium s = new Stadium();
@@ -236,9 +270,16 @@ class NegotiationServiceTest {
     void sellerChoosesAndOtherOffersSurvive() {
         inWindow();
         Team seller = aClub("ChoosingSeller", 1_000_000);
-        Team buyerA = aClub("BidderA", 30_000_000);
-        Team buyerB = aClub("BidderB", 30_000_000);
+        Team buyerA = withTransferBudget(aClub("BidderA", 30_000_000));
+        Team buyerB = withTransferBudget(aClub("BidderB", 30_000_000));
+
         Player p = aPlayer(seller, "Auctioned", 5_000_000, 14_000);
+        // Named, so that a future break reports "no budget was granted" rather than the far less
+        // useful "expected ACCEPTED but was OPEN" -- which is what this test said for weeks while
+        // the refusal was correct and the fixture was not.
+        assertTrue(budgets.canAfford(buyerA.getId(), p.getId()).affordable(),
+                "BidderA must be able to afford the bid before the seller can accept it: "
+                        + budgets.canAfford(buyerA.getId(), p.getId()).reason());
         contracts.assignToClub(p, seller, 1, SquadRole.STARTER);
         Transfer listing = aListing(seller, p);
 
