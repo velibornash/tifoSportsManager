@@ -29,22 +29,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@code /lineups} carried no authorization at all.
+ * Squad sheets are read-only here.
  *
- * <p><b>Four mappings and not one guard.</b> Every other privileged surface in the game states a rule —
- * {@code @PreAuthorize} for the administrator routes, {@code PlusFeatureService.isOwnTeam} for "this is my
- * club" — and {@code LineupController} stated neither. The consequence was concrete: any logged-in manager
- * could {@code POST} a lineup onto <b>any</b> club in the world, and {@code DELETE /lineups/{id}} any
- * lineup he could name an id for. With 14,880 clubs that is every club in every country.
+ * <p><b>This controller used to be writable and wide open</b> — four mappings, not one guard, so any
+ * logged-in manager could file a lineup onto any club in the world and delete any lineup he could name an id
+ * for. P0-1a closed that, and in doing so found that {@code POST /lineups} had <b>never accepted a request
+ * body at all</b>: it took the raw {@code Lineup} entity, which Jackson cannot deserialise, so every caller
+ * got {@code HttpMediaTypeNotSupportedException} before the controller was entered.
  *
- * <p><b>What this asserts, and why a 403 is the right answer rather than a 404.</b> The rule the game already
- * applies everywhere else is "yours or an administrator's". A caller with no club and no claim on the row is
- * refused with 403; he is not told whether the id exists, because an existence oracle is a smaller version of
- * the same hole.
+ * <p><b>Both writes are now deleted</b>, on the owner's decision. Neither had a frontend caller: the game
+ * files a squad sheet through {@code TeamController}'s {@code lineup-template}, so the duplication was the
+ * problem rather than the routes' existence. The reads stay, because they are reached.
  *
- * <p><b>These tests were written to fail.</b> The three role tests below were run against the code as it stood
- * and every one of them answered 200 — a manager rewrote a rival's lineup and deleted it. The 403 is now the
- * product's behaviour and the proof is that the same three tests fail again if the guard is removed.
+ * <p>What remains is therefore the smaller half of the original surface, and it is asserted as before —
+ * anonymous callers refused, and a manager can read. The guarantee that survives is the one that was always
+ * true: <b>who is in a rival's eleven is a league-table fact</b>, so reads are open to any manager.
  */
 @Import(ControllerAuthFixture.class)
 class LineupAuthorizationTest extends BaseTest {
@@ -127,83 +126,14 @@ class LineupAuthorizationTest extends BaseTest {
                 .andReturn().getResponse().getStatus());
     }
 
-    @Test
-    @DisplayName("an anonymous caller cannot create a lineup")
-    void anAnonymousCallerCannotCreate() throws Exception {
-        assertRefused(mockMvc.perform(post("/lineups")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(lineupBodyFor(rivalClub)))
-                .andReturn().getResponse().getStatus());
-    }
 
-    @Test
-    @DisplayName("an anonymous caller cannot delete a lineup")
-    void anAnonymousCallerCannotDelete() throws Exception {
-        assertRefused(mockMvc.perform(delete("/lineups/{id}", rivalsLineup.getId()))
-                .andReturn().getResponse().getStatus());
-    }
 
     // ── The hole: a manager rewriting and deleting a rival's lineup ───────────────────────────────────
 
-    @Test
-    @Transactional
-    @DisplayName("a manager cannot put a lineup on another club")
-    void aManagerCannotCreateForAnotherClub() throws Exception {
-        long before = lineups.count();
 
-        mockMvc.perform(post("/lineups")
-                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(lineupBodyFor(rivalClub)))
-                .andExpect(status().isForbidden());
-
-        // **The count, not the status.** A 403 proves the filter chain answered; it does not prove nothing
-        // was written. This codebase's standing failure is code that reports success while doing nothing, and
-        // the only version of this test that survives it is the one that looks in the database.
-        assertEquals(before, lineups.count(),
-                "a refused create still wrote a lineup");
-    }
-
-    @Test
-    @Transactional
-    @DisplayName("a manager cannot delete another club's lineup")
-    void aManagerCannotDeleteAnotherClub() throws Exception {
-        long id = rivalsLineup.getId();
-
-        mockMvc.perform(delete("/lineups/{id}", id)
-                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
-                .andExpect(status().isForbidden());
-
-        assertTrue(lineups.findById(id).isPresent(),
-                "a refused delete still removed the lineup");
-    }
 
     // ── The guard is a narrowing, not a lockout ───────────────────────────────────────────────────────
 
-    /**
-     * The route can accept a body at all.
-     *
-     * <p>This is the assertion that would have caught the real defect. {@code POST /lineups} took the raw
-     * {@code Lineup} entity, and Jackson cannot deserialise that graph — every caller, including an
-     * administrator, got {@code HttpMediaTypeNotSupportedException} before the controller was entered. A test
-     * that only asserted 403 would have been green throughout, because a route that cannot bind refuses
-     * everyone equally.
-     */
-    @Test
-    @Transactional
-    @DisplayName("a manager can file a squad sheet for his own club, and it is stored")
-    void aManagerCanFileHisOwnSquadSheet() throws Exception {
-        long before = lineups.count();
-
-        mockMvc.perform(post("/lineups")
-                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(lineupBodyFor(myClub)))
-                .andExpect(status().isOk());
-
-        assertEquals(before + 1, lineups.count(),
-                "his own create reported success and nothing was stored");
-    }
 
     @Test
     @DisplayName("a manager can still read lineups")
@@ -213,36 +143,7 @@ class LineupAuthorizationTest extends BaseTest {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    @Transactional
-    @DisplayName("a manager can still delete his own club's lineup")
-    void aManagerCanStillDeleteHisOwn() throws Exception {
-        Lineup mine = new Lineup();
-        mine.setTeam(myClub);
-        mine.setFormation("4-3-3");
-        mine = lineups.save(mine);
 
-        mockMvc.perform(delete("/lineups/{id}", mine.getId())
-                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
-                .andExpect(status().isNoContent());
-
-        assertTrue(lineups.findById(mine.getId()).isEmpty(),
-                "his own delete reported success but the lineup is still there");
-    }
-
-    @Test
-    @Transactional
-    @DisplayName("an administrator is not locked out of his own game")
-    void anAdministratorIsNotLockedOut() throws Exception {
-        long id = rivalsLineup.getId();
-
-        mockMvc.perform(delete("/lineups/{id}", id)
-                        .header("Authorization", auth.bearer(UserRole.OWNER)))
-                .andExpect(status().isNoContent());
-
-        assertTrue(lineups.findById(id).isEmpty(),
-                "the administrator's delete reported success but the lineup is still there");
-    }
 
 /**
      * A body that binds, whatever the guard decides.
