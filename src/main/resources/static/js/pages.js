@@ -1,12 +1,12 @@
 ﻿// pages.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
-import { createCommunityFeature } from './pages/features/community.js';
+import { createForumView } from './pages/views/forum-view.js';
 import {
     htmlEscape, formatBudget, formatGoalDiff, buildEmptyState, buildErrorState, formatPercent,
     parseMatchDate, getImageFilename, formatMilestoneAttendanceValue,
@@ -348,16 +348,11 @@ function buildPageNavState(page, options = {}) {
         loadPlayer: (...args) => loadPlayer(...args),
         loadLeagueTeamPlayer: (...args) => loadLeagueTeamPlayer(...args),
     });
-    const communityFeature = createCommunityFeature({
+    // The forum. Replaces `createCommunityFeature`, whose `forum`, `chat` and `events` routes all
+    // rendered the same screen (community.js:314-320) - the forum route pointed at a chat.
+    const forumView = createForumView({
         authFetch,
-        getTeamId: () => currentUserTeamId,
-        getTeamName: () => currentUserTeamName,
         getUsername: () => currentUsername,
-        getUserRole: () => currentUserRole,
-        escapeHtml,
-        formatDateTimeLabel,
-        buildCommunityActionsHtml,
-        loadLeagueTeam: (...args) => loadLeagueTeam(...args),
     });
 
     const matchView = createMatchView({
@@ -595,17 +590,22 @@ function buildPageNavState(page, options = {}) {
 	                    break;
 
                 // COMMUNITY
+                case "messages":
+                    return loadMessages();
+
                 case "forum":
                     await loadForum();
                     break;
 
-                case "chat":
-                    await loadChat();
+                // One section of the forum. The section travels in the page name rather than as an
+                // option because the Back button and the pager both rebuild the route from the DOM,
+                // and a string there is one less thing that can go missing.
+                case "forumSection":
+                    await loadForumSection((options.section || 'TIFO').toUpperCase());
                     break;
 
-                case "events":
-                    await loadEvents();
-                    break;
+                case "forumTopic":
+                    return loadForumTopic(options.topicId);
 
                 // ADMIN (menu entry is role-gated; the view guards itself too)
                 case "admin":
@@ -1067,15 +1067,25 @@ function buildPageNavState(page, options = {}) {
     }
 
     async function loadForum() {
-        return communityFeature.loadForum();
+        return forumView.loadForum();
+    }
+    async function loadForumSection(section) {
+        return forumView.loadForumSection(section);
+    }
+    async function loadForumTopic(topicId) {
+        return forumView.loadForumTopic(topicId);
     }
 
-    async function loadChat() {
-        return communityFeature.loadChat();
-    }
-
-    async function loadEvents() {
-        return communityFeature.loadEvents();
+    /**
+     * Private messages, and the section of the forum that opens a topic.
+     *
+     * <p>Named after the screen rather than the feature. The old `loadChat` and `loadEvents` delegates are
+     * gone with `createCommunityFeature`: both were `return loadChat()` inside that module, so a console
+     * `loadPage('events')` rendered a chat. Phase 5 replaces this with the real inbox; until then a
+     * console call to `loadPage('chat')` lands on "Page not found", which is honest about what exists.
+     */
+    async function loadMessages() {
+        return loadForum();
     }
 
     async function loadAnalytics() {
@@ -1225,9 +1235,11 @@ function buildPageNavState(page, options = {}) {
     window.renderLeagueMatches = renderLeagueMatches;
     window.loadCup = loadCup;
     window.loadInternational = loadInternational;
+    window.loadMessages = loadMessages;
     window.loadForum = loadForum;
-    window.loadChat = loadChat;
-    window.loadEvents = loadEvents;
+    window.loadForumSection = loadForumSection;
+    window.loadForumTopic = loadForumTopic;
+    window.openForumTopic = (topicId) => loadPage('forumTopic', { topicId });
     window.loadPlayerStats = loadPlayerStats;
     window.loadTopScorersAndAssists = loadTopScorersAndAssists;
     window.loadAnalytics = loadAnalytics;

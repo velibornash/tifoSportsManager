@@ -4990,3 +4990,161 @@ body {
     font-size: 0.88rem;
     text-align: center;
 }
+
+/*
+ * The forum (owner, 2026-10-05).
+ *
+ * <p>Built on the detail-row and panel vocabulary already in this file so a thread reads as part of the
+ * club area rather than a separate application: same surface, same border, same radius, same type ramp.
+ *
+ * <p>The deleted-post style is deliberately legible rather than hidden. A deleted post keeps its place in
+ * the thread so the replies under it still make sense, and hiding it would leave a gap with no
+ * explanation — which reads as a bug rather than as a decision.
+ */
+
+.forum-topic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.forum-topic-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.forum-topic-title {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: #eef4ff;
+    cursor: pointer;
+    text-align: left;
+}
+
+.forum-topic-title:hover,
+.forum-topic-title:focus-visible {
+    color: #7fd0ff;
+    text-decoration: underline;
+}
+
+.forum-topic-title:focus-visible {
+    outline: 2px solid #7fd0ff;
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+.forum-topic-meta {
+    margin-top: 3px;
+    color: #99a6bb;
+    font-size: 0.8rem;
+}
+
+.forum-topic-section {
+    flex-shrink: 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(127, 208, 255, 0.12);
+    color: #7fd0ff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.forum-post {
+    padding: 14px;
+    margin-bottom: 10px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.forum-post.is-deleted {
+    background: rgba(255, 255, 255, 0.02);
+    border-style: dashed;
+}
+
+.forum-post-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.forum-post-author {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: #7fd0ff;
+    cursor: pointer;
+}
+
+.forum-post-author:hover,
+.forum-post-author:focus-visible {
+    text-decoration: underline;
+}
+
+.forum-post-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: 12px;
+}
+
+/*
+ * The "edited" tag. A moderator's edit says so explicitly: a manager whose words were changed under
+ * him has to be able to tell, or the forum is a place where things get quietly rewritten.
+ */
+.forum-edited-tag {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 193, 87, 0.14);
+    color: #ffc157;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.forum-post-body {
+    color: #eef4ff;
+    font-size: 0.93rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.forum-post-deleted {
+    margin: 0;
+    color: #99a6bb;
+    font-size: 0.88rem;
+    font-style: italic;
+}
+
+.forum-pager {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 14px;
+}
+
+.fm-field-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #99a6bb;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}

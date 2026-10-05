@@ -1146,10 +1146,15 @@ between `User` and `Team`. See `kanbanProgress.md` for what was measured and wha
 - [x] Ticker rewired off the dead `/community/summary`
 - [x] Marking read is scoped **inside** the query, so somebody else's notification is a 404
 
-### Phase 4 — the forum
-- [ ] `ForumSection` (`TIFO`, `GENERAL`), `ForumTopic`, `ForumPost` with `editedAt` and `deletedAt`
-- [ ] Ban enforced in `ForumService`, not the controller — a ban enforced by one endpoint is bypassed by the next
-- [ ] Old-school thread view, "Load more"
+### Phase 4 — DONE: the forum
+
+- [x] `ForumSection` (`TIFO`, `GENERAL`), `ForumTopic`, `ForumPost` with `editedAt`, `deletedAt` and `editedByUserId`
+- [x] Ban enforced in `ForumService`, not the controller — a ban enforced by one endpoint is bypassed by the next
+- [x] Old-school thread view, paging, "edited" and "edited by a moderator" tags
+- [x] Delete is **soft** — the row stays so the replies underneath still make sense
+- [x] A moderator may edit and delete **anybody's** message, the owner's included
+- [x] Three indexes, verified created
+- [x] 33 tests, 4 mutations proven
 
 ### Phase 5 — private messages
 - [ ] `MessageThread`, `DirectMessage`; a first message creates the thread, replies append

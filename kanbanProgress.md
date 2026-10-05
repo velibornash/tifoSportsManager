@@ -2,6 +2,104 @@
 
 ---
 
+## P2-20 Phase 4 — the forum: an old-school one, with the ban and the moderator tools
+
+`forum`, `chat` and `events` were three routes in `pages.js` and one screen — `community.js:314-320` made
+all three `return loadChat()`. There was no forum. The `forum` route the menu already pointed at now renders
+a real one.
+
+### Delete is soft, and that was a decision rather than an omission
+
+The owner asked for "anyone can delete their own message". Taken literally that breaks every reply
+underneath: the thread has a gap where a message used to be, and a reader who quoted it is quoting
+something that no longer exists. So a deleted post's body becomes `null`, `deletedAt` is set, and **the row
+stays**. On a forum "he deleted that" is information, and a forum that erases it is a place where nobody
+can be held to what they wrote.
+
+The topic's `postCount` deliberately does **not** drop: a deleted post is still a position in the thread, so
+lowering the counter would make it disagree with the number of posts a reader sees. Two counts are sent per
+topic — `postCount` (stored) and `actualPostCount` (counted) — because when they disagree that is a bug in
+the denormalisation, and a response carrying both is one a test can assert on.
+
+### The ban is enforced in the service, not the controller
+
+A ban checked by the controller holds for exactly the routes that controller has, and the forum has three
+writers. Enforced in `createTopic`/`createPost` it holds for every caller including a future one. The refusal
+carries the reason and the days left, because "you are banned" without either is the version that produces a
+support ticket.
+
+Reading is untouched, and `aBannedManagerCanStillRead` says so explicitly. Silencing somebody from the
+discussion is not the same as silencing them from knowing what was said.
+
+### A rule I added that contradicted the instruction
+
+The first `requireMayModify` refused a moderator when the post belonged to another moderator, reasoned from
+`ModerationService` where a MOD cannot ban a colleague. **Running it caught it**: a MOD was refused when
+editing the owner's own post — precisely the case the owner asked for. A post edit is reversible and leaves a
+visible tag; a ban is neither. So the moderator-on-moderator protection lives in `ModerationService` and the
+test now asserts a MOD *may* delete the owner's post.
+
+### "edited by a moderator" was a fact about the reader, not the post
+
+The first version computed `editedByModerator` from the *viewer* — `isEdited && !own && mayModerate(viewer)`.
+That told the author he had edited his own words, and told a moderator it was a moderator's. The tag has to be
+the same for everybody, so `ForumPost.editedByUserId` records who last touched it and the flag is derived
+from that. `aModeratorCanEditAnybody` asserts the author sees `true`, and that he can still edit — a
+moderator correcting a typo does not transfer ownership of the post.
+
+### A javadoc that claimed a bug I could not demonstrate
+
+`ForumTopic.posts` was first written `cascade = ALL, orphanRemoval = true` over an eagerly initialised
+`new ArrayList<>()`, with a comment saying that deleting one post would delete every sibling. I wrote that
+from how the mapping is documented to behave, then tried to prove it: restoring both the cascade and the
+orphan removal left **all 33 tests green**, and a probe that deletes one post, forces a flush and re-counts
+found three rows either way.
+
+So the claim was wrong and I rewrote it. The mapping is still without a cascade, because nothing deletes a
+topic anywhere and the association is never read — but the comment now says that, instead of asserting a
+data-loss bug that this application does not have. `the replies survive the flush` test now flushes and clears
+explicitly, because counting inside the same transaction genuinely cannot see commit-time damage, which is
+the one part of the original reasoning that was sound.
+
+### A test crying wolf
+
+`deletingYourOwnPostIsSoft` counted posts with `posts.countByTopicId(post.getId())` — the **post** id, not
+the topic's. It answered 0, with the message "the row was hard-deleted, so every reply underneath now points
+at a gap". The assertion was right about the risk it guards and wrong about the query it used, and a failing
+test that cries wolf gets ignored rather than fixed.
+
+`forumStatsFor` and one repository method also had to change shape: Spring Data parses `AuthorUserId` as
+"the author's property called userId", which fails at **bean creation** — so a wrong derived query takes every
+test in the application down, not just its own.
+
+### 33 tests, 4 mutations proven
+
+| Mutation | Result |
+|---|---|
+| Forum write ban not enforced | **2 failures** |
+| Any manager may edit/delete any post | `youCannotEditAnotherPost` fails |
+| A deleted post's body still sent over the wire | `aDeletedBodyIsNeverSent` fails |
+| Topic author pre-seeded into the notify set, so nobody is told | `aReplyNotifiesTheAuthor` fails |
+
+The fourth was a real bug, not a mutation: the loop seeded `alreadyTold` with the topic's author to avoid a
+duplicate, and then skipped him entirely because his own `add` reported him as already-seen. **The person
+who opened the thread is exactly the one who must hear that somebody answered it.**
+
+### Verified against the running application
+
+A topic opened, three posts, a self-reply (0 notifications), a reply from a second manager (1 notification,
+pointing at the topic), a cross-manager edit refused, an own edit flagged, a soft delete, a five-day ban
+refusing both writes while leaving three posts readable, a MOD appointed through the admin endpoint and a
+moderator edit of the owner's post landing with `editedByModerator: true`.
+
+Three indexes confirmed created. Forum markup rendered from the served module against the live payload;
+hostile titles and bodies escaped in both renderers, and confirmed non-vacuous by re-rendering with a
+no-op escaper.
+
+**Not done: no browser.** The three screens, the reply form, the edit-in-place box and the delete prompt
+have not been driven by a click.
+
+
 ## P2-20 Phase 3 — the notification store, built because there was nothing to extend
 
 Owner decision, 2026-10-05. A notification system that did not exist: no entity, no table, no service.
