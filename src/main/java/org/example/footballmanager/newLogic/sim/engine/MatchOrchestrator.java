@@ -10,6 +10,7 @@ import org.example.footballmanager.newLogic.sim.restarts.RestartManager;
 import org.example.footballmanager.newLogic.sim.rules.OffsideService;
 import org.example.footballmanager.newLogic.sim.engine.EngineInterfaces.OffsideService.OffsideResult;
 import org.example.footballmanager.newLogic.sim.rules.VARService;
+import org.example.footballmanager.newLogic.sim.tactics.SideTactics;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
@@ -182,6 +183,17 @@ public class MatchOrchestrator {
     }
 
     public MatchOrchestrator(MatchState state, TacticsRules tactics) {
+        this(state, new SideTactics(tactics));
+    }
+
+    /**
+     * Each side is shaped by its own club's tactics.
+     *
+     * <p>The single-rules constructor delegates, so every existing caller keeps the behaviour it had — which
+     * is the point: a match where both clubs share one grid is still expressible, it is simply no longer the
+     * only thing this class can do.
+     */
+    public MatchOrchestrator(MatchState state, SideTactics tactics) {
         this.state = state;
         this.actionLog = new ActionLogService(state, eventLog);
         this.decisionEngine = new CleanDecisionEngine();

@@ -117,16 +117,28 @@ public class SimMatchService {
         // and an unparseable profile were all swallowed into the same silent null, the fallback export
         // looked like it working.
         //
-        // The HOME side carries its authored shape and the away side is mirrored from it, which is what
-        // TacticsRules has always done. Giving the away club its own shape is a separate change — it
-        // needs a second rules object and a decision about perspective — and is not smuggled in here.
+        // Both sides now carry their own authored shape. The perspective decision that used to be
+        // outstanding turned out to be already made, and made consistently: the editor has a single frame,
+        // every club's grid is stored in it, and the mirror is applied at lookup by the side asking.
         // Injury risk follows the kind of match. Fatigue does not: a practice match costs exactly what
         // a league match costs, because the player still played ninety minutes.
         InjuryService.setRiskMultiplier(fixture == null
                 ? 1.0 : fixture.resolvedMatchType().injuryRisk());
+        // **Each club's own tactics, for the first time.**
+        //
+        // This loaded only the home club's grid and handed it to the whole match, so the away side was
+        // resolved against the home side's vocabulary: a 4-3-3 visitor asked a 4-4-2's rules about
+        // CM / WL / WR / ST, and every one of those players silently fell back to his own formation's
+        // anchor. Two clubs, one shape.
+        //
+        // No mirror is applied here and none is needed: the editor has a single frame, every club's grid is
+        // stored in it, and TacticalPerspectiveTransformer applies the mirror once at lookup, keyed on the
+        // side asking. Selecting the right object per side is the whole of the fix.
         var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
                 homeSquad, awaySquad, homeBench, awayBench,
-                tacticsRules.forTeam(homeTeam.getId()));
+                new org.example.footballmanager.newLogic.sim.tactics.SideTactics(
+                        tacticsRules.forTeam(homeTeam.getId()),
+                        tacticsRules.forTeam(awayTeam.getId())));
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         persistMatchCondition(orchestrator.getState());
         // Whatever happens next, the next match is a competitive one unless it says otherwise.

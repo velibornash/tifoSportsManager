@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.sim.engine;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 import org.example.footballmanager.newLogic.sim.model.Position;
+import org.example.footballmanager.newLogic.sim.tactics.SideTactics;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 
@@ -27,7 +28,7 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
      */
     public class TacticalIntentEngine {
 
-    private final TacticsRules tactics;
+    private final SideTactics tactics;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     /** How far inside his own half a player must stand at kickoff (7 m). */
@@ -39,6 +40,11 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     private static final double RESTART_CLEAR_PUSH = 0.9;
 
     public TacticalIntentEngine(TacticsRules tactics) {
+        this(new SideTactics(tactics));
+    }
+
+    /** Each side is shaped by its own vocabulary. The single-rules constructor delegates and is unchanged. */
+    public TacticalIntentEngine(SideTactics tactics) {
         this.tactics = tactics;
     }
 
@@ -76,7 +82,7 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
             // never narrowed the angle and never came out.
             Position desired = p.isGoalkeeper()
                     ? goalkeeperEngine.targetPosition(state, p)
-                    : tactics.desiredCell(
+                    : tactics.forPlayer(p).desiredCell(
                             p.getRole(), state.getBall().getPosition(), p.getTeam(), possessionTeam,
                             // No derived block while the kickoff hold is on: a kickoff is a placement,
                             // not a shape to walk to, and the live block would drag a safely-placed
@@ -168,7 +174,7 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     public void placeOnOwnHalf(MatchState state, Position centerSpot) {
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
-            Position desired = tactics.desiredCell(p.getRole(), centerSpot, p.getTeam());
+            Position desired = tactics.forPlayer(p).desiredCell(p.getRole(), centerSpot, p.getTeam());
             playableOwnHalf(desired, p.getTeam(), p);
         }
     }

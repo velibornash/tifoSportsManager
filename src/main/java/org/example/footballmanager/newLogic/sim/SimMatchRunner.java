@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.sim;
 import org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator;
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
+import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.sim.util.SimTeamFactory;
 
 import java.util.List;
@@ -41,7 +42,9 @@ public final class SimMatchRunner {
     public static MatchOrchestrator run(String homeName, String awayName, int ticks,
                                         List<Player> homeSquad, List<Player> awaySquad,
                                         List<Player> homeBench, List<Player> awayBench) {
-        return run(homeName, awayName, ticks, homeSquad, awaySquad, homeBench, awayBench, null);
+        // Cast, because the two eight-argument overloads make a bare null ambiguous.
+        return run(homeName, awayName, ticks, homeSquad, awaySquad, homeBench, awayBench,
+                (TacticsRules) null);
     }
 
     /**
@@ -61,6 +64,24 @@ public final class SimMatchRunner {
                                         List<Player> homeSquad, List<Player> awaySquad,
                                         List<Player> homeBench, List<Player> awayBench,
                                         org.example.footballmanager.newLogic.sim.tactics.TacticsRules tactics) {
+        return run(homeName, awayName, ticks, homeSquad, awaySquad, homeBench, awayBench,
+                new org.example.footballmanager.newLogic.sim.tactics.SideTactics(tactics));
+    }
+
+    /**
+     * Runs a full match with <b>each club's own</b> tactics (owner, 2026-10-03).
+     *
+     * <p>This is the overload the game path uses. The previous one took a single grid and every player —
+     * home and away — was shaped by it, so a 4-3-3 visitor was resolved against the home 4-4-2's vocabulary
+     * and asked about roles that grid never names.
+     *
+     * <p>The single-grid overload is kept and delegates, so every launcher, diagnostic and exporter keeps
+     * producing exactly the football it always did.
+     */
+    public static MatchOrchestrator run(String homeName, String awayName, int ticks,
+                                        List<Player> homeSquad, List<Player> awaySquad,
+                                        List<Player> homeBench, List<Player> awayBench,
+                                        org.example.footballmanager.newLogic.sim.tactics.SideTactics tactics) {
         MatchState state = new MatchState();
         boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
         boolean awayReal = awaySquad != null && awaySquad.size() >= 11;

@@ -468,25 +468,43 @@ Rewrite each to assert a guarantee the product actually makes.
 
 ---
 
-### P0-3 — The away side plays the home club's shape
+### P0-3 — DONE: each side plays its own shape
 
-**The defect:** `SimMatchService` builds one `TacticsRules` — the home club's — and hands it to
-`MatchOrchestrator`, `RestartManager` and `TacticalIntentEngine`. Since `abef6a2` a club's own formation
-decides its own role keys, so **a 4-3-3 side facing a 4-4-2's rules asks about `CM`, `WL`, `WR` and
-`ST`, which those rules do not name.**
+**`SideTactics`, 6 tests, mutation-proven, 26 green with the engine and tactics suites.**
 
-**What is already done, do not redo it:** `1420306` made the miss path safe. A role the tactic does not
-name now returns null, and every caller falls back to the player's own position, which `RealSquadFactory`
-has already placed from his formation. Before that, every unmentioned outfielder was sent to the same
-hardcoded cell `(1.5, 3.5)` — nine players on one square metre.
+**The board had this backwards, and it mattered.** It said *"the perspective question is the actual design
+problem here, not the plumbing"*. The perspective question was **already made, and made consistently**:
 
-**Exit criteria:**
-- [ ] Each side carries its own rules, authored in **its own perspective** — the perspective question is
-      the actual design problem here, not the plumbing
-- [ ] A test simulates **4-4-2 home vs 4-3-3 away** and asserts both sides are positioned from their own
-      profile
-- [ ] The test is proven able to fail by collapsing both sides onto one `TacticsRules` and watching it
-- [ ] Replay of that match shows two different shapes
+- `TacticalPerspectiveTransformer` is purely geometric and its contract is explicit — *"HOME: direct. AWAY:
+  mirror both axes"* — with a comment recording a bug already found **and fixed** there (the column mirror was
+  `7-c` instead of `8-c`, which pushed away's right-sided players outside the touchline).
+- **Every call site already passes the player's side** — `RestartManager:161,230,318` and
+  `TacticalIntentEngine:171` all call `desiredCell(role, ball, p.getTeam())`.
+- The editor has **one frame**, with no per-side awareness at all.
+
+So the capability was built and unused. **The defect was that one grid was loaded** —
+`tacticsRules.forTeam(homeTeam.getId())` — and handed to the whole match, so the away side was resolved
+against the home club's vocabulary: a 4-3-3 visitor asked a 4-4-2's grid about `CM`, `WL`, `WR` and `ST`.
+
+**No mirror was added, deliberately.** Every club's grid is stored in the same home-perspective frame and the
+mirror is applied once at lookup, keyed on the side asking. Mirroring in `SideTactics` would mirror **twice**
+and put the away shape in the wrong corners — which is the bug the transformer's own javadoc records.
+
+**Additive, so nothing existing changed.** `SideTactics` selects by side and falls back to home; every
+single-grid constructor (`RestartManager`, `TacticalIntentEngine`, `MatchOrchestrator`, `SimMatchRunner.run`)
+is kept and delegates. One grid for both sides still works, a missing away grid falls back, an unrecognised
+side falls back — each asserted, because a change that only works when both clubs have profiles would be a
+change that stops half the world playing football.
+
+**Why the defect was invisible and survivable.** `1420306` made an unnamed role return null so a player holds
+his own shape instead of being sent to one hardcoded cell. That prevented a crash and **also hid this**: a
+4-3-3 visitor "worked" — he just played no shape at all. The test now asserts a role from the *other* grid is
+**not answered**, which is the distinction between "holds his shape" and "plays his shape".
+
+**One product question left, and it is not a blocker:** the away manager authors his grid on a pitch drawn
+from the home side, so his right winger sits on the left of his own screen. Self-consistent, and the mirror
+makes it right on the pitch — but it reads oddly to the person drawing it. Cosmetic legibility, not
+correctness.
 
 ---
 
