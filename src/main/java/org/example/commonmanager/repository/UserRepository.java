@@ -41,6 +41,29 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findAllByIdNotOrderByUsernameAsc(Long id);
 
+    /**
+     * Every account that manages a given newLogic club, read through the real foreign key.
+     *
+     * <p>The reverse direction of {@code User.footballTeam}, and the one a club profile needs to answer
+     * "who runs this team". Returns a list rather than an {@code Optional} for the same reason
+     * {@code TeamRepository.findAllByNameIgnoreCase} does: two accounts pointing at one club should not
+     * happen, and a query that throws when it does is a query that has to be wrapped in a try.
+     */
+    List<User> findAllByFootballTeamId(Long footballTeamId);
+
+    /**
+     * Accounts with a club name but no resolved id — the rows {@code ClubOwnershipLinker.backfillAll}
+     * repairs.
+     */
+    List<User> findAllByFootballTeamIsNull();
+
+    /**
+     * @deprecated Reads {@code u.tifoCTeam.id}, which is a {@code CTeam} id, and is compared against
+     * {@code Team.getId()} by {@code TransferService}. That comparison is wrong — the two entities have
+     * independent {@code IDENTITY} sequences. Kept only so the migration can be measured; use
+     * {@code User.footballTeam.id} instead.
+     */
+    @Deprecated
     @Query("SELECT DISTINCT u.tifoCTeam.id FROM CommonUser u WHERE u.tifoCTeam IS NOT NULL")
     List<Long> findDistinctManagedTeamIds();
 }

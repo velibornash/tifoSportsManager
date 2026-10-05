@@ -171,6 +171,10 @@ public class RegistrationService {
                 ? request.getCountryCode()
                 : team.getCountry() != null ? team.getCountry().getIsoCode() : null);
         user.setCTeam(club);
+        // The newLogic club as a real id, not a name to be joined later. Approval is the last moment
+        // where both are in hand, so this is the one place that cannot get it wrong; every account
+        // created from here on is born with the foreign key already filled in.
+        user.setFootballTeam(team);
         userRepository.save(user);
 
         request.setStatus(RegistrationRequestStatus.APPROVED);

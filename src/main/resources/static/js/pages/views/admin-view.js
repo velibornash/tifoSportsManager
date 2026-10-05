@@ -17,6 +17,16 @@ import { escapeHtml } from '../../ui/escape.js';
 import { backButtonHtml } from '../../ui/components.js';
 
 export function createAdminView({ getTeamId, getTeamName, getUsername }) {
+    /**
+     * The roles offered in the account list, in ascending order of privilege.
+     *
+     * <p>Written out rather than fetched, because it is the same list the server validates against and a
+     * dropdown offering a value the backend refuses is a dropdown that lies. STAFF and PLUS are here
+     * because they are real {@code UserRole} values; neither grants anything yet, which is a product
+     * decision rather than an oversight in this list.
+     */
+    const ROLE_OPTIONS = ['REGULAR', 'PLUS', 'STAFF', 'MOD', 'ADMIN', 'DEV', 'OWNER'];
+
     function guard() {
         if (isAdminSession()) return null;
         return buildEmptyState('Admins only - you do not have permission to view this page.');
@@ -164,6 +174,32 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+        if (action === 'repair-club-links') {
+            // Not runRepair(): that ends by re-reading world integrity, which is the wrong thing to
+            // refresh after touching accounts. The count comes back in the response instead.
+            if (!window.confirm(
+                'Repair club links?\n\n' +
+                'Fills in the club foreign key for any account created before it existed. ' +
+                'Nothing is duplicated and nothing else changes.')) return;
+            button.disabled = true;
+            try {
+                const res = await authFetch('/admin/users/repair-club-links', { method: 'POST' });
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    window.alert(`Failed: ${body.error || body.message || res.status}`);
+                    return;
+                }
+                window.alert(body.repaired === 0
+                    ? 'Nothing to repair — every account already has a club link.'
+                    : `Repaired ${body.repaired} account(s).`);
+            } catch (err) {
+                window.alert(`Error: ${err.message}`);
+            } finally {
+                button.disabled = false;
+                await showUserManagement();
+            }
+            return;
+        }
         const handler = action === 'reset' ? window.resetDatabase : window.initializeDatabase;
         if (typeof handler !== 'function') {
             window.alert('This admin action is not available right now.');
@@ -267,6 +303,153 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             button.disabled = false;
             button.textContent = original;
             await showCountryActivation();
+        }
+    }
+
+    /**
+     * The account list: roles and forum write bans.
+     *
+     * <p>This panel is the only way a MOD, ADMIN or DEV account can be appointed. Before it, those three
+     * roles were enum constants with no writer anywhere in the codebase — the forum's own moderator
+     * office could not be handed to a person through the product at all.
+     *
+     * <p>The ban is deliberately described as a <i>forum</i> ban on the button and in the prompt, because
+     * that is exactly what it does. A moderator reading "ban" and expecting the manager's account to
+     * disappear would be wrong, and the difference matters to the person being banned.
+     */
+    async function showUserManagement() {
+        const host = document.getElementById('fm-users');
+        if (!host) return;
+        try {
+            const res = await authFetch('/admin/users');
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const rows = await res.json();
+            if (!Array.isArray(rows) || rows.length === 0) {
+                host.innerHTML = '<p class="fm-subtle">No accounts.</p>';
+                return;
+            }
+            host.innerHTML = `
+                <p class="fm-subtle">${rows.length} accounts. A forum ban stops a manager posting and
+                    replying. He can still read the forum, message anyone, and play.</p>
+                <div class="fm-activation-list">
+                    ${rows.map(userRow).join('')}
+                </div>`;
+            host.querySelectorAll('.js-ban-user').forEach(button => {
+                button.addEventListener('click', () => banUser(button));
+            });
+            host.querySelectorAll('.js-lift-ban').forEach(button => {
+                button.addEventListener('click', () => liftBan(button));
+            });
+            host.querySelectorAll('.js-change-role').forEach(select => {
+                select.addEventListener('change', () => changeRole(select));
+            });
+        } catch (err) {
+            host.innerHTML = `<p style="color:#f44336;">Could not load accounts: ${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function userRow(user) {
+        const who = user.displayName || user.username || `Account ${user.id}`;
+        const banned = user.forumBanned === true;
+        return `
+            <div class="fm-activation-row${banned ? ' is-active' : ''}">
+                <span class="fm-activation-name">${escapeHtml(who)}</span>
+                <span class="fm-subtle">${escapeHtml(user.clubName || 'No club')}</span>
+                <select class="js-change-role" data-user-id="${escapeHtml(user.id)}"
+                        aria-label="Role for ${escapeHtml(who)}">
+                    ${ROLE_OPTIONS.map(role => `
+                        <option value="${role}"${user.role === role ? ' selected' : ''}>${escapeHtml(role)}</option>
+                    `).join('')}
+                </select>
+                ${banned
+                    ? `<button type="button" class="fm-action-btn secondary js-lift-ban"
+                               data-user-id="${escapeHtml(user.id)}">Lift ban</button>`
+                    : `<button type="button" class="fm-action-btn js-ban-user"
+                               data-user-id="${escapeHtml(user.id)}"
+                               data-user-name="${escapeHtml(who)}">Ban from forum</button>`}
+            </div>
+            ${banned ? `
+                <div class="fm-subtle">
+                    Banned for ${escapeHtml(user.forumBanDaysLeft)} more day(s) by
+                    ${escapeHtml(user.forumBanBy || 'a moderator')}: ${escapeHtml(user.forumBanReason || 'no reason recorded')}
+                </div>` : ''}`;
+    }
+
+    async function banUser(button) {
+        const userId = button?.dataset?.userId;
+        const who = button?.dataset?.userName || 'this manager';
+        if (!userId) return;
+        const days = window.prompt(`Ban ${who} from the forum for how many days?`, '7');
+        if (days === null) return;
+        const parsed = Number.parseInt(days, 10);
+        if (!Number.isFinite(parsed) || parsed < 1) {
+            window.alert('Enter a whole number of days.');
+            return;
+        }
+        const reason = window.prompt(`Why? ${who} is told this.`);
+        if (reason === null) return;
+        button.disabled = true;
+        try {
+            const res = await authFetch(`/admin/users/${encodeURIComponent(userId)}/forum-ban`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ days: parsed, reason })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Ban failed: ${body.error || body.message || res.status}`);
+                return;
+            }
+            window.alert(`${who} cannot post in the forum for ${parsed} day(s). Reading and messaging are unaffected.`);
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+        } finally {
+            button.disabled = false;
+            await showUserManagement();
+        }
+    }
+
+    async function liftBan(button) {
+        const userId = button?.dataset?.userId;
+        if (!userId) return;
+        button.disabled = true;
+        try {
+            const res = await authFetch(`/admin/users/${encodeURIComponent(userId)}/forum-ban/lift`, { method: 'POST' });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                window.alert(`Could not lift the ban: ${body.error || body.message || res.status}`);
+                return;
+            }
+            window.alert('Ban lifted. He can post in the forum again.');
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+        } finally {
+            button.disabled = false;
+            await showUserManagement();
+        }
+    }
+
+    async function changeRole(select) {
+        const userId = select?.dataset?.userId;
+        const role = select?.value;
+        if (!userId || !role) return;
+        const previous = select.dataset.previousRole;
+        try {
+            const res = await authFetch(`/admin/users/${encodeURIComponent(userId)}/role`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Role change failed: ${body.error || body.message || res.status}`);
+                if (previous) select.value = previous;
+                return;
+            }
+            select.dataset.previousRole = role;
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+            if (previous) select.value = previous;
         }
     }
 
@@ -385,6 +568,27 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
+                            <h3>Accounts</h3>
+                            <p class="fm-subtle">Appoint moderators and control forum write bans.
+                                A ban stops a manager posting; it does not touch his club or his account.</p>
+                        </div>
+                        <span class="fm-panel-action">Roles and bans</span>
+                    </div>
+                    <div id="fm-users"><p class="fm-subtle">Reading...</p></div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Repair club links',
+                            body: 'Fills in the club foreign key for accounts created before it existed. Idempotent, and only needed once.',
+                            action: 'repair-club-links',
+                            label: 'Repair club links',
+                            variant: ''
+                        })}
+                    </div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
                             <h3>Coming next</h3>
                             <p class="fm-subtle">Registration approvals and further admin tooling land here.</p>
                         </div>
@@ -398,6 +602,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             </div>`;
 
         void showCountryActivation();
+        void showUserManagement();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

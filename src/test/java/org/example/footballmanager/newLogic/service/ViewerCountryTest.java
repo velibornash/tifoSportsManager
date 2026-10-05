@@ -30,20 +30,24 @@ import static org.mockito.Mockito.when;
 class ViewerCountryTest {
 
     private TeamRepository teams;
+    private org.example.commonmanager.repository.UserRepository userRepo;
     private PlusFeatureService service;
 
     @BeforeEach
     void setUp() {
         teams = mock(TeamRepository.class);
-        service = new PlusFeatureService(teams);
-        // Both lookups are needed and they are different ones: viewerTeamId finds the club BY NAME,
-        // then viewerCountryCode loads it BY ID. Stubbing only one is a test that passes for the wrong
-        // reason - which is exactly what happened the first two times this was written.
+        userRepo = mock(org.example.commonmanager.repository.UserRepository.class);
+        service = new PlusFeatureService(teams, new ClubOwnershipLinker(teams, userRepo));
+        // Three lookups, and stubbing only some is how this file passed for the wrong reason twice: the
+        // linker now resolves the club (by id, or by name as a backfill), then viewerCountryCode loads
+        // that club's country BY ID. A team returned by name has to be stubbed for both or one of the
+        // two steps silently answers null.
     }
 
-    /** Stubs the club as both name-resolvable and id-loadable, which is how the real repository behaves. */
+    /** Stubs the club as name-resolvable, id-loadable and — because the linker writes the id back — savable. */
     private void clubResolvesTo(Team team) {
-        when(teams.findByName("Some Club")).thenReturn(Optional.of(team));
+        when(teams.findAllByNameIgnoreCase("Some Club"))
+                .thenReturn(team == null ? java.util.List.of() : java.util.List.of(team));
         if (team != null && team.getId() != null) {
             when(teams.findById(team.getId())).thenReturn(Optional.of(team));
         }

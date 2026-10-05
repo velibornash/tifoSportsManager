@@ -1,6 +1,115 @@
 # kanbanProgress.md — the append-only log
 
-**One entry per task, newest first, each carrying the commit that landed it.**
+---
+
+## P2-20 Phase 1 — the forum's foundation: a real FK, and a role that can be given to a person
+
+**Owner request, 2026-10-05. Phase 1 of six.** `ClubOwnershipLinker`, `UserRoles`, `ModerationService`,
+`AdminUserController`, the Admin tab Accounts panel, and a foreign key between `User` and `Team`.
+
+### The finding that shaped the whole phase
+
+`User` and `Team` had **no foreign key to each other**. The entire contract was
+`User.cTeam.name == Team.name`, re-derived independently at twelve production sites. The owner asked for the
+FK to be built, which was the right call: **four defects in this codebase are the same mistake in different
+costume** — treating a `CTeam` id as a `Team.id`, for two entities with independent `IDENTITY` sequences.
+
+| Still live before this phase | Where |
+|---|---|
+| `UserRepository.findDistinctManagedTeamIds` selects `u.tifoCTeam.id` and `TransferService:630` compares it to `Team.getId()` | wrong every run |
+| `APIController.myMatch` reads `user.getTifoCTeam().getId()` as a `Team.id` | wrong every run |
+| `TeamController.getMatches` / `getSchedule`, `CountryController.getLeagueMatches` | same |
+| `NationalTeamAppointments:95-97` asserts "the ids are the same space" **in a comment** | the premise, written down |
+
+P0-18 fixed the fourth instance (`viewerTeamId`) but the class of bug survived, and a fifth is now impossible
+rather than merely absent. **The four above are recorded as P0-20 on the board and are NOT fixed here** —
+they are not mine to widen this phase into, and `findDistinctManagedTeamIds` is now `@Deprecated` with the
+reason on it so the next reader knows why.
+
+**`CTeam` deliberately stays.** Basketball, American football and Clean Sheet all link the same way. Replacing
+one field with an id while its neighbours stay joined by name would not have removed the class of bug.
+
+### The reverse direction did not exist at all
+
+There was no `findByCTeam`, no `findByManagedTeam`, no endpoint naming a club's manager. A club profile had
+nothing to ask with — which is exactly what the owner's "when you click a team, show who runs it" needs.
+
+`managerOf(Team)` **does not fall back to the name**, and the asymmetry is pinned by a test. A forward lookup
+can be repaired by writing one column. A reverse lookup matching on a shared name means guessing which club
+was meant, and a profile naming the wrong manager is worse than one naming none.
+
+### `MOD` had no writer anywhere
+
+The enum constant existed. `ADMIN`, `DEV` and `STAFF` likewise. The only roles ever written by code were
+`OWNER` (two seeders) and `REGULAR` (the same seeders, plus `RegistrationService:167`). **A forum with delete
+and ban rules and no way to hold the office that grants them is a forum nobody can moderate**, so
+`POST /admin/users/{id}/role` is Phase 1 rather than an afterthought.
+
+`mayModerate` (MOD/ADMIN/OWNER/DEV) and `isStaff` (ADMIN/OWNER/DEV) are **deliberately different sets.** A
+moderator's job is the forum; merging the sets is how someone keeping a forum civil quietly acquires the
+ability to reset a database. `theModeratingAndStaffQuestionsAreSeparate` asserts both directions, and the
+`/admin/**` matcher happens to exclude MOD independently — asserted as *intent*, so widening the matcher
+without deciding what a moderator may administer fails a test rather than shipping.
+
+### 51 tests, and the three mutations that mattered
+
+| Mutation | Result |
+|---|---|
+| Reverse lookup falls back to guessing from the name | `theReverseLookupDoesNotGuessFromTheName` fails |
+| FK ignored, name-join decides and **overwrites** it | `theForeignKeyWins` fails |
+| Ban wired into `isAccountNonLocked` | `aBanIsAForumWriteBanOnly` fails |
+| `MOD` allowed to change roles | `aModCannotChangeRoles` fails |
+| `MOD` added to the `/admin/**` matcher | 2 failures |
+| Ban endpoint returns `forumBanned: true` **without calling the service** | `theBanIsActuallyPersisted` fails |
+
+#### What did not work, and is worth more than the passing tests
+
+**Removing `users.save(target)` from `ModerationService.changeRole` leaves all 31 tests green.** Tried against
+both `ModerationServiceTest` and `AdminUserControllerAuthorizationTest`. The reason is JPA dirty checking:
+the method is `@Transactional`, the entity arrives managed from `findById`, so the row is flushed at commit
+whether or not `save` is called. This is an **equivalent mutant, not a coverage hole** — the `save` is
+redundant for a managed entity. It would stop being redundant the moment the lookup left the transaction, and
+the test file says so at the test that tried to catch it.
+
+**Transactional read-back assertions measure nothing.** The request shares the test's persistence context,
+so `findById` returns the very instance the service mutated, dirty or not. Two tests now flush and clear
+first. `theRoleIsWrittenAndCommitted` deliberately runs **outside** a test transaction for the same reason.
+
+**A duplicate-name test that creates two differently-named clubs passes for the wrong reason.** The first
+version of `duplicateClubNamesAreResolvedNotThrown` used a fixture that appended a random suffix, so the
+ambiguity it claimed to test never existed and the assertion went green on a unique name. Split into
+`aClub` / `aClubNamed` with a count assertion proving two rows really do share the name.
+
+**The XSS check was wrong before the code was.** A first shell check counted the substring `onerror=`
+anywhere in the HTML, which matches an **escaped** payload — `&lt;img src=x onerror=alert(1)&gt;` is inert
+text. It reported a failure against correct code. The check now parses real elements and real attributes.
+Confirmed non-vacuous: re-rendered with a no-op escaper, 3 injected elements appear.
+
+#### Verification seen in the database, not just asserted
+
+`ddl-auto=update` applied `football_team_id` and the four `forum_ban_*` columns on start. Both seeded
+accounts had `football_team_id` null before the repair, as expected for rows written before the column
+existed:
+
+```
+ id | display_name | football_team_id | forum_ban_until |        forum_ban_reason        | forum_ban_by
+----+--------------+------------------+-----------------+--------------------------------+--------------
+  1 | Velja        |                1 |                 |                                |
+  2 | Kecko        |                2 |                 |                                |
+
+POST /admin/users/repair-club-links  ->  {"repaired":2}
+POST /admin/users/2/forum-ban  ->  forumBanned: true, daysLeft: 5, by: Velja
+POST /admin/users/1/forum-ban  ->  400   (self-ban refused)
+```
+
+The Admin panel markup was rendered against the live payload: ban/lift swap correctly, the current role is
+selected, and a reason containing `<script>` renders escaped.
+
+**Not yet done, and recorded rather than glossed:** the panel has not been opened in a browser. It was
+verified by extracting `userRow` from the served module and asserting on its output, which covers the markup
+and the escaping but not the click handlers.
+
+---
 
 This file holds no plan and no board — that is `kanban.md`. It holds **what was actually done, what was
 measured, and what did not work.** The failures are the point: a measured dead end is worth more than a

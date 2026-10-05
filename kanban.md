@@ -1128,6 +1128,104 @@ pages stay slow until the world is reset while every new match is cheap.
 **Everything here can be completed on its own, without a decision from anyone.** Ordered by leverage per
 day of work, following `archive/COMPETITIVE_ANALYSIS.md` §10, whose ordering is deliberate.
 
+---
+
+## 🔴 P2-20 — The Community tab: a forum and private messages (owner decision, 2026-10-05)
+
+**The largest single request on this board, and the only one that is a product decision rather than a defect.**
+The tab today is one screen reached by a menu button, and `pages.js` routes three names — `forum`, `chat`,
+`events` — all of which render the identical page (`community.js:314-320`, both bodies are
+`return loadChat()`). There is no forum and there are no events.
+
+The owner's specification, in full:
+
+| | |
+|---|---|
+| **Forum** | An old-school threaded forum, hattrick/sokker.org in shape. Any manager opens a topic. Two fixed sections: **TIFO** and **non-TIFO**. Anyone replies in a topic. Anyone **edits** their own message, and an edit shows an **edited** tag. Anyone **deletes** their own message. **MOD/ADMIN/OWNER** may delete and edit *other people's* messages, and may ban a manager from writing for a number of days **from that manager's profile** — the rest of the application keeps working and reading the forum keeps working. |
+| **Messages** | Pick an active account from a list, send a direct message with **subject and body**. A notification reaches the **ticker** and a **notification store that does not exist yet**. Replying to a specific message opens a **thread**, so the correspondence history is followable. Sendable to any active account — *active meaning the account is real, not that the person is online.* |
+
+**Owner decisions taken, 2026-10-05, and they close the questions:**
+
+| Question | Decision |
+|---|---|
+| The old shared chat | **Wiped.** No migration, no announcements topic, no third tab |
+| Registration approvals | Move off the chat, onto the Admin tab |
+| Role assignment | Built — **without it no MOD account can ever exist** |
+| Delivery for notifications | **Polling**, 30 s. Not a WebSocket |
+| Scope of a ban | **Forum writing only.** Reading, messaging and the game are untouched |
+| Reaching a user's profile | **From the club: click the team, see who runs it, click him, see his profile** |
+
+### P0-20 — OPEN: the `CTeam`-id-as-`Team`-id confusion, still live in four places
+
+**Found while building the `User.footballTeam` FK (P2-20 Phase 1). Not fixed there, and deliberately so.**
+
+`User` now has a real FK to `Team`, which makes a fifth instance of this impossible. These four remain:
+
+| Where | What |
+|---|---|
+| `UserRepository.findDistinctManagedTeamIds` | selects `u.tifoCTeam.id` — a CTeam id — and `TransferService:630` compares it against `Team.getId()`. **Now `@Deprecated` with the reason on it**, so the next reader knows why |
+| `APIController.myMatch:236-241` | `user.getTifoCTeam().getId()` read as a `Team.id` |
+| `TeamController.getMatches:252`, `getSchedule:269`, `CountryController.getLeagueMatches:689` | same |
+| `NationalTeamAppointments:95-97` | asserts in a **comment** that "the ids are the same space", then filters on it |
+
+Each is a separate reach into a different controller, and none was what this phase was asked to do. Every one
+is a query that answers with a plausible number rather than failing, which is why they survived alongside
+P0-18.
+
+**Exit criteria:**
+- [ ] `findDistinctManagedTeamIds` deleted and `TransferService:630` reads `User.footballTeam.id`
+- [ ] `APIController.myMatch` resolves the club through `ClubOwnershipLinker`
+- [ ] `TeamController` / `CountryController` do the same
+- [ ] `NationalTeamAppointments` walks `Team → User` through the FK, and its comment is corrected
+- [ ] A test that fails if any of the four returns a `CTeam` id where a `Team.id` is needed
+
+---
+
+### Phase 1 — DONE: the foundation the forum cannot be built without
+
+`ClubOwnershipLinker`, `ModerationService`, `UserRoles`, `AdminUserController`, and a **real foreign key**
+between `User` and `Team`. See `kanbanProgress.md` for what was measured and what did not work.
+
+- [x] `UserRoles` — one answer to "may moderate" and one to "is staff", replacing **14** backend role checks
+- [x] `User.footballTeam` — a real FK, ending the `User.cTeam.name == Team.name` join
+- [x] `ClubOwnershipLinker` — reads the FK, backfills legacy rows, and answers the reverse direction
+- [x] `ModerationService` — forum write ban with reason, expiry, and who applied it
+- [x] `POST /admin/users/{id}/role` — the only writer of `MOD`, `ADMIN` or `DEV` that has ever existed
+- [x] `POST /admin/users/{id}/forum-ban` and `/lift`
+- [x] Admin tab **Accounts** panel: role select, ban, lift ban, repair club links
+- [x] 51 tests across 5 classes, mutation-proven
+
+### Phase 2 — the user profile and the club → manager link
+
+- [ ] `GET /users/{id}/profile` — name, role, club, league, country, post count. **No email** (that gate is
+      why the old chat needed admin-only fields)
+- [ ] A public profile page reusing the `renderUserProfile` skeleton
+- [ ] **"Managed by X"** on the club profile, the league table, and `TeamSummaryDTO`
+- [ ] **`displayName` becomes user-writable.** It never has been: 4 seeder writes, no endpoint, so every
+      self-registered manager shows an email address where a name belongs. The owner called his own profile
+      unfinished; this is the part of it that is
+
+### Phase 3 — notifications
+- [ ] `Notification` entity with a `(recipient, readAt)` index — **nothing of this shape exists today**
+- [ ] `GET /notifications`, `/unread-count`, `POST /notifications/{id}/read`, `/read-all`
+- [ ] 30 s poll, badge and dropdown, ticker rewired off the dead `/community/summary`
+
+### Phase 4 — the forum
+- [ ] `ForumSection` (`TIFO`, `GENERAL`), `ForumTopic`, `ForumPost` with `editedAt` and `deletedAt`
+- [ ] Ban enforced in `ForumService`, not the controller — a ban enforced by one endpoint is bypassed by the next
+- [ ] Old-school thread view, "Load more"
+
+### Phase 5 — private messages
+- [ ] `MessageThread`, `DirectMessage`; a first message creates the thread, replies append
+
+### Phase 6 — tear down
+- [ ] Delete `CommunityMessage` and everything around it, the `nl_community_message` table,
+      `User.communityLastViewedAt`, and the dead `forum`/`events` aliases
+- [ ] Registration approvals onto the Admin tab
+- [ ] `RegistrationService`'s five `communityMessageService` calls become notifications
+
+---
+
 ### P2-1 — Corners decided by pitch geometry, not a nominated taker
 
 Half a day, and easier now that P0-3 has landed. Listed as its own item in the competitive analysis for

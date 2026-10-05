@@ -27,10 +27,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PlusFeatureServiceTest {
 
-    // Mocked: these tests are about the two rules, not about resolving a club name. The name
-    // resolution is exercised where a real database exists.
+    // Mocked: these tests are about the two rules, not about resolving a club. Club resolution is
+    // exercised where a real database exists. A mock rather than null, because null throws the moment
+    // the next collaborator arrives — and a service wired with nulls in tests stops reporting the
+    // dependency rather than starting to hide it.
     private final PlusFeatureService service = new PlusFeatureService(
-            org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class));
+            org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class),
+            new org.example.footballmanager.newLogic.service.ClubOwnershipLinker(
+                    org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class),
+                    org.mockito.Mockito.mock(org.example.commonmanager.repository.UserRepository.class)));
 
     private User user(UserRole role) {
         User u = new User();
@@ -174,22 +179,30 @@ class PlusFeatureServiceTest {
     }
 
     @Test
-    @DisplayName("a player's club is resolved by name, the same way /auth/me does it")
-    void viewerTeamIdResolvesByName() {
+    @DisplayName("a player's club comes from the foreign key, with the name-join as its backfill")
+    void viewerTeamIdReadsTheForeignKeyFirst() {
         org.example.footballmanager.newLogic.repository.TeamRepository teams =
                 org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class);
-        when(teams.findByName("Omladinac")).thenReturn(java.util.Optional.of(team(1L)));
-        when(teams.findByName("Sremac Berkasovo")).thenReturn(java.util.Optional.of(team(2L)));
+        org.example.commonmanager.repository.UserRepository userRepo =
+                org.mockito.Mockito.mock(org.example.commonmanager.repository.UserRepository.class);
+        org.example.footballmanager.newLogic.service.ClubOwnershipLinker ownership =
+                new org.example.footballmanager.newLogic.service.ClubOwnershipLinker(teams, userRepo);
 
-        PlusFeatureService byName = new PlusFeatureService(teams);
         User manager = user(UserRole.PLUS);
-        org.example.footballtextmanager.model.CTeam club = new org.example.footballtextmanager.model.CTeam();
-        club.setName("Omladinac");
-        manager.setCTeam(club);
+        org.example.footballtextmanager.model.CTeam legacy = new org.example.footballtextmanager.model.CTeam();
+        legacy.setName("Omladinac");
+        manager.setCTeam(legacy);
 
-        assertEquals(1L, byName.viewerTeamId(manager));
-        assertTrue(byName.isOwnTeam(manager, 1L));
-        assertFalse(byName.isOwnTeam(manager, 2L), "a rival club is not yours even though it exists");
+        // The club is attached by id, so the repository is never consulted at all. That is the point of
+        // the column: a wrong or stale name in the legacy field can no longer decide who owns what.
+        manager.setFootballTeam(team(1L));
+
+        PlusFeatureService service = new PlusFeatureService(teams, ownership);
+        assertEquals(1L, service.viewerTeamId(manager));
+        assertTrue(service.isOwnTeam(manager, 1L));
+        assertFalse(service.isOwnTeam(manager, 2L), "a rival club is not yours even though it exists");
+
+        org.mockito.Mockito.verifyNoInteractions(teams);
     }
 
     @Test

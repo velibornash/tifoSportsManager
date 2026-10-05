@@ -105,6 +105,82 @@ public class User implements UserDetails {
      */
     private String countryCode;
 
+    /**
+     * Until when this account may not post in the forum, or null when it may.
+     *
+     * <p><b>A forum write ban and nothing else.</b> Reading the forum stays open, private messages stay
+     * sendable, and the rest of the game is untouched — the manager can still manage his club, still
+     * play, still do everything. A ban that locks somebody out of their own game is a support ticket,
+     * not a moderation tool.
+     *
+     * <p>Wall-clock, like {@link #lastSeenAt}, because "for 7 days" has to mean seven days of the
+     * manager's life and not seven weeks of the season.
+     *
+     * <p>Kept on the account rather than in a ban table because there is at most one active ban: the
+     * moderation history that would justify a table is Phase 6's problem, and a second ban row per
+     * manager would be read by nothing.
+     */
+    private LocalDateTime forumBanUntil;
+
+    /**
+     * Why this account was banned, shown to him and to moderators.
+     *
+     * <p>Not nullable on purpose. A ban a manager cannot see the reason for is one he cannot argue with,
+     * and an argument he cannot make is how a moderation decision becomes a grievance.
+     */
+    @Column(name = "forum_ban_reason", length = 500)
+    private String forumBanReason;
+
+    /** Who applied the ban, as a name rather than a key: the row outlives the moderator. */
+    @Column(name = "forum_ban_by", length = 120)
+    private String forumBanBy;
+
+    private LocalDateTime forumBanAt;
+
+    /**
+     * Whether this account is banned from posting in the forum right now.
+     *
+     * <p>A ban that has expired is not a ban. {@code forumBanUntil} is left in place so the reason stays
+     * visible to moderators; only this question changes its answer as the clock moves.
+     */
+    public boolean isForumBanned() {
+        return forumBanUntil != null && forumBanUntil.isAfter(java.time.LocalDateTime.now());
+    }
+
+    /**
+     * The newLogic club this account actually manages, as a real foreign key.
+     *
+     * <p><b>This field did not exist, and the absence was the single most expensive fact in the
+     * codebase.</b> {@code User} and {@code Team} were joined by a <i>string</i>: a user held a
+     * {@link CTeam}, and every consumer resolved the football club by looking up
+     * {@code Team.name == CTeam.name}. That join produced four separate defects, all the same mistake
+     * in a different costume — assuming two {@code IDENTITY} sequences share a number space:
+     *
+     * <ul>
+     *   <li>{@code PlusFeatureService.viewerTeamId} once returned a {@code CTeam} id from a method
+     *       every caller compared against {@code Team.id} (P0-18). It withheld the <b>owner's own
+     *       players' talent}, because the owner is the one account the seeders gave a {@code tifoCTeam}.</li>
+     *   <li>{@code UserRepository.findDistinctManagedTeamIds} selects {@code u.tifoCTeam.id} — CTeam
+     *       ids — and is compared against {@code Team.getId()} in {@code TransferService}.</li>
+     *   <li>{@code APIController.myMatch}, {@code TeamController.getMatches/getSchedule} and
+     *       {@code CountryController.getLeagueMatches} each read {@code user.getTifoCTeam().getId()}
+     *       as though it were a {@code Team.id}.</li>
+     *   <li>{@code NationalTeamAppointments} walks clubs to users by claiming "the ids are the same
+     *       space", which is the same false premise written into a comment.</li>
+     * </ul>
+     *
+     * <p><b>Why {@link #CTeam} stays.</b> It is the legacy footballtextmanager club and the other three
+     * modes (basketball, American football, clean sheet) all link through the same pattern. Replacing
+     * one field with an id while leaving its neighbours joined by name would not have removed the class
+     * of bug; this field is the football answer, and the others still need theirs.
+     *
+     * <p>Nullable, because a legacy row predates it. {@code ClubOwnershipLinker} backfills it on
+     * demand, and every reader falls back to the name-join rather than reporting "no club" for an
+     * account that plainly has one.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    private org.example.footballmanager.newLogic.model.Team footballTeam;
+
     @OneToOne
     private CTeam CTeam;
 

@@ -45,9 +45,15 @@ class PlusJuniorVisibilityTest {
         return j;
     }
 
-    // The repository is only needed by isOwnTeam, which resolves a club by name for a real user.
-    // Every check here is team-id based, so null is honest rather than a stub hiding a dependency.
-    private final PlusFeatureService plus = new PlusFeatureService(null);
+    // Both collaborators are only needed to resolve a *club* for a real user. Every check here is
+    // team-id based, so mocks rather than null: null would have thrown the moment the service grew a
+    // second collaborator, and a test that cannot compile is a cheaper failure than one that hides a
+    // dependency behind a null that happens not to be dereferenced.
+    private final PlusFeatureService plus = new PlusFeatureService(
+            org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class),
+            new org.example.footballmanager.newLogic.service.ClubOwnershipLinker(
+                    org.mockito.Mockito.mock(org.example.footballmanager.newLogic.repository.TeamRepository.class),
+                    org.mockito.Mockito.mock(org.example.commonmanager.repository.UserRepository.class)));
 
     @Test
     @DisplayName("a regular manager sees nothing about his own academy's talent")

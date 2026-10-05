@@ -39,12 +39,20 @@ import java.util.Set;
 public class PlusFeatureService {
 
     private final TeamRepository teams;
+    private final ClubOwnershipLinker ownership;
 
-    public PlusFeatureService(TeamRepository teams) {
+    public PlusFeatureService(TeamRepository teams, ClubOwnershipLinker ownership) {
         this.teams = teams;
+        this.ownership = ownership;
     }
 
-    /** Roles that see paid information without a plus subscription. */
+    /**
+     * Roles that see paid information without a plus subscription.
+     *
+     * <p>Was a fourth private copy of the privileged set, alongside the two identical
+     * {@code isAdminRole} methods and {@code SecurityConfig}'s matcher. {@link UserRoles#isStaff} is the
+     * one answer now; this delegates to it so a role added in one place is added in all of them.
+     */
     private static final Set<UserRole> ALWAYS_ALLOWED =
             Set.of(UserRole.OWNER, UserRole.DEV, UserRole.ADMIN);
 
@@ -128,48 +136,26 @@ public class PlusFeatureService {
         return club != null && Objects.equals(club.getId(), viewerTeamId);
     }
 
-    /**
-     * Whether this team is one the user actually manages.
+/**
+     * The club this user actually runs, delegated to {@link ClubOwnershipLinker}.
      *
-     * <p>Resolved by name, because that is how the rest of the application links a user to a club:
-     * {@code User} holds a {@code CTeam} and {@code /auth/me} looks the newLogic club up by name. Going
-     * through the same route means the check cannot disagree with what the dashboard thinks the
-     * user's club is.
+     * <p>Was resolved here by name, through {@code teams.findByName(name)} — a lookup that
+     * <b>throws</b> when two clubs share a name, which {@code TeamRepository} documents as allowed. It is
+     * now the foreign key {@code User.footballTeam}, with the name-join kept only as a backfill inside
+     * the linker.
      *
-     * <p>Fails closed: an unknown user, a user with no club, or a name that matches nothing is not
-     * their team.
-     */
-    /**
-     * The club this user actually runs, resolved the way {@code /auth/me} resolves it — by name —
-     * so that the answer here cannot disagree with the club the dashboard is showing.
+     * <p><b>History worth keeping, because the same mistake was made four more times.</b> This method
+     * once short-circuited on {@code tifoCTeam} and returned that id directly — a {@code CTeam} id,
+     * from a different entity with its own {@code IDENTITY} sequence, returned from a method whose every
+     * caller compares it against {@code Team.id}. The owner was the account guaranteed to take that
+     * branch, because the seeders set his {@code tifoCTeam}, so {@code talentOrNull} silently withheld
+     * his own players' talent. The name-join papered over it; the foreign key removes the possibility.
      *
-     * <p>Exists as a method because three call sites each grew their own private copy of this lookup,
-     * which is how the entitlement rule ended up implemented in several places at once. Fails closed:
-     * an unknown user, or one with no club, gets null, and every gate treats null as "not mine".
-     *
-     * <p><b>It used to short-circuit on {@code tifoCTeam} and return that id directly</b>, which was a
-     * {@code CTeam} id — {@code CTeam} is {@code footballtextmanager.model.CTeam}, a different entity with
-     * its own {@code IDENTITY} sequence — returned from a method whose every caller compares it against
-     * {@code Team.id}. The two number spaces are unrelated, so the answer was wrong for anyone who had a
-     * {@code tifoCTeam}.
-     *
-     * <p><b>It was not a rare branch.</b> {@code DatabaseInitializer} and {@code StartupInitializer} all set
-     * the <b>owner's</b> {@code tifoCTeam}, so the one account guaranteed to exist took it, and
-     * {@code talentOrNull} silently withheld the owner's own players' talent. {@code RegistrationService}
-     * sets only {@code cTeam}, which is why no ordinary manager ever reached the branch and nothing caught
-     * it. Resolving by name alone handles both fields, because {@link #clubNameOf} reads {@code cTeam}
-     * first and falls back to {@code tifoCTeam}.
+     * <p>Delegates rather than duplicating so that a future change to how a club is resolved reaches
+     * every gate at once.
      */
     public Long viewerTeamId(User user) {
-        if (user == null) {
-            return null;
-        }
-        String name = clubNameOf(user);
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        Team team = teams.findByName(name).orElse(null);
-        return team == null ? null : team.getId();
+        return ownership.clubIdOf(user);
     }
 
     /**
@@ -206,23 +192,12 @@ public class PlusFeatureService {
                 .orElse(null);
     }
 
+    /**
+     * Whether this account manages the given club. Delegates to {@link ClubOwnershipLinker}, whose id
+     * comparison cannot throw on a duplicate club name the way this method's {@code findByName} did.
+     */
     public boolean isOwnTeam(User user, Long teamId) {
-        if (user == null || teamId == null) {
-            return false;
-        }
-        String name = clubNameOf(user);
-        if (name == null || name.isBlank()) {
-            return false;
-        }
-        Team team = teams.findByName(name).orElse(null);
-        return team != null && team.getId() != null && team.getId().equals(teamId);
-    }
-
-    private String clubNameOf(User user) {
-        if (user.getCTeam() != null && user.getCTeam().getName() != null) {
-            return user.getCTeam().getName();
-        }
-        return user.getTifoCTeam() != null ? user.getTifoCTeam().getName() : null;
+        return ownership.manages(user, teamId);
     }
 
     /**
