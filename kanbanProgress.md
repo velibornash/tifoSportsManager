@@ -2,7 +2,7 @@
 
 ---
 
-## P2-20 Phase 1 — the forum's foundation: a real FK, and a role that can be given to a person
+## `dafd6e9` — P2-20 Phase 1: the forum's foundation — a real FK, and a role that can be given to a person
 
 **Owner request, 2026-10-05. Phase 1 of six.** `ClubOwnershipLinker`, `UserRoles`, `ModerationService`,
 `AdminUserController`, the Admin tab Accounts panel, and a foreign key between `User` and `Team`.
