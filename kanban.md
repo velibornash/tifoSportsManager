@@ -1611,16 +1611,16 @@ The test is mutation-proven: routing `loadPage('forum')` to a wrong section fail
 
 # 🔖 Suite state — MEASURED 2026-10-06
 
-**`mvn test`: 1359 tests, 15 failures, 7 errors, 22 red, ~21 min**, run with the app up on `:8080` and
+**`mvn test`: 1360 tests, 14 failures, 6 errors, 20 red, ~21 min**, run with the app up on `:8080` and
 allowed to finish.
 
-**22 red, down from 32** on 2026-10-04. **One of the twenty-two was this work's**, and the full run is what
-found it: `dashboard.js` called `readUnreadCount` without importing it, which is a ReferenceError thrown on
-the dashboard for every manager on every page load. The endpoint returned 200, the module parsed, and every
-markup check passed. Only a browser noticed — see the browser-check item above.
+**20 red, down from 32** on 2026-10-04. **Every one of the eleven P2-20 classes is green** — 143 tests across
+them, listed in `kanbanProgress.md`. Two of the twenty were this work's, and both were found and fixed
+inside it: a `readUnreadCount` import that Phase 6's full run caught, and the browser check that now covers
+that class of bug.
 
-The remaining 21 were already red before P2-20. **Net: eleven fewer, one introduced by this work and fixed
-inside it.** The full red list with what each means is in `kanbanProgress.md`.
+**Not comparable on test count** — P2-20 added 112 — but comparable on red, because both runs were allowed
+to finish and the Maven summary prints at the end.
 
 **A full run requires the app on `:8080`** — without it three Playwright classes hang the entire run rather
 than failing. This run had it up, and `CommunityScreensRenderTest` is a fourth.

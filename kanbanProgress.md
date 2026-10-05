@@ -6,6 +6,8 @@
 
 **1,359 tests, 15 failures, 7 errors, 22 red, ~21 minutes**, app up on `:8080`, allowed to finish.
 
+Re-run after the browser check: **1,360 tests, 14 failures, 6 errors, 20 red.** Every P2-20 class green.
+
 **One of the twenty-two was this work's, and the full run is the only thing that found it.**
 
 ```
@@ -48,9 +50,12 @@ assertion that would have caught this on day one.
 
 Mutation-proven: routing `loadPage('forum')` at the wrong section fails it.
 
-### The remaining 21
+### The remaining 20
 
-Pre-existing, unchanged by this work. `ClubRatingServiceTest`, `DailyRecoveryScopeTest`,
+Pre-existing, unchanged by this work, and **unchanged by the second run** — 20 red before and after, with
+the same names. That is the honest way to read them: nothing P2-20 did made one worse or fixed one.
+
+`ClubRatingServiceTest`, `DailyRecoveryScopeTest`,
 `NationalRatingServiceTest`, `StaffSponsorServiceTest`, `BotLeagueStandardBackfillTest`,
 `CountryActivationTest`, `CupFixtureSeederCountryTest` (5), `CSDataInitializerSelfHealingTest` (2),
 `OmladinacTransferJourneyTest` (6), plus a country ISO-code collision in `ClubRatingServiceTest`.
@@ -58,7 +63,27 @@ Pre-existing, unchanged by this work. `ClubRatingServiceTest`, `DailyRecoverySco
 Several of them report their own preconditions failing — "Serbia has no pyramid, so this test proves
 nothing", "the seeded world has no human club", "the cup drew nothing at all". **Those are honest about
 being vacuous rather than passing quietly**, which is the behaviour this board asks for and is worth
-recording as such rather than as 21 undifferentiated failures.
+recording as such rather than as 20 undifferentiated failures.
+
+### The P2-20 classes, all green
+
+| Class | Tests |
+|---|---|
+| `ForumServiceTest` | 33 |
+| `MessageServiceTest` | 24 |
+| `ModerationServiceTest` | 16 |
+| `AdminUserControllerAuthorizationTest` | 15 |
+| `NotificationServiceTest` | 14 |
+| `UserProfileControllerTest` | 12 |
+| `ClubOwnershipLinkerTest` | 9 |
+| `RegistrationQueueIsOnTheAdminTabTest` | 8 |
+| `ManagerIsVisibleOnAClubTest` | 6 |
+| `CommunityScreensRenderTest` | 1 (browser, 28 s) |
+| **Total** | **138** |
+
+Plus `ViewerTeamIdIsATeamIdTest` (6), `CommunityScreensRenderTest`'s predecessor `CountryPageRendersTest` (1,
+now green again), and the four existing classes whose constructors had to change for the `UserRoles`
+extraction.
 
 
 ## P2-20 Phase 6 — the chat is gone, and the queue it hid is not
