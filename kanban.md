@@ -1156,8 +1156,14 @@ between `User` and `Team`. See `kanbanProgress.md` for what was measured and wha
 - [x] Three indexes, verified created
 - [x] 33 tests, 4 mutations proven
 
-### Phase 5 — private messages
-- [ ] `MessageThread`, `DirectMessage`; a first message creates the thread, replies append
+### Phase 5 — DONE: private messages with threads
+
+- [x] `MessageThread` (subject, both participants, two read cursors) and `DirectMessage`
+- [x] First message opens a conversation; a reply appends and carries **no subject**
+- [x] **One thread per pair** — a second subject continues the conversation rather than forking it
+- [x] Recipients are **every account**, not only the online ones
+- [x] Notification on receipt, pointing at the conversation
+- [x] 24 tests, 3 mutations proven
 
 ### Phase 6 — tear down
 - [ ] Delete `CommunityMessage` and everything around it, the `nl_community_message` table,

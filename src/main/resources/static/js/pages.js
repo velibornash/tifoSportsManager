@@ -7,6 +7,7 @@ import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
 import { createForumView } from './pages/views/forum-view.js';
+import { createMessagesView } from './pages/views/messages-view.js';
 import {
     htmlEscape, formatBudget, formatGoalDiff, buildEmptyState, buildErrorState, formatPercent,
     parseMatchDate, getImageFilename, formatMilestoneAttendanceValue,
@@ -354,6 +355,9 @@ function buildPageNavState(page, options = {}) {
         authFetch,
         getUsername: () => currentUsername,
     });
+    const messagesView = createMessagesView({
+        authFetch,
+    });
 
     const matchView = createMatchView({
         authFetch, getTeamId: () => currentUserTeamId, goBackSmart,
@@ -592,6 +596,9 @@ function buildPageNavState(page, options = {}) {
                 // COMMUNITY
                 case "messages":
                     return loadMessages();
+
+                case "messageThread":
+                    return loadMessageThread(options.threadId);
 
                 case "forum":
                     await loadForum();
@@ -1077,15 +1084,18 @@ function buildPageNavState(page, options = {}) {
     }
 
     /**
-     * Private messages, and the section of the forum that opens a topic.
+     * Private messages.
      *
-     * <p>Named after the screen rather than the feature. The old `loadChat` and `loadEvents` delegates are
-     * gone with `createCommunityFeature`: both were `return loadChat()` inside that module, so a console
-     * `loadPage('events')` rendered a chat. Phase 5 replaces this with the real inbox; until then a
-     * console call to `loadPage('chat')` lands on "Page not found", which is honest about what exists.
+     * <p>The `loadChat` and `loadEvents` delegates are gone with `createCommunityFeature`: both were
+     * `return loadChat()` inside that module, so a console `loadPage('events')` rendered a chat. A
+     * console call to `loadPage('chat')` now lands on "Page not found", which is honest about what
+     * exists rather than quietly showing something else.
      */
     async function loadMessages() {
-        return loadForum();
+        return messagesView.loadMessages();
+    }
+    async function loadMessageThread(threadId) {
+        return messagesView.loadMessageThread(threadId);
     }
 
     async function loadAnalytics() {
@@ -1236,6 +1246,7 @@ function buildPageNavState(page, options = {}) {
     window.loadCup = loadCup;
     window.loadInternational = loadInternational;
     window.loadMessages = loadMessages;
+    window.openMessageThread = (threadId) => loadPage('messageThread', { threadId });
     window.loadForum = loadForum;
     window.loadForumSection = loadForumSection;
     window.loadForumTopic = loadForumTopic;

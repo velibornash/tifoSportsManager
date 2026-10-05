@@ -2,6 +2,91 @@
 
 ---
 
+## P2-20 Phase 5 — private messages, with a thread you can follow
+
+The owner's four clauses: a recipient list, a **subject and a body**, a reply that creates a **thread** so
+the correspondence can be followed, and sendable to any account with a live login — **not** only whoever is
+online. Plus the notification from Phase 3.
+
+### "Active" means a real account, not a session
+
+The recipient list is every account that exists. There is no online filter and there is a test for it:
+`everyAccountIsAValidRecipient` uses an account whose `lastSeenAt` is **null** — never seen — and requires
+it to be listed.
+
+The reason is that this application cannot answer "is he at the keyboard" correctly. A JWT is stateless
+and stays valid for 24 hours after a browser closes; `PresenceRegistry` has a five-minute window and the
+World page is the only place that states it. A picker of currently-online managers makes a message
+undeliverable to somebody asleep, which is precisely who you want to write to.
+
+### One thread per pair, and the reason it is not a merge conflict
+
+The first message opens a thread with its subject. Every reply appends and has **no subject of its own**.
+Sending again to the same manager with a different subject **continues** the conversation —
+`aSecondSubjectDoesNotForkTheThread`, verified against the running app: three messages, one thread, the
+original subject.
+
+Without that, two subjects about the same transfer produce two threads that read as two conversations and
+are one, which is the thing "follow the history" is asking to prevent.
+
+### The read cursor is per side, and picking the wrong column silently killed the badge
+
+A thread carries `readBySenderAt` and `readByRecipientAt` rather than one cursor, because "I have read his
+reply" and "he has read mine" are different facts — one cursor marks a message read for both the moment
+either party looks.
+
+`send` originally did `thread.setReadBySenderAt(lastActivityAt)`, reasoning that the sender has read what
+they just wrote. **On a thread the two are only the same until the first reply.** After that,
+`readBySenderAt` is the cursor of whoever *opened* the conversation, so a reply marked the thread read for
+the man who asked the question — and he was never told he had been answered, which is the entire point of
+a notification. `markRead` now picks the column by thread membership.
+
+### Three bugs the tests found
+
+**The opening message was counted twice.** `openThread` sets `messageCount = 1` and `send` then incremented
+it, so a brand-new conversation reported two messages. Caught by `aFirstMessageOpensAThread`.
+
+**A brand-new thread showed no unread badge for the recipient.** `isUnreadFor` returned
+`messageCount > 1` when the cursor was null, on the reasoning that a new thread should not badge the
+sender. The reasoning was right and the mechanism was redundant — `send` already writes the sender's
+cursor — so it suppressed the badge for the man who actually had an unread message.
+
+**`rows.map(messageHtml)` passed the array index as the viewer id.** `messageHtml(message, viewerId)` in
+the conversation view was called through `map`, so "is this mine" was true for the **first message of
+every conversation** and false for the rest. The page looked correct and was wrong about the only question
+it asked of every row. The server now sends `viewerUserId` with the thread, because it knows who is asking
+and the client would otherwise need a second request.
+
+### A test that asserted the wrong thing
+
+`openingAThreadClearsOnlyThatSide` asserted the **replier** still had the thread unread after the other
+side opened it. He wrote the last message, so he had nothing unread — asserting otherwise would demand a
+badge on a message you just sent. Rewritten to assert what actually matters: reading clears it for the
+reader, and **the next reply badges it again**, so reading does not mark a conversation read for good.
+
+### 24 tests, 3 mutations proven
+
+| Mutation | Result |
+|---|---|
+| Thread membership check removed from `send` | `aThirdPartyCannotReadTheThread` fails |
+| A second subject forks the conversation | `aSecondSubjectDoesNotForkTheThread` fails |
+| Recipient list restricted to accounts that have been seen | `everyAccountIsAValidRecipient` fails |
+
+The third is the one worth keeping: the naive implementation of "active" is "seen at least once", and it
+silently drops the account you most want to write to.
+
+### Verified against the running application
+
+Recipients listed, message sent with subject and body, reply threaded without a subject, both inboxes
+correct, the reply's unread badge on the sender's side only, opening the thread clearing it, the
+notification pointing at the conversation, a second subject continuing rather than forking, self-messaging
+refused. Three indexes confirmed; `messageCount`, both cursors and `last_activity_at` read back from the
+table. Markup rendered from the served module with hostile subjects, names and bodies escaped.
+
+**Not done: no browser.** The inbox, the conversation, the compose form and the reply box have not been
+driven by a click.
+
+
 ## P2-20 Phase 4 — the forum: an old-school one, with the ban and the moderator tools
 
 `forum`, `chat` and `events` were three routes in `pages.js` and one screen — `community.js:314-320` made

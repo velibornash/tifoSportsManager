@@ -5148,3 +5148,15 @@ body {
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
+
+/*
+ * Private messages (owner, 2026-10-05).
+ *
+ * <p>Reuses the forum's post vocabulary entirely — a conversation is a thread of posts, so it looks like
+ * one rather than introducing a second set of nearly identical rules. The only addition is the outgoing
+ * tint, because the one thing a conversation needs that a forum does not is "which of these are mine".
+ */
+.forum-post.is-mine {
+    background: rgba(127, 208, 255, 0.07);
+    border-color: rgba(127, 208, 255, 0.18);
+}
