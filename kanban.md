@@ -179,7 +179,7 @@ most common way a test of this kind fails for the wrong reason.
       against a controller that returns 500 for everything — **P0-1a**
 - [x] Each new test class is proven able to fail by breaking the authorization annotation and watching it
       — **P0-1a, five mutations, all in `kanbanProgress.md`**
-- [ ] The same four, for the four P0-1b controllers
+- [x] The same four, for the four P0-1b controllers — **P0-1b, done.** The box was left unchecked after P0-1a merged; corrected 2026-10-04
 
 **Not:** a coverage percentage. A test that asserts 401 on a route that was always going to 401 proves
 nothing about authorization.
