@@ -430,130 +430,22 @@ branch. Only the owner does.
 
 ---
 
-### P0-14 — `LineupController`'s writes are unreachable from the frontend — OWNER-GATED
+### P0-14 — DONE: `LineupController` is read-only
 
-Ruled on 2026-10-03 as **guard, do not delete.** Recorded because the reasoning matters more than the ruling:
-the frontend files a squad sheet through `TeamController`'s `lineup-template`, and `grep` over `static/js`
-finds no caller for `POST /lineups` or `DELETE /lineups/{id}`. They are now guarded and working.
+**Owner's decision: option B — delete the two writes, keep the reads.**
 
-**Unreachable is not the same as harmless** — three defects lived in exactly these routes, including one
-that had never worked. The deletion question is open but is not urgent.
+`POST /lineups` and `DELETE /lineups/{id}` are gone, along with `LineupSaveRequestDTO`, which existed only to
+serve them. The reads stay because they are reached.
 
-**Also found here and fixed in passing:** `LineupController`'s sort whitelist offered `"name"`, a column
-`Lineup` does not have, so a caller could ask for a sort on a property that does not exist.
+**Why B and not C:** the duplication was the problem, not the routes' existence. The game files a squad
+sheet through `TeamController`'s `lineup-template`, and `GET /lineups/{id}` is reachable from the match view.
+Deleting the whole controller would have removed a read something uses.
 
----
-
-### P0-2 — Six test classes are red
-
-**Two classes share the same missing-`GameClock` trap**, found while writing P0-13, both **pre-existing**:
-`NegotiationServiceTest` (10 errors) and `SquadTrainingServiceTest` (6 errors) both do
-`clocks.findAll().stream().findFirst().orElseThrow()` in `setUp`. Boot writes nothing, so the test database
-has no clock row and **every method fails before it asserts anything**. Three lines each to fix — create the
-row rather than expect it, as `TransferControllerAuthorizationTest` now does. and the owner has ruled: rewrite them to assert what the product guarantees
-
-**Owner decision, already made:** do not make the red tests pass by changing the product to suit them.
-Rewrite each to assert a guarantee the product actually makes.
-
-`ScoutingServiceTest` is **already green, 10/10** — it is the worked example of this fix. Read it first.
-
-**Progress, 2026-10-04.** Two classes triaged and fixed: **`SquadTrainingServiceTest` 6/6** and
-**`NegotiationServiceTest` 9/10**. Both were failing in `setUp` for want of a `GameClock` row that boot no
-longer creates — 16 of the 32 red, and **not one of them an assertion about the thing under test.**
-
-**The fix uncovered a tenth failure that had been masked**, and it is P0-9's trap: the test passes `2026` to
-a parameter named `int season`, in eleven places. The trap does not stay in the file it was found in.
-
-The remaining ~25 need reading individually; each states what it is before anything is changed.
-
-**Exit criteria, per class:**
-- [ ] The failure is read and the *intended* guarantee is written down in the test's javadoc
-- [ ] The test asserts a **value**, not that a key exists (a test checking `rating` exists passes happily
-      with it permanently null)
-- [ ] The fixture builds the minimum world the guarantee needs, via `TestCountryCatalogue` (118 ms) or
-      `TestPyramid.Builder` (37 s, once per JVM)
-- [ ] Each rewritten class is green **alone** and green **in a full run** — several of these fail only in
-      company, and a fix that only holds alone has moved the problem
-
----
-
-### P0-3 — DONE: each side plays its own shape
-
-**`SideTactics`, 6 tests, mutation-proven, 26 green with the engine and tactics suites.**
-
-**The board had this backwards, and it mattered.** It said *"the perspective question is the actual design
-problem here, not the plumbing"*. The perspective question was **already made, and made consistently**:
-
-- `TacticalPerspectiveTransformer` is purely geometric and its contract is explicit — *"HOME: direct. AWAY:
-  mirror both axes"* — with a comment recording a bug already found **and fixed** there (the column mirror was
-  `7-c` instead of `8-c`, which pushed away's right-sided players outside the touchline).
-- **Every call site already passes the player's side** — `RestartManager:161,230,318` and
-  `TacticalIntentEngine:171` all call `desiredCell(role, ball, p.getTeam())`.
-- The editor has **one frame**, with no per-side awareness at all.
-
-So the capability was built and unused. **The defect was that one grid was loaded** —
-`tacticsRules.forTeam(homeTeam.getId())` — and handed to the whole match, so the away side was resolved
-against the home club's vocabulary: a 4-3-3 visitor asked a 4-4-2's grid about `CM`, `WL`, `WR` and `ST`.
-
-**No mirror was added, deliberately.** Every club's grid is stored in the same home-perspective frame and the
-mirror is applied once at lookup, keyed on the side asking. Mirroring in `SideTactics` would mirror **twice**
-and put the away shape in the wrong corners — which is the bug the transformer's own javadoc records.
-
-**Additive, so nothing existing changed.** `SideTactics` selects by side and falls back to home; every
-single-grid constructor (`RestartManager`, `TacticalIntentEngine`, `MatchOrchestrator`, `SimMatchRunner.run`)
-is kept and delegates. One grid for both sides still works, a missing away grid falls back, an unrecognised
-side falls back — each asserted, because a change that only works when both clubs have profiles would be a
-change that stops half the world playing football.
-
-**Why the defect was invisible and survivable.** `1420306` made an unnamed role return null so a player holds
-his own shape instead of being sent to one hardcoded cell. That prevented a crash and **also hid this**: a
-4-3-3 visitor "worked" — he just played no shape at all. The test now asserts a role from the *other* grid is
-**not answered**, which is the distinction between "holds his shape" and "plays his shape".
-
-**One product question left, and it is not a blocker:** the away manager authors his grid on a pitch drawn
-from the home side, so his right winger sits on the left of his own screen. Self-consistent, and the mirror
-makes it right on the pitch — but it reads oddly to the person drawing it. Cosmetic legibility, not
-correctness.
-
----
-
-### P0-4 — ANSWERED 2026-10-03, deferred by the owner: both stay identical for now
-
-**The owner:** both stay identical *until* he decides whether a user should be able to build a separate
-tactic for each phase. **Not a defect, and not a deferral of the work — a deliberate hold.**
-
-**What that holds in place, and it is the same hold as before:**
-
-- `TeamTacticsService.mirrorWeHaveBallRules` keeps mirroring on every save and every read
-- `DefensiveShape` stays **load-bearing rather than decorative** — it manufactures the defensive shape the
-  data cannot carry
-- the multi-tactics work stays unwritten, because the storage design depends on the answer
-
-**What it unblocks:** **P0-3.** The away side carrying its own `TacticsRules` is a runtime concern about
-perspective, not a storage decision, so it does not wait on this.
-
-**Still open, and it is a different question from the one answered here:** whether a manager should ever be
-*able* to author two phases. If yes, the tactic table becomes keyed by `(tactic, possession_context)` and
-roughly doubles the rows; if no, `mirrorWeHaveBallRules` and the duplication both go away and the data model
-gets simpler than it is today. That is the follow-up, not this task.
-
-**The evidence the decision rests on, unchanged:** `TeamTacticsService.mirrorWeHaveBallRules` makes
-`WE_HAVE_BALL` and `OPPONENT_HAS_BALL` identical on **every save and every read**. All 506/506
-out-of-possession rules in the shipped data are byte-identical to their in-possession twins. That is why
-`DefensiveShape` is **load-bearing rather than decorative** — it manufactures the defensive shape the data
-cannot carry.
-
----
-
-### P0-5 — ANSWERED 2026-10-03: drop the four, keep `OFK Omladinac`
-
-**The owner drops the four orphans.** Verified against the file rather than the board: five profiles, and
-**only `OFK Omladinac` (4-4-2) names a club that exists.** All four orphans are 4-3-3 — `FK Beograd`,
-`GFK Dinamo Šabac`, `GFK Tamiš Gornji Milanovac 1901`, `SK Čačak 1912`.
-
-**This closes the decision, not the work.** The code change — editing
-`var/tactics-editor-profiles.json` down to one profile, and dropping the restore's "reports them by name"
-behaviour that exists only because of them — is **not yet made.** Tracked under P0-15.
+**What P0-1a had already fixed here**, now removed rather than kept: the missing ownership guard, and
+`POST`'s inability to accept a body at all. Both were real defects; neither has a caller, so the cheaper
+answer is deletion. `LineupAuthorizationTest` drops from 10 tests to 3, and keeps exactly the guarantee that
+still means something — **anonymous callers are refused, and a manager can read, because who is in a rival's
+eleven is a league-table fact.**
 
 ---
 
@@ -788,7 +680,7 @@ Two concrete contradictions, both confirmed in source:
 
 ---
 
-### P0-12 — `dataFixSuggestions.md` §4.1 and §4.4 — OWNER-GATED
+### P0-12 — ANSWERED 2026-10-04: keep `IDENTITY`, and bound retention before indexing
 
 - **§4.1** — the `IDENTITY` generation type disables JDBC batching for **70 of 71 entities**, so
   `batch_size=50` is dead code.
@@ -894,8 +786,16 @@ fails on a fifth index until that one has been measured too. Proven able to fail
 the generation type is addressed. **Establish that first** rather than writing the batch and measuring no
 change.
 
+**Q1 — `IDENTITY` disables batching: keep it (option B).** No schema change on 14,880 clubs' worth of data,
+and the honest partial is taken. **P1-2 stays blocked** and should say so rather than be re-attempted.
+
+**Q2 — `match_tick_states`: retention first, then the index (B then A).** Unbounded growth is the real
+problem; the index question is smaller once the table is bounded. P1-5 is therefore now **ahead of** P1-1's
+index proposal, not beside it.
+
 **Exit criteria:**
-- [ ] Rows-per-match and elapsed time measured before and after
+- [ ] Rows-per-match and elapsed time measured before and after — **blocked while `IDENTITY` stands**, and
+      recorded as blocked rather than retried
 - [ ] If `IDENTITY` blocks it, that is recorded and the task stops — it is P0-12's to unblock, not this
       task's to work around
 

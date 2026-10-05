@@ -1,28 +1,19 @@
 package org.example.footballmanager.newLogic.controller;
 
 import org.example.commonmanager.model.User;
-import org.example.footballmanager.newLogic.dto.LineupSaveRequestDTO;
 import org.example.footballmanager.newLogic.model.Lineup;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.LineupRepository;
-import org.example.footballmanager.newLogic.repository.PlayerRepository;
-import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.springframework.data.domain.PageRequest;
 import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.Optional;
 
@@ -54,18 +45,9 @@ import java.util.Optional;
 public class LineupController {
 
     private final LineupRepository lineupRepository;
-    private final TeamRepository teamRepository;
-    private final PlayerRepository playerRepository;
-    private final PlusFeatureService plusFeatures;
 
-    public LineupController(LineupRepository lineupRepository,
-                            TeamRepository teamRepository,
-                            PlayerRepository playerRepository,
-                            PlusFeatureService plusFeatures) {
+    public LineupController(LineupRepository lineupRepository) {
         this.lineupRepository = lineupRepository;
-        this.teamRepository = teamRepository;
-        this.playerRepository = playerRepository;
-        this.plusFeatures = plusFeatures;
     }
 
     @GetMapping
@@ -86,102 +68,10 @@ public class LineupController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getById(@PathVariable Long id) {
-        return lineupRepository.findById(id)
-                .map(lineup -> ResponseEntity.ok(view(lineup)))
+    public Map<String, Object> getById(@PathVariable Long id) {
+        return view(lineupRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Lineup " + id + " not found"));
-    }
-
-    /**
-     * Files a squad sheet for a club.
-     *
-     * <p><b>Three defects, in the order they bite.</b> It took a raw {@code Lineup}, which Jackson cannot
-     * deserialise at all (see {@code LineupSaveRequestDTO}), so the route had never accepted a body. It had no
-     * guard, so any manager could file a sheet for any club. And it saved whatever it was handed, so a body
-     * carrying an {@code id} would overwrite an existing row through {@code save()}.
-     *
-     * <p>Authorization runs <b>before</b> validation, deliberately: a caller with no claim on the club learns
-     * nothing about what was wrong with his body, and a refused manager is refused for the reason he was
-     * actually refused rather than for an incidental complaint about his eleven.
-     */
-    @PostMapping
-    public ResponseEntity<Map<String, Object>> createLineup(@RequestBody LineupSaveRequestDTO request,
-                                                            @AuthenticationPrincipal User principal) {
-        if (!mayManage(principal, request == null ? null : request.getTeamId())) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "error", "You can only file a squad sheet for your own club."));
-        }
-
-        List<Long> starterIds = request.getStarterIds() == null ? List.of() : request.getStarterIds();
-        List<Long> benchIds = request.getBenchIds() == null ? List.of() : request.getBenchIds();
-        if (starterIds.size() != 11) {
-            // 400, not a raw RuntimeException. A raw one fell into the catch-all and arrived as a 500,
-            // so a manager who sent the wrong number of players was told the server had broken - and the
-            // message went through the error path rather than being a deliberate refusal.
-            throw new IllegalArgumentException(
-                    "A lineup must have exactly 11 starting players, got " + starterIds.size() + ".");
-        }
-
-        Team team = teamRepository.findById(request.getTeamId())
-                .orElseThrow(() -> new IllegalArgumentException("No such club: " + request.getTeamId()));
-        Map<Long, Player> byId = new HashMap<>();
-        for (Player player : playerRepository.findAllById(starterIds)) {
-            byId.put(player.getId(), player);
-        }
-        List<Player> starters = starterIds.stream().map(byId::get).filter(Objects::nonNull).toList();
-        if (starters.size() != 11) {
-            // A distinct answer from "eleven was sent": the request named eleven players and at least one of
-            // them does not exist. Saying "you sent the wrong number" here would be true and useless.
-            throw new IllegalArgumentException(
-                    "A lineup names 11 starting players, but only " + starters.size()
-                            + " of them exist. The club's own squad is the pool they come from.");
-        }
-        List<Player> bench = benchIds.stream()
-                .map(byId::get)
-                .filter(Objects::nonNull)
-                .filter(p -> starters.stream().noneMatch(s -> Objects.equals(s.getId(), p.getId())))
-                .toList();
-
-        Lineup lineup = new Lineup();
-        lineup.setTeam(team);
-        lineup.setFormation(request.getFormation() == null ? "4-4-2" : request.getFormation());
-        lineup.setStyle(request.getStyle() == null ? "BALANCED" : request.getStyle());
-        lineup.setStartingPlayers(new ArrayList<>(starters));
-        lineup.setSubstitutes(new ArrayList<>(bench));
-        lineup.setStarterOrderFromIds(new ArrayList<>(starterIds));
-        lineup.setBenchOrderFromIds(new ArrayList<>(benchIds));
-
-        return ResponseEntity.ok(view(lineupRepository.save(lineup)));
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, @AuthenticationPrincipal User principal) {
-        Lineup lineup = lineupRepository.findById(id).orElseThrow(() -> new ResponseStatusException(
-                HttpStatus.NOT_FOUND, "Lineup " + id + " not found"));
-
-        Long clubId = lineup.getTeam() == null ? null : lineup.getTeam().getId();
-        if (!mayManage(principal, clubId)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }
-
-        lineupRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * A club's own manager, or an administrator.
-     *
-     * <p>Fails closed: an unknown caller, a caller with no club, and a caller naming a club that does not
-     * exist are all "not yours". An ownership check that defaults to yes is not a check.
-     */
-    private boolean mayManage(User principal, Long clubId) {
-        if (principal == null || clubId == null) {
-            return false;
-        }
-        boolean administrator = principal.getRole() != null
-                && principal.getRole().name().equals("OWNER");
-        return administrator || plusFeatures.isOwnTeam(principal, clubId);
+                        "Lineup " + id + " not found")));
     }
 
     /**
