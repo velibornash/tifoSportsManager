@@ -453,6 +453,100 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         }
     }
 
+    /**
+     * The registration approval queue, on its own panel.
+     *
+     * <p>It lived inside the community chat until P2-20 Phase 6, where the only way to approve a
+     * manager was to scroll a shared feed and find the row. Two things were wrong with that beyond the
+     * scrolling: <b>the applicant's email travelled through a feed every logged-in manager could read</b>
+     * (gated behind an admin check, while the username was not — the exposure P0-17 recorded), and the
+     * admin tab said so itself in a "Coming next" panel.
+     *
+     * <p>Here the queue is reachable only by staff, because the whole page is.
+     */
+    async function showRegistrationQueue() {
+        const host = document.getElementById('fm-registrations');
+        if (!host) return;
+        try {
+            const res = await authFetch('/admin/registration-requests');
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const rows = await res.json();
+            if (!Array.isArray(rows) || rows.length === 0) {
+                host.innerHTML = '<p class="fm-subtle">No one is waiting. Every application has been decided.</p>';
+                return;
+            }
+            host.innerHTML = `
+                <p class="fm-subtle">${rows.length} waiting. Approving creates the account and hands him
+                    the reserved club; rejecting closes the application.</p>
+                <div class="fm-activation-list">
+                    ${rows.map(registrationRow).join('')}
+                </div>`;
+            host.querySelectorAll('.js-decide-registration').forEach(button => {
+                button.addEventListener('click', () => decideRegistration(button));
+            });
+        } catch (err) {
+            host.innerHTML = `<p style="color:#f44336;">Could not load applications: ${escapeHtml(err.message)}</p>`;
+        }
+    }
+
+    function registrationRow(row) {
+        return `
+            <div class="fm-activation-row">
+                <span class="fm-activation-name">${escapeHtml(row.username || 'Applicant')}</span>
+                <span class="fm-subtle">${escapeHtml(row.countryName || row.countryCode || '—')}</span>
+                <span class="fm-subtle">${escapeHtml(row.teamName || 'no club reserved')}</span>
+                <button type="button" class="fm-action-btn js-decide-registration"
+                        data-request-id="${escapeHtml(row.id)}"
+                        data-action="approve">Approve</button>
+                <button type="button" class="fm-action-btn secondary js-decide-registration"
+                        data-request-id="${escapeHtml(row.id)}"
+                        data-action="reject">Reject</button>
+            </div>`;
+    }
+
+    /**
+     * Approves or rejects one application.
+     *
+     * <p>A rejecting reviewer is asked why, and the note is stored on the request. An approval asks for
+     * nothing: there is nothing to explain about letting somebody in, and a note field nobody fills in
+     * is a field nobody reads.
+     */
+    async function decideRegistration(button) {
+        const requestId = button?.dataset?.requestId;
+        const action = button?.dataset?.action;
+        if (!requestId || !action) return;
+
+        let note = null;
+        if (action === 'reject') {
+            note = window.prompt('Why is this application being rejected?', '');
+            if (note === null) return;
+        } else if (!window.confirm(
+            'Approve this application?\n\n'
+            + 'It creates the account and hands him the reserved club.')) {
+            return;
+        }
+
+        button.disabled = true;
+        try {
+            const res = await authFetch(`/admin/registration-requests/${encodeURIComponent(requestId)}/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: note || '' })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`${action === 'approve' ? 'Approval' : 'Rejection'} failed: ${body.error || res.status}`);
+                return;
+            }
+            window.alert(`Done. The applicant has been told by notification.`);
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+        } finally {
+            button.disabled = false;
+            await showRegistrationQueue();
+        }
+    }
+
     async function loadAdmin() {
         const mainContent = document.getElementById('main-content');
         const refusal = guard();
@@ -476,7 +570,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         <div class="fm-stat-card"><span>Role</span><strong>${getSessionRole() || 'ADMIN'}</strong></div>
                         <div class="fm-stat-card"><span>Signed in as</span><strong>${getUsername?.() || 'Manager'}</strong></div>
                         <div class="fm-stat-card"><span>Current club</span><strong>${getTeamName?.() || 'Unassigned'}</strong></div>
-                        <div class="fm-stat-card"><span>Tool groups</span><strong>3</strong></div>
+                        <div class="fm-stat-card"><span>Tool groups</span><strong>4</strong></div>
                     </div>
                 </section>
 
@@ -589,20 +683,34 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
+                            <h3>Applications</h3>
+                            <p class="fm-subtle">Who has asked to play, and in which country. These lived
+                                inside the community chat until P2-20 Phase 6, where an applicant's email
+                                travelled through a feed every manager could read.</p>
+                        </div>
+                        <span class="fm-panel-action">Approve or reject</span>
+                    </div>
+                    <div id="fm-registrations"><p class="fm-subtle">Reading...</p></div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
                             <h3>Coming next</h3>
-                            <p class="fm-subtle">Registration approvals and further admin tooling land here.</p>
+                            <p class="fm-subtle">Further admin tooling lands here.</p>
                         </div>
                         <span class="fm-panel-action">Planned</span>
                     </div>
                     <div class="fm-empty" style="text-align:left;">
-                        Club registration requests (approve / reject) and the remaining admin actions
-                        will be surfaced on this page. They currently still live in the Community chat.
+                        A moderation history. Bans are held on the account as a current state, so the
+                        question "who banned that manager, and how often" cannot be answered yet.
                     </div>
                 </section>
             </div>`;
 
         void showCountryActivation();
         void showUserManagement();
+        void showRegistrationQueue();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

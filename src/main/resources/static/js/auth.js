@@ -346,8 +346,15 @@ export async function authFetch(url, options = {}) {
 // Session role (single source of truth for "is this user an admin?")
 // ---------------------------------------------------------------------------
 // Previously three separate implementations existed: dashboard.js isAdminUser(),
-// community.js isAdminViewer(), and a private currentUserRole in each of pages.js
-// and dashboard.js. They could disagree. Everything now goes through here.
+// community.js isAdminViewer() (both deleted with the chat, P2-20 Phase 6), and a
+// private currentUserRole in each of pages.js and dashboard.js. They could
+// disagree. Everything now goes through here.
+//
+// NOTE: this is the STAFF set, matching SecurityConfig's /admin/** matcher. It is
+// not the MODERATOR set. A forum moderator can delete posts and apply a forum ban
+// through /admin/users/** endpoints the server gates on mayModerate, but does not
+// reach the Admin tab — deliberately, so a moderator cannot reset the database or
+// appoint himself ADMIN.
 //
 // The role set matches the backend gate in SecurityConfig
 // (hasAnyRole("ADMIN", "OWNER", "DEV")) on /admin/**. DEV is included so the

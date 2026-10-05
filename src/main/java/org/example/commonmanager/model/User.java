@@ -76,6 +76,21 @@ public class User implements UserDetails {
     @Enumerated(EnumType.STRING)
     private UserRole role;
 
+    /**
+     * DELETED with the chat (P2-20 Phase 6).
+     *
+     * <p>Was the only persisted read-tracking in the application: one timestamp per account, written
+     * every time {@code GET /community/chat} was called — <b>a write on a GET</b> — and read by
+     * {@code /community/summary} to count messages newer than it.
+     *
+     * <p>It could not answer the question it was being asked. Four unread messages and a single cursor
+     * means the store cannot say which of them the manager has seen, and there is nothing to clear
+     * individually. {@code nl_notification} replaced it with a row per notification and a {@code readAt}
+     * per row.
+     *
+     * <p>The column itself stays in the database: {@code ddl-auto=update} adds columns and never drops
+     * them, and this repository has no migration mechanism to remove it with.
+     */
     private LocalDateTime communityLastViewedAt;
 
     /**

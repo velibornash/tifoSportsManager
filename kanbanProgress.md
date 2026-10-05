@@ -2,6 +2,96 @@
 
 ---
 
+## P2-20 Phase 6 — the chat is gone, and the queue it hid is not
+
+The owner's decision on day one was to **wipe** the old chat: no migration, no announcements topic, no
+third tab. This is that.
+
+### Deleted
+
+`CommunityMessage`, `CommunityMessageType`, `CommunityMessageRepository`, `CommunityMessageService`,
+`CommunityController`, `CommunityPostRequestDTO`, `CommunityChatMessageDTO`, `CommunityRecipientDTO`,
+`community.js`, and both test classes (13 tests). Plus `buildCommunityActionsHtml`, which nothing called
+anymore, and the two dead `loadChat`/`loadEvents` delegates in `pages.js` — both of which were
+`return loadChat()`, so a console `loadPage('events')` rendered a chat.
+
+`nl_community_message` dropped from the dev database after confirming it held **0 rows**, so nothing the
+owner wrote is gone. `User.communityLastViewedAt` is documented as dead rather than removed: `ddl-auto=update`
+adds columns and never drops them, and this repository has no migration mechanism to remove it with.
+
+### P0-17 was closed by moving the queue, not by better filtering
+
+The applications queue lived **inside the chat**, so an applicant's email travelled through a feed every
+logged-in manager could read. The email was gated behind `adminViewer` and the username was not — which is
+precisely the half-gating P0-17 was raised for, and `RegistrationApplicantIsNotInTheChatTest` existed to
+keep the remaining half honest.
+
+Both of those tests went with the chat. What replaced them asserts the thing that actually fixed it:
+**reachability**. The queue is on the Admin tab, which is behind `/admin/**` and therefore staff-only.
+`noPublicRouteCarriesApplicantDetails` builds a real pending application with a unique username, saves it,
+asserts it is really in the queue, and then checks every route a non-staff manager can reach for that
+username. `aModeratorCannotSeeTheQueue` is there because a moderator can delete posts and apply a ban, and
+seeing every applicant's email address is a different grant.
+
+### A test that would have passed whatever it did
+
+`noPublicRouteCarriesApplicantDetails` originally built the `RegistrationRequest` and **never saved it**.
+The applicant was not in the queue, so the assertions were searching for a string that had never been
+written — five route checks and five passes, none of which measured anything. It now saves the request and
+asserts it is in the queue before checking anything else.
+
+### The fake email is gone rather than rewritten
+
+`postFakeEmailNotification` logged a line and wrote a chat row whose text began "Fake email sent to …".
+There is no SMTP in this application: no mail starter in `pom.xml`, no `spring.mail.*` property, no
+`JavaMailSender`. It was a notification wearing a disguise, and Phase 3 built the real thing, so the
+method has no reason to exist.
+
+### Two mutations on the queue's reachability
+
+| Mutation | Result |
+|---|---|
+| Queue moved back to a prefix every manager can read | **3 failures** |
+| `MOD` added to the `/admin/**` matcher | `aModeratorCannotSeeTheQueue` fails, plus 2 in the accounts tests |
+
+The second is the one to keep. Adding `MOD` to that matcher looks harmless — moderators are trusted for
+the forum — and it hands every moderator a list of everybody who has applied to play, with their email
+addresses.
+
+### Verified against the running application
+
+The three old routes answer 302; the seven new ones answer 200. Five `nl_*` tables remain and the sixth is
+gone. `nl_notification` now carries `REGISTRATION_DECIDED` rows.
+
+### The stale documentation, corrected
+
+`TECHNICAL_OVERVIEW.md` listed `CommunityController` among the controllers with no tests — it had 8 (P0-1b)
+and has since been deleted. The controller table now names the four new ones and notes that the count of
+untested controllers is unchanged: three removed, three added. `manual/build_manual.py` and
+`manual/capture.sh` described one "Community Chat" screen and have been rewritten for the forum and the
+inbox, with the shot list renumbered.
+
+**No browser, as with every phase of this work.** The admin panel's Applications and Accounts sections were
+verified by extracting their renderers from the served module and asserting on the markup; the approve and
+reject buttons have not been clicked.
+
+---
+
+## Where P2-20 stands after six phases
+
+| Phase | Commit | Tests |
+|---|---|---|
+| 1 — FK, roles, moderation foundation | `dafd6e9` | 51 |
+| 2 — public profile, club → manager | `023eb0c` | 58 |
+| 3 — notification store and polling | `68acbf6` | 14 |
+| 4 — the forum | `5f15232` | 33 |
+| 5 — private messages | `da61dc5` | 24 |
+| 6 — tear down | this commit | 8 |
+
+**Everything the owner asked for is built and verified against a running application and a real database.
+Nothing has been verified in a browser, in any phase.**
+
+
 ## P2-20 Phase 5 — private messages, with a thread you can follow
 
 The owner's four clauses: a recipient list, a **subject and a body**, a reply that creates a **thread** so

@@ -481,15 +481,6 @@ export function buildLeagueActionsHtml(currentPage = '') {
     ], currentPage);
 }
 
-export function buildCommunityActionsHtml(currentPage = '', options = {}) {
-    // Admin tooling used to be linked from here as "DB Tools". It now lives behind the
-    // role-gated Admin tab, so this row is community-only.
-    const actions = [
-        { label: 'Chat', page: 'chat', variant: 'primary', currentPages: ['chat', 'events', 'forum'] },
-    ];
-    return buildActionRowHtml(actions, currentPage);
-}
-
 export function renderPlayersView(players, title, options = {}) {
     const {
         loadPlayer,

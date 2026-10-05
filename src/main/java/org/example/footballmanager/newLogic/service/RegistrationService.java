@@ -9,10 +9,12 @@ import org.example.footballtextmanager.model.CTeam;
 import org.example.footballtextmanager.model.CSCountry;
 import org.example.footballtextmanager.model.CSCompetitionTeamType;
 import org.example.footballmanager.newLogic.model.RegistrationRequest;
+import org.example.footballmanager.newLogic.model.NotificationKind;
 import org.example.footballmanager.newLogic.model.RegistrationRequestStatus;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.commonmanager.model.User;
 import org.example.commonmanager.model.UserRole;
+import org.example.commonmanager.model.UserRoles;
 import org.example.footballmanager.newLogic.repository.RegistrationRequestRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
@@ -36,7 +38,8 @@ public class RegistrationService {
         private final org.example.footballtextmanager.repository.CSTeamRepository cTeamRepository;
     private final org.example.footballtextmanager.repository.CSCountryRepository csCountryRepository;
     private final PasswordEncoder passwordEncoder;
-    private final CommunityMessageService communityMessageService;
+    private final NotificationService notifications;
+    private final UserRepository users;
 
     @Transactional
     public RegistrationRequest createPendingRequest(RegisterRequestDTO dto) {
@@ -81,7 +84,14 @@ public class RegistrationService {
         request.setStatus(RegistrationRequestStatus.PENDING);
 
         RegistrationRequest saved = registrationRequestRepository.save(request);
-        communityMessageService.postRegistrationSubmitted(saved);
+        // The moderators are told an application arrived. Was a chat message, which meant a pending
+        // applicant's username and email travelled through a feed every logged-in manager could read —
+        // the exposure P0-17 recorded, and the reason the filter existed at all.
+        //
+        // The queue itself is on the Admin tab now, where only staff can reach it. A notification is
+        // worse for discovery and much better for privacy: a moderator learns that there is something
+        // waiting, and goes somewhere only he can see.
+        notifyModerators("A new manager applied: " + saved.getUsername(), saved);
         return saved;
     }
 
@@ -183,8 +193,7 @@ public class RegistrationService {
         request.setReviewNote(normalizeOptionalNote(reviewNote));
 
         RegistrationRequest saved = registrationRequestRepository.save(request);
-        communityMessageService.postRegistrationApproved(saved, resolvedReviewer);
-        communityMessageService.postFakeEmailNotification(saved, true);
+        notifyModerators(resolvedReviewer.getDisplayName() + " approved " + saved.getUsername(), saved);
         return saved;
     }
 
@@ -199,9 +208,29 @@ public class RegistrationService {
         request.setReviewNote(normalizeOptionalNote(reviewNote));
 
         RegistrationRequest saved = registrationRequestRepository.save(request);
-        communityMessageService.postRegistrationRejected(saved, resolvedReviewer, saved.getReviewNote());
-        communityMessageService.postFakeEmailNotification(saved, false);
+        notifyModerators(resolvedReviewer.getDisplayName() + " rejected " + saved.getUsername(), saved);
         return saved;
+    }
+
+    /**
+     * Tells every moderator that something happened to a registration.
+     *
+     * <p>The applicant's <b>username only</b>, never the email. The old chat put both into a shared feed,
+     * and the email was gated behind an admin check while the username was not — which is exactly the
+     * half-gating P0-17 was raised for. A notification is a much smaller surface: one recipient at a
+     * time, no shared feed, and no field a moderator does not need to see in order to act.
+     *
+     * <p>The fake email is gone rather than rewritten. It logged a line and wrote a chat row claiming to
+     * be a mail; there is no SMTP in this application and no {@code JavaMailSender}, so it was a
+     * notification wearing a disguise. What actually exists now is the notification store.
+     */
+    private void notifyModerators(String summary, RegistrationRequest request) {
+        for (User staff : users.findAll()) {
+            if (UserRoles.isStaff(staff)) {
+                notifications.notify(staff, NotificationKind.REGISTRATION_DECIDED, summary,
+                        "admin", request == null ? null : request.getId());
+            }
+        }
     }
 
     private RegistrationRequest getPendingRequest(Long requestId) {

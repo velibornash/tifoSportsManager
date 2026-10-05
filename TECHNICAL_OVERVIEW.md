@@ -166,7 +166,9 @@ Everything except `/auth/**` and a small explicit permit list requires a JWT.
 | `SimulationController` · `LineupController` · `TrainingController` | `/simulation` · `/lineups` · `/training` |
 | `TransferController` · `ScoutingController` | `/transfers` · `/scouting` |
 | `JuniorController` · `JuniorSchoolController` | `/juniors` · `/juniors/school` |
-| `CountryController` · `SeasonController` · `CommunityController` | `/countries` · `/seasons` · `/community` |
+| `CountryController` · `SeasonController` | `/countries` · `/seasons` |
+| `ForumController` · `MessageController` · `NotificationController` | `/forum` · `/messages` · `/notifications` |
+| `UserProfileController` | `/users` — **not** `/auth`, which is `permitAll` with a per-method guard |
 | `CalendarController` · `StatsController` · `MatchPlayerStatsController` | `/calendar` · `/stats` · `/match-stats` |
 | `StadiumController` · `StadiumSettingsController` | `/stadiums` · `/api/teams/{teamId}/stadium` |
 | `StaffDirectoryController` · `FinanceController` | `/api/teams/{teamId}` · `/api/teams/{teamId}/finances` |
@@ -180,9 +182,14 @@ Everything except `/auth/**` and a small explicit permit list requires a JWT.
 | `DummyDataController` | `/demo` — **fake data, hardcoded to team 1, zero DB access.** Five frontend files still fetch it. Awaiting an owner decision |
 | `CompetitionController` | **empty stub, 0 routes** |
 
-**Nine controllers have no tests at all** — `Lineup`, `Player`, `Team`, `User`, `Admin`, `Community`,
-`DummyData`, `Competition`, `Stadium` — and only three tests exercise any controller, so **the entire
-security surface is untested**. That is **P0-1**.
+**Nine controllers have no tests at all** — `Lineup`, `Player`, `Team`, `User`, `Admin`, `DummyData`,
+`Competition`, `Stadium` — and only three tests exercise any controller, so **the entire security surface
+is untested**. That is **P0-1**.
+
+**Stale as of P2-20:** this list no longer names `Community`. `CommunityController` had 8 tests
+(P0-1b) and has since been **deleted entirely** along with the chat it served; the replacements are
+`ForumController`, `MessageController`, `NotificationController` and `UserProfileController`, all with
+tests. The count of untested controllers is unchanged — three were removed and three were added.
 
 ---
 

@@ -378,15 +378,27 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
 
     # ---------------------------------------------------------------- 13
     a('<h2 id="s13">13. Community</h2>')
-    a(shot("26-community", "<b>Community Chat.</b> Managers talk here, and the same panel carries "
-                           "new-registration approvals for owners."))
+    a('<p>Two screens under one heading: a forum and private messages. Both are reachable from the '
+      'top bar, and a bell in the same bar shows anything that has happened to you.</p>')
+    a(shot("26-forum", "<b>Forum.</b> Two sections, TIFO and non-TIFO. Anyone can open a topic and "
+                       "reply in one."))
+    a(shot("27-messages", "<b>Messages.</b> Pick any manager and write with a subject. Replying keeps "
+                          "the whole conversation in one thread, so the history can be followed."))
+    a('<p>A manager can edit and delete his own messages. A moderator can do the same to anybody\u2019s, '
+      'and a moderator edit is labelled as one in the thread. A moderator can also stop a manager '
+      'writing in the forum for a number of days; reading the forum, his private messages and his '
+      'club all carry on working, and he is told why and for how long.</p>')
 
     # ---------------------------------------------------------------- 14
     a('<h2 id="s14">14. Admin</h2>')
     a('<p>Owner and admin accounts get a world-repair panel: rebuild missing pieces of the world, '
       'activate a country, and check the state of the database.</p>')
-    a(shot("27-admin", "<b>Admin.</b> Operational tools, visible only to admin accounts."))
-    a(shot("28-user-profile", "<b>Your account.</b> Role, subscription, country and club."))
+    a('<p>The same page carries the applications queue (who has asked to play, and in which country) '
+      'and an accounts panel where a role can be changed or a forum ban applied. A moderator can '
+      'apply a forum ban from a manager\u2019s profile, but does not reach this page.</p>')
+    a(shot("28-admin", "<b>Admin.</b> Operational tools, applications and accounts, visible only to '
+                       'admin accounts."))
+    a(shot("29-user-profile", "<b>Your account.</b> Role, subscription, country and club."))
 
     # ---------------------------------------------------------------- 15
     a('<h2 id="s15">15. What is not built yet</h2>')

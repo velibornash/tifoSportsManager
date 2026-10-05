@@ -1063,7 +1063,17 @@ day of work, following `archive/COMPETITIVE_ANALYSIS.md` §10, whose ordering is
 
 ---
 
-## 🔴 P2-20 — The Community tab: a forum and private messages (owner decision, 2026-10-05)
+## ✅ P2-20 — DONE: the Community tab is a forum and private messages (owner decision, 2026-10-05)
+
+**All six phases landed.** `5f15232` (forum), `da61dc5` (messages) and the Phase 6 teardown. 143 tests
+across the ten classes this work added or rewrote, every guard mutation-proven. What the owner asked for on
+2026-10-05 is what runs: two forum sections, edit with a visible tag, delete, moderators who can act on
+anybody's message, a forum write ban applied from a profile, direct messages with a subject and a body,
+replies in a followable thread, sendable to any account, and a notification store that did not exist before.
+
+**Not verified in a browser.** Every screen was checked by rendering the served module against live
+responses and by driving the endpoints with `curl`; no click was performed. That is stated in every log
+entry rather than left for the owner to discover.
 
 **The largest single request on this board, and the only one that is a product decision rather than a defect.**
 The tab today is one screen reached by a menu button, and `pages.js` routes three names — `forum`, `chat`,
@@ -1165,11 +1175,20 @@ between `User` and `Team`. See `kanbanProgress.md` for what was measured and wha
 - [x] Notification on receipt, pointing at the conversation
 - [x] 24 tests, 3 mutations proven
 
-### Phase 6 — tear down
-- [ ] Delete `CommunityMessage` and everything around it, the `nl_community_message` table,
-      `User.communityLastViewedAt`, and the dead `forum`/`events` aliases
-- [ ] Registration approvals onto the Admin tab
-- [ ] `RegistrationService`'s five `communityMessageService` calls become notifications
+### Phase 6 — DONE: tear down
+
+- [x] Deleted: `CommunityMessage`, `CommunityMessageType`, `CommunityMessageRepository`,
+      `CommunityMessageService`, `CommunityController`, three DTOs, `community.js`, and both test classes
+- [x] `nl_community_message` dropped from the dev database (it was empty)
+- [x] `User.communityLastViewedAt` documented as dead; the column stays because `ddl-auto=update` never
+      drops and this repository has no migration mechanism
+- [x] Registration approvals **on the Admin tab**, staff-only, and the applicant's email no longer travels
+      through anything a manager can read
+- [x] `RegistrationService`'s five chat calls became moderator notifications, carrying the **username only**
+- [x] The **fake email is gone** — it logged a line and wrote a chat row claiming to be a mail, and there is
+      no SMTP in this application
+- [x] `TECHNICAL_OVERVIEW.md` corrected, `manual/` renumbered, dead `buildCommunityActionsHtml` removed
+- [x] 8 tests on reachability, 2 mutations proven
 
 ---
 

@@ -50,10 +50,11 @@ PAGES="
 23-u21:u21Team
 24-cup:cup
 25-top-scorers:topScorers
-26-community:chat
-27-admin:admin
-28-user-profile:userProfile
-29-player-stats:playerStats
+26-forum:forum
+27-messages:messages
+28-admin:admin
+29-user-profile:userProfile
+30-player-stats:playerStats
 "
 for entry in $PAGES; do
   slug="${entry%%:*}"; page="${entry##*:}"
