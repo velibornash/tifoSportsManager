@@ -109,15 +109,15 @@ class PlayerContractServiceTest {
         Team club = aClub("Expiring");
         Player p = aPlayer(club, "Expiring", 30, 1_000_000, 4_000);
         PlayerContract c = service.assignToClub(p, club, 3, SquadRole.ROTATION);
-        c.setExpirySeason(2027);
+        c.setExpirySeason(3);
         contracts.save(c);
 
-        // Season 2027: still under contract.
-        assertTrue(service.expireContracts(2027).isEmpty(), "a contract expires AT THE END of its season");
+        // Season 3: still under contract, because a contract runs out at the END of its season.
+        assertTrue(service.expireContracts(3).isEmpty(), "a contract expires AT THE END of its season");
         assertNotNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam());
 
-        // Season 2028: now a free agent.
-        List<Player> released = service.expireContracts(2028);
+        // Season 4: now a free agent.
+        List<Player> released = service.expireContracts(4);
         assertTrue(released.stream().anyMatch(x -> x.getId().equals(p.getId())),
                 "the player must be released once the contract has run out");
         assertNull(contracts.findByPlayerId(p.getId()).orElseThrow().getTeam(),
