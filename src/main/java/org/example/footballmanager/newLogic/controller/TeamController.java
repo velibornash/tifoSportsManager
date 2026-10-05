@@ -30,6 +30,7 @@ import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TeamMedicalService;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.example.footballmanager.newLogic.service.TeamTacticsService;
+import org.example.footballmanager.newLogic.service.ClubOwnershipLinker;
 import org.springframework.data.domain.PageRequest;
 import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.data.domain.Sort;
@@ -63,6 +64,7 @@ public class TeamController {
     private final SeasonService seasonService;
     private final TeamMedicalService teamMedicalService;
     private final TeamTacticsService teamTacticsService;
+    private final ClubOwnershipLinker clubOwnership;
 
     public TeamController(TeamRepository teamRepository,
                           PlayerRepository playerRepository,
@@ -76,7 +78,8 @@ public class TeamController {
                           SeasonService seasonService,
                           TeamMedicalService teamMedicalService,
                           TeamTacticsService teamTacticsService,
-                          PlusFeatureService plusFeatures) {
+                          PlusFeatureService plusFeatures,
+                          ClubOwnershipLinker clubOwnership) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -90,6 +93,7 @@ public class TeamController {
         this.teamMedicalService = teamMedicalService;
         this.teamTacticsService = teamTacticsService;
         this.plusFeatures = plusFeatures;
+        this.clubOwnership = clubOwnership;
     }
 
     @GetMapping
@@ -157,6 +161,26 @@ public class TeamController {
         profile.put("stadium", team.getStadium() != null ? team.getStadium().getName() : "N/A");
         profile.put("budget", team.getBudget());
         profile.put("reputation", team.getReputation() > 70 ? "High" : team.getReputation() > 40 ? "Medium" : "Low");
+
+        // Who runs this club. Added in P2-20 because a profile that does not say is a profile you
+        // cannot get from here to: the manager is the one thing on a club page a reader actually wants.
+        //
+        // // Read through User.footballTeam, not by matching a name. The name-join is what this
+        // repository paid for with P0-18 and three live siblings (P0-20), and managerOf deliberately
+        // refuses to guess when two clubs share a name — a profile naming the wrong manager is worse
+        // than one naming none.
+        User manager = clubOwnership.managerOf(team);
+        if (manager != null) {
+            String managerName = manager.getDisplayName();
+            profile.put("managerUserId", manager.getId());
+            profile.put("managerName", managerName != null && !managerName.isBlank()
+                    ? managerName
+                    : manager.getUsername());
+            // Whether the name above is one he picked or a login address. The page says so, rather
+            // than presenting "velibor@example.com" as though it were how he wants to be known.
+            profile.put("managerHasChosenName",
+                    managerName != null && !managerName.isBlank());
+        }
 
         // Which league this club is in, and under what name, so the profile can show it and link to
         // it. The club already had the competition; the profile simply never told anybody.

@@ -28,6 +28,7 @@ import { createFixtureView } from './pages/views/fixture-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createClubView } from './pages/views/club-view.js';
+import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
 import { createStadiumView } from './pages/views/stadium-view.js';
 import { createAdminView } from './pages/views/admin-view.js';
 import {
@@ -134,15 +135,23 @@ import {
 	        }
 	    }
 
-	    function buildPageNavState(page) {
-	        if (!isLeaguePage(page)) return { type: 'page', page };
-	        return {
-	            type: 'page',
-	            page,
-	            preserveLeagueContext: true,
-	            ...getActiveLeagueNavState()
-	        };
-	    }
+function buildPageNavState(page, options = {}) {
+        // A manager's id is part of which page this is. `publicUserProfile` without it renders
+        // nothing, so a Back that dropped the id would land on an empty page rather than the
+        // profile — and `sameNavState` compares by value, so two different managers' profiles would
+        // otherwise look like the same entry and the second would not push its own history.
+        const identity = page === 'publicUserProfile' && options.userId != null
+            ? { userId: options.userId }
+            : {};
+        if (!isLeaguePage(page)) return { type: 'page', page, ...identity };
+        return {
+            type: 'page',
+            page,
+            preserveLeagueContext: true,
+            ...identity,
+            ...getActiveLeagueNavState()
+        };
+    }
 
     function sameNavState(a, b) {
         if (!a || !b) return false;
@@ -171,7 +180,9 @@ import {
 	                await loadPage(state.page, { pushHistory: false, preserveLeagueContext: true });
 	                return;
 	            }
-	            await loadPage(state.page, { pushHistory: false });
+	            // The manager's id travels with the history entry. Without it Back on a profile
+	            // lands on an empty page, because the route has no default subject.
+	            await loadPage(state.page, { pushHistory: false, userId: state.userId });
             return;
         }
         if (state.type === 'player') {
@@ -460,7 +471,7 @@ import {
 	        if (isLeaguePage(page) && !preserveLeagueContext) {
 	            syncUserLeagueContext();
 	        }
-	        if (pushHistory) pushNavState(buildPageNavState(page));
+	        if (pushHistory) pushNavState(buildPageNavState(page, options));
         try {
 
             switch(page) {
@@ -624,6 +635,13 @@ import {
 
                 case "userProfile":
                     return loadUserProfile();
+
+                // Somebody else's profile, reached by clicking a club and then its manager.
+                // `options.userId` is required and there is no fallback: rendering your own
+                // profile under a manager's name would be a page that quietly lies about who it
+                // is showing, which is the one thing a profile must never do.
+                case "publicUserProfile":
+                    return loadPublicUserProfilePage(options.userId);
 
                 case "stadium":
                     return stadiumView.loadStadium();
@@ -1112,6 +1130,40 @@ import {
     }
 
     /**
+     * Opens another manager's public profile.
+     *
+     * <p>Re-reads {@code /auth/me} for the viewer rather than trusting a module variable, for the same
+     * reason {@code loadUserProfile} does: a page you are looking at should not be deciding "is this
+     * me?" and "may I moderate?" from a copy of who you were when the app loaded.
+     */
+    async function loadPublicUserProfilePage(userId) {
+        if (userId === undefined || userId === null) {
+            document.getElementById('main-content').innerHTML =
+                buildEmptyState('No manager was named.');
+            return;
+        }
+        try {
+            const res = await authFetch('/auth/me');
+            const viewer = res.ok ? await res.json() : null;
+            await loadPublicUserProfile(userId, viewer);
+        } catch (err) {
+            document.getElementById('main-content').innerHTML =
+                buildEmptyState('This profile could not be loaded. ' + (err?.message || ''));
+        }
+    }
+
+    /**
+     * Opens a manager's profile from anywhere, including from inline markup.
+     *
+     * <p>On {@code window} because club profiles and league tables are shared renderers with no other
+     * route to the router, and an inline {@code onclick} is the only handler those can carry — the
+     * same reason {@code openLeagueById} is exposed.
+     */
+    function openUserProfile(userId) {
+        return loadPage('publicUserProfile', { userId });
+    }
+
+    /**
      * Open a named league from anywhere, remembering where the user came from.
      *
      * <p>On window because it is used by the schedule screen, which is a set of shared renderers and
@@ -1132,6 +1184,7 @@ import {
     window.loadPage = loadPage;
     window.logout = logout;
     window.loadUserProfile = loadUserProfile;
+    window.openUserProfile = openUserProfile;
     window.toggleUserMenu = toggleUserMenu;
     // dashboard.js bootstraps the session on window.load and pages.js never sees that payload, so it
     // cannot paint the account corner on its own. Exposing the painter lets dashboard.js hand over

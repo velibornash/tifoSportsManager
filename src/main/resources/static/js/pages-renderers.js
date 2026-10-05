@@ -246,6 +246,25 @@ export function bindScheduleInteractions(container, handlers = {}) {
         });
     });
 
+    // The manager's profile from a league table. Bound here, beside the team-cell handler it has to
+    // not fire alongside, and stopPropagation is load-bearing rather than defensive: the club cell
+    // and this button are siblings inside the same .fm-club-cell, and the row itself also carries a
+    // js-load-CTeam handler, so without it a click on the name opens the club instead of the person.
+    container.querySelectorAll('.js-open-manager').forEach(node => {
+        node.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            const userId = node.dataset.managerId;
+            if (!userId) return;
+            const open = handlers.openUserProfile || window.openUserProfile;
+            if (typeof open === 'function') {
+                open(userId);
+            } else {
+                window.alert('The profile page is still loading. Try again in a moment.');
+            }
+        });
+    });
+
     // Venue link: goes to the club that plays there, so a fixture is a way into a stadium.
     container.querySelectorAll('[data-open-team]').forEach(node => {
         node.addEventListener('click', event => {
@@ -851,6 +870,33 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         return `<span class="fm-badge ${humanControlled ? 'fm-badge-owner' : 'fm-badge-ai'}">${humanControlled ? 'PLAYER' : 'AI'}</span>`;
     }
 
+    /**
+     * The manager's name beside a club in a league table, and a way into his profile.
+     *
+     * <p>Owner decision, 2026-10-05: click a club, see who runs it, click him, read his profile. A
+     * league table is the natural place to start — it is where you meet the other clubs in your
+     * division.
+     *
+     * <p>Separate from the club cell's own click handler rather than nested inside it. The row
+     * navigates to the club; this navigates to a person. Wrapping one in the other means one of the
+     * two needs a stopPropagation, and the wrong one winning is a click that opens the wrong page.
+     *
+     * <p>Shows nothing for a bot club, because the AI badge already says there is no person. And when
+     * the name is only a login address, it says so rather than presenting an email as a name.
+     */
+    function managerLinkHtml(row) {
+        if (!row?.managerUserId) return '';
+        const hasName = row.managerHasChosenName !== false;
+        const label = safe(row.managerName || 'Manager');
+        const title = hasName
+            ? `Open ${label}'s profile`
+            : `Open ${label}'s profile — he has not set a name, so his login is shown`;
+        return `<button type="button" class="fm-link-btn fm-link-btn--inline js-open-manager" `
+            + `data-manager-id="${safe(row.managerUserId)}" `
+            + `data-manager-name="${label}" `
+            + `title="${title}">${label}</button>`;
+    }
+
     function standingsRowsHtml() {
         return rows.map((CTeam, index) => {
             const rank = Number(CTeam.position || index + 1);
@@ -863,7 +909,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             return `
                 <tr class="${zoneClass(rank, rows.length)} ${CTeam.teamId ? 'js-load-CTeam' : ''}" data-CTeam-id="${CTeam.teamId || ''}" data-CTeam-name="${safe(CTeam.name)}" data-season-year="${selectedSeason ?? ''}">
                     <td class="st-pos">${rank}</td>
-                    <td class="st-club"><div class="fm-club-cell">${teamLabel}${ownershipBadgeHtml(CTeam.humanControlled)}</div></td>
+                    <td class="st-club"><div class="fm-club-cell">${teamLabel}${ownershipBadgeHtml(CTeam.humanControlled)}${managerLinkHtml(CTeam)}</div></td>
                     <td>${played}</td>
                     <td>${wins}</td>
                     <td>${draws}</td>
@@ -1139,7 +1185,11 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
     bindScheduleInteractions(mainContent, {
         loadLeagueTeam: (teamId, teamName, options = {}) => loadLeagueTeam(teamId, teamName, { seasonYear: options.seasonYear ?? selectedSeason }),
         loadMatch,
-        loadFixture
+        loadFixture,
+        // The standings rows carry the manager's name (LeagueTableDTO), and clicking it opens his
+        // profile. Without this handler the name renders and does nothing, which is the worst of the
+        // three outcomes: it looks like the feature works.
+        openUserProfile: window.openUserProfile
     });
 
     mainContent.querySelectorAll('.js-load-league-player').forEach(node => {

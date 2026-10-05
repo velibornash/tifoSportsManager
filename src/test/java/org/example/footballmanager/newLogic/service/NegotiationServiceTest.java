@@ -117,7 +117,7 @@ class NegotiationServiceTest {
         Team seller = aClub("Seller", 1_000_000);
         Team buyer = aClub("Buyer", 20_000_000);
         Player star = aPlayer(seller, "Star", 12_000_000, 40_000);
-        contracts.assignToClub(star, seller, 2026, SquadRole.STAR);
+        contracts.assignToClub(star, seller, 1, SquadRole.STAR);
 
         TransferOffer offer = negotiation.openOffer(aListing(seller, star), buyer,
                 4_000_000, 45_000, 5);
@@ -136,7 +136,7 @@ class NegotiationServiceTest {
         Team seller = aClub("AgentSeller", 1_000_000);
         Team buyer = aClub("AgentBuyer", 30_000_000);
         Player p = aPlayer(seller, "Priced", 5_000_000, 15_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.STARTER);
+        contracts.assignToClub(p, seller, 1, SquadRole.STARTER);
 
         TransferOffer offer = negotiation.openOffer(aListing(seller, p), buyer, 1_500_000, 20_000, 3);
         assertNotNull(offer.getAgentFee());
@@ -153,7 +153,7 @@ class NegotiationServiceTest {
         Team seller = aClub("PWeller", 1_000_000);
         Team buyer = aClub("PBuyer", 30_000_000);
         Player greedy = aPlayer(seller, "Greedy", 9_000_000, 20_000);
-        contracts.assignToClub(greedy, seller, 2026, SquadRole.STAR);
+        contracts.assignToClub(greedy, seller, 1, SquadRole.STAR);
 
         // Offer above what he actually asks for. The model refusing less than the demand is the
         // correct behaviour, so the "generous" case has to be genuinely generous.
@@ -165,7 +165,7 @@ class NegotiationServiceTest {
 
         // A second player whose demand is far higher than what is on the table.
         Player modest = aPlayer(seller, "Modest", 1_000_000, 4_000);
-        contracts.assignToClub(modest, seller, 2026, SquadRole.ROTATION);
+        contracts.assignToClub(modest, seller, 1, SquadRole.ROTATION);
         TransferOffer stingy = negotiation.openOffer(aListing(seller, modest), buyer,
                 250_000, 100, 2);
         assertFalse(negotiation.playerWouldSign(stingy),
@@ -181,7 +181,7 @@ class NegotiationServiceTest {
         Team seller = aClub("ThreadSeller", 1_000_000);
         Team buyer = aClub("ThreadBuyer", 30_000_000);
         Player p = aPlayer(seller, "Threaded", 6_000_000, 18_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.STARTER);
+        contracts.assignToClub(p, seller, 1, SquadRole.STARTER);
         Transfer listing = aListing(seller, p);
 
         TransferOffer opening = negotiation.openOffer(listing, buyer, 1_000_000, 15_000, 2);
@@ -202,7 +202,7 @@ class NegotiationServiceTest {
         Team seller = aClub("EndlessSeller", 1_000_000);
         Team buyer = aClub("EndlessBuyer", 30_000_000);
         Player p = aPlayer(seller, "Endless", 4_000_000, 12_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.ROTATION);
+        contracts.assignToClub(p, seller, 1, SquadRole.ROTATION);
         Transfer listing = aListing(seller, p);
 
         TransferOffer offer = negotiation.openOffer(listing, buyer, 500_000, 10_000, 2);
@@ -222,7 +222,7 @@ class NegotiationServiceTest {
         Team seller = aClub("SingleSeller", 1_000_000);
         Team buyer = aClub("SingleBuyer", 30_000_000);
         Player p = aPlayer(seller, "Once", 3_000_000, 9_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.ROTATION);
+        contracts.assignToClub(p, seller, 1, SquadRole.ROTATION);
         Transfer listing = aListing(seller, p);
 
         negotiation.openOffer(listing, buyer, 400_000, 9_000, 2);
@@ -239,7 +239,7 @@ class NegotiationServiceTest {
         Team buyerA = aClub("BidderA", 30_000_000);
         Team buyerB = aClub("BidderB", 30_000_000);
         Player p = aPlayer(seller, "Auctioned", 5_000_000, 14_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.STARTER);
+        contracts.assignToClub(p, seller, 1, SquadRole.STARTER);
         Transfer listing = aListing(seller, p);
 
         TransferOffer a = negotiation.openOffer(listing, buyerA, 900_000, 14_000, 3);
@@ -265,7 +265,7 @@ class NegotiationServiceTest {
         Team buyerA = aClub("PickyA", 30_000_000);
         Team buyerB = aClub("PickyB", 30_000_000);
         Player p = aPlayer(seller, "Picky", 2_000_000, 8_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.ROTATION);
+        contracts.assignToClub(p, seller, 1, SquadRole.ROTATION);
         Transfer listing = aListing(seller, p);
 
         TransferOffer a = negotiation.openOffer(listing, buyerA, 300_000, 8_000, 2);
@@ -288,7 +288,7 @@ class NegotiationServiceTest {
         Team buyerOne = aClub("Partizan", 30_000_000);
         Team buyerTwo = aClub("Partizan United Youth", 30_000_000);
         Player p = aPlayer(seller, "Contested", 4_000_000, 12_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.STARTER);
+        contracts.assignToClub(p, seller, 1, SquadRole.STARTER);
         Transfer listing = aListing(seller, p);
 
         TransferOffer one = negotiation.openOffer(listing, buyerOne, 800_000, 12_000, 3);
@@ -309,7 +309,7 @@ class NegotiationServiceTest {
         Team seller = aClub("StaleSeller", 1_000_000);
         Team buyer = aClub("StaleBuyer", 30_000_000);
         Player p = aPlayer(seller, "Stale", 2_000_000, 7_000);
-        contracts.assignToClub(p, seller, 2026, SquadRole.ROTATION);
+        contracts.assignToClub(p, seller, 1, SquadRole.ROTATION);
         Transfer listing = aListing(seller, p);
 
         TransferOffer offer = negotiation.openOffer(listing, buyer, 200_000, 7_000, 2);

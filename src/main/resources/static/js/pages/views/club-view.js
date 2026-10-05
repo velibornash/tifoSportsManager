@@ -1,5 +1,5 @@
 // pages/views/club-view.js
-import { htmlEscape, formatBudget, buildMilestoneBoardHtml } from './utils.js';
+import { htmlEscape, formatBudget, buildMilestoneBoardHtml, buildEmptyState } from './utils.js';
 
 export function createClubView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml, openLeagueById, loadPage } = deps;
@@ -18,7 +18,16 @@ export function createClubView(deps) {
                 }
             })()
         ]);
-        console.log(`Response status: ${response.status}`);
+        // Was `await response.json()` with no check. A 404 or a 403 then threw a parse error and the
+        // page reported "Failed to load" — which is the exact trap AGENTS.md warns about, and it hid
+        // the server's own message. Checked, and the status is reported rather than swallowed.
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            document.getElementById("main-content").innerHTML = buildEmptyState(
+                body.message || body.error || `This club profile could not be loaded (status ${response.status}).`
+            );
+            return;
+        }
         const profile = await response.json();
 
         const mainContent = document.getElementById("main-content");
@@ -77,6 +86,19 @@ export function createClubView(deps) {
                                       data-league-name="${htmlEscape(profile.leagueName || '')}">${htmlEscape(profile.leagueName || 'League')}</a>`
                                 : htmlEscape('No league')
                         }</strong></div>
+                        <!-- Who runs the club, and a way to his profile. The owner asked for exactly
+                             this path: click a club, see who manages it, click him, read his profile.
+                             Reads the FK on TeamController.getProfile — never a name join, which is
+                             what P0-18 and P0-20 are about.
+
+                             A club with no manager says "AI-run" rather than showing nothing: this page
+                             is the viewer's OWN club, so the absence is meaningful and should look
+                             deliberate. -->
+                        <div class="club-profile-detail-row"><span>Manager</span><strong>${
+                            profile.managerUserId
+                                ? `<button type="button" class="fm-link-btn" data-open-manager="${htmlEscape(String(profile.managerUserId))}">${htmlEscape(profile.managerName || 'Manager')}</button>`
+                                : htmlEscape('AI-run')
+                        }</strong></div>
                     </div>
                 </section>
             </div>
@@ -98,6 +120,20 @@ export function createClubView(deps) {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
                 openLeagueById(link.dataset.openLeague, link.dataset.leagueName || '');
+            });
+        });
+
+        // The manager's profile. openUserProfile is on window because pages.js owns the router and
+        // this is a factory-scoped view; the same reason openLeagueById is passed in below.
+        mainContent.querySelectorAll('[data-open-manager]').forEach(button => {
+            button.addEventListener('click', () => {
+                const userId = button.dataset.openManager;
+                if (!userId) return;
+                if (typeof window.openUserProfile === 'function') {
+                    window.openUserProfile(userId);
+                } else {
+                    window.alert('The profile page is still loading. Try again in a moment.');
+                }
             });
         });
 

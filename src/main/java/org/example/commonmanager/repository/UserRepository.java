@@ -52,6 +52,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findAllByFootballTeamId(Long footballTeamId);
 
     /**
+     * Every account managing one of several clubs, in one query.
+     *
+     * <p>Exists so the league table does not become an N+1. A table is up to 310 rows, and resolving a
+     * manager per row would be 310 queries on a page the owner opens constantly — the same mistake
+     * P1-4 measured and removed three times elsewhere in this codebase. The map is keyed by team id
+     * because that is what a table row already holds.
+     */
+    java.util.List<User> findAllByFootballTeamIdIn(java.util.List<Long> footballTeamIds);
+
+    /**
      * Accounts with a club name but no resolved id — the rows {@code ClubOwnershipLinker.backfillAll}
      * repairs.
      */

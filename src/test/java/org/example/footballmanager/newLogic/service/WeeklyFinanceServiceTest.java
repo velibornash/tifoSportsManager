@@ -70,14 +70,14 @@ class WeeklyFinanceServiceTest {
         Team club = aClub("Ledger", 20_000, 18.0, 1_000_000);
         double before = club.getBudget();
 
-        WeeklyFinanceService.WeekResult r = finances.applyWeeklyFinances(club, 2026, 1);
+        WeeklyFinanceService.WeekResult r = finances.applyWeeklyFinances(club, 3, 1);
 
         assertFalse(r.notApplied(), "the week should settle");
         assertTrue(r.lines() >= 3, "expected several lines, got " + r.lines());
         assertEquals(before + r.net(), r.closing(), 0.01, "closing = opening + net");
 
         List<FinanceLedgerEntry> lines = ledger.findByTeamIdAndSeasonYearAndWeekNumber(
-                club.getId(), 2026, 1);
+                club.getId(), 3, 1);
         assertFalse(lines.isEmpty(), "the lines must actually be persisted");
     }
 
@@ -85,10 +85,10 @@ class WeeklyFinanceServiceTest {
     @DisplayName("wages are a real cost and are stored negative")
     void wagesAreACost() {
         Team club = aClub("Wages", 10_000, 15.0, 1_000_000);
-        finances.applyWeeklyFinances(club, 2026, 2);
+        finances.applyWeeklyFinances(club, 3, 2);
 
         List<FinanceLedgerEntry> lines = ledger.findByTeamIdAndSeasonYearAndWeekNumber(
-                club.getId(), 2026, 2);
+                club.getId(), 3, 2);
         FinanceLedgerEntry wages = lines.stream()
                 .filter(e -> e.getCategory() == FinanceCategory.WAGES).findFirst().orElse(null);
 
@@ -102,9 +102,9 @@ class WeeklyFinanceServiceTest {
     @DisplayName("income is positive and costs are negative")
     void signsAreCorrect() {
         Team club = aClub("Signs", 20_000, 20.0, 1_000_000);
-        finances.applyWeeklyFinances(club, 2026, 3);
+        finances.applyWeeklyFinances(club, 3, 3);
 
-        for (FinanceLedgerEntry e : ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2026, 3)) {
+        for (FinanceLedgerEntry e : ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 3, 3)) {
             if (e.getCategory().isIncome()) {
                 assertTrue(e.getAmount() >= 0, e.getCategory() + " must not be negative");
             } else {
@@ -118,10 +118,10 @@ class WeeklyFinanceServiceTest {
     void weekIsSettledOnce() {
         Team club = aClub("Once", 20_000, 18.0, 1_000_000);
 
-        WeeklyFinanceService.WeekResult first = finances.applyWeeklyFinances(club, 2026, 4);
+        WeeklyFinanceService.WeekResult first = finances.applyWeeklyFinances(club, 3, 4);
         double afterFirst = first.closing();
 
-        WeeklyFinanceService.WeekResult second = finances.applyWeeklyFinances(club, 2026, 4);
+        WeeklyFinanceService.WeekResult second = finances.applyWeeklyFinances(club, 3, 4);
         assertTrue(second.notApplied(), "a repeat settlement must be refused");
         assertEquals(afterFirst, club.getBudget(), 0.01, "the budget must not move twice");
     }
@@ -130,8 +130,8 @@ class WeeklyFinanceServiceTest {
     @DisplayName("a different week does settle")
     void aDifferentWeekSettles() {
         Team club = aClub("Next", 20_000, 18.0, 1_000_000);
-        assertFalse(finances.applyWeeklyFinances(club, 2026, 5).notApplied());
-        assertFalse(finances.applyWeeklyFinances(club, 2026, 6).notApplied());
+        assertFalse(finances.applyWeeklyFinances(club, 3, 5).notApplied());
+        assertFalse(finances.applyWeeklyFinances(club, 3, 6).notApplied());
     }
 
     @Test
@@ -149,17 +149,17 @@ class WeeklyFinanceServiceTest {
     @DisplayName("each season keeps its own ledger")
     void seasonsAreSeparate() {
         Team club = aClub("Seasons", 20_000, 18.0, 1_000_000);
-        finances.applyWeeklyFinances(club, 2024, 1);
-        finances.applyWeeklyFinances(club, 2025, 1);
+        finances.applyWeeklyFinances(club, 1, 1);
+        finances.applyWeeklyFinances(club, 2, 1);
 
         // A week now writes every one of its lines against that season, not just the broadcast
         // money: gate receipts, wages and upkeep used to be written with a null season, so a
         // season's ledger was missing most of what happened in it.
-        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2024, 1).isEmpty());
-        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2025, 1).isEmpty());
+        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 1, 1).isEmpty());
+        assertFalse(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2, 1).isEmpty());
 
         List<Integer> seasons = ledgerService.seasonsWithLedger(club.getId());
-        assertTrue(seasons.contains(2024) && seasons.contains(2025),
+        assertTrue(seasons.contains(1) && seasons.contains(2),
                 "a manager reviewing last season needs both to be listed: " + seasons);
     }
 
@@ -167,11 +167,11 @@ class WeeklyFinanceServiceTest {
     @DisplayName("a season with no ledger says so rather than showing zeroes")
     void emptySeasonIsHonest() {
         Team club = aClub("EmptySeason", 20_000, 18.0, 1_000_000);
-        finances.applyWeeklyFinances(club, 2025, 1);
+        finances.applyWeeklyFinances(club, 2, 1);
 
-        Map<String, Object> for2024 = ledgerService.summarise(club, 2024);
+        Map<String, Object> for2024 = ledgerService.summarise(club, 1);
         assertTrue(Boolean.FALSE.equals(for2024.get("settled")),
-                "2024 has no weeks, so it must read as unsettled");
+                "1 has no weeks, so it must read as unsettled");
         assertNotNull(for2024.get("notice"),
                 "and must carry the notice, so the page can explain itself");
     }
@@ -180,8 +180,8 @@ class WeeklyFinanceServiceTest {
     @DisplayName("the ledger records why a line exists")
     void linesCarryAReason() {
         Team club = aClub("Notes", 20_000, 18.0, 1_000_000);
-        finances.applyWeeklyFinances(club, 2026, 7);
-        for (FinanceLedgerEntry e : ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2026, 7)) {
+        finances.applyWeeklyFinances(club, 3, 7);
+        for (FinanceLedgerEntry e : ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 3, 7)) {
             assertFalse(e.getNote() == null || e.getNote().isBlank(),
                     e.getCategory() + " has no explanation, which makes the Finances page useless");
         }

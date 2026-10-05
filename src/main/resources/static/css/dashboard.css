@@ -2616,6 +2616,62 @@ button.training-week-item {
     overflow-wrap: anywhere;
 }
 
+/*
+ * A detail row whose value is a name you can click — "Managed by Velja" on a club profile, the
+ * club on a manager's profile.
+ *
+ * <p>The row's own grid is `justify-content: space-between` with the label uppercased and the value
+ * right-aligned, so this only has to un-button itself: an inline reset, the same type ramp as the
+ * value it sits next to, and an underline on hover so it does not read as more static text.
+ */
+.fm-link-btn {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: #7fd0ff;
+    cursor: pointer;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.fm-link-btn:hover,
+.fm-link-btn:focus-visible {
+    color: #a9e2ff;
+    text-decoration: underline;
+}
+
+.fm-link-btn:focus-visible {
+    outline: 2px solid #7fd0ff;
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/*
+ * Inside a club cell — a league table row where the value already has a badge next to it.
+ *
+ * <p>Blocked out of the right-aligned detail-row form: a table cell wants it left-aligned and
+ * quiet, and it needs its own line so a long name cannot push the badge or the points column.
+ */
+.fm-link-btn--inline {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-size: 0.76rem;
+    font-weight: 500;
+    color: #8fb6d8;
+    margin-top: 2px;
+}
+
+.fm-link-btn--inline:hover,
+.fm-link-btn--inline:focus-visible {
+    color: #a9e2ff;
+}
+
 .fm-match-scoreline {
     display: flex;
     align-items: center;

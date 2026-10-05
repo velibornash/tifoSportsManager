@@ -71,7 +71,7 @@ class StaffSponsorServiceTest {
     @DisplayName("a club gets real staff, and a head coach")
     void aClubGetsStaff() {
         Team club = aClub("Staffed", 70);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
 
         List<StaffMember> members = staff.findByTeamId(club.getId());
         assertFalse(members.isEmpty(), "staff must actually be created");
@@ -80,7 +80,7 @@ class StaffSponsorServiceTest {
         for (StaffMember m : members) {
             assertNotNull(m.getName());
             assertTrue(m.getWeeklyWage() != null && m.getWeeklyWage() > 0, "staff are paid");
-            assertTrue(m.getContractEndSeason() != null && m.getContractEndSeason() >= 2026);
+            assertTrue(m.getContractEndSeason() != null && m.getContractEndSeason() >= 3);
         }
     }
 
@@ -88,7 +88,7 @@ class StaffSponsorServiceTest {
     @DisplayName("staff are specialised - a scout is a good scout")
     void staffAreSpecialised() {
         Team club = aClub("Specialists", 80);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
         staff.findByTeamId(club.getId()).stream()
                 .filter(m -> m.getRole() == StaffRole.SCOUT)
                 .findFirst()
@@ -100,10 +100,10 @@ class StaffSponsorServiceTest {
     @DisplayName("seeding is idempotent - a club does not hire a second head coach")
     void seedingIsIdempotent() {
         Team club = aClub("Once", 70);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
         int first = staff.findByTeamId(club.getId()).size();
-        service.seedClub(club, 2026);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
+        service.seedClub(club, 3);
         assertEquals(first, staff.findByTeamId(club.getId()).size(),
                 "reseeding must not duplicate the staff");
     }
@@ -113,8 +113,8 @@ class StaffSponsorServiceTest {
     void qualityFollowsReputation() {
         Team small = aClub("Small", 25);
         Team big = aClub("Big", 95);
-        service.seedClub(small, 2026);
-        service.seedClub(big, 2026);
+        service.seedClub(small, 3);
+        service.seedClub(big, 3);
 
         double smallAvg = staff.findByTeamId(small.getId()).stream()
                 .mapToInt(StaffMember::overall).average().orElse(0);
@@ -130,13 +130,13 @@ class StaffSponsorServiceTest {
     @DisplayName("the same club always gets the same staff - a reseed must not reshuffle the world")
     void seedingIsStable() {
         Team club = aClub("Stable", 70);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
         String firstHeadCoach = staff.findByTeamId(club.getId()).stream()
                 .filter(m -> m.getRole() == StaffRole.HEAD_COACH).findFirst()
                 .orElseThrow().getName();
 
         staff.deleteAll(staff.findByTeamId(club.getId()));
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
         String secondHeadCoach = staff.findByTeamId(club.getId()).stream()
                 .filter(m -> m.getRole() == StaffRole.HEAD_COACH).findFirst()
                 .orElseThrow().getName();
@@ -150,7 +150,7 @@ class StaffSponsorServiceTest {
     @DisplayName("a club gets real sponsors with a real term")
     void aClubGetsSponsors() {
         Team club = aClub("Sponsored", 70);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
 
         List<Sponsor> deals = sponsors.findByTeamId(club.getId());
         assertFalse(deals.isEmpty(), "sponsors must be created");
@@ -158,7 +158,7 @@ class StaffSponsorServiceTest {
             assertNotNull(s.getName());
             assertTrue(s.getAnnualValue() != null && s.getAnnualValue() > 0);
             assertTrue(s.getEndSeason() > s.getStartSeason(), "a contract has a term");
-            assertTrue(s.isActive(2026), "a fresh contract should be live in its first season");
+            assertTrue(s.isActive(3), "a fresh contract should be live in its first season");
         }
     }
 
@@ -166,13 +166,13 @@ class StaffSponsorServiceTest {
     @DisplayName("an expired sponsor pays nothing")
     void expiredSponsorsPayNothing() {
         Team club = aClub("Expired", 70);
-        service.seedClub(club, 2026);
+        service.seedClub(club, 3);
         Sponsor s = sponsors.findByTeamId(club.getId()).get(0);
         s.setEndSeason(2020);
         sponsors.save(s);
 
-        assertFalse(s.isActive(2026));
-        assertEquals(0.0, s.weeklyIncome(2026), 0.001,
+        assertFalse(s.isActive(3));
+        assertEquals(0.0, s.weeklyIncome(3), 0.001,
                 "an expired contract must not pay, or losing a sponsor is free");
     }
 
@@ -180,11 +180,11 @@ class StaffSponsorServiceTest {
     @DisplayName("staff wages and sponsorship both reach the ledger")
     void staffAndSponsorshipReachTheLedger() {
         Team club = aClub("Paid", 70);
-        service.seedClub(club, 2026);
-        finances.applyWeeklyFinances(club, 2026, 1);
+        service.seedClub(club, 3);
+        finances.applyWeeklyFinances(club, 3, 1);
 
         List<FinanceLedgerEntry> lines = ledger
-                .findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 2026, 1);
+                .findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 3, 1);
 
         FinanceLedgerEntry staffLine = lines.stream()
                 .filter(e -> e.getCategory() == FinanceCategory.STAFF_WAGES).findFirst().orElse(null);

@@ -633,10 +633,19 @@ public class CountryController {
         // One order for the whole game - see LeagueTableOrder for the three that disagreed.
         List<CompetitionEntry> sortedEntries = LeagueTableOrder.sort(entries);
 
+        // Who manages each club, in ONE query for the whole table.
+        //
+        // A league table is up to 310 rows, so resolving a manager per row would be 310 queries on a
+        // page opened constantly — the N+1 this codebase has already measured and removed three times
+        // (P1-4). Only human-run clubs are asked about: the rest are bots and there is no account to
+        // find, which also keeps the query to the handful of rows that can answer.
+        Map<Long, User> managersByTeamId = managersByTeamIdFor(sortedEntries);
+
         // Mapiraj na DTO sa position iz sortiranja
         List<LeagueTableDTO> table = new ArrayList<>();
         for (int i = 0; i < sortedEntries.size(); i++) {
             CompetitionEntry e = sortedEntries.get(i);
+            User manager = managersByTeamId.get(e.getTeam().getId());
             table.add(new LeagueTableDTO(
                     e.getTeam().getId(),
                     e.getTeam().getName(),
@@ -650,12 +659,59 @@ public class CountryController {
                     i + 1,
                     e.getTeam().isHumanControlled(),
                     e.getTeam().getEloRating(),
-                    e.getTeam().getEloDelta()
+                    e.getTeam().getEloDelta(),
+                    manager == null ? null : manager.getId(),
+                    manager == null ? null : displayNameOrLogin(manager),
+                    manager != null && manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
             ));
         }
 
         return ResponseEntity.ok(table);
     }
+
+    /**
+     * The manager of every human-run club in these entries, keyed by team id.
+     *
+     * <p>One query, not one per row. Deliberately skips non-human clubs: a bot club has no account, and
+     * asking about all 310 rows to learn about two of them is the shape of the N+1 P1-4 removed
+     * elsewhere.
+     */
+    private Map<Long, User> managersByTeamIdFor(List<CompetitionEntry> entries) {
+        List<Long> humanTeamIds = entries.stream()
+                .map(CompetitionEntry::getTeam)
+                .filter(team -> team != null && team.getId() != null && team.isHumanControlled())
+                .map(Team::getId)
+                .distinct()
+                .toList();
+        if (humanTeamIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, User> byTeamId = new java.util.HashMap<>();
+        for (User user : humanUserRepository.findAllByFootballTeamIdIn(humanTeamIds)) {
+            if (user.getFootballTeam() == null || user.getFootballTeam().getId() == null) {
+                continue;
+            }
+            // Lowest id wins if two accounts ever point at one club, so the answer is stable rather
+            // than dependent on row order. Same rule as ClubOwnershipLinker.managerOf.
+            byTeamId.merge(user.getFootballTeam().getId(), user,
+                    (a, b) -> a.getId() <= b.getId() ? a : b);
+        }
+        return byTeamId;
+    }
+
+    /**
+     * The name to show for a manager: what he calls himself, or his login when he has not chosen one.
+     *
+     * <p>Fifth independent copy of this fallback. {@link org.example.commonmanager.model.User} documents
+     * two of the others, and every one was written separately — which is why every self-registered
+     * manager shows an email address beside his posts.
+     */
+    private static String displayNameOrLogin(User user) {
+        return user.getDisplayName() != null && !user.getDisplayName().isBlank()
+                ? user.getDisplayName().trim()
+                : user.getUsername();
+    }
+
     @GetMapping("/leagues/{leagueId}/matches")
     public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId,
                                            @RequestParam(value = "seasonYear", required = false) Integer seasonYear,

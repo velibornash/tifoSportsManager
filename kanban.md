@@ -732,27 +732,31 @@ buttons; the missing piece is a guard, not a code change.
 
 ---
 
-### P0-9 — Calendar-year test fixtures pin nothing
+### P0-9 — DONE, and it found three tests that were asserting a calendar assumption
 
-`WeeklyFinanceServiceTest`, `StaffSponsorServiceTest` and `PlayerContractServiceTest` pass 2024/2025/2026
-as `seasonYear`. A season is **twelve weeks counted from 1**; these values are self-consistent under either
-scheme, so they assert nothing about the thing they name.
+Seasons run **1, 2, 3 …** and there is no calendar year anywhere. Four test classes passed one anyway.
 
-**Exit criteria:**
-- [ ] Each fixture passes a season **number**, not a year
-- [ ] Each test still passes afterwards — if one fails, the test was asserting a calendar assumption and
-      that is a finding, not an obstacle
+| Class | Was | Mapped to |
+|---|---|---|
+| `NegotiationServiceTest` | `2026` ×11 | **1** — its own fixture sets `currentSeason = 1` |
+| `WeeklyFinanceServiceTest` | 2024 ×5, 2025 ×4, 2026 ×12 | 1, 2, 3 |
+| `PlayerContractServiceTest` | 2024 ×1, 2025 ×1, 2026 ×23 | 1, 2, 3 |
+| `StaffSponsorServiceTest` | `2026` ×18 | **3** — one value, no comparison to preserve |
 
----
+**The mapping preserves relative structure** where comparisons exist, so "this season against last season"
+still compares two different seasons. Collapsing everything to `1` would have broken those assertions while
+looking tidier.
 
+**Exit criteria, and the honest result:**
+- [x] Each fixture passes a season **number**, not a year — 73 call sites across four classes
+- [ ] ~~Each test still passes afterwards~~ — **three do not, and that is the finding the board predicted**:
+      `PlayerContractServiceTest` 2, `StaffSponsorServiceTest` 1. They were asserting a calendar assumption.
+      `WeeklyFinanceServiceTest` 9/9 green.
 
-**A second site, found while doing P1-6 — the other two sports, in production code rather than fixtures.**
-`BbController` hardcodes `season_year = 2025` in eight places, including four
-`defaultValue = "2025"` request parameters, and `bb_match_fixtures` is seeded with `2025` to match. So it
-is **self-consistent and invisible**, which is the whole difficulty: `newLogic` counts seasons from 1 and
-these count them from the calendar, and nothing in either direction complains. Eight call sites, one
-`season_year` column, two conventions. Exit criteria: the other sports use the same season convention as
-`newLogic`, or the difference is documented as deliberate — because right now it is neither.
+**And a hypothesis of mine was wrong, which is worth recording.** `NegotiationServiceTest`'s remaining
+failure (`expected: <ACCEPTED> but was: <OPEN>`) looked like a season mismatch — contracts assigned to season
+`2026` while the clock sat at season `1`. Replacing `2026` with `1` **did not fix it.** So that failure is a
+**separate real defect in the accept-offer path**, not a fixture problem, and it is still open.
 
 ---
 
