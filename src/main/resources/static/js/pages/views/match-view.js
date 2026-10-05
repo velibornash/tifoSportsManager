@@ -42,23 +42,31 @@ export function createMatchView(deps) {
             return;
         }
         try {
-            const response = await authFetch(isFixture ? '/nonexistent' : `/matches/${matchId}/detail`);
-            console.log(`Status: ${response.status}`);
-
-            // A 404 here is not "no such match". An unplayed fixture has no Match row, so the events
-            // endpoint legitimately has nothing to return - and the page it opens is the pre-match
-            // screen, which is the whole point of routing an unplayed match here. The detail fetch is
-            // tolerated and the header is built from the match/fixture metadata instead.
-            const eventsOk = response.ok;
-            if (!eventsOk) {
-                console.info(`No events for ${matchId}: it has not been played yet.`);
-            }
+            // An unplayed fixture has **no Match row at all**, so there is no event stream to fetch -
+            // and asking for one is not a tolerated 404, it is a guaranteed one.
+            //
+            // This used to fetch a deliberate `/nonexistent` and then tolerate the failure, because
+            // authFetch's contract was assumed to be "returns a response, `ok` says what happened".
+            // It is not: **authFetch throws AuthFetchError on every non-2xx.** So the throw skipped
+            // the tolerance three lines below it, landed in the catch at the bottom of this function,
+            // and rendered "Error loading match: No static resource nonexistent." The `eventsOk`
+            // branch was unreachable, and "Next match" on the dashboard was broken for every manager
+            // because it opens a fixture.
+            //
+            // The metadata endpoint below is the record that does exist for an unplayed fixture, and
+            // it is already fetched with its own catch, so the header builds from that. Nothing is
+            // lost and one pointless round trip per fixture view disappears with it.
+            const eventsRequest = isFixture
+                ? Promise.resolve([])
+                : authFetch(`/matches/${matchId}/detail`)
+                    .then(r => (r.ok ? r.json() : []))
+                    .catch(() => []);
 
             // The events carry the score and the date but not what kind of match it was, so the
             // header pulls the one record that does. It is one extra request in parallel, not a
             // second round trip.
             const [events, lineupsPayload, matchMeta] = await Promise.all([
-                eventsOk ? response.json() : Promise.resolve([]),
+                eventsRequest,
                 authFetch(`/match-stats/lineups/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null),
@@ -66,7 +74,6 @@ export function createMatchView(deps) {
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null)
             ]);
-            console.log("MATCH EVENTS:", events);
 
             // No events and no metadata means there is genuinely nothing to show. No events *with*
             // metadata means an unplayed match, which has a header and a preview and is not an error.

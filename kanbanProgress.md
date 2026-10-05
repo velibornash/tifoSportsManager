@@ -2016,6 +2016,77 @@ guard holds.
 
 ---
 
+## 2026-10-03 — "Next match" was broken for every manager: a tolerance that could not run
+
+### Reported live, on the Oracle instance
+
+> `Error loading match: AuthFetchError: No static resource nonexistent.`
+> `authFetch js/auth.js:331` ← `match-view.js:580`
+
+`js/auth.js:331` is the throw site, and the throw is the point:
+
+```js
+throw new AuthFetchError(json?.message || `HTTP ${response.status}: ...`);
+```
+
+**`authFetch` throws on every non-2xx.** It never returns a response with `ok === false`.
+
+### What the code believed
+
+`match-view.js` opened an unplayed fixture — which is exactly what **Next match** hands it — with:
+
+```js
+const response = await authFetch(isFixture ? '/nonexistent' : `/matches/${matchId}/detail`);
+const eventsOk = response.ok;
+if (!eventsOk) {
+    console.info(`No events for ${matchId}: it has not been played yet.`);
+}
+```
+
+A deliberate request to a URL that cannot exist, on the reasoning that the 404 is expected and
+tolerable. **The `eventsOk` branch can never run**, because the line above it throws. The throw skips
+straight past the tolerance into the function's `catch`, which renders exactly the message the user
+saw. The author had assumed `authFetch` returns a response and lets the caller read `ok`; it does not.
+
+That comment block is not careless — it explains, at length and correctly, that a fixture id and a
+match id are different id spaces and that callers must pass `fixture: true`. Someone had already been
+burned here and fixed the *right* problem. The sentinel request was then the workaround for the wrong
+half of it.
+
+### The fix is to not ask
+
+An unplayed fixture has **no `Match` row**, so there is no event stream to fetch. The fixture path now
+resolves `[]` without a request, and the header is built from `/matches/by-fixture/{id}` — which the
+code was **already fetching in parallel**, with its own `.catch(() => null)`. Nothing is lost.
+
+### Verified by reproducing it, not by reading it
+
+I transcribed both the old and new strategies into a script against a stub `authFetch` that behaves
+like the real one (throws on non-2xx):
+
+| | before | after |
+|---|---|---|
+| fixture | `Error loading match: No static resource nonexistent.` | `rendered`, header from metadata |
+| requests for a fixture | 3 — one guaranteed to 404 | **2** |
+
+The "before" cell reproduces the user's message **verbatim**, which is the evidence that the harness
+models the bug rather than something adjacent to it.
+
+### The same class, in two other places
+
+- **`pages/features/matches.js:9`** carries a comment saying this exact class was fixed there — *"authFetch
+  throws on a non-2xx, so the old `if (!response.ok) return` was unreachable"*. **Its guard is still
+  there and still unreachable**, and `loadResults` is called inside the router's `try`, so a failure
+  still escapes to the generic "API Error" card. Latent: `/teams/{id}/matches` exists, so it does not
+  fire today. Not fixed here — it is not the reported bug and I was not asked to widen the blast radius.
+- **`academy.js:138`** and **`stats-view.js:67`** have the same unreachable guards, but both already sit
+  inside a `try/catch` that returns null. Their behaviour is already correct; only the dead line
+  misleads.
+
+**The general rule, now written into `match-view.js`:** to tolerate a failed request, catch it. A
+`response.ok` check after `await authFetch(...)` is unreachable code, and unreachable code that reads
+like a guard is worse than no guard — it says the failure was handled.
+
 ## 2026-10-03 — P2-8: every match has a type, and an exhibition changes nothing
 
 ### The owner answered three questions and settled the fourth

@@ -1444,6 +1444,36 @@ caller count, and the count was wrong — my `grep` filtered out the very file I
 one caller at line 17. Restored with `git checkout` in under a minute. **P0-10 says to re-verify the
 caller count immediately before deleting, and I broke that rule while citing it.**
 
+### ✅ "Next match" on the dashboard was broken for every manager — found on the Oracle instance
+
+Reported live 2026-10-03: clicking **Next match** produced
+`Error loading match: AuthFetchError: No static resource nonexistent.`
+
+**Cause.** `match-view.js` fetched the literal string `'/nonexistent'` for an unplayed fixture, on the
+theory that a 404 is tolerable because such a fixture has no `Match` row. **`authFetch` throws on every
+non-2xx**, so the throw skipped the `if (!response.ok)` tolerance three lines below it, landed in the
+function's `catch`, and rendered the error. The tolerance was **unreachable code**, and its author had
+assumed a contract for `authFetch` that does not exist.
+
+An unplayed fixture has **no event stream at all**, so the fix is to not ask: the fixture path now skips
+the events request entirely and builds the header from `/matches/by-fixture/{id}`, which already
+existed and already had its own `catch`. That also removes a pointless HTTP round trip per fixture view.
+
+**Verified by reproducing the old strategy against a stub `authFetch` that throws like the real one:**
+
+| | before | after |
+|---|---|---|
+| fixture | `Error loading match: No static resource nonexistent.` | renders, header from metadata |
+| requests for a fixture | 3, one of them guaranteed to 404 | **2** |
+
+**The same defect class, found while fixing it:**
+- `pages/features/matches.js:9` has a comment saying this exact class of bug was fixed there — but its
+  `if (!response.ok)` guard is **still unreachable**, and `loadResults` is called inside the router's
+  `try`, so a failure there still escapes to the generic "API Error" card. Latent, not the reported
+  symptom.
+- `academy.js:138` and `stats-view.js:67` have the same unreachable guards, but both are already inside
+  a `try/catch` that returns null, so their behaviour is correct and only the dead line is misleading.
+
 ### P2-17 — Match engine realism
 
 **Last, per the owner, and re-baseline first.** The numbers recorded for realism were measured against code
