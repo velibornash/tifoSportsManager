@@ -2001,6 +2001,10 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
+- [x] **The week-6 day-1 warm-up round has a live draw path.** It had *stopped happening* — its only
+      caller, `ensureBaselineDataOnStartup()`, has zero callers. Now drawn by the admin action and
+      labelled `MatchType.FRIENDLY`. **"Not compulsory" is not yet implemented**: optional participation
+      needs national-team support in `FriendlyRequestService`, which is club-only.
 - [x] **The squad lock is visible.** The selector tab shows the owner's reason and renders no release
       or call-up control while locked; both level panels carry a **Squad fixed** badge.
       `NationalSquadLockTest` pins the boundary — every hour of weeks 1-11 open, 09:00 open and 10:00

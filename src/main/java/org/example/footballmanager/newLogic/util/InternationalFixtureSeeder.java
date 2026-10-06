@@ -168,6 +168,16 @@ public class InternationalFixtureSeeder {
             fixture.setWeekNumber(QUALIFIER_WEEK);
             fixture.setDayNumber(GameDay.INTERNATIONAL_DAY);
             fixture.setPlayed(false);
+            // Labelled a friendly, on the owner's word: "scheduled like a club friendly". The competition
+            // type is what the day-1 matchday job selects on, so the round stays playable either way -
+            // and this way it also carries the behaviour of a friendly: reduced injury risk, and nothing
+            // added to a player's career record.
+            //
+            // Deliberately *not* excluded from the national Elo replay. `RatingEngine.nationalK` already
+            // weights a competition with no national stage at `NationalStage.OTHER` - the lowest bucket,
+            // written for exactly this - so a warm-up moves a rating a little rather than not at all.
+            // Excluding it would be a second opinion about the weighting, in the wrong place.
+            fixture.setMatchType(org.example.footballmanager.newLogic.model.MatchType.FRIENDLY);
             // Measured from the game clock's season start, not a literal. B4: every season's qualifier
             // was stamped 2026-07-01, and once the clock passed 2026-07-06 no international fell inside the
             // two-day recovery window, so zone loads were written and never read and RecoveryJob reported

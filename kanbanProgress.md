@@ -392,9 +392,11 @@ it fail**, per the AGENTS.md rule:
    `TransferService:631` calls `findAllByFootballTeamIdIn(clubIds)`. One line corrected, the class is
    2/2 green, and the module compiles again — which is what unblocked the frontend/admin commits
    `26553a2`..`290bd84` for verification. See the entry below.
-5. **`InternationalFixtureSeeder` was left as-is** per the owner's "keep it as a warm-up round". It draws
-   one round on **week 6 day 1**, the day before the first qualifier — harmless, but still mandatory and
-   still wired into `DatabaseInitializer`.
+5. **"Not compulsory" is still not implemented for the warm-up round.** The round had in fact stopped
+   being drawn entirely — its only caller, `ensureBaselineDataOnStartup()`, has zero callers. It now draws
+   behind an admin button and is labelled `MatchType.FRIENDLY`, but it is still created for every senior
+   side with a squad and then played. Optional participation needs national-team support in
+   `FriendlyRequestService`, which is club-only. See the entry below.
 6. **`NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` is red** and **pre-existing, not
    caused by this work**: proven by reverting my one-line edit to it and re-running, which still fails.
    The test database has no countries with a non-null reputation, so `countDistinctRatings()` returns 0
@@ -471,6 +473,48 @@ qualifying — is a question about season rollover that nothing has answered, so
 the tournament squad stays as it was. **If that is wrong it is one `if`**, and it belongs with whoever
 decides what happens to squads at the end of a season.
 
+---
+
+## The week-6 day-1 warm-up round: it had stopped happening entirely (owner, 2026-10-06)
+
+The owner kept this round — *"may be a warm-up round, scheduled like a club friendly, not compulsory"* —
+and the item on the board said it was still "wired into `DatabaseInitializer`". Checking that turned up
+something else.
+
+### It was not being drawn at all
+
+`InternationalFixtureSeeder.seedIfMissing()` had exactly one caller:
+`DatabaseInitializer.ensureBaselineDataOnStartup()`. **That method has zero callers** — confirmed across
+`src/main` and `src/test`. It is the method AGENTS.md names by name: *"`ensureBaselineDataOnStartup()`
+has no caller — do not add one without a decision."* Nobody had added a caller; the seeder was simply
+left behind when the boot listener it belonged to was removed on 2026-10-01.
+
+So the warm-up round **had not been drawn since the boot path was deleted**. A round nobody asked to
+remove had in fact stopped existing, and nothing noticed, because *a round that is not drawn* and *a round
+that was never wanted* look identical from outside. The board recorded it as "still wired in", which is
+true of the code and false of the behaviour — the distinction AGENTS.md keeps warning about, and the same
+shape as the `ensureBaselineDataOnStartup` finding the analysis recorded earlier.
+
+### What changed
+
+- **`NationalTournamentWorldService.seed()` now draws it**, so the round exists behind the admin
+  *Create NT competitions* action rather than behind a method nobody calls. World building stays on admin
+  buttons, which is the rule.
+- **The fixtures are labelled `MatchType.FRIENDLY`** — the owner's "scheduled like a club friendly". The
+  competition type is still what the day-1 matchday job selects on, so the round stays playable, and the
+  label adds the behaviour of a friendly: reduced injury risk, and nothing added to a career record.
+- **Deliberately still rated, at the lowest weight.** `RatingEngine.nationalK` already treats a
+  competition with no national stage as `NationalStage.OTHER` — the lowest bucket, written for exactly
+  this case — so a warm-up nudges a rating rather than being ignored. Excluding it from the replay would
+  be a second opinion about the weighting, taken in the wrong place.
+
+### Still open, and it is the honest part
+
+**"Not compulsory" is not implemented.** The round is still created for every senior side with a squad and
+then played, because the only mechanism in the game for "one side asks, the other may refuse" is
+`FriendlyRequestService` — and it is **club-only**. Making this genuinely optional means giving that
+service national-team support, which is the friendly feature on the board and the next task. Until then
+this item is *warm-up round, labelled friendly, drawn by an admin button* — and it says so.
 ---
 
 ## P2-10 exit criterion — the final is reached (owner, 2026-10-06)

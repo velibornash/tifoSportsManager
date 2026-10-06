@@ -27,15 +27,18 @@ public class NationalTournamentWorldService {
     private final NationalTournamentSeeder seeder;
     private final SeasonService seasons;
     private final GameClockRepository clocks;
+    private final InternationalFixtureSeeder warmUp;
 
     public NationalTournamentWorldService(NationalTeamCompetitions catalogue,
                                           NationalTournamentSeeder seeder,
                                           SeasonService seasons,
-                                          GameClockRepository clocks) {
+                                          GameClockRepository clocks,
+                                          InternationalFixtureSeeder warmUp) {
         this.catalogue = catalogue;
         this.seeder = seeder;
         this.seasons = seasons;
         this.clocks = clocks;
+        this.warmUp = warmUp;
     }
 
     /** What one admin press produced. Returned rather than logged, so the screen can show it. */
@@ -55,7 +58,18 @@ public class NationalTournamentWorldService {
         for (NationalTeamLevel level : NationalTeamLevel.values()) {
             draws.add(seeder.ensureGroupStage(level, seasonYear));
         }
-        log.info("National-team world: {} competition(s), {} draw(s) for season {}.",
+
+        // The week-6 day-1 warm-up round, which the owner kept ("may be a warm-up round, scheduled like
+        // a club friendly, not compulsory").
+        //
+        // <b>This is the only place it is drawn from.</b> It used to be called from
+        // {@code DatabaseInitializer.ensureBaselineDataOnStartup()}, a method with **zero callers** — so
+        // the round nobody had asked to remove had in fact stopped happening, and nobody noticed because
+        // a round that is not drawn and a round that was never wanted look identical from outside.
+        // Moving it here puts it behind an admin action, which is where world building belongs.
+        warmUp.seedIfMissing(seasonYear);
+
+        log.info("National-team world: {} competition(s), {} draw(s) and a warm-up round for season {}.",
                 created, draws.size(), seasonYear);
         return new Result(created, draws, String.valueOf(seasonYear));
     }
