@@ -946,4 +946,52 @@ public class CountryController {
                 .toList();
         return ResponseEntity.ok(players);
     }
+    // P1-CUPS-3: country-side qualifying table (added to CountryController)
+    @GetMapping("/{isoCode}/qualifying")
+    public Map<String, Object> qualifying(
+            @PathVariable String isoCode) {
+        Country country = requireCountry(isoCode);
+        // The country's division standings: the qualifying race is the league table.
+        // Champions: 1st; Masters: 2nd, 3rd; Challenge: 4th.
+        List<Competition> divisions = competitionRepository.findByCountryId(country.getId());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("country", country.getName());
+        out.put("isoCode", country.getIsoCode());
+        out.put("season", currentSeason());
+        List<Map<String, Object>> divisionsData = new ArrayList<>();
+        for (Competition division : divisions) {
+            if (division.getType() != CompetitionType.LEAGUE) continue;
+            SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(division, currentSeason())
+                    .orElseGet(SeasonCompetition::new);
+            if (sc.getCompetition() == null) {
+                sc.setCompetition(division);
+                sc.setSeasonYear(currentSeason());
+                sc.setFinished(false);
+            }
+            List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
+            // Sorted by points, GD, GF, then name (same as LeagueTableOrder).
+            entries.sort(LeagueTableOrder.comparator());
+            List<Map<String, Object>> standings = new ArrayList<>();
+            for (CompetitionEntry entry : entries) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("teamName", entry.getTeam() == null ? null : entry.getTeam().getName());
+                row.put("position", entry.getPosition());
+                row.put("points", entry.getPoints());
+                row.put("goalsFor", entry.getGoalsScored());
+                row.put("goalsAgainst", entry.getGoalsConceded());
+                row.put("goalDifference", entry.getGoalsScored() - entry.getGoalsConceded());
+                int pos = entry.getPosition() == null ? 0 : entry.getPosition();
+                String cup = pos == 1 ? "Champions" : (pos <= 3 ? "Masters" : (pos == 4 ? "Challenge" : null));
+                row.put("qualifiesFor", cup);
+                standings.add(row);
+            }
+            divisionsData.add(Map.of(
+                    "division", division.getName(),
+                    "tier", division.getTier(),
+                    "standings", standings));
+        }
+        out.put("divisions", divisionsData);
+        return out;
+    }
+
 }
