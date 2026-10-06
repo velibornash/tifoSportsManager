@@ -150,53 +150,39 @@ public class CupFixtureSeeder {
         // draw per country — is untouched by this. primaryCup() picks one domestic cup, deterministically,
         // exactly as it did for the matchday job. What changed is that boot and the job now agree.
         // P0-CUPS-6 Option A: draw per active country (simulated skip per owner 2026-10-06).
-        Competition cup = primaryCup();
-        if (cup == null) {
-            log.info("No domestic CUP competition found; nothing to draw.");
-            return;
+        // P0-CUPS-6 Option A (FINISHED): draw per active country — only active countries have cup.
+        // Simulated countries have no cup (owner clarification 2026-10-06: no international pass-through).
+        List<Competition> nationalCups = competitions.findByTypeAndScope(CompetitionType.CUP, CompetitionScope.NATIONAL);
+        int drawn = 0;
+        for (Competition cup : nationalCups) {
+            if (cup.getCountry() == null || cup.getCountry().getId() == null) {
+                continue; // Skip global/continental cups; keep only per-country national cups
+            }
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+                    cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
+            if (existing > 0) {
+                drawn++;
+                continue;
+            }
+            List<Team> ranked = rankedClubs(cup);
+            if (ranked.size() < MAIN_DRAW_TEAMS) {
+                log.warn("Cup {} (country {}): only {} clubs; needs {}.", cup.getName(), cup.getCountry().getIsoCode(), ranked.size(), MAIN_DRAW_TEAMS);
+                continue;
+            }
+            cup.setTeamsPerCompetition(MAIN_DRAW_TEAMS);
+            competitions.save(cup);
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            List<Team> firstKnockout = new ArrayList<>(ranked.subList(Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS), ranked.size()));
+            List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, seedSeason());
+            log.info("P0-6 Option A: drew {} ties for cup {} (country {} / season {}).", round1.size(), cup.getName(), cup.getCountry().getIsoCode(), seedSeason());
+            drawn++;
         }
-
-        // Idempotent by fixture count, not by a flag: if the draw exists, the fixtures are the record.
-        long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
-                cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
-        log.info("Cup {}: {} round-1 ties already drawn.", cup.getName(), existing);
-        if (existing > 0) {
-            return;
+        if (drawn == 0) {
+            log.info("P0-6 Option A: no active-country national cup drawn.");
+        } else {
+            log.info("P0-6 Option A: {} country national cup(s) drawn for season {}.", drawn, seedSeason());
         }
-
-        List<Team> ranked = rankedClubs(cup);
-        log.info("Cup {}: {} clubs ranked, need {}.", cup.getName(), ranked.size(), MAIN_DRAW_TEAMS);
-        if (ranked.size() < MAIN_DRAW_TEAMS) {
-            log.warn("Only {} clubs available; a {}-team draw needs {}. Cup {} left empty.",
-                    ranked.size(), MAIN_DRAW_TEAMS, MAIN_DRAW_TEAMS, cup.getName());
-            return;
-        }
-
-        cup.setTeamsPerCompetition(MAIN_DRAW_TEAMS);
-        competitions.save(cup);
-
-        // Week 1: the WEAKEST 108, drawn into 54 ties. The winners plus the 202 direct entrants make
-        // the 256 that carry the rest of the tournament.
-        //
-        // This took `subList(0, 108)` — which, on a list sorted descending, is the *strongest* 108.
-        // The line above it has said "ranks 203-310 enter in week 1" since before this session, and the
-        // code did the exact opposite of it: the best clubs in the country were made to survive an extra
-        // round while the weakest 108 were given a free walk to round 2. The owner's rule is the bottom
-        // of the table qualifying through a preliminary, which is both what makes a preliminary and what
-        // stops a league finishing seventh from outranking a league finishing first.
-        int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
-        List<Team> firstKnockout = new ArrayList<>(
-                ranked.subList(directEntrantCount, ranked.size()));
-        List<Team> directEntrants = new ArrayList<>(ranked.subList(0, directEntrantCount));
-        List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, seedSeason());
-
-        // Round 2 onwards can only be wired once the earlier rounds are actually played, so the
-        // seeding creates round 1 and leaves the bracket to be driven by results. A full 8-round
-        // bracket written up front would be a second source of truth that silently goes stale the
-        // first time a game is postponed.
-        log.info("Drew {} ties in round 1 of {} ({} direct entrants join in week {}). "
-                        + "Later rounds are created from results as the cup is played.",
-                round1.size(), cup.getName(), directEntrants.size(), CUP_WEEKS[1]);
+        return;
     }
 
     /**
