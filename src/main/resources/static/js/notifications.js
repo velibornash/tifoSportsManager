@@ -27,17 +27,36 @@ const POLL_MS = 30 * 1000;
 const DROPDOWN_PAGE = 30;
 
 /**
+ * Whether this page has already started polling.
+ *
+ * <p>A flag rather than a question about the document, and the previous version asked the wrong
+ * question:
+ *
+ * <pre>{@code
+ * if (document.getElementById('notification-bell')) { return; }   // always true
+ * }</pre>
+ *
+ * The bell is in `dashboard.html`, so it exists from the first byte — which meant the guard returned
+ * every time and <b>the poll never started at all</b>. The badge only ever updated when the manager
+ * opened the dropdown, which is why nobody noticed: opening the dropdown is what people do anyway. The
+ * red dot and the ring then had nothing to run on, and both were reported as "does not work".
+ *
+ * <p>The intent was right — a second interval would double the request rate for the rest of the
+ * browser's life — so it is kept, asked of the state it actually means: have I started?
+ */
+let pollStarted = false;
+
+/**
  * Starts the poll. Called once, after the session is known.
  *
  * <p>Not started at import time: a 401 from an anonymous session would send the manager to the login
  * page for no reason, and the login page does not want a notification poll running against it.
  */
 export function startNotificationPolling() {
-    if (document.getElementById('notification-bell')) {
-        // Already started. pages.js can be reached twice in a session and a second interval would
-        // double the request rate for the rest of the browser's life.
+    if (pollStarted) {
         return;
     }
+    pollStarted = true;
     // First paint immediately rather than after 30 seconds of nothing, because a badge that appears
     // half a minute late looks broken even when it is only late.
     void refreshNotifications();
@@ -191,20 +210,40 @@ function playNotificationChime() {
  * title or a message subject — both of which are typed by another manager — so this is the one place in
  * the notification UI where untrusted text arrives, and it is the place a stored XSS would land.
  */
+/**
+ * The dropdown's contents: **unread only**.
+ *
+ * <p>This used to show read and unread alike, newest first, with the read ones dimmed — the original
+ * reasoning being that "what happened to me" should survive the badge clearing. The owner overruled it
+ * (2026-10-07):
+ *
+ * > *"kad se poruka procita skida se iz tickera, isto vazi i za ostale poruke, kad se uradi sto psie
+ * > prestane da izlazi"*
+ *
+ * which is the right instinct: a list of things to deal with should empty as they are dealt with.
+ * A ticker that keeps showing read items is a to-do list nobody can clear.
+ *
+ * <p>The rows stay in the database. This is a view over the unread set, not a delete — the unread count
+ * and the list are read from one payload precisely so they cannot disagree about what is left.
+ */
 export function buildDropdownHtml(payload) {
-    const rows = Array.isArray(payload?.notifications) ? payload.notifications : [];
+    const all = Array.isArray(payload?.notifications) ? payload.notifications : [];
     const unread = readUnreadCount(payload);
+    // Trusted over the payload's own count: if the two ever disagreed, the row the manager can see is
+    // the honest answer, and the header is derived from the same list so it cannot contradict it.
+    const rows = all.filter(row => row?.read !== true);
 
     if (!rows.length) {
-        return `<div class="notification-empty">Nothing yet. Replies to your forum posts and your
-            private messages will appear here.</div>`;
+        return all.length
+            ? `<div class="notification-empty">Nothing unread. You are caught up.</div>`
+            : `<div class="notification-empty">Nothing yet. Replies to your forum posts and your
+                private messages will appear here.</div>`;
     }
 
     const items = rows.map(row => {
-        const isRead = row.read === true;
         const destination = targetActionHtml(row);
         return `
-            <div class="notification-row${isRead ? ' is-read' : ''}" data-notification-id="${escapeHtml(row.id)}">
+            <div class="notification-row" data-notification-id="${escapeHtml(row.id)}">
                 <div class="notification-row-head">
                     <span class="notification-kind">${escapeHtml(kindLabel(row.kind))}</span>
                     <span class="fm-subtle">${escapeHtml(formatWhen(row.createdAt))}</span>
@@ -216,10 +255,8 @@ export function buildDropdownHtml(payload) {
 
     return `
         <div class="notification-dropdown-head">
-            <strong>${unread} unread</strong>
-            <button type="button" class="fm-link-btn js-read-all"${unread === 0 ? ' disabled' : ''}>
-                Mark all read
-            </button>
+            <strong>${rows.length} unread</strong>
+            <button type="button" class="fm-link-btn js-read-all">Mark all read</button>
         </div>
         <div class="notification-list">${items}</div>`;
 }

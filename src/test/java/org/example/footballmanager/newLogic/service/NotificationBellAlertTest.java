@@ -98,6 +98,39 @@ class NotificationBellAlertTest {
     }
 
     @Test
+    @DisplayName("the dropdown lists unread only - a read item is gone, not dimmed")
+    void theDropdownShowsUnreadOnly() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("all.filter(row => row?.read !== true)"),
+                "the dropdown is a view over the unread set: the owner asked for a read message to leave "
+                        + "the ticker, and a list of things to deal with should empty as they are dealt with");
+
+        assertTrue(!js.contains("is-read"),
+                "nothing is rendered dimmed any more - a dimmed row is a row still being shown");
+
+        assertTrue(js.contains("Nothing unread. You are caught up."),
+                "and an empty unread list says so, rather than claiming there has never been anything");
+    }
+
+    @Test
+    @DisplayName("the poll actually starts: the guard is a flag, not a question about the DOM")
+    void thePollIsNotGuardedByAnElementThatAlwaysExists() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("let pollStarted = false"),
+                "the re-entry guard is a flag. Asking the document whether the bell exists cannot work: "
+                        + "the bell is in dashboard.html, so the answer is always yes, so the poll never "
+                        + "starts, so neither the dot nor the ring has anything to run on.");
+
+        assertTrue(js.contains("if (pollStarted) {"),
+                "and the guard reads that flag rather than anything in the document");
+
+        assertTrue(!js.contains("getElementById('notification-bell')) {\n        return"),
+                "the old inverted guard is gone - it returned on every call and disabled polling entirely");
+    }
+
+    @Test
     @DisplayName("the served files exist - a scan of a file that is not shipped measures nothing")
     void theFilesAreReal() throws IOException {
         assertTrue(Files.isRegularFile(NOTIFICATIONS_JS), NOTIFICATIONS_JS + " is missing");

@@ -2255,6 +2255,28 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Notifications: the bell was never polled, and read items never left the ticker — owner, 2026-10-07
+
+> **notification - niti zvuka kad stigne niti crvene tacke - nista, testirao sam** ·
+> **kad se poruka procita skida se iz tickera**
+
+- [x] **The poll never started.** `startNotificationPolling` guarded on
+      `document.getElementById('notification-bell')` — and the bell is in `dashboard.html`, so that is
+      always true and the function **always returned early**. The badge only ever updated when the
+      manager opened the dropdown, which is why nobody noticed. The red dot and the ring were correct
+      code with nothing to run on. Now a `pollStarted` flag, which is the state the guard meant.
+- [x] **The dropdown lists unread only.** Read items leave the list rather than dimming in it, and the
+      header count is derived from the filtered list so the two cannot disagree. Rows stay in the
+      database.
+- [x] `NotificationBellAlertTest` **7/7**, every guard re-proven by breaking it.
+
+**The lesson, recorded because it is the third instance:** a guard written about the wrong thing. Here
+`getElementById` was used as *"have I started?"* when the element is part of the page rather than a
+consequence of starting — and the same shape appears twice more this task, in the reset's delete-list and
+in a list of club columns shorter than the table.
+
+---
+
 ## ✅ P0 — Reset DB kept 86 tables, and Initialize DB crashed on the ones it kept — owner, 2026-10-07
 
 Two defects, both reported from the same session, both caused by the same thing: code that enumerated

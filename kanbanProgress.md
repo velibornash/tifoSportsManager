@@ -1,5 +1,82 @@
 # kanbanProgress.md — the append-only log
 
+## The bell never worked, and the ticker never emptied (owner, 2026-10-07)
+
+### What was asked for
+
+> **notification - niti zvuka kad stigne niti crvene tacke - nista, testirao sam**
+>
+> **kad se poruka procita skida se iz tickera, isto vazi i za ostale poruke, kad se uradi sto psie prestane
+> da izlazi.**
+
+Both reported against code committed the day before. The first is not a defect in that code — it is a
+defect in the code underneath it that the new feature inherited.
+
+### The poll never started. At all.
+
+```js
+export function startNotificationPolling() {
+    if (document.getElementById('notification-bell')) {
+        // Already started. pages.js can be reached twice in a session...
+        return;
+    }
+    ...
+}
+```
+
+The guard is **inverted**. The bell is in `dashboard.html`, so it exists from the first byte: the
+condition is **always true**, the function **always returns**, and **the 30-second poll never runs**.
+
+Which means `paintBell` is never called from a poll. The badge only ever updated when the manager
+**opened the dropdown**, because that is the only other place that fetches a payload — and nobody
+noticed, because opening the dropdown is what people do anyway.
+
+So the red dot and the ring were correct code with **nothing to run on**. Both reported as "does not
+work", and both were true.
+
+The fix keeps the intent — a second interval would double the request rate for the rest of the browser's
+life — and asks the state it actually means:
+
+```js
+let pollStarted = false;
+...
+if (pollStarted) { return; }
+pollStarted = true;
+```
+
+**This is the third time in this task that a guard was written about the wrong thing**, and the pattern is
+worth naming: `getElementById(...)` used as "have I started?" when the element is part of the page rather
+than a consequence of starting. A guard has to ask about the effect it is guarding.
+
+### The dropdown now lists unread only
+
+The original design showed read and unread alike, newest first, read ones dimmed, on the reasoning that
+"what happened to me" should survive the badge clearing. The owner overruled it: a list of things to deal
+with should **empty as they are dealt with**, and a ticker that keeps showing read items is a to-do list
+nobody can clear.
+
+`buildDropdownHtml` filters to `row?.read !== true`, and the count in the header is derived from the
+**filtered list** rather than from the payload, so the header and the rows cannot contradict each other.
+Rows stay in the database — this is a view over the unread set, not a delete.
+
+### Tests
+
+`NotificationBellAlertTest` **7/7**, and **both guards re-proven by breaking them**:
+
+| Sabotage | Fails |
+|---|---|
+| the inverted `getElementById` guard restored | `thePollIsNotGuardedByAnElementThatAlwaysExists` |
+| `rows = all` instead of filtering unread | `theDropdownShowsUnreadOnly` |
+| the ring condition loosened to `unread > 0` | `theRingNeedsAnIncreaseNotMerelyUnread` |
+| the CSS selector renamed away from the class the JS sets | `theBellHasADotAndTheCount` |
+
+A source scan with comments stripped, because the rule being protected is *which comparison and which
+guard the shipped file contains*. Exporting the functions for a unit test would not have made the shipped
+bell any more correct, and the first two bugs in this log would both have passed a test that called the
+functions directly.
+
+---
+
 ## Reset DB kept 86 tables, and Initialize DB crashed on the ones it kept (owner, 2026-10-07)
 
 ### What was asked for
