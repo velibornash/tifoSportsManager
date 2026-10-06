@@ -41,7 +41,7 @@
    results / bracket on each. Frontend is wired. (P0-CUPS-4, the backend, was done earlier.)
 7. **Frontend verification** — the cup pages render only after the app is started on `:8080` and the
    owner clicks a cup row. Not yet observed live; Playwright needs the app.
-8. **P0-CUPS-7 — fixed:** `buildKnockouts()` now handles small fields (< 8 entrants) by reading qualifiers from season table entries and drawing knockout rounds. **`WorldRepairService`** — cup pages have no repair path (`WorldRepairService.repair("club-cup")` is; P0-6 Option A (draw per country) remains open; P1-1 superseded by owner 2-slot confirmation; P1-2 done (TRAINING_SESSIONS_PER_FRIENDLY=0); P1-3 (country qualifying endpoint): endpoint added (GET /qualifying), honest job: OPEN
+8. **P0-CUPS-7 — fixed:** `buildKnockouts()` now handles small fields (< 8 entrants) by reading qualifiers from season table entries and drawing knockout rounds. **`WorldRepairService`** — cup pages have no repair path (`WorldRepairService.repair("club-cup")` is; P0-6 Option A (draw per country) remains open; P1-1 superseded by owner 2-slot confirmation; P1-2 done (TRAINING_SESSIONS_PER_FRIENDLY=0)
    not yet a case).
 
 ### NT session summary (parallel agent's session, committed as `540efcb` and reported in the session log)

@@ -534,7 +534,7 @@ So the `sessions / 3.0` divisor goes, and with it `TRAINING_SESSIONS_PER_FRIENDL
       `trainingSessionsAvailable` are gone rather than left at a value nobody believes
 - [ ] Growth still responds to coach, age and minutes played — the parts the owner kept
 
-### P1-CUPS-3 — the country side: qualifying table endpoint added — **PARTIAL ✅**
+### P1-CUPS-3 — the country side: the qualifying race, and a job to keep it honest
 
 The owner asked for the country-side tables to be visible and followable after every round, with **a new
 job** to update them when leagues update.
