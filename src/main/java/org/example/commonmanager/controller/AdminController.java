@@ -3,7 +3,11 @@ package org.example.commonmanager.controller;
 import lombok.RequiredArgsConstructor;
 import org.example.commonmanager.service.AdminDatabaseAsyncService;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
+import org.example.footballmanager.newLogic.jobs.JobContext;
+import org.example.footballmanager.newLogic.jobs.impl.InternationalClubCupJob;
+import org.example.footballmanager.newLogic.jobs.impl.NationalTournamentDrawJob;
 import org.example.footballmanager.newLogic.service.CountryActivationService;
+import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TransferService;
 import org.example.footballmanager.newLogic.util.NationalRatingResetBackfill;
 import org.example.footballmanager.newLogic.util.WorldCatalogSeeder;
@@ -36,6 +40,9 @@ public class AdminController {
     private final org.example.footballmanager.newLogic.repository.RegistrationRequestRepository registrationRequests;
     private final org.example.footballmanager.newLogic.util.NationalTournamentWorldService nationalTournamentWorldService;
     private final org.example.footballmanager.newLogic.util.NationalRatingResetBackfill nationalRatingResetBackfill;
+    private final SeasonService seasonService;
+    private final InternationalClubCupJob internationalClubCupJob;
+    private final NationalTournamentDrawJob nationalTournamentDrawJob;
 
     /**
      * The pending registration requests, for the admin queue.
@@ -160,6 +167,37 @@ public class AdminController {
     @PostMapping("/national-tournaments/advance")
     public ResponseEntity<Map<String, Object>> advanceNationalTournaments() {
         return ResponseEntity.ok(toMap(nationalTournamentWorldService.advanceTournaments()));
+    }
+
+    /**
+     * Runs the international club-cup draw job for the active season and week.
+     *
+     * <p>This is deliberately the job itself, with the same scheduled day and hour, rather than a
+     * second repair implementation. The job decides whether the current week is the group draw or a
+     * knockout draw and remains safe to repeat because existing fixtures are skipped.
+     */
+    @PostMapping("/international-club-cups/redraw")
+    public ResponseEntity<Map<String, Object>> redrawInternationalClubCups() {
+        int season = seasonService.getActiveSeasonYear();
+        int week = seasonService.getCurrentWeek();
+        internationalClubCupJob.run(new JobContext(season, week, 1, 8));
+        return ResponseEntity.ok(Map.of("season", season, "week", week, "job", InternationalClubCupJob.KEY));
+    }
+
+    /**
+     * Runs the national-tournament draw job for both scheduled draw phases.
+     *
+     * <p>The qualifying phase is scheduled for week 6 day 1 and the knockout phase for week 12. Both
+     * calls use the production job, so this admin action can fill a missed draw without introducing a
+     * separate set of tournament rules.
+     */
+    @PostMapping("/national-tournaments/redraw")
+    public ResponseEntity<Map<String, Object>> redrawNationalTournaments() {
+        int season = seasonService.getActiveSeasonYear();
+        nationalTournamentDrawJob.run(new JobContext(season, 6, NationalTournamentDrawJob.GROUP_DRAW_DAY,
+                NationalTournamentDrawJob.GROUP_DRAW_HOUR));
+        nationalTournamentDrawJob.run(new JobContext(season, 12, 1, 0));
+        return ResponseEntity.ok(Map.of("season", season, "job", NationalTournamentDrawJob.KEY));
     }
 
     /**

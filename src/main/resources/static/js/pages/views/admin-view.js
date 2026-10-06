@@ -149,11 +149,27 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
-                if (action === 'national-tournaments') {
+        if (action === 'national-tournaments') {
             await runRepair(button, {
                 confirmText: 'Draw the national tournament fixtures?',
-                path: '/admin/national-tournaments/seed',
+                path: '/admin/national-tournaments',
                 successNote: 'National tournament fixtures drawn'
+            });
+            return;
+        }
+        if (action === 'redraw-international-cups') {
+            await runRepair(button, {
+                confirmText: 'Re-draw the international club cups?\n\nThe scheduled club-cup draw job will run for the active season and week. Existing fixtures are left alone.',
+                path: '/admin/international-club-cups/redraw',
+                successNote: 'International club-cup draw job run'
+            });
+            return;
+        }
+        if (action === 'redraw-national-tournaments') {
+            await runRepair(button, {
+                confirmText: 'Re-draw the national-team competitions?\n\nThe scheduled qualifying and knockout draw job will run. Existing fixtures are left alone.',
+                path: '/admin/national-tournaments/redraw',
+                successNote: 'National-team draw job run'
             });
             return;
         }
@@ -679,6 +695,20 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             body: 'Creates all 15 international club cup rows and fills missing simulated-country club structures. Existing data is kept.',
                             action: 'repair-international-cups',
                             label: 'Repair international cups',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Re-draw international cups',
+                            body: 'Runs the scheduled international club-cup draw job for the active season and week. Existing fixtures are untouched.',
+                            action: 'redraw-international-cups',
+                            label: 'Re-draw international cups',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Re-draw national competitions',
+                            body: 'Runs the scheduled national-team draw job for senior and U-21 qualifying groups and knockout rounds. Existing fixtures are untouched.',
+                            action: 'redraw-national-tournaments',
+                            label: 'Re-draw national competitions',
                             variant: ''
                         })}
                     </div>

@@ -36,7 +36,8 @@ public class NationalTournamentDrawJob implements DayJob {
 
     /** Week 6 day 1, before the first qualifying matchday on day 2. */
     public static final int GROUP_DRAW_DAY = 1;
-    public static final int GROUP_DRAW_HOUR = 8;
+    /** The job's scheduled hour; the job itself runs at midnight on every day. */
+    public static final int GROUP_DRAW_HOUR = 0;
 
     private final NationalTournamentSeeder seeder;
 
@@ -78,8 +79,10 @@ public class NationalTournamentDrawJob implements DayJob {
         int week = context.weekNumber();
 
         if (week == NationalTournamentSchedule.QUALIFYING_WEEK && context.dayNumber() == GROUP_DRAW_DAY) {
-            NationalTournamentSeeder.DrawResult result = seeder.ensureGroupStage(NationalTeamLevel.SENIOR, seasonYear);
-            log.info("Qualifying draw (season {}): {}", seasonYear, result.note());
+            for (NationalTeamLevel level : NationalTeamLevel.values()) {
+                NationalTournamentSeeder.DrawResult result = seeder.ensureGroupStage(level, seasonYear);
+                log.info("{} qualifying draw (season {}): {}", level, seasonYear, result.note());
+            }
         }
 
         if (week == NationalTournamentSchedule.TOURNAMENT_WEEK) {
