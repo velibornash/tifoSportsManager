@@ -54,7 +54,7 @@ public class FriendlyRequestService {
     public static final int BASE_TRAINING_SESSIONS_PER_WEEK = 3;
 
     /** Training sessions a club gives up per friendly played. */
-    public static final int TRAINING_SESSIONS_PER_FRIENDLY = 1;
+    public static final int TRAINING_SESSIONS_PER_FRIENDLY = 0;
 
     private final FriendlyRequestRepository requests;
     private final MatchFixtureRepository fixtures;

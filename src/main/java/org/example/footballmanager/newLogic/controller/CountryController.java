@@ -136,6 +136,14 @@ public class CountryController {
         out.put("totalCountries", all.size());
         out.put("expectedCountries", CountryCatalog.all().size());
         out.put("activeCountries", active);
+        // **The season, read from the clock (P1-CUPS-5).**
+        //
+        // The cup summary below used to read `out.get("currentSeason")` — a key this method never put
+        // into the map — so the ternary always short-circuited to 1. From season 3 on, the World page
+        // counted a season nobody had finished. Reading the clock is the same thing
+        // `getLeagueTable` does and the reason it exists: a season number is a fact, not a default.
+        int activeSeason = seasonService.getActiveSeasonYear();
+        out.put("currentSeason", activeSeason);
         // A world that is short of the catalogue is broken, not interesting, so it is surfaced rather
         // than rendered as a smaller world.
         out.put("complete", all.size() == CountryCatalog.all().size());
@@ -155,9 +163,10 @@ public class CountryController {
         // created yet", which is a claim about the database being empty — and three of them were not.
         //
         // Entry is decided by the *finished* season, so on a world part-way through season one there is
-        // nothing to qualify from yet and the counts are honestly zero rather than invented.
-        out.put("clubCups", internationalClubCups.summarise(Math.max(1, out.get("currentSeason") == null
-                ? 1 : (int) out.get("currentSeason") - 1)));
+        // nothing to qualify from yet and the counts are honestly zero rather than invented. The
+        // subtraction is guarded at 1: there is no season 0, so a world in season one qualifies nobody
+        // rather than reading a season that was never played.
+        out.put("clubCups", internationalClubCups.summarise(Math.max(1, activeSeason - 1)));
         return out;
     }
 
@@ -259,9 +268,20 @@ public class CountryController {
                                       @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
         int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         Country country = requireCountry(isoCode);
+        // **Scoped to NATIONAL (P1-CUPS-5).**
+        //
+        // This was `c.getCountry() == null || country.getId().equals(c.getCountry().getId())`, and the
+        // fifteen international club cups have `country == null` — so they passed the country filter.
+        // `findFirst()` over an unordered table then handed one of them back, and a country page
+        // rendered the Champions Cup as "this country's cup".
+        //
+        // `scope` is the column that exists for exactly this: NATIONAL is a cup between clubs of one
+        // country, INTERNATIONAL is a cup whose entrants come from several. `CompetitionType.CUP` on its
+        // own does not say which, and there are sixteen CUP rows in the world.
         Competition cup = competitionRepository.findAll().stream()
                 .filter(c -> c.getType() == CompetitionType.CUP)
-                .filter(c -> c.getCountry() == null || country.getId().equals(c.getCountry().getId()))
+                .filter(c -> c.getScope() == CompetitionScope.NATIONAL)
+                .filter(c -> country.getId().equals(c.getCountry() == null ? null : c.getCountry().getId()))
                 .findFirst()
                 .orElse(null);
 
