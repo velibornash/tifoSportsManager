@@ -1,5 +1,73 @@
 # kanbanProgress.md — the append-only log
 
+## Where were the matches? They had never been sent (owner, 2026-10-07)
+
+### What was asked for
+
+> **gde su mecevi kad izadje draw? trebalo bi da je svaka grupa, ime grupe klikabilno i na njoj se ode na
+> stranicu grupe, ceo schedule kvalifikacija..takodje i svaka reprezentacija treba klikom da vodi na tu zemlju**
+
+### The schedule was never in the response
+
+`roundsOf` skips every fixture that carries a group code:
+
+```java
+if (fixture.getRoundNumber() == null || fixture.getGroupCode() != null) { continue; }
+```
+
+That is **correct for a knockout** — a bracket tie has no group. But **every qualifying fixture carries a
+group code**, so a qualifying competition returned **no fixtures at all**. The screen showed eight groups,
+six teams each, all on zero points — and there was nowhere to see who plays whom, or on which day.
+
+So the answer to "where are the matches" is that they had never left the server. `NationalTournamentSchedule`
+had them the whole time, on week 6 days 2 to 6, one matchday a day.
+
+`fixturesOfGroup` now puts each group's five matchdays on the group itself, read from the same fixture
+rows and shaped by round number, which for qualifying **is** the matchday.
+
+### A tile should be a link when there is something behind it
+
+The test found a second thing while it was in there. `exists` meant **"the competition row exists"** —
+and `NationalTeamCompetitions.ensureAll()` creates **all four rows** the first time any one of them is
+drawn. So after one draw, the World page reported four competitions existing, three of which were empty.
+The owner would click a U-21 World Cup tile and find nothing.
+
+`exists` now means **drawn**: a row with fixtures or groups behind it. The row still existing is reported
+separately, with a note saying it has been created but nothing drawn into it, because "created" and
+"drawn" are different facts and a screen that conflates them lies about one of them.
+
+### Following a name
+
+Both asked for, both plain:
+
+- **The group name opens the group's schedule.** Rendered and hidden rather than fetched on click — a
+  manager comparing two groups wants both on screen, and a spinner where a schedule should be is worse
+  than a schedule.
+- **Every team name is a link to that country**, in the standings and in the schedule. The server sends
+  `homeIso` / `awayIso` beside every name; a side with no country behind it renders as plain text rather
+  than a link that goes nowhere.
+
+### Tests
+
+`NationalTournamentScheduleTest` **5/5**:
+
+| Test | Pins |
+|---|---|
+| `everyGroupCarriesItsSchedule` | five matchdays per group, three ties each, on the owner's days |
+| `everyTieNamesBothSidesAndBothCountries` | both names and both ISO codes on all **120** ties |
+| `theTableCarriesCountryCodes` | a standings row has a country, so it can be a link |
+| `anUndrawnCompetitionSaysSo` | created is not drawn, and says so |
+| `theScheduleMatchesTheFixtures` | what the API returns is what was actually drawn |
+
+**Re-proven by breaking it:** removing the one line that attaches the schedule to a group fails with a
+null `matchdays`.
+
+**My arithmetic was wrong twice and the test caught it:** I asserted 240 ties for 8 groups of 6. It is
+8 × 15 = **120**. The test asserted the count it could verify against the database rather than the count
+that sounded right.
+
+---
+
 ## A forum ban told nobody, because the notifier had no callers (owner, 2026-10-07)
 
 ### What was asked for

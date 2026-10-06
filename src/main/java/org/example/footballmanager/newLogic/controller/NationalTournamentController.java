@@ -73,19 +73,24 @@ public class NationalTournamentController {
         for (NationalTeamLevel level : NationalTeamLevel.values()) {
             for (NationalStage stage : List.of(NationalStage.QUALIFYING, NationalStage.WORLD_CUP)) {
                 Competition competition = catalogue.find(level, stage).orElse(null);
+                int drawn = competition == null ? 0 : fixtures
+                        .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                                competition.getId(), seasonYear).size();
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("level", level == NationalTeamLevel.U21 ? "u21" : "senior");
                 row.put("stage", stage.name());
                 row.put("name", NationalTeamCompetitions.nameFor(level, stage));
-                row.put("exists", competition != null);
+                // **Drawn, not "a row exists".** `ensureAll` creates all four rows the first time any
+                // one of them is drawn, so "the row is there" became true for all four and the World
+                // page offered four competitions to click into, three of which were empty. A tile is a
+                // link exactly when there is something behind it.
+                row.put("exists", drawn > 0);
                 row.put("competitionId", competition == null ? null : competition.getId());
                 if (competition != null) {
                     row.put("week", stage == NationalStage.QUALIFYING
                             ? NationalTournamentSchedule.QUALIFYING_WEEK
                             : NationalTournamentSchedule.TOURNAMENT_WEEK);
-                    row.put("fixtures", fixtures
-                            .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                                    competition.getId(), seasonYear).size());
+                    row.put("fixtures", drawn);
                 }
                 rows.add(row);
             }
@@ -136,10 +141,17 @@ public class NationalTournamentController {
             return ResponseEntity.ok(body);
         }
 
-        body.put("exists", true);
+        List<Map<String, Object>> groups = groupsOf(competition, seasonYear, resolvedStage);
+        List<Map<String, Object>> rounds = roundsOf(competition, seasonYear);
+        // Same rule as the index: created is not drawn. The row existing only means ensureAll has run.
+        boolean drawn = !groups.isEmpty() || !rounds.isEmpty();
+        body.put("exists", drawn);
         body.put("competitionId", competition.getId());
-        body.put("groups", groupsOf(competition, seasonYear, resolvedStage));
-        body.put("rounds", roundsOf(competition, seasonYear));
+        body.put("groups", groups);
+        body.put("rounds", rounds);
+        if (!drawn) {
+            body.put("note", "This competition has been created but nothing has been drawn into it yet.");
+        }
         return ResponseEntity.ok(body);
     }
 
@@ -192,8 +204,41 @@ public class NationalTournamentController {
                 table.add(entry);
             }
             row.put("table", table);
+            row.put("fixtures", fixturesOfGroup(competition, seasonYear, code));
             out.add(row);
         }
+        return out;
+    }
+
+    /**
+     * One group's qualifying ties, by matchday.
+     *
+     * <p><b>This was missing entirely, and it is the schedule.</b> {@link #roundsOf} skips every fixture
+     * carrying a group code, which is correct for a knockout and meant that a qualifying competition
+     * returned **no fixtures at all** — a drawn tournament with eight groups on screen and nowhere to
+     * see who plays whom, or when. The owner asked where the matches were; they had never been sent.
+     *
+     * <p>Read from the same fixture rows as everything else here rather than re-derived, and shaped by
+     * round number, which for qualifying <em>is</em> the matchday — one matchday a day on days 2 to 6.
+     */
+    private List<Map<String, Object>> fixturesOfGroup(Competition competition, int seasonYear, String groupCode) {
+        Map<Integer, List<Map<String, Object>>> byRound = new java.util.TreeMap<>();
+        for (MatchFixture fixture : fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(competition.getId(), seasonYear)) {
+            if (fixture.getGroupCode() == null || !groupCode.equals(fixture.getGroupCode())) {
+                continue;
+            }
+            byRound.computeIfAbsent(fixture.getRoundNumber(), round -> new ArrayList<>())
+                    .add(tie(fixture));
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        byRound.forEach((round, ties) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("round", round);
+            row.put("day", NationalTournamentSchedule.qualifyingDay(round));
+            row.put("fixtures", ties);
+            out.add(row);
+        });
         return out;
     }
 
@@ -235,11 +280,21 @@ public class NationalTournamentController {
     }
 
     /** One tie, with its result and its shootout when there was one. */
+    /** A team's country code, or null when there is not one behind it. */
+    private String isoOf(org.example.footballmanager.newLogic.model.Team team) {
+        return team == null || team.getCountry() == null ? null : team.getCountry().getIsoCode();
+    }
+
     private Map<String, Object> tie(MatchFixture fixture) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", fixture.getId());
         row.put("homeName", nameOf(fixture.getHomeTeam()));
         row.put("awayName", nameOf(fixture.getAwayTeam()));
+        // The country codes, so a name on the screen can be a link to that country rather than text.
+        // Null for a side with no country behind it, which is the honest answer and the frontend skips
+        // the link rather than building one that goes nowhere.
+        row.put("homeIso", isoOf(fixture.getHomeTeam()));
+        row.put("awayIso", isoOf(fixture.getAwayTeam()));
         row.put("date", fixture.getMatchDate());
         row.put("played", fixture.isPlayed());
         var played = fixture.getPlayedMatch();

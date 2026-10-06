@@ -2255,6 +2255,25 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ The qualifying schedule existed and was never sent — owner, 2026-10-07
+
+> **gde su mecevi kad izadje draw? ... svaka grupa, ime grupe klikabilno ... svaka reprezentacija treba
+> klikom da vodi na tu zemlju**
+
+- [x] **The schedule was never in the response.** `roundsOf` skips every fixture with a group code —
+      correct for a knockout, and it meant a qualifying competition returned **no fixtures at all**. Eight
+      groups on screen with nothing behind them. Each group now carries its five matchdays.
+- [x] **`exists` now means drawn, not "the row exists".** `ensureAll` creates all four rows the moment any
+      one is drawn, so the World page reported four competitions when one had been. A tile is a link
+      exactly when there is something behind it.
+- [x] **The group name opens the group's schedule** — rendered and hidden rather than fetched, because a
+      manager comparing two groups wants both on screen.
+- [x] **Every team name is a link to its country**, in the standings and the schedule, from the ISO code
+      the server now sends beside every name.
+- [x] `NationalTournamentScheduleTest` **5/5**, the schedule line **re-proven by breaking it**.
+
+---
+
 ## ✅ Forum bans now tell the person they were applied to — owner, 2026-10-07
 
 > **kada igrac banovan s foruma treba da dobije i info u notifications (ostaje ono sto mu izadje ako pokusa
