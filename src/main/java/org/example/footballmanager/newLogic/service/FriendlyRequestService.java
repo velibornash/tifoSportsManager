@@ -366,7 +366,11 @@ public class FriendlyRequestService {
      * restated, so a slot's day cannot disagree with the calendar's own idea of it.
      */
     static int dayOf(int week, int slot) {
-        return slot == 1 ? SeasonCalendar.SLOT_ONE_DAY : SeasonCalendar.SLOT_TWO_DAY;
+        // `dayForSlot`, not a two-slot guess. The calendar is **four** slots wide (day 1, 3, 5, 7) and
+        // this used to say `slot == 1 ? day 1 : day 3`, which put a slot-3 or slot-4 friendly on day 3 -
+        // the league's day - where it would collide with the round. The mapping lives in the calendar
+        // because the calendar is what owns it.
+        return SeasonCalendar.dayForSlot(slot);
     }
 
     // ------------------------------------------------------------------ the AI

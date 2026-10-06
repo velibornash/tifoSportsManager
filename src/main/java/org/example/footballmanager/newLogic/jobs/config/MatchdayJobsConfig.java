@@ -46,13 +46,13 @@ public class MatchdayJobsConfig {
     /**
      * The friendlies of a day.
      *
-     * <p>Three days, three beans: days 3 and 7 are the league's two club slots, day 1 is where a national
-     * warm-up is played (week 6 day 1, the day before the first qualifier). Separate keys because the
-     * done-flag is keyed on (season, week, day, key).
+     * <p><b>All four days that can hold one</b> — the season is four slots wide (day 1, 3, 5, 7) and a
+     * friendly can be arranged in any slot the week marks friendly-capable, which in midseason is all
+     * four. Registering only some of them leaves a friendly agreed and never played, which is the exact
+     * defect this job was added to end, so the list is derived from the calendar rather than written.
      *
-     * <p>These select by match <b>type</b> rather than by competition, which is the only reason a friendly
-     * is playable at all: it belongs to no competition, so every competition-scoped matchday could not
-     * find it.
+     * <p>Safe on a league day: the selection is by match <b>type</b>, so a league fixture in the same
+     * day is not touched.
      */
     @Bean
     public FriendlyMatchdayJob friendlyMatchdayOne(MatchFixtureRepository fixtures,
@@ -64,6 +64,12 @@ public class MatchdayJobsConfig {
     public FriendlyMatchdayJob friendlyMatchdayThree(MatchFixtureRepository fixtures,
                                                     AsyncSimulationRunner runner) {
         return new FriendlyMatchdayJob("matchday-friendly-3", 3, fixtures, runner);
+    }
+
+    @Bean
+    public FriendlyMatchdayJob friendlyMatchdayFive(MatchFixtureRepository fixtures,
+                                                   AsyncSimulationRunner runner) {
+        return new FriendlyMatchdayJob("matchday-friendly-5", 5, fixtures, runner);
     }
 
     @Bean

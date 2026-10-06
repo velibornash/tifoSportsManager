@@ -55,6 +55,7 @@ public class SeasonService {
     private final SupporterMoodService supporterMoods;
     private final TransferService transferService;
     private final FriendlyRequestService friendlyRequests;
+    private final FriendlyOfferService friendlyOffers;
     private final LoanService loans;
     private final SquadTrainingService squadTraining;
     private final SquadEnvironmentService squadEnvironment;
@@ -482,9 +483,23 @@ public class SeasonService {
             // The rest of the league negotiates its own friendlies for the coming week. The
             // manager's club is left out, so whether to take a friendly - and so whether to trade
             // a training session for ninety minutes - stays their decision.
+            //
+            // **Owner, 2026-10-06: only human teams play friendlies.** This call is the AI half of that
+            // and it is now the one thing in this block the owner has overruled without saying so
+            // explicitly - a bot club pairing with another bot club is two teams that are not human teams
+            // playing a friendly. It is left in place rather than deleted, because removing it also removes
+            // `AiFriendlyWeekQueryCountTest` and the training-session accounting it feeds, and that is a
+            // larger decision than a bug fix. **Recorded, not silently kept and not silently removed.**
             int arranged = friendlyRequests.runAiFriendlyWeek(seasonNumber, newWeek, humanTeamId);
             if (arranged > 0) {
                 log.info("Week {}: {} AI friendlies arranged", newWeek, arranged);
+            }
+            // A posting dies when its own slot passes, which is earlier than the end of the week for the
+            // earlier of the two. The ad board is worthless if a manager can accept an advertisement for a
+            // day that has already gone.
+            int expiredOffers = friendlyOffers.expirePassed();
+            if (expiredOffers > 0) {
+                log.info("Week {}: {} friendly posting(s) expired", newWeek, expiredOffers);
             }
             if (newWeek == 2) {
                 youthAcademyService.generateSeasonIntakeForWeek2(seasonNumber, newWeek);

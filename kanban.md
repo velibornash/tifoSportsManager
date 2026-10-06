@@ -2001,6 +2001,15 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
+- [x] **The free-slot ad board: service done, page not.** Owner rules, both honoured: **only human teams
+      play friendlies** (asked of the club, not the caller) and a posting **expires with its own slot**,
+      which is why season/week/day are columns and why expiry compares days and not weeks. Taking an ad
+      goes through the real request service, so "one live request per side per slot" applies to ads too.
+      `FriendlyOfferServiceTest` 8/8, checking every week and all four slots against the calendar.
+      **This found two bugs in the previous commit:** `aafb7ae` widened the week to four slots, so
+      `dayOf(slot)` was putting slot-3/4 friendlies on the league's day 3, and the friendly matchday was
+      not registered for day 5 at all. **Open:** endpoints and the page, and the conflict with
+      `runAiFriendlyWeek` (AI clubs pairing with each other), which needs an explicit answer.
 - [x] **Friendlies are playable.** They were not, and never had been: every matchday selects by
       **competition type**, a friendly belongs to no competition, and the written fixture carried no
       `matchType` and no `dayNumber`. A friendly could be agreed, written and shown and **never played**.

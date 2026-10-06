@@ -576,10 +576,10 @@ carries a non-empty name plus its status.
 - ~~**National teams as requesters and receivers**~~ — **the service is done** (week 6 day 1, national
   against national, 7/7). **Still open:** the endpoint and the UI, and whether a **bot** national side may
   answer a request — today bots pair themselves up and nothing posts to a bot.
-- **The free-slot ad board.** A page where a team posts an open slot and anyone accepts. Needs a listing
-  with an expiry and a decision on whether a bot side may accept one; today AI clubs pair themselves up in
-  `runAiFriendlyWeek`. **Now unblocked** - an agreed friendly can actually be played, so a posting is
-  worth something.
+- **The free-slot ad board: the service is done, the page is not.** `FriendlyOffer` + `FriendlyOfferService`
+  8/8 - humans only, period stated on the row, expiry per slot, and taking an ad goes through the real
+  request service. **Still open:** the controller endpoints and the page, and the unresolved conflict with
+  `runAiFriendlyWeek` recorded in the entry below.
 - **A `FRIENDLY_REQUESTED` notification kind**, so the notification bell fires. The ticker already lists
   the request; only the bell is missing.
 
@@ -698,6 +698,79 @@ Fixtures written **before** this change have no `matchType` and no `dayNumber`, 
 They are not backfilled: `ddl-auto=update` adds columns but does not invent values, and guessing a day for
 a row that has only a week would put a friendly on the wrong day silently. **Either clear them or write a
 backfill that derives the day from the round number** - an owner decision, not a guess.
+
+---
+
+## The free-slot board (owner, 2026-10-06)
+
+Two rules, both the owner's, both verbatim:
+
+> **"Only human teams play friendlies."**
+> **"Once the friendly slot passes, it expires - and since there are several slots in the invitation, it
+> has to say precisely which season/week/day it applies to."**
+
+### `FriendlyOffer` - an ad, not a request
+
+A `FriendlyRequest` names one opponent and waits for that opponent. An offer names **nobody**: "week 11,
+day 5, I am free", and whoever wants it takes it.
+
+`season_year`, `week_number` and `day_number` are all stored, and the unique constraint is on
+(offering team, season, week, day). **A week has more than one friendly slot, so a posting that named only
+a week would be a claim on the wrong day** - which is exactly what the owner asked to be prevented.
+
+### Humans only, asked of the club and not the caller
+
+`post` and `claim` both refuse a club that is not `humanControlled`. Asked of the **club**, because
+"is this a bot" is a property of the club and asking the caller who they are gets the answer from whoever
+is asking.
+
+### Expiry is per slot, and it is compared per **day**
+
+`hasPassed(season, week, day)` is a clock comparison, not a week comparison: a posting for day 1 is dead
+once the clock is past day 1, and one for day 7 is still live. That is the entire reason the day is a
+column rather than derived at read time. `expirePassed()` runs from the week rollover and only ever moves
+`OPEN` rows, so a taken posting stays `FULFILLED` and keeps pointing at its fixture.
+
+### Taking an ad goes through the request service, not around it
+
+A club that clicks an advert has not agreed to play; there are still two sides. So `claim` creates a real
+`FriendlyRequest` between the two clubs, which means "one live request per side per slot" applies to ads
+exactly as it does to asks, and the offer leaves the board at that moment rather than when it is accepted -
+so two clubs cannot both take the same slot.
+
+### Two bugs this found in code I had already committed
+
+**The calendar changed underneath this work.** Commit `aafb7ae` widened the week from two slots to **four**
+(day 1 friendly, day 3 league, day 5 friendly, day 7 league). Two things I had committed in `d30a594` were
+written against the old shape:
+
+1. **`FriendlyRequestService.dayOf` said `slot == 1 ? day 1 : day 3`.** With four slots that puts a slot-3
+   or slot-4 friendly on **day 3, the league's day**, where it collides with the round. Now
+   `SeasonCalendar.dayForSlot(slot)`, which is the calendar's own mapping.
+2. **`FriendlyMatchdayJob` was registered for days 1, 3 and 7** - not day 5. A friendly agreed in a
+   midseason week, when all four slots are friendly-capable, would have been written and never played:
+   the exact defect the job was added to end. Now all four days.
+
+**And a test of mine asserted the wrong rule.** `onlyFriendlyCapableSlotsCanBeAdvertised` first claimed
+weeks 1-5 and 7-10 were pure league weeks with nothing to give away. Under a four-slot calendar a league
+week has **two** friendly slots. The correct rule is not "league week" but "friendly-capable slot", and the
+test now asks the calendar for every week and slot and compares.
+
+### Evidence
+
+`FriendlyOfferServiceTest` — 8/8, including the calendar checked across **all twelve weeks and all four
+slots**: whether a slot can be advertised is asked of `SeasonCalendar`, not restated. And the per-day expiry
+asserted by moving the clock past the first slot and showing the last one is still claimable.
+
+### One conflict recorded, not resolved
+
+**"Only human teams play friendlies" also contradicts `runAiFriendlyWeek`**, which pairs AI clubs with each
+other weekly and is wired into `SeasonService:485`, with its own
+`AiFriendlyWeekQueryCountTest`. Two bots playing a friendly are two teams that are not human teams.
+
+It is **left in place and flagged in the code**, not deleted: removing it also removes a performance test
+and the training-session accounting it feeds, and that is a larger decision than a feature. **This needs an
+explicit answer rather than an omission.**
 
 ---
 
