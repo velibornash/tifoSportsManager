@@ -2,6 +2,119 @@
 
 ---
 
+## P0-CUPS — where the international club cups stand, 2026-10-06
+
+**Nothing in this block is implemented. This entry is the analysis, the decisions taken, and the order
+the work must happen in.** Written before the first line of code, deliberately — so that the next session
+does not have to re-derive which of the four P0 defects is actually the blocker.
+
+### The headline
+
+**The cups are 80% written and 0% running.** Fifteen competitions exist, the qualification rule is correct
+and tested, and the group stage plus bracket is 631 lines with 12 green tests. **No club has ever entered a
+group or played a tie**, and it is not for want of wiring — four defects sit in sequence, and **any one of
+them alone produces a Champions Cup that is decided before a ball is kicked.**
+
+The order matters and is not the order the code is written in. Read down the four:
+
+| | Defect | Why it is here and not later |
+|---|---|---|
+| **1** | A cup group match writes **nothing** to `CompetitionEntry`. `MatchType.countsForTable()` is `LEAGUE`-only, and `SimMatchService.persist():369` gates on it. All eight group tables stay at zero, and `rankingWithin()` falls through `LeagueTableOrder` to **team id** — so *top two advance* means **the two lowest database ids in the group**. | The defect nobody had found. Every other fix makes a group stage that is decided by seed order *look* finished. |
+| **2** | `isKnockoutTie():559` is `type == CUP`, so every level group match is settled by a shootout. | Its own comment names it: *"the day `ensureGroupStage` is wired, every level group match is settled by a shootout."* `MatchFormat` exists for this and has **zero callers**, because no `matchFormat` column exists. |
+| **3** | **960 entrants have no squads.** 192 clubs per tier × 5 tiers, and 46 of 48 countries are `SIMULATED` with no players by design. Both-bots → `loadRealSquad()` returns null → `SimTeamFactory.addTeam()` builds **placeholders**. | The owner's 12/−1-per-tier ladder would be **invisible**: a synthetic squad has no rating to average. |
+| **4** | The draw has **zero callers in `src/main`**. Confirmed by grep. | The easy one, and the one this board would have reached for first. It is last because the three above decide what it draws. |
+
+### Four owner decisions, taken 2026-10-06
+
+1. **All fifteen cups play on Day 1, 20:45.** Not the day-5 cup slot. The code had `CUP_DAY = 5,
+   CUP_HOUR = 18`, which is the **domestic** cup's slot. The country-side calendar the owner quoted is
+   already in the code and already correct (`WeekTemplate` day 1 = International 20:45, day 5 = Cup 18:00),
+   so this is the owner restating it, not a change to it.
+2. **The final and the third-place play-off share week 10.** Four knockout rounds do not fit weeks 7–10
+   if there are five rounds, and the owner chose to keep the third-place match. So the code's
+   `CUP_WEEKS = {1,2,3,4,5,7,8,9,10,11}` becomes `{1,2,3,4,5,7,8,9,10}` with `ROUND_FINAL` **and**
+   `ROUND_THIRD_PLACE` both on week 10.
+3. **Only `SIMULATED` countries' clubs get a generated squad.** Active countries' clubs already have real
+   squads from `PyramidBuilder.build()`. A tie between an active club and a simulated one mixes a real squad
+   with a generated one — which is what `LazySquadGenerator` already does for a human against a bot.
+4. **A friendly costs no training session, and the week widens to four slots — days 1, 3, 5, 7.** Day 4
+   is a training *update* (minutes, coach, talent, height, skill), not a session count. In the playoff week,
+   the slot where the playoff is played stays friendly-capable for clubs not in the playoff.
+
+**The calendar fits the cup exactly, with no collision** — worth recording because it was not designed to:
+
+| Week | 1–5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| Day 1 20:45 | **group stage** | national teams | R16 | QF | SF | **final + 3rd** | — | national teams |
+| Day 3 / 7 | league | — | league | league | league | league | playoff | — |
+
+Weeks 6, 11 and 12 are free of club cups for three different reasons. National-team matches are **exclusively**
+weeks 6 and 12 per the owner, which is also what `CalendarController.noteForWeek()` already half-knows.
+
+### What the owner corrected in me, and it was right
+
+I proposed a **cap of one friendly per week**, reasoning from `FriendlyRequestService`'s own constants: each
+friendly costs one training session out of a base of three. The owner rejected the premise — **day 4 is a
+training update, not a training session** — which means the cap is a question about a rule that does not
+exist.
+
+It is worse than a bad rule. `SquadTrainingService.trainPlayer():129` computes
+`share = percent/100 × (sessions / 3.0)`, so one friendly drops the club from 3 sessions to 2 and costs it
+**a third of its weekly development**. A friendly should *add* development, because it adds minutes, and
+`TrainingPercent.percentFor(player, coach, primary, minutes)` already takes minutes. So `sessions/3.0`,
+`TRAINING_SESSIONS_PER_FRIENDLY` and `trainingSessionsAvailable()` all go. **I read those constants as the
+specification. They were an implementation.**
+
+### The one thing still open, and it blocks the draw rather than following it
+
+**Do `SIMULATED` countries play their own league?** The written spec says no — they *"hold their positions
+until their league is activated"*. The code says yes: `SeasonService.openNewSeasonForEveryCountry():690`
+iterates **every** `LEAGUE` competition, filters only on `country != null`, and calls
+`ensureDoubleRoundRobinSchedule()`; `MatchdayJob` has **no `CountryState` filter**, so the day-3 and day-7
+jobs play them.
+
+It blocks the draw because **the rows the cups qualify from are the disputed rows.** Qualification reads the
+finished season's table, so whether a simulated country's position is real football or a standing fixture
+decides what the Champions Cup field actually is. Recorded as **P1-CUPS-6**; it must be answered before
+P0-CUPS-4.
+
+### Also found on the way, all smaller
+
+| | Defect | Where |
+|---|---|---|
+| | Qualification picks the better of two divisions' winners by **`Team.reputation`**, not points/GD/GF/draw as the owner specified | `InternationalClubCups.poolAt():347` |
+| | `MIN_FIELD_FOR_GROUPS = 8` promises a knockout; `buildKnockouts()` finds no group fixtures and returns, so **a 2–7 club field draws nothing** | `InternationalClubCupDraw` |
+| | `worldOverview` hard-wires `finishedSeason = 1` — it reads `out.get("currentSeason")`, which is never put into `out` | `CountryController:159` |
+| | `getCup()` = `findAll().filter(CUP).filter(country).findFirst()`, and continental cups have `country == null`, so **a country page can be shown the Champions Cup as its own** | `CountryController:257` |
+| | `clubCupRow()` matches the literal `'Champions Cup'`, so **only tier 1 can ever render**, and the row is a `<div>`, not a link | `pages.js:838` |
+| | Weeks 6 and 12 render *"not built yet"* for national teams | `CalendarController.noteForWeek()` |
+| | `SeasonCalendar` is 2 slots/week hardcoded to days 3 and 7, with `assertSlotsMatchTemplate()` throwing at class load — **day 1 and day 5 cannot be expressed at all** | `SeasonCalendar` |
+
+### Scale this adds
+
+| | Number |
+|---|---|
+| Competitions | **15** (5 tiers × 3) |
+| Groups | 8 (CC) + 16 (MC) + 8 (ChC) per tier |
+| Group fixtures | 8×15 + 16×15 + 8×15 = **480 per tier**, × 5 = **2,400 per season** |
+| Knockout fixtures | 17 + 31 + 17 = **65 per tier**, × 5 = **325 per season** |
+| **Total** | **≈ 2,725 club cup fixtures per season** |
+| Clubs needing a generated squad | 192 × 5 = **960** |
+| Player rows | ≈ **17k–24k** |
+
+Comparable to a whole country's league, and it is why this is in `P1` territory on the read side and not in
+the cup work itself. `P1-CUPS-3` records the honest position on the one job the owner asked for: the read is
+already three queries per tier and the World page budget is already under test, so **deriving it on read and
+measuring is the recommendation, and the reason gets written down either way.**
+
+### Starting with
+
+**P0-CUPS-1.** It is the only one of the four that no other fix can compensate for, and it is the one that
+was not on the board. First assertion to write: change a group's winning goal deliberately and watch a
+different club go through.
+
+---
+
 ## P2-20 polish — six corrections the owner made after looking at it running
 
 Everything in P2-20 was verified by rendering modules and driving endpoints with curl. The owner then

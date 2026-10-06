@@ -147,6 +147,281 @@ said `player_zone_load` had 18,729 rows and did not mention `match` at all.
 
 Ordered by leverage. **P0-1 and P0-2 are the two tasks that make everything else safer to do.**
 
+---
+
+## 🌍 P0-CUPS — the international club cups are specified, half-written, and never run
+
+**Owner spec 2026-10-06. Analysis and plan 2026-10-06. Nothing in this block has been implemented yet.**
+
+Replaces the old **P2-11** entry, which said *"three tiers exist with data but the calendar is thin"* and
+asked for *"every tier plays a full season"*. That description was too kind and, in one respect, wrong:
+there are not three tiers of cups, there are **five tiers × three cups = 15 competitions**, and the reason
+none of them plays is not a thin calendar. It is four defects in sequence, any one of which is fatal.
+
+### The owner's format, restated exactly
+
+**Tiers.** Five, matching `PyramidBuilder.DIVISIONS_PER_TIER = {1,2,4,8,16}` — tier 1 has **one** division
+per country, tier 2 has two, tier 3 four, tier 4 eight, tier 5 sixteen. **A cup belongs to one tier and is
+contested only by that tier's countries.** Tier 1's Champions Cup never meets tier 5's.
+
+**Who enters, per country, per tier.** A country enters each of its tier's cups **once**.
+
+| Cup | Who, per country, per tier | Field | Groups | Through |
+|---|---|---:|---|---|
+| Champions Cup | better of the divisions' **winners** | **48** | 8 × 6 | top **2** |
+| Masters Cup | best **2** of the pool of every 2nd- and 3rd-placed club | **96** | 16 × 6 | winner only |
+| Challenge Cup | best **1** of the pool of every 4th-placed club | **48** | 8 × 6 | top **2** |
+
+Tier 2–5 pool across **all** of that country's divisions in the tier, because each of those is a separate
+mini-table with its own champion, seconds and fourths. A country with sixteen divisions must not enter its
+own cup sixteen times. Tier 1 degenerates to the straightforward case — 2nd and 3rd to the Masters, 4th to
+the Challenge — and **one rule covers both**.
+
+**Calendar.** Group stage is **5 matchdays in weeks 1–5**. Knockouts in **weeks 7–10**, and **the final and
+the third-place play-off share week 10**. **All fifteen cups play on Day 1, 20:45** — the international
+slot. Day 5, 18:00 stays **domestic cup only**.
+
+**Tie-break, everywhere:** points → goal difference → goals scored → **draw**.
+
+**Simulated countries.** For every tier, a `SIMULATED` country sends its bot team, at **average skill 12
+for tier 1 and one lower per tier below** — 12 / 11 / 10 / 9 / 8.
+
+**Screens.** On the **country** side, the qualifying tables must be visible and followable after every
+round, refreshed by a job when leagues update. On the **world** side, a link to each of the three cups,
+with the **tiers as separate tabs** inside each, and on each tab the results, the tables and the bracket.
+
+### What already exists — do not rebuild it
+
+| Piece | Where | State |
+|---|---|---|
+| The 15 competition rows — `type=CUP`, `scope=INTERNATIONAL`, `teamType=CLUB`, `tier=n` | `InternationalClubCups.java:142` | built, created at `DatabaseInitializer:319` |
+| **The tier 2–5 qualification rule**, exactly as specified above | `InternationalClubCups.qualifyFrom():319` | correct — 9 tests green |
+| Field sizes — 48 / 96 / 48 per tier — fall out of the rule | same | correct |
+| **The group stage and the bracket** — 8×6 / 16×6, 5 matchdays, serpentine deal, R16→QF→SF→3rd→final | `InternationalClubCupDraw.java`, 631 lines | written, **12 tests green, zero callers in `src/main`** |
+| The rating ladder 12 → −1 per tier | `PyramidBuilder.TIER_1_SKILL:200` | correct, but carried only on `Team.reputation` — never summed into a squad |
+
+### P0-CUPS-1 — a cup group table is never written, so every group is decided by seed order
+
+`MatchType.countsForTable()` returns true for `LEAGUE` **only**, and `SimMatchService.persist():369` calls
+`updateLeagueTable` only when that is true. **A cup group match therefore writes nothing to
+`CompetitionEntry`.** `ensureTableRows()` creates the rows; nothing ever fills them.
+
+`InternationalClubCupDraw.rankingWithin():539` then compares eight entries that are all 0 points / 0
+goals / 0 against. `LeagueTableOrder` falls through to its last key — **team id** — so *"the top two
+advance"* resolves to **the two lowest database ids in the group**. Every group is decided by seed order
+before a ball is kicked, and the same applies to the Masters Cup's group winner.
+
+This is the defect that makes the rest of the block cosmetic, and it was not on the board in any form.
+
+**Exit criteria:**
+- [ ] A cup group match writes points, goals scored and goals conceded to the cup's own `SeasonCompetition`
+- [ ] `LEAGUE` behaviour is unchanged — a league table reconciles to the same numbers as before
+- [ ] A domestic cup tie still does **not** write a table (there is no group stage to write)
+- [ ] **Proven able to fail:** change a group's winning goal deliberately and watch a different club qualify
+
+### P0-CUPS-2 — every level group match is settled by a shootout
+
+`SimMatchService.isKnockoutTie():559` is `type == CUP`, unconditionally. Its own comment names the hazard
+exactly: *"the day `ensureGroupStage` is wired, every level group match is settled by a shootout."*
+
+`MatchFormat` already carries `goesToPenalties()` and has **zero callers anywhere in the application**,
+because neither `Match` nor `Competition` has a format column. Three separate comments in this repository
+state the ordering constraint as **wire `MatchFormat` before wiring a group stage**, and this is that.
+
+**Exit criteria:**
+- [ ] A 0-0 **group** match finishes level with no penalty columns written
+- [ ] A 0-0 **knockout** match goes to penalties exactly as it does today
+- [ ] `MatchFormat` has a caller, so it is no longer dead code
+
+### P0-CUPS-3 — 960 entrants have no squads, and would be decided by placeholder players
+
+Qualification is one entry per country per cup, so the field is 48 + 96 + 48 = **192 clubs per tier**,
+× 5 tiers = **960 clubs**. **46 of the 48 countries are `SIMULATED`**, and `PyramidBuilder.buildStatic()`
+writes divisions, ratings and a standing table and deliberately **no players and no fixtures**.
+
+`SimMatchService.simulate()` only generates squads when *exactly one side is human*
+(`LazySquadGenerator.isHumanInvolved`). Both sides bot → `loadRealSquad()` returns `null` →
+`SimTeamFactory.addTeam()` builds **synthetic placeholder players**. The Champions Cup would be decided by
+22 unnamed stand-ins and the owner's 12/−1-per-tier ladder would be **invisible**, because a synthetic
+squad has no rating to average.
+
+**Owner decision 2026-10-06: only `SIMULATED` countries' clubs get a generated squad.** Active countries'
+clubs already have real squads from `PyramidBuilder.build()`, so the rule is a no-op for them. Note that a
+cup tie between an active club and a simulated one therefore mixes a real squad with a generated one —
+which is exactly what `LazySquadGenerator` already does for a human against a bot, so the machinery exists.
+
+`BotSquadGenerator` generates 25 players at a **hardcoded `BASE_SKILL = 12`** and is written for national
+sides. It needs a tier parameter.
+
+**Exit criteria:**
+- [ ] Every club entering any cup from a `SIMULATED` country has 11+ named players
+- [ ] Squad average skill is 12 / 11 / 10 / 9 / 8 for tiers 1 / 2 / 3 / 4 / 5
+- [ ] Generation is lazy (on entry), not for all 14,880 clubs, and is idempotent
+- [ ] **Proven able to fail:** the tier ladder is asserted against generated squads, not against `tierSkill`
+
+### P0-CUPS-4 — the draw is never run
+
+`InternationalClubCupDraw` is a `@Service` with **zero references in `src/main`**. `ensureGroupStage`,
+`ensureKnockouts`, `buildGroupStage`, `buildKnockouts` and `drawFinalAndThirdPlace` are called only from
+`InternationalClubCupDrawTest`. Confirmed by grep across `src/main` and `src/test`.
+
+So: 15 competitions exist, clubs qualify, and **no club ever enters a group or plays a tie.** The
+`matchday-cup` job on Day 5 is registered and would play their fixtures — there are none.
+
+Needs a `DayJob`, on **Day 1, 20:45**, that in **week 1** reads `qualifiedFor(cup, season − 1)` for all 15
+cups, ensures squads, and draws the group stage; then walks **one knockout round per week in weeks 7–10**,
+with the final and the third-place play-off sharing week 10.
+
+`CUP_WEEKS` becomes `{1,2,3,4,5,7,8,9,10}` — nine days. Weeks 6, 11 and 12 stay clear: week 6 and week 12
+are national-team match weeks, week 11 is the league playoff. **The owner's calendar fits the cup exactly
+with no collision**, which is worth stating because it was not designed to.
+
+`MatchdayJob` filters by `CompetitionType` only, so a Day-1 CUP job and the Day-5 domestic one would each
+see all 16 CUP competitions and separate only by day. That works, but it is accidental: **filter the Day-1
+job on `scope = INTERNATIONAL`** so it is explicit.
+
+**Exit criteria:**
+- [ ] One season of all 15 cups draws — approximately **2,400 group + 325 knockout fixtures**
+- [ ] Every group is decided on points, and the knockout reaches a final and a third place
+- [ ] Week 6, 11 and 12 carry no club cup fixture
+- [ ] Re-running the job draws nothing twice
+- [ ] **Proven able to fail:** the job is run twice in one week and the fixture count is asserted unchanged
+
+### P0-CUPS-5 — the smaller fields, and the knockout they are promised
+
+`MIN_FIELD_FOR_GROUPS = 8` promises that a field below eight *"starts at the knockout"* — and
+`buildKnockouts()` then looks for group fixtures, finds none, and returns. **A cup with fewer than eight
+entrants draws nothing at all.** With 48 countries the fields should be exactly 48/96/48, so this only
+bites when a country is removed or a tier is short — but then it is silent.
+
+**Exit criteria:** [ ] a cup with 2–7 entrants produces a knockout bracket · [ ] the log says so rather
+than returning an empty `DrawResult`
+
+---
+
+## 🟠 P1-CUPS — the calendar, the slot model, and the two screens
+
+### P1-CUPS-1 — a week has two slots and they are hardcoded to day 3 and day 7
+
+`SeasonCalendar` models a week as exactly `SLOTS_PER_WEEK = 2`, `SLOT_ONE_DAY = 3`, `SLOT_TWO_DAY = 7`, and
+`assertSlotsMatchTemplate()` **throws at class load** if a slot lands on any other day. The model therefore
+**cannot express day 1 or day 5 at all.** A club can only book a friendly into a slot the calendar has
+marked empty — today week 6, week 12, and week 11 for clubs not in the playoff. In every normal week
+(1–5, 7–10) both slots are league football, so **there is nowhere to put a day-1 or day-5 friendly.**
+
+**Owner decision 2026-10-06: widen to four slots — days 1, 3, 5, 7 — and in the playoff week the slot
+where the playoff is played stays friendly-capable for every club not in the playoff.**
+
+**The risk, stated before the work:** `SLOT_ONE_DAY = 3` / `SLOT_TWO_DAY = 7` currently *are* the league
+days, and `LeagueSlotSchedule.forRound(round)` derives **every league fixture's day** from them. Widening
+makes the league slots 2 and 4, so `LeagueSlotSchedule` must be repointed at days 3 and 7 **by day number,
+not slot index**, or all 2,790 league fixtures per country move day.
+
+Touches: `SeasonCalendar`, `WeekSlot`, `FriendlyRequest.slot`, `FriendlyRequestService`,
+`FriendlyController`, `SeasonService.ensurePlayoffWeekFixtures`, `SquadTrainingService`.
+
+**Exit criteria:**
+- [ ] Every league round still lands on **day 3 or day 7** — asserted, per round, per division
+- [ ] A club with no day-1 fixture can book a friendly into day 1
+- [ ] A club with no day-5 fixture can book a friendly into day 5
+- [ ] In week 11 a club **not** in the playoff can book into the playoff slot; a club **in** it cannot
+- [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return slot index and watch the day assertion fail
+
+### P1-CUPS-2 — a friendly costs a club a third of its training, which is not a rule
+
+**Owner decision 2026-10-06: a friendly costs no training session. Day 4 is a training *update*** — driven
+by minutes played, coach, talent, height and skill — **and that is not a training session.**
+
+The code disagrees. `SquadTrainingService.trainPlayer():129` computes
+`share = percent/100 × (sessions / 3.0)`, so `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 1`
+means one friendly drops `sessions` from 3 to 2 and costs the club **a third of its weekly development**. A
+friendly should *add* development, because it adds minutes — and `TrainingPercent.percentFor(player,
+coach, primary, minutes)` already takes minutes.
+
+So the `sessions / 3.0` divisor goes, and with it `TRAINING_SESSIONS_PER_FRIENDLY` and
+`trainingSessionsAvailable()`. **No cap on friendlies per week** — a club may book any free slot.
+
+**Exit criteria:**
+- [ ] A club playing a friendly in a week develops **more**, not less, than one that does not
+- [ ] `BASE_TRAINING_SESSIONS_PER_WEEK`, `TRAINING_SESSIONS_PER_FRIENDLY` and
+      `trainingSessionsAvailable` are gone rather than left at a value nobody believes
+- [ ] Growth still responds to coach, age and minutes played — the parts the owner kept
+
+### P1-CUPS-3 — the country side: the qualifying race, and a job to keep it honest
+
+The owner asked for the country-side tables to be visible and followable after every round, with **a new
+job** to update them when leagues update.
+
+**The object that needs storing is the synthetic one.** At tier 1 the qualifying "table" is just the league
+table, which already exists. At tiers 2–5 it is a table **nobody stores**: the pool of that country's
+divisions' winners, or of the pooled seconds and thirds, or of the pooled fourths, in tier order.
+
+**One judgement to make explicit, not to skip:** `InternationalClubCups.tierTables()` already reads a
+tier's tables in **three queries** and the World page's budget is already under test
+(`InternationalClubCupsQueryBudgetTest`). So a job is not obviously *needed* — the read is cheap and a
+persisted copy is a cache with an invalidation problem. The owner asked for a job; the honest options are
+(a) derive on read and add the job only if a measured read is too slow, or (b) persist and refresh.
+**Recommend (a), with the measurement recorded** — and say so on the board rather than building the cache
+because it was requested.
+
+**Exit criteria:**
+- [ ] A country page shows, per cup and per tier, the country's own qualifying race
+- [ ] It reflects the latest played round without a manual refresh of the world
+- [ ] Whether it is derived or persisted is **recorded on this board with the reason**
+
+### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets
+
+Today the World page renders three rows from `pages.js:838 clubCupRow()`, and it matches the **literal
+string** `'Champions Cup'` — so **only tier 1 can ever render**, and the row is a `<div>`, not a link.
+There is no cup page, no tier tab, no group table and no bracket anywhere in the frontend. `manual/index.html:192`
+already tells the player these cups exist.
+
+Needs: `worldOverview` fixed (see P1-CUPS-5), the 15 cups grouped under three names, three links, **tier
+1–5 as tabs** inside each cup, and per tier the group tables (P W D L GF GA GD Pts), the results and the
+knockout bracket.
+
+**Exit criteria:**
+- [ ] Three links from the World page, one per cup · [ ] tier 1–5 are tabs inside each
+- [ ] Each tab shows the group tables, the results and the bracket · [ ] all 15 cups are reachable
+- [ ] `authFetch` is used for every call and `response.ok` is checked on every one
+- [ ] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
+
+### P1-CUPS-5 — three defects in the read path, all small
+
+- **`worldOverview():159` hard-wires `finishedSeason = 1`.** It reads
+  `out.get("currentSeason")`, and `currentSeason` is **never put into `out`**, so the ternary always
+  short-circuits to 1. From season 3 on the World page counts the wrong season.
+- **`getCup()` can render the Champions Cup as a country's own cup.** It is
+  `findAll().filter(CUP).filter(country).findFirst()`, and continental cups have `country == null`, so they
+  pass the country filter. Guard on `scope = NATIONAL`.
+- **Weeks 6 and 12 render as *"Reserved for national-team qualifiers, which are not built yet"*** and
+  *"Reserved for the World Cup, which are not built yet"*. Per the owner, national-team matches are played
+  **exclusively in weeks 6 and 12**. The notes are wrong.
+
+**Exit criteria:** [ ] the World page counts the real finished season · [ ] a country page cannot be shown
+a continental cup · [ ] weeks 6 and 12 describe national-team matches
+
+---
+
+## ❓ P1-CUPS-6 — OPEN QUESTION, settled before P0-CUPS-4
+
+**Do `SIMULATED` countries actually play their own league?** The written spec says they do not — they
+*"hold their positions until their league is activated"*. The code says they do.
+
+`SeasonService.openNewSeasonForEveryCountry():690` iterates **every** `LEAGUE` competition in the world,
+filters only on `country != null`, and calls `ensureDoubleRoundRobinSchedule()` on each. `MatchdayJob`
+has **no `CountryState` filter** — the day-3 and day-7 jobs will play those fixtures. So a simulated
+country plays synthetic-squad league football from season 2 onward, and its table moves.
+
+**Why this blocks P0-CUPS-4 rather than following it:** the rows the cups qualify from *are* the disputed
+rows. Qualification reads the finished season's tables, so whether a simulated country's position is real
+football or a standing fixture decides what the Champions Cup field is.
+
+**Decide before the draw job lands:** simulated countries keep a fixed table and the matchday jobs skip
+them, or they play for real. Both are defensible; the current state is neither.
+
+---
+
 ### P0-1 — Nine controllers have no tests at all, so the security surface is untested
 
 **Why this is first:** only three tests in the whole repository exercise any controller. Five reachable
@@ -1482,12 +1757,15 @@ broken — it is absent.
 
 **Exit criteria:** a full qualifying campaign and a tournament, played to a result.
 
-### P2-11 — International club competitions
+### ~~P2-11 — International club competitions~~ → moved to **P0-CUPS**, 2026-10-06
 
-Three tiers exist with data but the calendar is thin. Depends on the fixture generators being wired to
-named cups rather than the first CUP row.
+*"Three tiers exist with data but the calendar is thin. Depends on the fixture generators being wired to
+named cups rather than the first CUP row."*
 
-**Exit criteria:** every tier plays a full season; promotion and relegation between tiers work.
+**Wrong on both counts.** There are five tiers and 15 competitions, not three; and the calendar is not thin
+— the group stage and the bracket are written and tested. The reason none of them plays is four defects in
+sequence, the first of which (a cup group table that is never written, so every group is decided by seed
+order) was not on this board in any form. See **P0-CUPS** at the top of the P0 section.
 
 ### P2-12 — U-21 as its own competitions
 
