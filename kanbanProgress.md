@@ -388,9 +388,11 @@ it fail**, per the AGENTS.md rule:
    No `psql` and no Docker on this machine, so the row itself could not be inspected or edited.
 3. **Squad lock has no UI.** The service enforces it and `describe()` returns `squadLock`; whether the
    country page shows it or disables the squad buttons is the parallel session's screen work.
-4. **`testCompile` is currently broken by the parallel session** — `TransferMarketSquadReadCountTest`
-   calls `UserRepository.findDistinctManagedTeamIds()`, which does not exist. **No test in the module can
-   run until that is restored**, so the frontend/admin work in commits `26553a2`..`290bd84` is unverified.
+4. ~~**`testCompile` broken by the parallel session**~~ — **FIXED 2026-10-06.** `TransferMarketSquadReadCountTest`
+   mocked `UserRepository.findDistinctManagedTeamIds()`, which has never existed on the repository;
+   `TransferService:631` calls `findAllByFootballTeamIdIn(clubIds)`. One line corrected, the class is
+   2/2 green, and the module compiles again — which is what unblocked the frontend/admin commits
+   `26553a2`..`290bd84` for verification. See the entry below.
 5. **`InternationalFixtureSeeder` was left as-is** per the owner's "keep it as a warm-up round". It draws
    one round on **week 6 day 1**, the day before the first qualifier — harmless, but still mandatory and
    still wired into `DatabaseInitializer`.
@@ -402,6 +404,35 @@ it fail**, per the AGENTS.md rule:
    (`FriendlyController` + 596-line `FriendlyRequestService`) and the dashboard ticker already shows
    incoming requests. Missing: the **INVITE FOR FRIENDLY button**, accepting it for **national teams**
    (the service is club-only), and the **free-slot ad board** the owner described.
+
+---
+
+## A performance guard that never compiled (owner, 2026-10-06)
+
+`TransferMarketSquadReadCountTest` mocked `UserRepository.findDistinctManagedTeamIds()`. **That method has
+never existed on the repository.** `TransferService` asks the question a different way —
+`userRepository.findAllByFootballTeamIdIn(clubIds)` at line 631 — and derives the human-managed set from
+the users it returns.
+
+**One line.** `when(userRepository.findAllByFootballTeamIdIn(any())).thenReturn(List.of())`. The class is
+now 2/2 green and the module compiles.
+
+### Why it is worth an entry
+
+The test is a guard against a **measured** regression: a thread dump of a full test run that had printed
+nothing for two and a half hours, with 15,343 seconds of CPU and 7.4 GB resident, in
+`TransferService.simulateWeeklyMarketActivity → maybeCreateIncomingOffer → needsInterest →
+ClubNeedService.clubSquad`. A cross product — for each listed player the market asks every club, and each
+answer loaded that club's squad with its own query.
+
+A guard against that regression **did not compile**, and a module whose tests cannot compile cannot be
+tested by anyone. So the guard was protecting nothing while looking like protection, which is the exact
+shape AGENTS.md describes: a green status that is not evidence. This one is worse than green — it is a
+test that could never have run.
+
+It went unnoticed because the failure surfaced as `testCompile` errors pointing at somebody else's file,
+and the natural reading is "someone else is mid-refactor". Two sessions ran into it independently before
+anyone looked at what the method was for.
 
 ---
 

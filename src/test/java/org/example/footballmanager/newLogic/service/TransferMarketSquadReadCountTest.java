@@ -102,7 +102,11 @@ class TransferMarketSquadReadCountTest {
         TransferWindowService windows = mock(TransferWindowService.class);
 
         when(windows.currentWindow()).thenReturn(TransferWindowService.Window.SUMMER);
-        when(userRepository.findDistinctManagedTeamIds()).thenReturn(List.of());
+        // The method the service actually calls. It mocked `findDistinctManagedTeamIds()`, which has
+        // never existed on the repository, so this class did not compile - and a module whose tests
+        // cannot compile cannot be tested by anyone, which is how a performance guard written to catch
+        // a 7.4 GB regression ended up proving nothing at all.
+        when(userRepository.findAllByFootballTeamIdIn(any())).thenReturn(List.of());
 
         List<Team> clubs = new ArrayList<>();
         for (int c = 0; c < CLUB_COUNT; c++) {
