@@ -2,6 +2,9 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.FinanceCategory;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
+import org.example.footballmanager.newLogic.model.Competition;
+import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerContract;
 import org.example.footballmanager.newLogic.model.SquadRole;
@@ -9,8 +12,11 @@ import org.example.footballmanager.newLogic.model.Stadium;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,12 +42,58 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @ActiveProfiles("test")
 class PlayerContractServiceTest {
 
+    /**
+     * The game is playing a season before any of its finances mean anything.
+     *
+     * <p>Every ledger figure is read for the clock's season, so a fixture with no clock has no season
+     * to read. That is now honest rather than a calendar year, which means the ledger comes back empty
+     * and a club that has genuinely earned nothing is genuinely granted nothing. Signing a player is
+     * therefore impossible without one, which is correct: the game has not started.
+     */
+    @BeforeEach
+    void theGameIsPlaying() {
+        if (clocks.findAll().isEmpty()) {
+            GameClock clock = new GameClock();
+            clock.setCurrentSeason(1);
+            clock.setCurrentWeek(1);
+            clocks.save(clock);
+        }
+    }
+
+    private Competition aLeague() {
+        Competition competition = new Competition();
+        competition.setName("ZZ Contracts league " + System.nanoTime());
+        competition.setType(CompetitionType.LEAGUE);
+        competition.setTier(1);
+        competition.setReputationWeight(20);
+        return competitions.save(competition);
+    }
+
+    /**
+     * Settles a week, in the season actually being played, so the club is granted a transfer budget.
+     *
+     * <p>{@code TransferBudgetService} derives the board's grant from settled income less wages and a
+     * reserve, capped at half the cash -- and never reads the balance itself. A club handed a large
+     * {@code budget} and no settled week is refused, correctly, with "No settled income yet".
+     */
+    private Team withTransferBudget(Team club) {
+        int season = clocks.findAll().stream()
+                .map(GameClock::getCurrentSeason)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo).orElse(1);
+        finances.applyWeeklyFinances(club, season, 1);
+        return club;
+    }
+
     @Autowired TeamRepository teams;
     @Autowired PlayerRepository players;
     @Autowired PlayerContractRepository contracts;
     @Autowired PlayerContractService service;
     @Autowired ContractBackfillService backfill;
     @Autowired org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository ledger;
+    @Autowired CompetitionRepository competitions;
+    @Autowired GameClockRepository clocks;
+    @Autowired WeeklyFinanceService finances;
 
     private Team aClub(String name) {
         return aClub(name, 5_000_000.0);
@@ -50,6 +102,9 @@ class PlayerContractServiceTest {
     private Team aClub(String name, double budget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
+        // A club is a team with a competition: WeeklyFinanceService skips a team with none, so it
+        // would earn nothing and be granted no transfer budget however rich it looks.
+        t.setCompetition(aLeague());
         t.setBudget(budget);
         t.setReputation(60.0);
         Stadium s = new Stadium();
@@ -277,7 +332,7 @@ class PlayerContractServiceTest {
     @DisplayName("signing a free agent puts him on the club's books, on the club's payroll")
     void signingMovesThePlayerToTheClub() {
         Team from = aClub("Old employer");
-        Team to = aClub("New employer");
+        Team to = withTransferBudget(aClub("New employer"));
         settleIncome(to);
         Player p = aPlayer(from, "Free agent signing", 23, 1_500_000, 3_000);
         p.setTeam(null);                      // he is a free agent: no club at all
