@@ -1653,6 +1653,27 @@ The test is mutation-proven: routing `loadPage('forum')` to a wrong section fail
 
 ---
 
+# 🗂 Agent session log — 2026-10-06, three commits after the measured run
+
+**Exactly three commits sit on top of `7df4af2`, the run that measured 20 red.** So the 20 is stale in a
+way that is worth stating precisely, because only one of the three can move a number:
+
+| Commit | Task | Can it change a result? |
+|---|---|---|
+| `1cb4f40` / `cd431f7` | **P0-9b** — `activeSeason` no longer answers `2026`, clock chosen deterministically; `PlayerContractServiceTest` fixture given a league, a clock and a settled week | **Yes.** `signingMovesThePlayerToTheClub` was red at measurement and is green now |
+| `a5be205` | **P0-8 + P0-11** — verification and a rename | No. §1.3 and §1.5 were read, not changed; `nationalCup()` → `primaryCup()` is private |
+
+**Expected 19 red, unmeasured.** The figure is a prediction, not a measurement, and it is exactly that
+kind of prediction that this repository has been wrong about before. **Do not quote 19.** Run the suite.
+
+**What this session closed, and where it is recorded:** P0-9 and P0-9b (seasons, and the calendar year the
+ledger was reading), P0-14 (`LineupController` read-only, 383 lines deleted), P0-11 (the name that said
+"national" while querying `INTERNATIONAL`), P0-8 (§1.3 confirmed, §1.5 far worse than claimed, §1.2 not
+reproducible). Full reasoning and mutation results in `kanbanProgress.md`.
+
+**One retired:** `SidLeagueSeedingIntegrationTest`, on the owner's decision — it asserted world-building
+that boot no longer performs.
+
 # 🔖 Suite state — MEASURED 2026-10-06
 
 **`mvn test`: 1360 tests, 14 failures, 6 errors, 20 red, ~21 min**, run with the app up on `:8080` and
