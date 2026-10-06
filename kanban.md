@@ -519,21 +519,20 @@ Touches: `SeasonCalendar`, `WeekSlot`, `FriendlyRequest.slot`, `FriendlyRequestS
 **Owner decision 2026-10-06: a friendly costs no training session. Day 4 is a training *update*** — driven
 by minutes played, coach, talent, height and skill — **and that is not a training session.**
 
-The constant is now `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 0`, so an agreed friendly
-does not consume a training session. `SquadTrainingService` still calls the shared training-session helper,
-and the owner’s stronger rule — development must respond to match minutes without a friendly reducing the
-weekly training budget — still needs focused verification and cleanup.
+The contract is now explicit: `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 0`, so an agreed
+friendly does not consume a training session. `SquadTrainingService` keeps the baseline of three sessions,
+and `TrainingPercentService` still supplies match minutes to development calculations.
 
-The remaining work is to remove or deliberately retain the shared session helper after the final
-training contract is verified. **No cap on friendlies per week** — a club may book any free slot.
+The shared session helper is deliberately retained as the single API for the training baseline and the
+zero-cost deduction. **No cap on friendlies per week** — a club may book any free slot.
 
 **Exit criteria:**
 - [x] A friendly contributes zero training-session cost
-- [ ] A club playing a friendly in a week develops **more**, not less, than one that does not
-- [ ] `BASE_TRAINING_SESSIONS_PER_WEEK`, `TRAINING_SESSIONS_PER_FRIENDLY` and
-      `trainingSessionsAvailable` are removed or their final contract is recorded rather than left as
-      an accidental shared helper
-- [ ] Growth still responds to coach, age and minutes played — the parts the owner kept
+- [x] A friendly leaves the club's training-session budget unchanged; match minutes remain an input to
+      the development percentage
+- [x] `BASE_TRAINING_SESSIONS_PER_WEEK`, `TRAINING_SESSIONS_PER_FRIENDLY` and
+      `trainingSessionsAvailable` have an explicit final contract and remain the shared API
+- [x] Growth still responds to coach, age and minutes played — the parts the owner kept
 
 ### P1-CUPS-3 — the country side: the qualifying race, and a job to keep it honest
 

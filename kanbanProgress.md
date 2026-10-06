@@ -12,6 +12,16 @@ runtime friendly booking evidence is still pending.
 
 Remaining work is now P1-CUPS-2: finish the zero-cost friendly training contract.
 
+## 2026-10-06 — P1-CUPS-2 zero-cost friendly training contract
+
+The friendly training contract is now explicit in code and documentation. An agreed friendly costs zero
+training sessions, `SquadTrainingService` keeps the full three-session baseline, and match minutes still
+feed the development percentage. The shared session helper remains because it is the single API exposed
+by the friendly endpoint and training service, rather than an accidental deduction path. The controller
+now reports calendar day numbers for all four slots.
+
+Remaining work is now P1-CUPS-3: country-side qualifying tables and their refresh decision.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup

@@ -21,7 +21,8 @@ public interface FriendlyRequestRepository extends JpaRepository<FriendlyRequest
     Optional<FriendlyRequest> findByIdAndOpponentTeamId(Long id, Long opponentTeamId);
 
     /**
-     * Every friendly agreed for one team in one week, for charging the training session.
+     * Every friendly agreed for one team in one week. The current training contract charges zero,
+     * but the count remains useful for the friendly summary and future rules.
      *
      * <p>Both roles are checked because a club can be the one that asked or the one that said yes.
      */

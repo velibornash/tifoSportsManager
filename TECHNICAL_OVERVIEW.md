@@ -607,6 +607,8 @@ These are current source/board findings, not historical audit claims.
 - Domestic cup drawing is still globally selected in one path instead of being explicitly one cup per country.
 - The four-slot calendar is implemented on days 1, 3, 5 and 7; runtime booking evidence on days 1 and 5
   is still pending.
+- Friendly training cost is explicitly zero. The training service retains a three-session baseline and
+  match minutes continue to influence development.
 - Friendly requests have backend support and dashboard ticker visibility, but inviting, national-team
   acceptance and the free-slot board are unfinished.
 

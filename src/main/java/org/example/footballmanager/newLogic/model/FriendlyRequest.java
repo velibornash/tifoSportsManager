@@ -13,14 +13,14 @@ import lombok.Setter;
 /**
  * A club asking another club for a friendly (owner-defined, 2026-09-26).
  *
- * <p>The owner was explicit that friendlies are <b>not</b> scheduled for you. A week has two slots
+ * <p>The owner was explicit that friendlies are <b>not</b> scheduled for you. A week has four slots
  * and an empty one is an opportunity, not an obligation: a club may ask any other club for a
- * friendly, the other club may accept or refuse, and a club that plays none keeps the training
- * session it would otherwise have spent. That is why this is a request with a state machine rather
+ * friendly, the other club may accept or refuse, and a friendly does not reduce the training
+ * session budget. That is why this is a request with a state machine rather
  * than a fixture that simply appears on a calendar.
  *
- * <p>A request is for one specific week and one specific slot, because a club with two open slots
- * wants to fill them separately and a club in the week-11 playoff only has the Sunday one.
+ * <p>A request is for one specific week and one specific slot, because a club can fill open slots
+ * separately and a club in the week-11 playoff cannot use the playoff slot.
  */
 @Entity
 @Getter
@@ -44,7 +44,7 @@ public class FriendlyRequest {
     /** The week of the season the friendly would be played in. */
     private Integer week;
 
-    /** 1 = Thursday, 2 = Sunday. */
+    /** Calendar slot number: 1 = day 1, 2 = day 3, 3 = day 5, 4 = day 7. */
     private Integer slot;
 
     @Enumerated(EnumType.STRING)

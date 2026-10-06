@@ -32,8 +32,8 @@ import java.util.List;
  * and no advanced bonus.
  *
  * <h2>Freebies cost training</h2>
- * A club that agreed friendlies has fewer training sessions that week, and this honours it — the
- * whole point of a friendly being optional. See
+ * Friendlies do not reduce a club's training sessions, and match minutes still feed the training
+ * percentage. See
  * {@link FriendlyRequestService#trainingSessionsAvailable}.
  */
 @Slf4j
@@ -92,7 +92,8 @@ public class SquadTrainingService {
 
         int sessions = friendlies.trainingSessionsAvailable(teamId, season, week);
         if (sessions <= 0) {
-            // He played friendlies instead of training. That is the trade the owner asked for.
+            // Keep the guard for a future training contract. The current friendly contract always
+            // returns the full baseline because a friendly costs zero sessions.
             return 0;
         }
 

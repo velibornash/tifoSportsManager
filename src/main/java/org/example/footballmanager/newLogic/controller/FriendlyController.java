@@ -59,7 +59,7 @@ public class FriendlyController {
             SeasonCalendar.WeekSlot spec = SeasonCalendar.slot(resolvedWeek, slot);
             Map<String, Object> option = new LinkedHashMap<>();
             option.put("slot", slot);
-            option.put("day", slot == 1 ? "Thursday" : "Sunday");
+            option.put("day", spec == null ? null : spec.day());
             option.put("kind", spec == null ? null : spec.kind().name());
             options.add(option);
         }
