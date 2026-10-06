@@ -1959,7 +1959,41 @@ Three to four days. The six slider fields have **zero readers** today — they a
 
 **Exit criteria:** the sliders change something observable in a match, or they are removed.
 
-### ~~P2-14 — Prize money: `awardPrizeMoney` has no caller~~ ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
+### P2-10 — National team qualifiers and the senior World Cup — **DRAW BUILT, NOT YET PLAYED TO A RESULT**
+
+The mechanism exists; the competitions and formats did not. **Work landed 2026-10-06 — see
+[`kanbanProgress.md`](kanbanProgress.md) for the full inventory and the two bugs the tests caught.**
+
+**Landed:** four `TOURNAMENT` competitions (senior + U-21, qualifiers + tournament, as **separate rows,
+not tabs**); pots-of-8 deal into 8 groups of 6; 5 qualifying matchdays on **week 6 days 2–6**; the
+worse-rated side hosting; tie-breaks points → GD → GF → **stored coin**; round of 16 d1, QF d2, SF d4,
+final + third place d6; matchday jobs for all nine days; `TOURNAMENT` accepted by `isKnockoutTie`;
+national Elo now replays tournaments, weights by stage and pays the qualification bonus; the squad locks
+at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
+`/api/national-tournaments` endpoint returning groups, standings and results.
+
+**Exit criteria still open:**
+- [ ] **A tournament is played to a champion.** The round of 16 draws and plays; the final is not
+      reached. `NationalTournamentPlayedToAResultTest.tournamentReachesAChampion` is red
+      (*"a tournament has one final — expected: 1 but was: 0"*). Suspect the `all` fixture list in
+      `NationalTournamentSeeder.buildKnockouts` is read once and never refreshed.
+- [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
+      competition tab. The endpoint is built; the frontend that renders it is not.
+- [ ] **Admin buttons** for the new endpoints are not on the admin screen.
+- [ ] **National-team injuries unverified** — `decrementInjuriesByWeek` may not cover the national-team
+      player rows, which are copies. The owner's "players can be injured" rule is unproven.
+
+### P2-12 — U-21 as its own competitions — **structure done, nothing on screen**
+
+Explicitly **not tabs on one competition**, per the analysis. **Landed:** its own qualifying
+competition, its own tournament, its own 8 groups, its own 120 qualifying fixtures, its own Elo track
+(`Country.youthRating`), its own matchday jobs. Confirmed by test: 120 senior fixtures and 120 U-21
+fixtures, in two different competitions.
+
+**Still open:** the U-21 tournament is reachable only by URL — the World page's "U-21 World Cup" tile is
+still a disabled button.
+
+### P2-14 — Prize money: `awardPrizeMoney` has no caller — DONE ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
 
 The board said "wire it or delete it". **Wire it — but not as written, or it pays the wrong clubs.**
 

@@ -1,9 +1,17 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.MatchValue;
+import org.example.footballmanager.newLogic.model.NationalStage;
+import org.example.footballmanager.newLogic.model.NationalTeamLevel;
+import org.example.footballmanager.newLogic.model.NationalTournamentSchedule;
+import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.ScoredMatch;
 import org.slf4j.Logger;
@@ -68,14 +76,20 @@ public class NationalRatingService {
     public static final double START_RATING = RatingEngine.NATIONAL_START_RATING;
 
     private final MatchRepository matches;
+    private final MatchFixtureRepository tournamentFixtures;
     private final CountryRepository countries;
+    private final CompetitionRepository competitions;
     private final TransactionTemplate requiresNew;
 
     public NationalRatingService(MatchRepository matches,
+                                 MatchFixtureRepository tournamentFixtures,
                                  CountryRepository countries,
+                                 CompetitionRepository competitions,
                                  PlatformTransactionManager transactionManager) {
         this.matches = matches;
+        this.tournamentFixtures = tournamentFixtures;
         this.countries = countries;
+        this.competitions = competitions;
         // A transaction of its own, for {@link #recomputeDurably()} only. See that method.
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -93,7 +107,13 @@ public class NationalRatingService {
      */
     @Transactional
     public Result recompute() {
-        List<ScoredMatch> history = matches.findPlayedScoredByCompetitionTypeInOrder(CompetitionType.INTERNATIONAL);
+        // INTERNATIONAL *and* TOURNAMENT. It read only INTERNATIONAL, so before the national-team
+        // competitions existed that was the whole of a national side's football. A country could
+        // win a World Cup and its rating would not move by one point, because the replay never
+        // looked at the match. The two types are now one history rather than two of them, which is
+        // also what keeps the replay idempotent: adding TOURNAMENT does not change how an
+        // INTERNATIONAL is rated, it only stops the tournament being invisible.
+        List<ScoredMatch> history = matches.findPlayedNationalScoredInOrder();
 
         // Working ratings, keyed by the side that played them. A country's column is only written at
         // the end, so a half-replayed history never leaves the table holding numbers from no history.
@@ -136,6 +156,18 @@ public class NationalRatingService {
             }
             applyToWorkingRatings(match, senior, youth, ownerOfSide);
             replayed++;
+        }
+
+        // The bonus belongs after every match is applied and before anything is written, so the
+        // column only ever holds a completed replay. Applied for both levels: a U-21 nation that
+        // reached its own tournament has done the same thing as a senior one, on its own rating.
+        for (NationalTeamLevel level : NationalTeamLevel.values()) {
+            competitions.findAll().stream()
+                    .filter(c -> c.getType() == CompetitionType.TOURNAMENT)
+                    .filter(c -> c.getNationalStage() == NationalStage.WORLD_CUP)
+                    .filter(c -> c.getNationalLevel() == level)
+                    .findFirst()
+                    .ifPresent(tournament -> applyQualificationBonus(tournament, senior, youth, ownerOfSide));
         }
 
         return persist(world, senior, youth, replayed);
@@ -191,10 +223,11 @@ public class NationalRatingService {
         double homeRating = ratings.getOrDefault(homeId, START_RATING);
         double awayRating = ratings.getOrDefault(awayId, START_RATING);
 
-        // A plain "Internationals" competition is not a World Cup and not a qualifying round, so it
-        // takes the OTHER weight. When the owner adds those competitions the stage changes and this
-        // line does not — which is the point of keeping the stage out of the competition name.
-        double k = RatingEngine.nationalK(MatchValue.INTERNATIONAL, NationalStage.OTHER);
+        // The stage comes from the competition's own column, never from its name: a World Cup match is
+        // worth twice a friendly (the owner), and the only difference between the two rows is that
+        // column. Read as OTHER it would be the same as a friendly, which was the state this replay
+        // was in for its whole life — the weight existed and no match could ever reach it.
+        double k = RatingEngine.nationalK(MatchValue.INTERNATIONAL, match.stage());
         double homeActual = actualFor(match.homeGoals(), match.awayGoals());
         double awayActual = actualFor(match.awayGoals(), match.homeGoals());
 
@@ -244,6 +277,85 @@ public class NationalRatingService {
                     replayed, rated, result.highest(), result.lowest());
         }
         return result;
+    }
+
+    /**
+     * Applies {@link RatingEngine#qualificationBonus()} to every nation that reached the tournament.
+     *
+     * <p>The owner's rule: <i>"a bonus for qualifying in general",</i> as a separate thing from the
+     * value of a match. A nation that grinds through qualifying and narrowly goes out has still done
+     * something, and its rating should say so even though it won no knockout match.
+     *
+     * <p><b>Once, and from the same replay.</b> It is added here rather than in a matchday job because
+     * the replay is a pure function of the match table: run it twice and the bonus is added twice,
+     * which is the double-application failure this class exists to avoid. Being derived from the
+     * tournament's own fixtures rather than a flag also means a restored backup reaches the same
+     * answer as the original run.
+     *
+     * <p>Applied before the final write, and only for sides still in the working map — a qualifier has
+     * to have played at least one match to have qualified, so this cannot invent a rating.
+     */
+    private void applyQualificationBonus(Competition tournament,
+                                         Map<Long, Double> senior, Map<Long, Double> youth,
+                                         Map<Long, Country> ownerOfSide) {
+        if (tournament == null) {
+            return;
+        }
+        List<Long> qualifiers = tournamentQualifiers(tournament);
+        double bonus = RatingEngine.qualificationBonus();
+        int paid = 0;
+        for (Long teamId : qualifiers) {
+            Country owner = ownerOfSide.get(teamId);
+            if (owner == null) {
+                continue;
+            }
+            Map<Long, Double> ratings = isYouth(teamId, ownerOfSide) ? youth : senior;
+            Double rating = ratings.get(teamId);
+            if (rating != null) {
+                ratings.put(teamId, rating + bonus);
+                paid++;
+            }
+        }
+        if (paid > 0) {
+            log.info("National Elo: qualification bonus of +{} applied to {} side(s) that reached the {}.",
+                    (int) bonus, paid, tournament.getName());
+        }
+    }
+
+    /**
+     * The nations that reached a tournament, read off the round of sixteen.
+     *
+     * <p>From the fixtures rather than from the draw's own record, for the reason the rest of this
+     * class replays instead of incrementing: the fixtures are what happened. A team is in the round
+     * of sixteen if it appears in one, which cannot disagree with the draw that made it.
+     */
+    private List<Long> tournamentQualifiers(Competition tournament) {
+        return tournamentFixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        tournament.getId(), seasonOf(tournament)).stream()
+                .filter(f -> f.getRoundNumber() != null
+                        && f.getRoundNumber() == NationalTournamentSchedule.ROUND_LAST_SIXTEEN)
+                .flatMap(f -> java.util.stream.Stream.of(f.getHomeTeam(), f.getAwayTeam()))
+                .filter(java.util.Objects::nonNull)
+                .map(Team::getId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    /**
+     * The season a tournament's bracket belongs to, or -1 when it has not been drawn.
+     *
+     * <p>Read off the tournament's own fixtures rather than asked for, so this class needs no season
+     * parameter and a caller cannot pass the wrong one. The replay is season-wide and the bracket is
+     * the one thing in it that is not.
+     */
+    private int seasonOf(Competition tournament) {
+        return tournamentFixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
+                        tournament.getId(), 0).stream()
+                .map(MatchFixture::getSeasonYear)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .orElse(-1);
     }
 
     /** 1.0 win, 0.5 draw, 0.0 loss from the point of view of the goals passed in first. */

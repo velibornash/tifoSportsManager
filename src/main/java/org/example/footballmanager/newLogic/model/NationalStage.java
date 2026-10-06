@@ -1,4 +1,4 @@
-package org.example.footballmanager.newLogic.service;
+package org.example.footballmanager.newLogic.model;
 
 /**
  * Which stage of a national-team competition a match belongs to (owner, 2026-09-28).

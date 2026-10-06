@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.repository;
 
 import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.NationalStage;
 
 /**
  * One played match, as a rating replay reads it — and nothing else.
@@ -39,5 +40,20 @@ public record ScoredMatch(Long id,
                           int homeGoals,
                           int awayGoals,
                           CompetitionScope scope,
-                          CompetitionType type) {
+                          CompetitionType type,
+                          NationalStage stage) {
+
+    /**
+     * The competition's stage, or {@link NationalStage#OTHER} when it has none.
+     *
+     * <p>Null-safe because a missing competition arrives here as a null type too, and a replay that
+     * threw on it would stop every other country in the world being rated because of one corrupt row.
+     *
+     * <p>The stage travels with the projection rather than being derived from the type because the two
+     * are different questions: {@code TOURNAMENT} covers both a qualifier and a World Cup, and the
+     * owner wants those weighted differently.
+     */
+    public NationalStage stage() {
+        return stage == null ? NationalStage.OTHER : stage;
+    }
 }

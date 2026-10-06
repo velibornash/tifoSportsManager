@@ -238,9 +238,7 @@ class NationalRatingServiceTest extends BaseTest {
         // The regression guard for the actual bug report. H2 draws its internationals but does not play
         // them, so this asserts the honest starting state rather than a moved column: the point is
         // that this number can never be "48 countries all reading one value with internationals played".
-        long played = matches
-                .findPlayedScoredByCompetitionTypeInOrder(CompetitionType.INTERNATIONAL)
-                .size();
+        long played = matches.findPlayedNationalScoredInOrder().size();
         long distinct = countDistinctRatings();
         if (played == 0) {
             assertEquals(1L, distinct,

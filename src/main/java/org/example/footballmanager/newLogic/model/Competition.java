@@ -36,4 +36,24 @@ public class Competition {
     private Integer reputationWeight;
     private Boolean hasSeeding;
     private Integer seededTeamsCount;
+
+    /**
+     * Which national side this competition is for, or null for a club competition.
+     *
+     * <p>Senior and U-21 are separate competitions rather than tabs on one, so a competition has to
+     * say which it is. Reading it off the name is the alternative and is how "Serbia U-21 Women"
+     * ends up rated as a senior side.
+     */
+    @Enumerated(EnumType.STRING)
+    private NationalTeamLevel nationalLevel;
+
+    /**
+     * Whether this competition is a qualifying round or the tournament proper, or null.
+     *
+     * <p>It exists so a national rating can be weighted by stage without parsing a name: the owner
+     * wants a World Cup match to count more than a qualifying one, and a world cup and a qualifier
+     * are both {@code TOURNAMENT} rows differing only in this.
+     */
+    @Enumerated(EnumType.STRING)
+    private NationalStage nationalStage;
 }

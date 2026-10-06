@@ -2,6 +2,160 @@
 
 ---
 
+## P2-10 / P2-12 — national-team qualifying and the World Cup (owner, 2026-10-06)
+
+### What was asked for
+
+The owner's spec, verbatim in intent: qualifying and the tournament **identical for senior and U-21**;
+48 countries; 8 groups of 6; **top two advance to the round of 16**; tie-breaks **points, goal
+difference, goals scored, zreb**; qualifying in **week 6, days 2–6, one matchday a day**; the squad of
+25 **may be changed at any time** for qualifying; players may be **injured as in a regular match**; a
+simulated country sends its **bot squad at average rating 12**; the World Cup in **week 12** with
+**round of 16 day 1, quarter-finals day 2, semi-finals day 4, final and third place day 6**; the 25
+chosen for the World Cup **cannot be changed**; **update the calendar on the country side**.
+
+Owner decisions taken during the session:
+
+| Question | Answer |
+|---|---|
+| Group draw | **Pots of 8** — "draw by ranking, each pot gives one per group" |
+| Home side in qualifying | **The worse-rated side hosts** every tie |
+| Squad freeze | **Week 12, day 1, 10:00**; kickoff where no time exists: **20:00** |
+| Week-6 day-1 friendlies (`InternationalFixtureSeeder`) | **Keep** as a warm-up round, scheduled like a club friendly and not compulsory |
+
+### What landed
+
+**`NationalTournamentSchedule`** (new, `model/`) — the owner's calendar in one place: `QUALIFYING_WEEK`
+= `SeasonCalendar.MIDSEASON_WEEK`, `TOURNAMENT_WEEK` = `BREAK_WEEK`, `QUALIFYING_DAYS = {2,3,4,5,6}`,
+round numbers (`ROUND_LAST_SIXTEEN` 1 … `ROUND_FINAL` 5), and `kickoffFor(day)` which takes the week
+template's own time where it has one and falls back to the owner's **20:00** on days 2, 4 and 6 — which
+carry no kickoff at all because they are finance, training and morale.
+
+**`NationalTeamCompetitions`** (new, `util/`) — the four competitions as **four rows, not tabs**:
+`World Cup Qualifiers`, `World Cup`, `U-21 World Cup Qualifiers`, `U-21 World Cup`, each
+`type=TOURNAMENT`, `scope=INTERNATIONAL`, `teamType=NATIONAL_TEAM`. Idempotent by the row, matched on
+level and stage.
+
+**`Competition.nationalLevel` + `Competition.nationalStage`** — two nullable columns. The Elo weighting
+must never parse a competition name, and the codebase already says so twice. **`NationalStage` was moved
+from `service/` to `model/`**, because an entity now holds a column of it and an entity may not import
+from the service package. Four call sites updated; behaviour unchanged.
+
+**`NationalTournamentSeeder`** (new, `util/`) — the whole draw.
+- **Pots of 8**: ranked field cut into pots of `GROUPS`, one drawn into each group per pot.
+- **5 matchdays**, circle method, week 6 days 2–6, **the worse-rated side hosting** every tie.
+- **Knockout drawn a round at a time from the results**, not from round one: R16 d1, QF d2, SF d4, and
+  **final + third place drawn together** on the semi-final's results. A level tie is settled on the
+  penalty columns; a tie level **with no shootout recorded stops the bracket** rather than inventing a
+  winner.
+- **No `PROPAGATION_REQUIRES_NEW`.** `InternationalClubCupDraw` uses it; copying that here was a
+  mistake and was caught by a test — `REQUIRES_NEW` **suspends the caller's transaction**, so the draw
+  ran in a fresh one and saw an empty database ("Only 0 playable sides"). The "the boot transaction
+  loses writes" defence does not apply: **boot writes nothing** (`ensureBaselineDataOnStartup()` has no
+  caller). Now plain `@Transactional` on the entry points, which also makes it testable.
+
+**`NationalGroupTable`** (new, `service/`) — one group's table **computed from played matches**, not
+read from `CompetitionEntry`. `CompetitionEntry` holds one row per team per season-competition, so it
+**cannot express eight groups inside one competition**; the club cups get away with it only because every
+entrant is in exactly one group. Pure function, so it cannot double-count and converges from any state.
+Tie-break chain is the owner's, ending in a **coin**.
+
+**`NationalGroupTieBreak`** (new entity + repository) — the coin, **written once per group and read back
+afterwards**. A coin re-rolled on every read is a table that reorders itself while nobody is looking.
+The order uses a per-team mix of the stored seed, not a shuffle, so it does not depend on the order the
+repository returned teams in.
+
+**`NationalMatchdayJob`** (new) — a **subclass** of `MatchdayJob` pinned to one week. The base job is
+`ANY_WEEK`, which is right for the league; for national football it would fire on day 3 of every week,
+find nothing, and be logged as a successful national matchday that played nothing, ~70× a season.
+**`MatchdayJobsConfig`**: 5 qualifier beans (w6 d2–6) + 4 tournament beans (w12 d1,2,4,6). Day 3 is
+absent from the tournament because the owner skips it.
+
+**`NationalTournamentDrawJob`** (new, `jobs/impl/`) — draws the groups on week 6 day 1 at 08:00, and
+re-enters on every week-12 day to draw whatever the results allow. Idempotent, so the second run is a
+no-op.
+
+**`isKnockoutTie`** — one line: `TOURNAMENT` now accepted alongside `CUP`. Without it **no World Cup tie
+could ever be settled on penalties**, and the tournament is a `TOURNAMENT` row that no `CUP` predicate
+reached. The `groupCode` test the parallel session added still protects the qualifying groups. **Note:
+this file is also being edited in parallel — the change is two lines and is the only hunk of mine in it.**
+
+**`NationalRatingService`** — replay now reads **both** `INTERNATIONAL` and `TOURNAMENT`
+(`findPlayedNationalScoredInOrder`). Before this a country could **win a World Cup and its rating would
+not move by one point**. `ScoredMatch` carries the stage, so `WORLD_CUP 2.0 / QUALIFYING 1.25` — weights
+that had existed since 2026-09-28 with no reachable caller — are finally live. Plus
+`applyQualificationBonus()`: `+30` to the sixteen that reached the round of 16, applied **inside the
+replay** so it cannot double-apply.
+
+**Squad lock** — `NationalTeamService.isSquadLocked(week, day, hour)`, week 12 day 1 **10:00**, checked
+in **both** write paths and reported in `describe()`. Read from the **game clock**, not the wall clock.
+Nulls mean "not locked": a corrupt clock must not silently take a manager's ability to pick a team.
+
+**`NationalRatingResetBackfill`** (new) + 3 admin endpoints — Serbia read **50** on the World page
+against 47 nations on 1500. Two scales collide on the column name: `Country.reputation` is a national Elo
+on a 1500 scale, `Team.reputation` is a 0–100 economy number, and `TeamFactory` creates clubs at
+`reputation = 50` — which is why 50 looks *average* in the data and *last* on the screen.
+`POST /admin/national-ratings/reset` puts every country's **both** columns back to
+`STARTING_RATING`; `GET /admin/national-ratings/offenders` reports without changing. **Admin-only,
+never boot**: a boot listener would discard real results on every restart.
+
+**`CalendarController`** — week 6 and week 12 notes no longer say "not built yet", and
+`nationalEvents()` derives real events from the fixtures. It passed `List.of()` for the calendar's whole
+life, so week 6 rendered as seven ordinary days.
+
+**`NationalTournamentController`** (new) — `/api/national-tournaments` and
+`/{level}/{stage}`, returning groups with full standings and rounds with results and penalty columns.
+**This is what the World page's four dead buttons should link to — the frontend is NOT done, see below.**
+
+### Tests — and the two real bugs they caught
+
+`NationalTournamentSeederTest` — 5/5 green. **Every guard was verified by breaking the code and watching
+it fail**, per the AGENTS.md rule:
+
+| Broken deliberately | What failed |
+|---|---|
+| pot size back to `field/GROUPS` | `expected: <120> but was: <168>` and `group A must hold one nation from each of the six pots, not [5,0,4,2,3]` |
+| `oneHosts = true` (ignore rating) | `Nation 40 Senior (1040) hosts Nation 02 Senior (1002): the worse-rated side must be at home` |
+
+**The pot bug was real and I wrote it**: a pot must hold one nation **per group** (8), not
+`field/GROUPS` (6). Cutting it the other way gave every group eight nations and 168 ties instead of 120.
+
+`CupGroupTableTest` (parallel session's, 8/8) also re-run green against my `isKnockoutTie` change.
+`RatingEngineTest` 14/14, `NationalRatingServiceQueryCountTest` 3/3, `NationalTournamentSeederTest` 5/5.
+
+### What is NOT done — pick this up first
+
+1. **`NationalTournamentPlayedToAResultTest` has 6 of 7 green and 1 red, and it is disabled from
+   committing as green.** `tournamentReachesAChampion` fails: *"a tournament has one final — expected: 1
+   but was: 0"*. The round of 16 draws and plays; the final is not reached. **Diagnose `buildKnockouts`**
+   — the feed-forward loop now runs `FEED_FORWARD_ROUNDS` (R16/QF/SF only, see
+   `NationalTournamentSchedule.FEED_FORWARD_ROUNDS`) and the final draw sits after it. Suspect: the
+   `all` list is read once at the top of `buildKnockouts` and never refreshed, so a round drawn later in
+   the same call is invisible to it. **This is the last blocker on the P2-10 exit criterion.**
+   The other 6 cover qualifying→16, a level *group* tie **not** going to penalties, a level *knockout* tie
+   **going** to penalties, coin stability, the bonus paid exactly once, and senior/U-21 separation.
+2. **The World page's four tiles are still `<button disabled>Not created yet</button>`** (`pages.js`
+   ~943-958) and the country page has no NT competition tab. `NationalTournamentController` is built and
+   returns the payload; **the frontend that renders it is not written.**
+3. **Admin buttons for the new endpoints are not on the admin screen.** `admin-view.js` has no
+   "Create NT competitions", "Advance tournament" or "Reset national ratings".
+4. **`InternationalFixtureSeeder` was left as-is** per the owner's "keep it as a warm-up round". It draws
+   one round on **week 6 day 1**, which is the day before the first qualifier — verified as harmless, but
+   it was not re-scheduled to be non-compulsory and it is still wired into `DatabaseInitializer`.
+5. **National-team injuries**: `decrementInjuriesByWeek` was **not** verified to cover national-team
+   player rows. National rows are *copies* of club players, so an injury written on one may not tick down.
+   **Untested — check this before claiming the owner's "players can be injured" rule works.**
+6. **`NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` is red** — but it is
+   **pre-existing and not caused by this work**: proven by reverting my one-line edit to it and
+   re-running, which still fails. The test database has no countries with a non-null reputation, so
+   `countDistinctRatings()` returns 0 where it expects 1.
+7. **The friendly-invitation feature was not started.** Backend is **already complete**
+   (`FriendlyController` + 596-line `FriendlyRequestService`) and the dashboard ticker already shows
+   incoming requests. Missing: the **INVITE FOR FRIENDLY button**, accepting it for **national teams**
+   (the service is club-only), and the **free-slot ad board** the owner described.
+
+---
+
 ## P0-CUPS-4 and P0-CUPS-5 — the draw runs, and a floor division that would have made a fake last sixteen
 
 ### The job

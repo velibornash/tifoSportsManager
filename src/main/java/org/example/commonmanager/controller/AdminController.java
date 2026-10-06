@@ -5,6 +5,8 @@ import org.example.commonmanager.service.AdminDatabaseAsyncService;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.service.CountryActivationService;
 import org.example.footballmanager.newLogic.service.TransferService;
+import org.example.footballmanager.newLogic.util.NationalRatingResetBackfill;
+import org.example.footballmanager.newLogic.util.WorldCatalogSeeder;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +34,8 @@ public class AdminController {
     private final TransferService transferService;
     private final org.example.footballmanager.newLogic.service.RegistrationService registrationService;
     private final org.example.footballmanager.newLogic.repository.RegistrationRequestRepository registrationRequests;
+    private final org.example.footballmanager.newLogic.util.NationalTournamentWorldService nationalTournamentWorldService;
+    private final org.example.footballmanager.newLogic.util.NationalRatingResetBackfill nationalRatingResetBackfill;
 
     /**
      * The pending registration requests, for the admin queue.
@@ -132,6 +136,91 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> reseedWorld(
             @RequestParam(defaultValue = "national-teams") String what) {
         return ResponseEntity.ok(worldRepairService.repair(what));
+    }
+
+    /**
+     * The national-team competitions: creates the four of them and draws the qualifying groups
+     * (owner, 2026-10-06).
+     *
+     * <p>An admin action and not a boot action, per the rule that boot writes nothing. The tournament
+     * bracket is not drawn here: it depends on qualifying results that do not exist yet, and the draw
+     * job takes it a round at a time once they do.
+     */
+    @PostMapping("/national-tournaments")
+    public ResponseEntity<Map<String, Object>> seedNationalTournaments() {
+        return ResponseEntity.ok(toMap(nationalTournamentWorldService.seed()));
+    }
+
+    /**
+     * Draws whatever the national tournaments' results so far allow.
+     *
+     * <p>The manual counterpart to the week-12 draw job, for a tournament that stalled and should not
+     * wait for the clock to be nudged.
+     */
+    @PostMapping("/national-tournaments/advance")
+    public ResponseEntity<Map<String, Object>> advanceNationalTournaments() {
+        return ResponseEntity.ok(toMap(nationalTournamentWorldService.advanceTournaments()));
+    }
+
+    /**
+     * A record to a map, spelled out rather than reflected.
+     *
+     * <p>The result of a seed is three values and a list, and every one of them is something the admin
+     * screen shows. {@code Map.of} also refuses a null value, which a draw can legitimately produce
+     * (a competition with no group standings yet), so it would throw on a successful seed.
+     */
+    private Map<String, Object> toMap(
+            org.example.footballmanager.newLogic.util.NationalTournamentWorldService.Result result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("competitions", result.competitions());
+        body.put("season", result.season());
+        List<Map<String, Object>> draws = new java.util.ArrayList<>();
+        int groups = 0;
+        int groupFixtures = 0;
+        int knockoutFixtures = 0;
+        for (org.example.footballmanager.newLogic.util.NationalTournamentSeeder.DrawResult draw : result.draws()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("groups", draw.groups());
+            row.put("entrants", draw.entrants());
+            row.put("groupFixtures", draw.groupFixtures());
+            row.put("knockoutFixtures", draw.knockoutFixtures());
+            row.put("note", draw.note());
+            draws.add(row);
+            groups += draw.groups();
+            groupFixtures += draw.groupFixtures();
+            knockoutFixtures += draw.knockoutFixtures();
+        }
+        body.put("draws", draws);
+        body.put("groups", groups);
+        body.put("groupFixtures", groupFixtures);
+        body.put("knockoutFixtures", knockoutFixtures);
+        return body;
+    }
+
+    /**
+     * Puts every country back on the starting national rating (owner, 2026-10-06).
+     *
+     * <p>Separate from {@link #worldReseed} because it is the one action that discards information:
+     * it resets what the Elo replay has derived, and doing that to a world mid-season throws away real
+     * results. It is idempotent and reports how many countries actually moved, so pressing it on a
+     * healthy world changes nothing.
+     */
+    @PostMapping("/national-ratings/reset")
+    public ResponseEntity<Map<String, Object>> resetNationalRatings() {
+        NationalRatingResetBackfill.Result result = nationalRatingResetBackfill.resetAll();
+        return ResponseEntity.ok(Map.of(
+                "countries", result.countries(),
+                "moved", result.moved(),
+                "alreadyCorrect", result.alreadyCorrect(),
+                "startingRating", WorldCatalogSeeder.STARTING_RATING));
+    }
+
+    /** Which countries are off the starting rating, without changing anything. */
+    @GetMapping("/national-ratings/offenders")
+    public ResponseEntity<Map<String, Object>> nationalRatingOffenders() {
+        return ResponseEntity.ok(Map.of(
+                "startingRating", WorldCatalogSeeder.STARTING_RATING,
+                "offenders", nationalRatingResetBackfill.offenders()));
     }
 
     /**

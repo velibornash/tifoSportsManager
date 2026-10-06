@@ -43,12 +43,35 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      * null id through to the replay's "not rated" branch.
      */
     @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
-            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type) "
+            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
             + "WHERE m.played = true AND m.competition.type = :type "
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<ScoredMatch> findPlayedScoredByCompetitionTypeInOrder(
             @Param("type") org.example.footballmanager.newLogic.model.CompetitionType type);
+
+    /**
+     * Every played match between national sides, in the order it was played — a rating replay's
+     * whole history, in one query.
+     *
+     * <p><b>One method rather than two calls filtered in Java.</b> The national replay reads
+     * {@code INTERNATIONAL} and {@code TOURNAMENT}, and Elo is order-dependent: two calls would have to
+     * be merged back into date order by the caller, which is a sort in the service and one more place
+     * for the ordering to be wrong. It is also one round trip instead of two, over the same rows.
+     *
+     * <p>{@code m.competition.type IN (...)} rather than a membership test on the sides, for the same
+     * reason {@link #findPlayedClubScoredInOrder()} uses one: a club never plays in either of these
+     * types and a national side plays in nothing else, so the type test separates the pools with no
+     * extra query.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
+            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
+            + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
+            + "WHERE m.played = true AND m.competition.type IN ("
+            + "org.example.footballmanager.newLogic.model.CompetitionType.INTERNATIONAL, "
+            + "org.example.footballmanager.newLogic.model.CompetitionType.TOURNAMENT) "
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<ScoredMatch> findPlayedNationalScoredInOrder();
 
     /**
      * Every played match between clubs, in the order it was played, as a rating replay reads it.
@@ -68,7 +91,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      * match and this is every played club match in the world. See {@link ScoredMatch}.
      */
     @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
-            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type) "
+            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
             + "WHERE m.played = true AND m.competition.type IN ("
             + "org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE, "

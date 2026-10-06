@@ -7,6 +7,10 @@ import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.ScoredMatch;
 import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.NationalStage;
+import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -39,13 +43,14 @@ class NationalRatingServiceQueryCountTest {
     private final MatchRepository matches = mock(MatchRepository.class);
     private final CountryRepository countries = mock(CountryRepository.class);
     private final NationalRatingService ratings = new NationalRatingService(
-            matches, countries, mock(PlatformTransactionManager.class));
+            matches, mock(MatchFixtureRepository.class), countries, mock(CompetitionRepository.class),
+            mock(PlatformTransactionManager.class));
 
     @Test
     @DisplayName("the world is read once for a replay, however many matches it replays")
     void theWorldIsReadOnce() {
         when(countries.findAll()).thenReturn(aWorldOf(24));
-        when(matches.findPlayedScoredByCompetitionTypeInOrder(any()))
+        when(matches.findPlayedNationalScoredInOrder())
                 .thenReturn(internationalsBetween(1, 24, 10));
 
         ratings.recompute();
@@ -58,10 +63,10 @@ class NationalRatingServiceQueryCountTest {
     void theCountDoesNotGrowWithTheHistory() {
         when(countries.findAll()).thenReturn(aWorldOf(24));
 
-        when(matches.findPlayedScoredByCompetitionTypeInOrder(any())).thenReturn(internationalsBetween(1, 24, 1));
+        when(matches.findPlayedNationalScoredInOrder()).thenReturn(internationalsBetween(1, 24, 1));
         ratings.recompute();
 
-        when(matches.findPlayedScoredByCompetitionTypeInOrder(any())).thenReturn(internationalsBetween(1, 24, 10));
+        when(matches.findPlayedNationalScoredInOrder()).thenReturn(internationalsBetween(1, 24, 10));
         ratings.recompute();
 
         // Two replays, one match each and then ten. Before the fix this was 1 + (3 x 1) and then
@@ -73,7 +78,7 @@ class NationalRatingServiceQueryCountTest {
     @DisplayName("a replay over no matches still reads the world exactly once")
     void anEmptyReplayStillReadsTheWorldOnce() {
         when(countries.findAll()).thenReturn(aWorldOf(24));
-        when(matches.findPlayedScoredByCompetitionTypeInOrder(any())).thenReturn(List.of());
+        when(matches.findPlayedNationalScoredInOrder()).thenReturn(List.of());
 
         NationalRatingService.Result result = ratings.recompute();
 
@@ -114,7 +119,8 @@ class NationalRatingServiceQueryCountTest {
             long home = firstNation + (long) (i % Math.max(1, lastNation - firstNation + 1));
             long away = home == firstNation ? lastNation : firstNation;
             played.add(new ScoredMatch((long) i + 1, home, "Nation " + home, away, "Nation " + away,
-                    i % 3, (i + 1) % 2, CompetitionScope.INTERNATIONAL, CompetitionType.INTERNATIONAL));
+                    i % 3, (i + 1) % 2, CompetitionScope.INTERNATIONAL, CompetitionType.INTERNATIONAL,
+                    NationalStage.OTHER));
         }
         return played;
     }

@@ -2,11 +2,13 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.NationalTeamAppointment;
 import org.example.footballmanager.newLogic.model.NationalTeamLevel;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.NationalTeamAppointmentRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
@@ -45,13 +47,15 @@ public class NationalTeamService {
     private final NationalTeamElectionService elections;
     private final NationalTeamAppointments appointments;
     private final org.example.footballmanager.newLogic.repository.SeasonRepository seasons;
+    private final GameClockRepository clocks;
 
     public NationalTeamService(TeamRepository teams,
                                PlayerRepository players, MatchFixtureRepository fixtures,
                                org.example.commonmanager.repository.UserRepository users,
                                NationalTeamElectionService elections,
                                NationalTeamAppointments appointments,
-                               org.example.footballmanager.newLogic.repository.SeasonRepository seasons) {
+                               org.example.footballmanager.newLogic.repository.SeasonRepository seasons,
+                               GameClockRepository clocks) {
         this.teams = teams;
         this.players = players;
         this.fixtures = fixtures;
@@ -59,6 +63,7 @@ public class NationalTeamService {
         this.elections = elections;
         this.appointments = appointments;
         this.seasons = seasons;
+        this.clocks = clocks;
     }
 
     public Optional<NationalTeamAppointment> activeAppointment(Long countryId, NationalTeamLevel level) {
@@ -149,6 +154,9 @@ public class NationalTeamService {
         out.put("nextMatch", nextMatch(team.getId()));
         out.put("ranking", ranking(country.getIsoCode()));
         out.put("election", electionState(country, level, viewer));
+        // Sent to everyone, not just the selector: a frozen squad is a fact about the tournament and a
+        // non-selector looking at the team should see it too.
+        out.put("squadLock", squadLock(level, currentSeasonYear(), clockWeek(), clockDay(), clockHour()));
         return out;
     }
 
@@ -222,6 +230,7 @@ public class NationalTeamService {
     public Map<String, Object> addToSquad(Country country, NationalTeamLevel level, long sourcePlayerId,
                                          User viewer) {
         requireSelector(country, level, viewer);
+        requireSquadUnlocked(clockWeek(), clockDay(), clockHour());
         Team team = requireTeam(country, level);
 
         if (players.findByTeamId(team.getId()).size() >= SQUAD_SIZE) {
@@ -253,6 +262,7 @@ public class NationalTeamService {
     @Transactional
     public void removeFromSquad(Country country, NationalTeamLevel level, long nationalPlayerId, User viewer) {
         requireSelector(country, level, viewer);
+        requireSquadUnlocked(clockWeek(), clockDay(), clockHour());
         Team team = requireTeam(country, level);
         Player onSquad = players.findById(nationalPlayerId)
                 .orElseThrow(() -> new IllegalArgumentException("No such player: " + nationalPlayerId));
@@ -281,6 +291,110 @@ public class NationalTeamService {
         if (!isSelector(country, level, viewer)) {
             throw new SecurityException("Only the selector of "
                     + (level == NationalTeamLevel.U21 ? "the U-21" : "the national") + " team may do that.");
+        }
+    }
+
+    // ---------- the World Cup squad lock ----------
+
+    /**
+     * When a squad stops being editable, from the game clock (owner, 2026-10-06).
+     *
+     * <p>The owner: <b>"lock from week 12 day 1, 10:00."</b> The tournament's first round is on day 1,
+     * so the list a manager picks from has to be settled before kickoff — ten in the morning is the
+     * owner's hour, not a technical one.
+     */
+    public static final int LOCK_WEEK = 12;
+    public static final int LOCK_DAY = 1;
+    public static final int LOCK_HOUR = 10;
+
+    /**
+     * Whether the squad for a level is frozen, and why.
+     *
+     * <p>Qualified for the tournament: the 25 chosen for the World Cup cannot be changed. Qualified
+     * only: the squad stays editable for the whole season, which is the owner's rule for qualifying —
+     * "the squad of 25 may be changed at any time."
+     *
+     * <p>The U-21 side locks on the same clock, because week 12 day 1 is when its tournament opens too.
+     */
+    public Map<String, Object> squadLock(NationalTeamLevel level, int seasonYear, Integer week,
+                                         Integer day, Integer hour) {
+        boolean locked = isSquadLocked(week, day, hour);
+        return Map.of(
+                "locked", locked,
+                "fromWeek", LOCK_WEEK,
+                "fromDay", LOCK_DAY,
+                "fromHour", LOCK_HOUR,
+                "level", level == NationalTeamLevel.U21 ? "u21" : "senior",
+                "reason", locked
+                        ? "The World Cup squad is fixed. The tournament opens today."
+                        : "The squad can be changed until week " + LOCK_WEEK + " day 1, 10:00.");
+    }
+
+    /**
+     * The one question both write paths ask before touching a squad.
+     *
+     * <p>Nulls mean the clock is not known, and then the squad is <b>not</b> locked: a corrupt clock
+     * should not silently take a manager's ability to pick a team, and the lock has a hard deadline
+     * rather than a condition that can be reached by accident.
+     */
+    public static boolean isSquadLocked(Integer week, Integer day, Integer hour) {
+        if (week == null || day == null || hour == null) {
+            return false;
+        }
+        if (week < LOCK_WEEK) {
+            return false;
+        }
+        if (week > LOCK_WEEK) {
+            return true;
+        }
+        if (day < LOCK_DAY) {
+            return false;
+        }
+        if (day > LOCK_DAY) {
+            return true;
+        }
+        return hour >= LOCK_HOUR;
+    }
+
+    /** Throws the one message the client shows, so the two write paths cannot word it differently. */
+    private void requireSquadUnlocked(Integer week, Integer day, Integer hour) {
+        if (isSquadLocked(week, day, hour)) {
+            throw new IllegalStateException(
+                    "The squad is fixed for the tournament from week " + LOCK_WEEK + " day " + LOCK_DAY + ".");
+        }
+    }
+
+    // ---------- the clock, for the lock ----------
+
+    /**
+     * Where the lock reads the time from.
+     *
+     * <p>The game clock, not the wall clock. The tournament opens on week 12 day 1 of the <i>season</i>,
+     * so a lock keyed on the wall clock would freeze every squad in the world at the same moment
+     * regardless of where each player's season had got to.
+     */
+    private Integer clockWeek() {
+        // getCurrentWeek is on GameClock via Lombok's @Getter, and it is the one field here with no
+        // hand-written accessor, so it is reached the same way as the other two.
+        return clockOrNull(GameClock::getCurrentWeek);
+    }
+
+    private Integer clockDay() {
+        return clockOrNull(GameClock::getCurrentDay);
+    }
+
+    private Integer clockHour() {
+        return clockOrNull(GameClock::getCurrentHour);
+    }
+
+    private Integer clockOrNull(java.util.function.Function<GameClock, Integer> field) {
+        try {
+            return clocks.findById(1L).map(field).orElse(null);
+        } catch (RuntimeException unreadable) {
+            // A clock that cannot be read leaves the squad editable. The lock has a deadline rather
+            // than a trigger that can fire by accident, so the safe direction is "not yet".
+            log.warn("Could not read the game clock; treating the squad as unlocked: {}", unreadable.getMessage());
+            return null;
         }
     }
 
