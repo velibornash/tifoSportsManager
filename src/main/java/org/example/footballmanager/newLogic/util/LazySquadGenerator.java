@@ -125,4 +125,65 @@ public class LazySquadGenerator {
         }
         return team.getCompetition().getTier();
     }
+
+    // ------------------------------------------------ continental cups (P0-CUPS-3)
+
+    /**
+     * Gives every one of these clubs a squad, if it has none — P0-CUPS-3.
+     *
+     * <p><b>The cup is the first thing in this game that makes two bot clubs actually play each
+     * other.</b> Everything above is deliberate: the static world exists to avoid 370,000 player rows
+     * for clubs that never kicked a ball, and the guard above is narrow because a bot-versus-bot match
+     * was "still just a result". The fifteen international club cups dissolve that reasoning. They admit
+     * <b>192 clubs per tier — 48 Champions, 96 Masters, 48 Challenge — and there are five tiers</b>, so
+     * roughly <b>960 clubs</b>, and 46 of the 48 countries are {@code SIMULATED}, which is to say they
+     * are all of them.
+     *
+     * <p>So a Champions Cup tie between two simulated countries would reach
+     * {@code SimMatchService.loadRealSquad()}, find no players, get {@code null} for both sides, and be
+     * handed to {@code SimTeamFactory.addTeam()} — <b>synthetic placeholder players</b>. The competition
+     * would then be decided by 22 unnamed stand-ins, and the owner's rating ladder (average 12 at tier 1,
+     * one lower per tier) would be <b>invisible</b>, because a synthetic squad has no rating to average.
+     * It would look finished. It would be a coin flip between identical squads.
+     *
+     * <h2>Why no {@code CountryState} filter</h2>
+     *
+     * <p>The owner's decision was <i>only simulated countries' clubs</i>, and that is what happens — but
+     * it happens structurally rather than by being tested for. {@link #needsSquad} asks whether the club
+     * has players, and an <b>ACTIVE</b> country's clubs have them: {@code PyramidBuilder.build()} creates
+     * a squad for every club it builds. So the clubs that arrive here empty <i>are</i> the simulated
+     * ones, and adding a {@code country.getState() == SIMULATED} test would be a second statement of the
+     * same fact that can disagree with the first. An active club that somehow had no squad would
+     * correctly get one here at its own tier.
+     *
+     * <h2>Still display-only, still not a refresh</h2>
+     *
+     * <p>Everything the class javadoc promises still holds. These squads are generated once and left
+     * alone; they are not rebuilt when a club is promoted, and they do not feed Elo or the transfer
+     * market beyond what a real squad would. What changed is that a cup tie between two of them now has
+     * men on the pitch instead of placeholders.
+     *
+     * @return how many clubs were given a squad
+     */
+    @Transactional
+    public int ensureSquadsForCupEntrants(List<Team> entrants) {
+        if (entrants == null || entrants.isEmpty()) {
+            return 0;
+        }
+        int made = 0;
+        for (Team team : entrants) {
+            if (!needsSquad(team)) {
+                continue;
+            }
+            int count = generate(team);
+            log.info("Cup entrant {} had no squad: generated {} player(s) at tier {} standard (skill {}).",
+                    team.getName(), count, tierOf(team), PyramidBuilder.tierSkill(tierOf(team)));
+            made++;
+        }
+        if (made > 0) {
+            log.info("Cup entrants: {} of {} club(s) were given a squad.",
+                    made, entrants.size());
+        }
+        return made;
+    }
 }

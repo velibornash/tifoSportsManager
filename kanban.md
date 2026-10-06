@@ -254,10 +254,22 @@ which is exactly what `LazySquadGenerator` already does for a human against a bo
 sides. It needs a tier parameter.
 
 **Exit criteria:**
-- [ ] Every club entering any cup from a `SIMULATED` country has 11+ named players
-- [ ] Squad average skill is 12 / 11 / 10 / 9 / 8 for tiers 1 / 2 / 3 / 4 / 5
-- [ ] Generation is lazy (on entry), not for all 14,880 clubs, and is idempotent
-- [ ] **Proven able to fail:** the tier ladder is asserted against generated squads, not against `tierSkill`
+- [x] Every club entering any cup from a `SIMULATED` country has 11+ named players
+- [x] Squad average skill is 12 / 11 / 10 / 9 / 8 for tiers 1 / 2 / 3 / 4 / 5
+- [x] Generation is lazy (on entry), not for all 14,880 clubs, and is idempotent
+- [x] **Proven able to fail:** the tier ladder is asserted against generated squads, not against `tierSkill`
+
+**The fix was smaller than the diagnosis, and the reason is worth keeping.**
+`BotLeagueStandard.TIER_ONE_AVERAGE = 12`, `STEP_PER_TIER = 1`, and `PlayerFactory.createRandomTeamPlayers`
+already read the tier from `team.getCompetition().getTier()` and applied it. **The ladder was never
+missing — it was never being applied to anybody.** So P0-CUPS-3 is `LazySquadGenerator` gaining one public
+entry point and `InternationalClubCupDraw.buildGroupStage` calling it before its idempotency early
+return, because the draw is what creates the need and a repaired world has to be able to re-enter.
+
+**No `CountryState` filter, on purpose.** The owner's decision was "only simulated countries' clubs", and
+it holds because an `ACTIVE` country's clubs already have squads from `PyramidBuilder.build()` — so the
+clubs that arrive empty *are* the simulated ones. A second `state == SIMULATED` test would be a second
+statement of the same fact, free to disagree with the first.
 
 ### P0-CUPS-4 — the draw is never run
 

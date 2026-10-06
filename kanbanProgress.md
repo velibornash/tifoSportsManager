@@ -2,6 +2,64 @@
 
 ---
 
+## P0-CUPS-3 — the ladder was never missing, it was never being applied to anybody
+
+The diagnosis said 960 clubs would enter a cup with no players and be decided by
+`SimTeamFactory.addTeam()` placeholders, because `SimMatchService` only generates a squad when exactly one
+side is human and 46 of the 48 countries are `SIMULATED` with no players by design.
+
+**The fix was two methods, not a new generator.** `BotLeagueStandard` already has
+`TIER_ONE_AVERAGE = 12`, `STEP_PER_TIER = 1`, `LOWEST_TIER = 5` — `skillAverageForTier(tier)` returns
+`12 - (tier - 1)`, **exactly the owner's ladder** — and `PlayerFactory.createRandomTeamPlayers` already
+reads `team.getCompetition().getTier()` and applies it.
+
+So the number was already right and nobody was using it. P0-CUPS-3 is
+`LazySquadGenerator.ensureSquadsForCupEntrants(List<Team>)` plus one call from
+`InternationalClubCupDraw.buildGroupStage`, placed **before** the "already drawn" early return — a repaired
+world has to be able to re-enter, and the fill is idempotent on its own terms.
+
+**No `CountryState` filter.** The owner said "only simulated countries' clubs", and it holds structurally:
+an `ACTIVE` country's clubs have squads from `PyramidBuilder.build()`, so the clubs that arrive empty *are*
+the simulated ones. A second `state == SIMULATED` test would be a second statement of the same fact, free to
+disagree with the first.
+
+#### The mutation that was not caught, and why that is the useful part
+
+First mutation: broke `LazySquadGenerator.tierOf()` to always return 1. **All five tests stayed green.**
+
+That looked like a broken test and turned out to be a broken mutation. `tierOf()` feeds only the log line —
+`generate()` calls `playerFactory.createRandomTeamPlayers(team.getName(), team)` and **`PlayerFactory`
+reads the tier itself**. So I had mutated a string interpolation and proved nothing.
+
+The honest mutation is on the real path — `PlayerFactory`'s tier read — and it fails exactly as it should:
+
+| Mutation | Result |
+|---|---|
+| `LazySquadGenerator.tierOf()` → always 1 | **5 green** — mutated a log line |
+| `PlayerFactory` tier read → always 1 | **2 red**: *"tier 4 should average about 9 but its squad averages 12.3"* |
+| `buildGroupStage`'s squad call removed | `InternationalClubCupDrawTest` red: *"entered a group with no squad, so its ties would be played by placeholder players"* |
+
+The measured averages (**12.4 / 11.x / 10.x / 9.x / 8.x**) are the ladder, read off generated players
+rather than asserted against `tierSkill` — which is the whole point, because `tierSkill` was already
+correct and asserting against it is the mistake that hid this defect in the first place.
+
+New: `CupEntrantSquadTest` 5, plus one test in `InternationalClubCupDrawTest` that the *wiring* fires (13
+total, was 12). Regressions green: `BotLeagueStandardTest` 10, `SidLeagueSeedingTest` 19,
+`SimulatedWorldSeederTest` 6, `InternationalClubCupsTest` 9, `CupDrawSeedingTest` 8, `CupGroupTableTest` 8.
+
+#### A red that is not mine, measured rather than assumed
+
+`CountryActivationTest.activationIsScopedToOneCountry` failed in the batch, and alone, with *"Serbia has no
+pyramid, so this test proves nothing: expected: not equal but was: `<0>`"*. Checked in a worktree at
+`6e24fa0`, before P0-CUPS-3: **identical failure**. It is one of the 29 recorded reds — *"the world's
+pyramid, built and asserted in one run"*, at 273 s.
+
+`CupFixtureSeederCountryTest`'s 5 reds are on that same list, described as *"the order dependence,
+reproduced identically at HEAD"* — which is the P0-CUPS-6 finding the project already knew about and had
+recorded without fixing.
+
+---
+
 ## The Back button, corrected — and the defect the wrong fix had been hiding
 
 I read "a forum section's Back should go to the dashboard" as *build a Back button that goes to the

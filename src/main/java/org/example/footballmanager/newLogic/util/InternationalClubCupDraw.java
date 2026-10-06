@@ -98,6 +98,7 @@ public class InternationalClubCupDraw {
     private final SeasonCompetitionRepository seasonCompetitions;
     private final TransactionTemplate requiresNew;
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
+    private final LazySquadGenerator lazySquadGenerator;
 
     /**
      * The game clock's season start, which is where a fixture date is measured from.
@@ -117,13 +118,15 @@ public class InternationalClubCupDraw {
                                      CompetitionEntryRepository entries,
                                      SeasonCompetitionRepository seasonCompetitions,
                                      org.springframework.transaction.PlatformTransactionManager transactionManager,
-                                     org.example.footballmanager.newLogic.repository.GameClockRepository clocks) {
+                                     org.example.footballmanager.newLogic.repository.GameClockRepository clocks,
+                                     LazySquadGenerator lazySquadGenerator) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.entries = entries;
         this.seasonCompetitions = seasonCompetitions;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.clocks = clocks;
+        this.lazySquadGenerator = lazySquadGenerator;
         this.requiresNew.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -168,6 +171,21 @@ public class InternationalClubCupDraw {
     @Transactional
     DrawResult buildGroupStage(Competition cup, List<Team> entrants, int qualifyPerGroup, int seasonYear) {
         SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
+
+        // **Before the idempotency check, and deliberately (P0-CUPS-3).**
+        //
+        // The cups are the first thing in this game that makes two bot clubs play each other, and 46 of
+        // the 48 countries are simulated with no players at all. Without this, a Champions Cup tie between
+        // two of them reaches SimMatchService.loadRealSquad(), gets null for both sides, and is handed to
+        // SimTeamFactory.addTeam() — synthetic placeholders. The competition would be decided by 22
+        // unnamed stand-ins and the tier rating ladder would be invisible, because a synthetic squad has
+        // no rating to average.
+        //
+        // It runs before the "already drawn" early return on purpose. A re-run of this method is the
+        // normal state of a world that has been repaired, and a club whose squad was cleared out from
+        // under it still has to be able to turn up. The squad fill is idempotent on its own terms — it
+        // skips any club that already has players.
+        int squadsGiven = lazySquadGenerator.ensureSquadsForCupEntrants(entrants);
 
         long existing = fixtures
                 .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear)

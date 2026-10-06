@@ -43,6 +43,7 @@ class InternationalClubCupDrawTest extends BaseTest {
     @Autowired private MatchFixtureRepository fixtures;
     @Autowired private org.example.footballmanager.newLogic.repository.MatchRepository matchRepository;
     @Autowired private org.example.footballmanager.newLogic.repository.TeamRepository teamRepository;
+    @Autowired private org.example.footballmanager.newLogic.repository.PlayerRepository players;
     @Autowired private org.springframework.transaction.support.TransactionTemplate transactions;
 
     private Competition cup;
@@ -179,6 +180,33 @@ class InternationalClubCupDrawTest extends BaseTest {
         }
         assertEquals(8, firstOfEach.size(),
                 "two groups share their strongest club, so the seeding is bunching rather than spreading");
+    }
+
+    @Test
+    @DisplayName("drawing a group gives its clubs a squad, so the tie is played and not faked")
+    void drawingAGroupGivesEveryClubASquad() {
+        // P0-CUPS-3. The draw is what admits a club to a group, so it is what creates the need for a
+        // squad — and 46 of the 48 countries are simulated with no players by design. Without this the
+        // tie reaches SimMatchService.loadRealSquad(), gets null for both sides, and is handed to
+        // SimTeamFactory.addTeam(): synthetic placeholders, and the tier rating ladder invisible because
+        // a synthetic squad has no rating to average.
+        //
+        // The clubs in entrants() have no competition and no players, which is exactly the production
+        // situation, so this is not a special fixture — it is the shape of every simulated-country cup
+        // entrant in the world.
+        List<Team> field = entrants(48);
+        for (Team club : field) {
+            assertTrue(players.findByTeamId(club.getId()).isEmpty(),
+                    "this test no longer describes the simulated world: an entrant already had players");
+        }
+
+        draw.ensureGroupStage(cup, field, InternationalClubCupDraw.CHAMPIONS_QUALIFY_PER_GROUP, season);
+
+        for (Team club : field) {
+            assertTrue(players.findByTeamId(club.getId()).size() >= 11,
+                    club.getName() + " entered a group with no squad, so its ties would be played by "
+                            + "placeholder players");
+        }
     }
 
     @Test
