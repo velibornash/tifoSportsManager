@@ -27,18 +27,15 @@ public class NationalTournamentWorldService {
     private final NationalTournamentSeeder seeder;
     private final SeasonService seasons;
     private final GameClockRepository clocks;
-    private final InternationalFixtureSeeder warmUp;
 
     public NationalTournamentWorldService(NationalTeamCompetitions catalogue,
                                           NationalTournamentSeeder seeder,
                                           SeasonService seasons,
-                                          GameClockRepository clocks,
-                                          InternationalFixtureSeeder warmUp) {
+                                          GameClockRepository clocks) {
         this.catalogue = catalogue;
         this.seeder = seeder;
         this.seasons = seasons;
         this.clocks = clocks;
-        this.warmUp = warmUp;
     }
 
     /** What one admin press produced. Returned rather than logged, so the screen can show it. */
@@ -59,17 +56,18 @@ public class NationalTournamentWorldService {
             draws.add(seeder.ensureGroupStage(level, seasonYear));
         }
 
-        // The week-6 day-1 warm-up round, which the owner kept ("may be a warm-up round, scheduled like
-        // a club friendly, not compulsory").
+        // The week-6 day-1 warm-up round is **not** drawn here any more.
         //
-        // <b>This is the only place it is drawn from.</b> It used to be called from
-        // {@code DatabaseInitializer.ensureBaselineDataOnStartup()}, a method with **zero callers** — so
-        // the round nobody had asked to remove had in fact stopped happening, and nobody noticed because
-        // a round that is not drawn and a round that was never wanted look identical from outside.
-        // Moving it here puts it behind an admin action, which is where world building belongs.
-        warmUp.seedIfMissing(seasonYear);
+        // It used to be, and it drew a pairing for every senior side with a squad — which is exactly the
+        // compulsory version of the thing the owner does not want ("a warm-up round, scheduled like a
+        // club friendly, but not compulsory"), and it filled the one day a national friendly can use, so
+        // an invitation had nowhere to go. The day is now `NationalFriendlySlots.WEEK` / `.DAY` and is
+        // filled by `NationalFriendlyRequestService`, one request at a time, where either side may refuse.
+        //
+        // If that round is wanted back as a default rather than as an invitation, it is one call in this
+        // method and it belongs to an owner decision, not to a seeder.
 
-        log.info("National-team world: {} competition(s), {} draw(s) and a warm-up round for season {}.",
+        log.info("National-team world: {} competition(s) and {} draw(s) for season {}.",
                 created, draws.size(), seasonYear);
         return new Result(created, draws, String.valueOf(seasonYear));
     }

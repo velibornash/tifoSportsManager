@@ -573,14 +573,74 @@ carries a non-empty name plus its status.
 
 ### Still to do on this feature
 
-- **National teams as requesters and receivers.** `FriendlyRequestService` is club-only, and
-  `SeasonCalendar.friendlySlots` is per-week on the league's two slots. **Whether a national side may use
-  the club slots or the tournament days is an open owner decision** — it changes the slot logic either way.
+- ~~**National teams as requesters and receivers**~~ — **the service is done** (week 6 day 1, national
+  against national, 7/7). **Still open:** the endpoint and the UI, and whether a **bot** national side may
+  answer a request — today bots pair themselves up and nothing posts to a bot.
 - **The free-slot ad board.** A page where a team posts an open slot and anyone accepts. Needs a listing
   with an expiry and a decision on whether a bot side may accept one; today AI clubs pair themselves up in
   `runAiFriendlyWeek`.
 - **A `FRIENDLY_REQUESTED` notification kind**, so the notification bell fires. The ticker already lists
   the request; only the bell is missing.
+
+---
+
+## NT friendlies — one slot, one lane (owner, 2026-10-06)
+
+The owner's answer to the slot question, in four words: **"NT friendly can only be in week 6 day 1."**
+
+### That answer settles more than it looks like
+
+**A club and a nation have no slot in common.** `SeasonCalendar.friendlySlots` is the league's two slots —
+day 3 and day 7 — and `FriendlyRequestService` is written around that pair: slot 1 is the first, slot 2
+the second, and everything from the playoff rule to the training cost is indexed by it. Day 3 of week 6 is
+a **qualifying matchday**. So a cross-type friendly would need either a new lane or a collision with the
+tournament, and neither was asked for.
+
+A national friendly is therefore **national against national, on week 6 day 1** — which is also the day
+before the first qualifying matchday, and exactly the warm-up round the owner wanted.
+
+`NationalFriendlySlots` states that one slot in one place, and `availableIn(week)` is the only question
+anything asks it.
+
+### A separate service, and why
+
+`NationalFriendlyRequestService` rather than a mode of the 596-line club service. Every rule in that one
+is about clubs: two league slots, a playoff that costs a club its Thursday, a training session to spend, an
+AI pass that pairs bot clubs with each other. A national side has no league, no playoff and no training
+budget, plays on a different day, and may be answered by a selector.
+
+Adding an "is this a national side?" branch to each of those rules puts the tournament's calendar inside
+the league's, and **the first rule that forgot the branch would be a national side playing on a day it
+cannot**. Two lanes, one shared `friendly_request` table.
+
+### The compulsory round is gone, because it filled the same day
+
+`InternationalFixtureSeeder` drew a pairing for **every senior side with a squad** on week 6 day 1 — the
+compulsory version of the thing the owner does not want, occupying the one day an invitation could use.
+Its draw call is removed from `NationalTournamentWorldService.seed()`. The class is left in place: if that
+round is wanted as a default rather than as invitations, it is one call, and it belongs to an owner
+decision rather than to a seeder.
+
+### One honest limitation, in the code
+
+The fixture an accepted request creates **has no competition**, so the day-1 international matchday job
+will not find it — the known consequence of a competition-less fixture, already on the board for friendly
+fixtures generally. A national warm-up is therefore written and shown and waits to be played.
+Inventing a competition for it would put it in the national ranking, which is worse. **Not solved here.**
+
+### Evidence
+
+`NationalFriendlyRequestServiceTest` — 7/7: the rule asserted over **every week of the season** rather than
+at the one that works; an accepted request creating a `FRIENDLY` fixture on week 6 day 1; a club refused
+from both directions; no other week bookable; no stacked second ask; a side with a fixture already on the
+day is busy; and a request answerable only by its addressee.
+
+**Proven by breaking it:** widening `availableIn` to every week gives
+`week 1 must refuse — expected: <true> but was: <false>` and
+`week 1: the owner said week 6 and only week 6`.
+
+**Not done:** no controller endpoint or UI yet for national requests, and a national side is still not
+auto-paired as a bot — that is an owner decision, recorded below.
 
 ---
 

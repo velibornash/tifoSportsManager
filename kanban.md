@@ -2001,6 +2001,14 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
+- [x] **NT friendlies: week 6 day 1, national against national.** The owner's rule settles the slot
+      question — a club and a nation have **no slot in common**, since day 3 of week 6 is a qualifying
+      matchday. A separate service rather than a mode of the 596-line club one, because every rule in that
+      one is about clubs and the first rule that forgot the branch would be a national side playing on a
+      day it cannot. `NationalFriendlyRequestServiceTest` 7/7 over **every week of the season**.
+      The compulsory all-sides pairing on that day is **removed** — it was occupying the one day an
+      invitation could use. **Open:** no endpoint or UI yet, no bot auto-pairing, and an accepted fixture
+      has no competition so the day-1 job will not find it (recorded in the code).
 - [x] **INVITE FOR FRIENDLY button, on the club side.** Open slots per slot, accept / decline / withdraw,
       a debounced club picker scoped to the club's own country, and request rows that carry a **name**
       rather than an id. `FriendlyOpponentAndRequestRowTest` 4/4; the national-team filter re-proven by
