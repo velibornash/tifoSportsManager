@@ -75,6 +75,14 @@ production callers. `TeamTacticsProfile`, `TeamTacticsService`, the simulation t
 classes do have callers and remain load-bearing. The task is narrowed before deletion; no files were
 removed in this audit.
 
+## 2026-10-06 — P1-CUPS-3 qualifying race correction
+
+The first country qualifying UI exposed every club and trusted an unset stored position, which made every
+row appear to be a Masters candidate. The endpoint now derives positions by sorting each current league
+table. Tier 1 exposes only the direct 1st–4th places; tiers 2–5 expose the three pooled candidate tables
+and mark only the allowed Champions, Masters and Challenge places. The country UI renders those pools.
+Main compilation and JavaScript syntax validation passed.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup

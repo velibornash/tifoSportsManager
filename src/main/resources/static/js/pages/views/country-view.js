@@ -110,31 +110,24 @@ export function createCountryView(deps) {
                     </div></div>
                 </section>`;
         }
-        const divisions = Array.isArray(data.divisions) ? data.divisions : [];
-        const byTier = new Map();
-        divisions.forEach(division => {
-            const tier = Number(division?.tier || 0);
-            if (!byTier.has(tier)) byTier.set(tier, []);
-            byTier.get(tier).push(division);
-        });
-        const tiers = [...byTier.entries()].sort((a, b) => a[0] - b[0]);
+        const tiers = Array.isArray(data.tiers) ? data.tiers : [];
         const body = tiers.length === 0
             ? '<p class="fm-subtle">No league standings are available for the qualifying race yet.</p>'
-            : tiers.map(([tier, tierDivisions]) => `
+            : tiers.map(tier => `
                 <div class="fm-qualifying-tier">
-                    <h4>Tier ${tier}</h4>
-                    ${tierDivisions.map(division => `
+                    <h4>Tier ${htmlEscape(tier.tier)}</h4>
+                    ${(Array.isArray(tier.cups) ? tier.cups : []).map(cup => `
                         <div class="fm-qualifying-division">
-                            <div class="fm-subtle">${htmlEscape(division.division || 'League')}</div>
+                            <div class="fm-subtle">${htmlEscape(cup.cup)} · ${htmlEscape(cup.places)} place${cup.places === 1 ? '' : 's'}</div>
                             <table class="fm-table fm-qualifying-table">
-                                <thead><tr><th>Pos</th><th>Club</th><th>Pts</th><th>GD</th><th>Race</th></tr></thead>
-                                <tbody>${(Array.isArray(division.standings) ? division.standings : []).map(row => `
-                                    <tr>
+                                <thead><tr><th>Pos</th><th>Club</th><th>Pts</th><th>GD</th><th>Status</th></tr></thead>
+                                <tbody>${(Array.isArray(cup.standings) ? cup.standings : []).map(row => `
+                                    <tr${row.qualifies ? ' class="is-qualified"' : ''}>
                                         <td>${htmlEscape(String(row.position ?? '—'))}</td>
                                         <td>${htmlEscape(row.teamName || 'Unknown club')}</td>
                                         <td>${htmlEscape(String(row.points ?? 0))}</td>
                                         <td>${htmlEscape(String(row.goalDifference ?? 0))}</td>
-                                        <td>${htmlEscape(row.qualifiesFor || '—')}</td>
+                                        <td>${row.qualifies ? 'Qualifies' : 'Candidate'}</td>
                                     </tr>`).join('')}</tbody>
                             </table>
                         </div>`).join('')}

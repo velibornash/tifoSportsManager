@@ -612,8 +612,9 @@ These are current source/board findings, not historical audit claims.
   is still pending.
 - Friendly training cost is explicitly zero. The training service retains a three-session baseline and
   match minutes continue to influence development.
-- Country pages show the derived international qualifying race by league tier. It reads reconciled league
-  standings on page load instead of maintaining a second persisted table.
+- Country pages show only the relevant international qualifying candidates by tier: direct tier-1 places,
+  then the pooled winners, 2nd/3rd places and 4th places for tiers 2–5. The races are derived from
+  reconciled league standings on page load instead of maintaining a second persisted table.
 - Friendly requests have backend support and dashboard ticker visibility, but inviting, national-team
   acceptance and the free-slot board are unfinished.
 

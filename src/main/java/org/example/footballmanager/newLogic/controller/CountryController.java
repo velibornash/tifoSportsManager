@@ -946,52 +946,103 @@ public class CountryController {
                 .toList();
         return ResponseEntity.ok(players);
     }
-    // P1-CUPS-3: country-side qualifying table (added to CountryController)
+    // P1-CUPS-3: country-side qualifying race
     @GetMapping("/{isoCode}/qualifying")
     public Map<String, Object> qualifying(
             @PathVariable String isoCode) {
         Country country = requireCountry(isoCode);
-        // The country's division standings: the qualifying race is the league table.
-        // Champions: 1st; Masters: 2nd, 3rd; Challenge: 4th.
+        int season = currentSeason();
         List<Competition> divisions = competitionRepository.findByCountryId(country.getId());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("country", country.getName());
         out.put("isoCode", country.getIsoCode());
-        out.put("season", currentSeason());
-        List<Map<String, Object>> divisionsData = new ArrayList<>();
+        out.put("season", season);
+
+        Map<Integer, List<List<CompetitionEntry>>> tablesByTier = new LinkedHashMap<>();
         for (Competition division : divisions) {
             if (division.getType() != CompetitionType.LEAGUE) continue;
-            SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(division, currentSeason())
-                    .orElseGet(SeasonCompetition::new);
-            if (sc.getCompetition() == null) {
-                sc.setCompetition(division);
-                sc.setSeasonYear(currentSeason());
-                sc.setFinished(false);
-            }
-            List<CompetitionEntry> entries = competitionEntryRepository.findBySeasonCompetition(sc);
-            // Sorted by points, GD, GF, then name (same as LeagueTableOrder).
-            entries.sort(LeagueTableOrder.comparator());
-            List<Map<String, Object>> standings = new ArrayList<>();
-            for (CompetitionEntry entry : entries) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("teamName", entry.getTeam() == null ? null : entry.getTeam().getName());
-                row.put("position", entry.getPosition());
-                row.put("points", entry.getPoints());
-                row.put("goalsFor", entry.getGoalsScored());
-                row.put("goalsAgainst", entry.getGoalsConceded());
-                row.put("goalDifference", entry.getGoalsScored() - entry.getGoalsConceded());
-                int pos = entry.getPosition() == null ? 0 : entry.getPosition();
-                String cup = pos == 1 ? "Champions" : (pos <= 3 ? "Masters" : (pos == 4 ? "Challenge" : null));
-                row.put("qualifiesFor", cup);
-                standings.add(row);
-            }
-            divisionsData.add(Map.of(
-                    "division", division.getName(),
-                    "tier", division.getTier(),
-                    "standings", standings));
+            SeasonCompetition sc = seasonCompetitionRepository.findByCompetitionAndSeasonYear(division, season)
+                    .orElse(null);
+            if (sc == null) continue;
+            List<CompetitionEntry> table = LeagueTableOrder.sort(
+                    competitionEntryRepository.findBySeasonCompetition(sc));
+            if (table.isEmpty()) continue;
+            tablesByTier.computeIfAbsent(division.getTier(), ignored -> new ArrayList<>()).add(table);
         }
-        out.put("divisions", divisionsData);
+
+        List<Map<String, Object>> tiers = new ArrayList<>();
+        for (Map.Entry<Integer, List<List<CompetitionEntry>>> tier : tablesByTier.entrySet()) {
+            int tierNumber = tier.getKey();
+            Map<String, Object> tierData = new LinkedHashMap<>();
+            tierData.put("tier", tierNumber);
+            List<Map<String, Object>> cups = new ArrayList<>();
+            if (tierNumber == 1) {
+                List<CompetitionEntry> table = tier.getValue().get(0);
+                cups.add(cupRace("Champions Cup", entriesAt(table, 0, 1), 1));
+                cups.add(cupRace("Masters Cup", entriesAt(table, 1, 2), 2));
+                cups.add(cupRace("Challenge Cup", entriesAt(table, 3, 1), 1));
+            } else {
+                List<CompetitionEntry> champions = poolAt(tier.getValue(), 0);
+                List<CompetitionEntry> masters = new ArrayList<>();
+                masters.addAll(poolAt(tier.getValue(), 1));
+                masters.addAll(poolAt(tier.getValue(), 2));
+                List<CompetitionEntry> challenge = poolAt(tier.getValue(), 3);
+                cups.add(cupRace("Champions Cup", champions, 1));
+                cups.add(cupRace("Masters Cup", masters, 2));
+                cups.add(cupRace("Challenge Cup", challenge, 1));
+            }
+            tierData.put("cups", cups);
+            tiers.add(tierData);
+        }
+        out.put("tiers", tiers);
         return out;
+    }
+
+    private static CompetitionEntry entryAt(List<CompetitionEntry> table, int index) {
+        return index < table.size() ? table.get(index) : null;
+    }
+
+    private static List<CompetitionEntry> entriesAt(List<CompetitionEntry> table, int from, int count) {
+        if (from >= table.size()) return List.of();
+        return new ArrayList<>(table.subList(from, Math.min(table.size(), from + count)));
+    }
+
+    private static List<CompetitionEntry> poolAt(List<List<CompetitionEntry>> tables, int position) {
+        List<CompetitionEntry> pool = new ArrayList<>();
+        for (List<CompetitionEntry> table : tables) {
+            CompetitionEntry entry = entryAt(table, position);
+            if (entry != null) pool.add(entry);
+        }
+        return LeagueTableOrder.sort(pool);
+    }
+
+    private static Map<String, Object> cupRace(String cup, List<CompetitionEntry> candidates,
+                                                int places) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int index = 0; index < candidates.size(); index++) {
+            CompetitionEntry entry = candidates.get(index);
+            rows.add(qualifyingRow(entry, index + 1, index < places));
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("cup", cup);
+        result.put("places", places);
+        result.put("standings", rows);
+        result.put("selected", rows.stream().filter(row -> Boolean.TRUE.equals(row.get("qualifies"))).count());
+        return result;
+    }
+
+    private static Map<String, Object> qualifyingRow(CompetitionEntry entry, int poolPosition,
+                                                      boolean qualifies) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("teamName", entry.getTeam() == null ? null : entry.getTeam().getName());
+        row.put("position", poolPosition);
+        row.put("leaguePosition", entry.getPosition());
+        row.put("points", entry.getPoints());
+        row.put("goalsFor", entry.getGoalsScored());
+        row.put("goalsAgainst", entry.getGoalsConceded());
+        row.put("goalDifference", entry.getGoalsScored() - entry.getGoalsConceded());
+        row.put("qualifies", qualifies);
+        return row;
     }
 
 }

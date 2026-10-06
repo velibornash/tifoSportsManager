@@ -540,9 +540,10 @@ zero-cost deduction. **No cap on friendlies per week** — a club may book any f
 The owner asked for the country-side tables to be visible and followable after every round, with **a new
 job** to update them when leagues update.
 
-**The object that needs storing is the synthetic one.** At tier 1 the qualifying "table" is just the league
-table, which already exists. At tiers 2–5 it is a table **nobody stores**: the pool of that country's
-divisions' winners, or of the pooled seconds and thirds, or of the pooled fourths, in tier order.
+The qualifying race is derived from current league tables. At tier 1 the places are direct: 1st to
+Champions, 2nd and 3rd to Masters, and 4th to Challenge. At tiers 2–5 the country's divisions are pooled
+into three synthetic races: all winners for Champions, all 2nd and 3rd place clubs for Masters, and all
+4th place clubs for Challenge.
 
 **One judgement to make explicit, not to skip:** `InternationalClubCups.tierTables()` already reads a
 tier's tables in **three queries** and the World page's budget is already under test
@@ -553,7 +554,8 @@ persisted copy is a cache with an invalidation problem. The owner asked for a jo
 because it was requested.
 
 **Exit criteria:**
-- [x] The country general tab shows the country's league positions and qualifying destination by tier
+- [x] The country general tab shows only the relevant candidates for each cup by tier
+- [x] Tier 1 uses direct places; tiers 2–5 rank the three pooled mini-tables and mark the selected places
 - [x] It reads the current reconciled league tables when the country page loads, without a world-page refresh
 - [x] The data is deliberately derived on read; the existing league reconciliation jobs update the source
       tables, while a persisted copy would add cache invalidation without reducing the three-query tier read
