@@ -2001,6 +2001,11 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
+- [x] **INVITE FOR FRIENDLY button, on the club side.** Open slots per slot, accept / decline / withdraw,
+      a debounced club picker scoped to the club's own country, and request rows that carry a **name**
+      rather than an id. `FriendlyOpponentAndRequestRowTest` 4/4; the national-team filter re-proven by
+      removing it. **Open:** national teams as requesters and receivers, the free-slot ad board, and a
+      notification kind for the bell.
 - [x] **The week-6 day-1 warm-up round has a live draw path.** It had *stopped happening* — its only
       caller, `ensureBaselineDataOnStartup()`, has zero callers. Now drawn by the admin action and
       labelled `MatchType.FRIENDLY`. **"Not compulsory" is not yet implemented**: optional participation

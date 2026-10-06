@@ -5322,3 +5322,81 @@ body {
     display: inline-block;
     transform: translateY(1px);
 }
+
+/* Friendlies panel: the club's open slots, the requests waiting for an answer,
+   and the opponent picker. Uses the panel tokens already in this file rather than a
+   second palette. */
+.fm-friendly-block {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fm-friendly-block h4 {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.fm-friendly-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fm-friendly-row > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.fm-friendly-row-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.fm-friendly-results {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.fm-friendly-opponent {
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+}
+
+.fm-friendly-opponent:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.fm-friendly-message {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 0.86rem;
+}
+
+.fm-friendly-message.is-ok {
+    background: rgba(76, 175, 80, 0.14);
+    color: #9fe0af;
+}
+
+.fm-friendly-message.is-error {
+    background: rgba(244, 67, 54, 0.16);
+    color: #ffb3ad;
+}

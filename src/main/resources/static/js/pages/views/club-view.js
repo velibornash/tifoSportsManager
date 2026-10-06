@@ -1,13 +1,15 @@
 // pages/views/club-view.js
 import { htmlEscape, formatBudget, buildMilestoneBoardHtml, buildEmptyState } from './utils.js';
+import { createFriendlyPanel } from './friendly-panel.js';
 
 export function createClubView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml, openLeagueById, loadPage } = deps;
+    const friendlyPanel = createFriendlyPanel({ authFetch });
 
     async function loadClubProfile() {
         const teamId = getTeamId();
         console.log(`Loading club profile for ${teamId}`);
-        const [response, milestones] = await Promise.all([
+        const [response, milestones, friendlyWeek] = await Promise.all([
             authFetch(`/teams/${teamId}/profile`),
             (async () => {
                 try {
@@ -16,7 +18,11 @@ export function createClubView(deps) {
                 } catch {
                     return null;
                 }
-            })()
+            })(),
+            // Read beside the profile rather than after it, so the page is not rendered twice. A failed
+            // read is a rendered empty panel, never a page that fails: the club profile is still worth
+            // showing to a manager whose friendly week could not be loaded.
+            friendlyPanel.loadFriendlyWeek(teamId).catch(() => ({ failed: true, status: 0 }))
         ]);
         // Was `await response.json()` with no check. A 404 or a 403 then threw a parse error and the
         // page reported "Failed to load" — which is the exact trap AGENTS.md warns about, and it hid
@@ -112,6 +118,7 @@ export function createClubView(deps) {
                 </div>
                 ${buildMilestoneBoardHtml(milestones)}
             </section>
+            ${friendlyPanel.buildHtml(friendlyWeek)}
         </div>`;
 
         // League link. One delegated listener because the profile is re-rendered on every visit and
@@ -146,6 +153,149 @@ export function createClubView(deps) {
                 loadPage('stadium');
             });
         }
+
+        wireFriendlyPanel(mainContent, teamId);
+    }
+
+    /**
+     * The friendly panel's controls.
+     *
+     * <p>Bound per render, not delegated once, because the panel is re-rendered with the page on every
+     * visit and a listener attached to a node that gets replaced stops working silently.
+     *
+     * <p>Every action re-reads the week and re-renders. The reason is that these writes change what the
+     * manager may do next — accepting a request fills a slot, which closes the invite button — and a
+     * panel left showing the pre-write state invites a second click that answers 409.
+     */
+    function wireFriendlyPanel(root, teamId) {
+        const panel = root.querySelector('[data-friendly-panel]');
+        if (!panel) return;
+
+        const season = panel.dataset.season;
+        const week = panel.dataset.week;
+        let chosenSlot = null;
+
+        const say = (text, kind) => {
+            const box = panel.querySelector('[data-friendly-message]');
+            if (!box) return;
+            box.hidden = false;
+            box.className = `fm-friendly-message ${kind === 'error' ? 'is-error' : 'is-ok'}`;
+            box.textContent = text;
+        };
+
+        const post = async (path, body) => {
+            const response = await authFetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                return { ok: false, text: payload.detail || payload.error
+                    || `That could not be arranged (status ${response.status}).` };
+            }
+            return { ok: true };
+        };
+
+        const reload = async () => {
+            const fresh = await friendlyPanel.loadFriendlyWeek(teamId, week, season);
+            const holder = document.createElement('div');
+            holder.innerHTML = friendlyPanel.buildHtml(fresh);
+            const replacement = holder.firstElementChild;
+            if (replacement) {
+                panel.replaceWith(replacement);
+                wireFriendlyPanel(document.getElementById('main-content'), teamId);
+            }
+        };
+
+        panel.querySelectorAll('[data-friendly-invite]').forEach(button => {
+            button.addEventListener('click', () => {
+                chosenSlot = button.dataset.friendlyInvite;
+                const form = panel.querySelector('[data-friendly-form]');
+                const search = panel.querySelector('[data-friendly-search]');
+                if (form) form.hidden = false;
+                if (search) search.focus();
+                say(`Pick a club for the ${chosenSlot === '1' ? 'first' : 'second'} slot.`, 'ok');
+            });
+        });
+
+        const closeForm = panel.querySelector('[data-friendly-cancel-form]');
+        if (closeForm) {
+            closeForm.addEventListener('click', () => {
+                const form = panel.querySelector('[data-friendly-form]');
+                if (form) form.hidden = true;
+                chosenSlot = null;
+            });
+        }
+
+        const search = panel.querySelector('[data-friendly-search]');
+        if (search) {
+            let timer = null;
+            search.addEventListener('input', () => {
+                // Debounced: this is a per-keystroke query and the answer is a list, not a warning.
+                clearTimeout(timer);
+                timer = setTimeout(async () => {
+                    const box = panel.querySelector('[data-friendly-results]');
+                    if (!box) return;
+                    const opponents = await friendlyPanel.loadOpponents(teamId, search.value.trim());
+                    if (!opponents.length) {
+                        box.innerHTML = '<div class="fm-empty">No club in your country matches that.</div>';
+                        return;
+                    }
+                    box.innerHTML = opponents.map(o => `
+                        <button type="button" class="fm-friendly-opponent"
+                                data-friendly-opponent="${o.id}" data-friendly-opponent-name="${htmlEscape(o.name)}">
+                            ${htmlEscape(o.name)}
+                        </button>`).join('');
+                    box.querySelectorAll('[data-friendly-opponent]').forEach(button => {
+                        button.addEventListener('click', async () => {
+                            if (chosenSlot == null) {
+                                say('Choose an open slot first.', 'error');
+                                return;
+                            }
+                            const result = await post(
+                                `/api/season/friendlies/${teamId}/request?opponentId=${button.dataset.friendlyOpponent}`
+                                + `&week=${week}&slot=${chosenSlot}`);
+                            if (!result.ok) {
+                                say(result.text, 'error');
+                                return;
+                            }
+                            await reload();
+                        });
+                    });
+                }, 250);
+            });
+        }
+
+        const respond = async (requestId, accept, reason) => {
+            const query = reason ? `?accept=${accept}&reason=${encodeURIComponent(reason)}`
+                : `?accept=${accept}`;
+            const result = await post(
+                `/api/season/friendlies/${teamId}/requests/${requestId}${query}`);
+            if (!result.ok) {
+                say(result.text, 'error');
+                return;
+            }
+            await reload();
+        };
+
+        panel.querySelectorAll('[data-friendly-accept]').forEach(button => {
+            button.addEventListener('click', () => respond(button.dataset.friendlyAccept, true));
+        });
+        panel.querySelectorAll('[data-friendly-decline]').forEach(button => {
+            button.addEventListener('click', () => respond(button.dataset.friendlyDecline, false, 'Declined'));
+        });
+        panel.querySelectorAll('[data-friendly-cancel]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const result = await post(
+                    `/api/season/friendlies/${teamId}/requests/${button.dataset.friendlyCancel}/cancel`);
+                if (!result.ok) {
+                    say(result.text, 'error');
+                    return;
+                }
+                await reload();
+            });
+        });
     }
 
     function openStadiumImage(imageUrl) {

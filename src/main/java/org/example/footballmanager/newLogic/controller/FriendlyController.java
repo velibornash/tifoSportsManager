@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ public class FriendlyController {
 
     private final FriendlyRequestService friendlies;
     private final SeasonService seasons;
+    private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
 
     /**
      * The club's week as the manager needs to see it: what is scheduled, which slots are open, what
@@ -74,9 +76,49 @@ public class FriendlyController {
         body.put("trainingSessionsAvailable", available);
         body.put("trainingSessionsBase", FriendlyRequestService.BASE_TRAINING_SESSIONS_PER_WEEK);
         body.put("inPlayoff", friendlies.isInPlayoff(teamId, resolvedSeason, resolvedWeek));
-        body.put("incoming", friendlies.incoming(teamId, resolvedSeason, resolvedWeek));
-        body.put("outgoing", friendlies.outgoing(teamId, resolvedSeason, resolvedWeek));
+        body.put("incoming", friendlyRows(friendlies.incoming(teamId, resolvedSeason, resolvedWeek), teamId, true));
+        body.put("outgoing", friendlyRows(friendlies.outgoing(teamId, resolvedSeason, resolvedWeek), teamId, false));
         return ResponseEntity.ok(body);
+    }
+
+    /**
+     * A request as the client needs it, which the entity is not.
+     *
+     * <p>{@link FriendlyRequest} carries two team <b>ids</b> and no names, so a screen rendering a
+     * request can only show a number. Resolved here rather than in the service because the service
+     * returns its own entity everywhere else and a screen-shaped record there would be a second
+     * representation of the same thing.
+     *
+     * <p>Names are read once per request and memoised, so ten requests between two clubs cost two lookups
+     * rather than twenty. An unknown id is carried through as null and rendered as "Unknown club" rather
+     * than being dropped: a request whose team has since been deleted still exists and still has to be
+     * answerable.
+     */
+    private List<Map<String, Object>> friendlyRows(List<FriendlyRequest> list, Long teamId, boolean incoming) {
+        Map<Long, String> names = new HashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (FriendlyRequest request : list) {
+            Long otherId = incoming ? request.getRequesterTeamId() : request.getOpponentTeamId();
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", request.getId());
+            row.put("season", request.getSeason());
+            row.put("week", request.getWeek());
+            row.put("slot", request.getSlot());
+            row.put("status", request.getStatus() == null ? null : request.getStatus().name());
+            row.put("declineReason", request.getDeclineReason());
+            row.put("opponentTeamId", otherId);
+            row.put("otherName", nameOf(names, otherId));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private String nameOf(Map<Long, String> names, Long teamId) {
+        if (teamId == null) {
+            return null;
+        }
+        return names.computeIfAbsent(teamId,
+                id -> teams.findById(id).map(org.example.footballmanager.newLogic.model.Team::getName).orElse(null));
     }
 
     /**
@@ -112,6 +154,51 @@ public class FriendlyController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Clubs this one could ask for a friendly, narrowed to its own country.
+     *
+     * <p><b>Why this exists rather than reusing {@code GET /teams}.</b> That endpoint pages at a hard
+     * cap of 200 rows, and the world holds roughly 14,880 clubs. A picker fed from it would offer the
+     * first 200 alphabetically and nothing else, which looks like a working search over an empty world.
+     *
+     * <p>National sides are excluded. They are not opponents a club asks, and they are picked up by the
+     * national-team invitation path instead; mixing them here would put 96 entries in a club's list that
+     * could never be sent to.
+     *
+     * @param q an optional name filter; empty returns the first page of the country
+     */
+    @GetMapping("/{teamId}/opponents")
+    public ResponseEntity<List<Map<String, Object>>> opponents(@PathVariable Long teamId,
+                                                              @RequestParam(required = false) String q,
+                                                              @RequestParam(defaultValue = "60") int limit) {
+        org.example.footballmanager.newLogic.model.Team team = teams.findById(teamId).orElse(null);
+        if (team == null || team.getCountry() == null) {
+            return ResponseEntity.ok(List.of());
+        }
+        int cap = Math.max(1, Math.min(limit, 200));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (org.example.footballmanager.newLogic.model.Team candidate
+                : teams.findByCountryId(team.getCountry().getId())) {
+            if (candidate.getId() == null || candidate.getId().equals(teamId)) {
+                continue;
+            }
+            if (candidate.getType() != null
+                    && candidate.getType() == org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM) {
+                continue;
+            }
+            if (q != null && !q.isBlank()
+                    && (candidate.getName() == null
+                        || !candidate.getName().toLowerCase().contains(q.toLowerCase()))) {
+                continue;
+            }
+            out.add(Map.of("id", candidate.getId(), "name", candidate.getName()));
+            if (out.size() >= cap) {
+                break;
+            }
+        }
+        return ResponseEntity.ok(out);
     }
 
     /** Withdraws a request this club made. */

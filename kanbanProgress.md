@@ -401,10 +401,12 @@ it fail**, per the AGENTS.md rule:
    caused by this work**: proven by reverting my one-line edit to it and re-running, which still fails.
    The test database has no countries with a non-null reputation, so `countDistinctRatings()` returns 0
    where it expects 1.
-7. **The friendly-invitation feature was not started.** Backend is **already complete**
-   (`FriendlyController` + 596-line `FriendlyRequestService`) and the dashboard ticker already shows
-   incoming requests. Missing: the **INVITE FOR FRIENDLY button**, accepting it for **national teams**
-   (the service is club-only), and the **free-slot ad board** the owner described.
+7. **The friendly-invitation feature: the button is done, two thirds of the rest is not.**
+   **Landed 2026-10-06:** the club-side **INVITE FOR FRIENDLY** button, accept/decline/withdraw, an
+   opponent picker scoped to the club's own country, and request rows that carry a name instead of an id.
+   **Still open:** national teams as requesters and receivers (the service is club-only), the free-slot
+   **ad board**, and a notification kind so the bell fires rather than only the ticker. See the entry
+   below for the three decisions each of those needs.
 
 ---
 
@@ -515,6 +517,71 @@ then played, because the only mechanism in the game for "one side asks, the othe
 `FriendlyRequestService` — and it is **club-only**. Making this genuinely optional means giving that
 service national-team support, which is the friendly feature on the board and the next task. Until then
 this item is *warm-up round, labelled friendly, drawn by an admin button* — and it says so.
+---
+
+## INVITE FOR FRIENDLY — the button the owner asked for (2026-10-06)
+
+The owner: *"on the club side there is an INVITE FOR FRIENDLY button. Clicking it opens the empty slots and
+a request can be sent; the team gets a notification and a ticker message and can open the request and
+accept or refuse."*
+
+**Every rule behind that already existed and worked** — `FriendlyRequestService` is 596 lines, the
+controller exposes request / respond / cancel, and the dashboard ticker has listed incoming requests since
+before this task. What was missing was any way to *act*: the ticker said a club had asked and offered no
+button to answer it, and there was no way to start a request at all. This adds the surface, and changes no
+rule.
+
+### Two things that genuinely did not exist
+
+**1. A request row that says who it is with.** `FriendlyRequest` carries two team **ids** and no names, so
+rendering one straight from the entity gives a manager a number and a choice of accept or refuse with no
+way to know who is asking. `FriendlyController.friendlyRows` resolves the other club's name — memoised, so
+ten requests between two clubs cost two lookups — and an id whose team has since been deleted is carried
+through as null and rendered "Unknown club" rather than dropped, because a request whose team is gone still
+exists and still has to be answerable.
+
+Resolved in the **controller**, not the service: the service returns its own entity everywhere else, and a
+screen-shaped record there would be a second representation of the same thing.
+
+**2. An opponent list small enough to pick from.** `GET /teams` pages at a hard cap of 200 rows and the
+world holds ~14,880 clubs, so a picker fed from it would offer the first 200 alphabetically and nothing
+else — which looks like a working search over an empty world. `GET /api/season/friendlies/{teamId}/opponents`
+returns the club's **own country**, excludes itself, excludes national sides (they are picked up by the
+national-team path, not this one), and takes `?q=` and `?limit=`.
+
+### The panel
+
+`pages/views/friendly-panel.js` renders open slots with an **Invite for friendly** button per slot, the
+incoming requests with Accept / Decline, and the outgoing ones with Withdraw. Clicking invite opens a
+debounced club search; picking a club sends the request. Every action re-reads the week and re-renders,
+because these writes change what may be done next — accepting fills a slot and closes the invite button —
+and a panel left showing the pre-write state invites a second click that answers 409.
+
+Every fetch checks `response.ok`. The 409 from `FriendlyRequestService` is a decision a manager makes by
+accident and carries a sentence meant to be read.
+
+CSS added to `dashboard.css` only, using the panel tokens already there. No new palette.
+
+### Evidence
+
+`FriendlyOpponentAndRequestRowTest` — 4/4: the rival club is offered and the club itself never is, a
+national side is never offered, `?q=` narrows rather than returning the country, and a pending request
+carries a non-empty name plus its status.
+
+**Proven by breaking it:** removing the national-team filter gives
+`a national side was offered as a friendly opponent — expected: <false> but was: <true>`.
+
+### Still to do on this feature
+
+- **National teams as requesters and receivers.** `FriendlyRequestService` is club-only, and
+  `SeasonCalendar.friendlySlots` is per-week on the league's two slots. **Whether a national side may use
+  the club slots or the tournament days is an open owner decision** — it changes the slot logic either way.
+- **The free-slot ad board.** A page where a team posts an open slot and anyone accepts. Needs a listing
+  with an expiry and a decision on whether a bot side may accept one; today AI clubs pair themselves up in
+  `runAiFriendlyWeek`.
+- **A `FRIENDLY_REQUESTED` notification kind**, so the notification bell fires. The ticker already lists
+  the request; only the bell is missing.
+
 ---
 
 ## P2-10 exit criterion — the final is reached (owner, 2026-10-06)
