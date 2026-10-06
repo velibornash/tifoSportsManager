@@ -1,15 +1,17 @@
 // pages/views/club-view.js
 import { htmlEscape, formatBudget, buildMilestoneBoardHtml, buildEmptyState } from './utils.js';
 import { createFriendlyPanel } from './friendly-panel.js';
+import { createFriendlyBoard } from './friendly-board.js';
 
 export function createClubView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml, openLeagueById, loadPage } = deps;
     const friendlyPanel = createFriendlyPanel({ authFetch });
+    const friendlyBoard = createFriendlyBoard({ authFetch });
 
     async function loadClubProfile() {
         const teamId = getTeamId();
         console.log(`Loading club profile for ${teamId}`);
-        const [response, milestones, friendlyWeek] = await Promise.all([
+        const [response, milestones, friendlyWeek, board, mine] = await Promise.all([
             authFetch(`/teams/${teamId}/profile`),
             (async () => {
                 try {
@@ -22,7 +24,9 @@ export function createClubView(deps) {
             // Read beside the profile rather than after it, so the page is not rendered twice. A failed
             // read is a rendered empty panel, never a page that fails: the club profile is still worth
             // showing to a manager whose friendly week could not be loaded.
-            friendlyPanel.loadFriendlyWeek(teamId).catch(() => ({ failed: true, status: 0 }))
+            friendlyPanel.loadFriendlyWeek(teamId).catch(() => ({ failed: true, status: 0 })),
+            friendlyBoard.loadBoard().catch(() => ({ failed: true, status: 0 })),
+            friendlyBoard.loadMine(teamId).catch(() => ({ failed: true, status: 0 }))
         ]);
         // Was `await response.json()` with no check. A 404 or a 403 then threw a parse error and the
         // page reported "Failed to load" — which is the exact trap AGENTS.md warns about, and it hid
@@ -119,6 +123,7 @@ export function createClubView(deps) {
                 ${buildMilestoneBoardHtml(milestones)}
             </section>
             ${friendlyPanel.buildHtml(friendlyWeek)}
+            ${friendlyBoard.buildHtml(board, mine, teamId)}
         </div>`;
 
         // League link. One delegated listener because the profile is re-rendered on every visit and
@@ -155,6 +160,7 @@ export function createClubView(deps) {
         }
 
         wireFriendlyPanel(mainContent, teamId);
+        wireFriendlyBoard(mainContent, teamId);
     }
 
     /**
@@ -289,6 +295,91 @@ export function createClubView(deps) {
             button.addEventListener('click', async () => {
                 const result = await post(
                     `/api/season/friendlies/${teamId}/requests/${button.dataset.friendlyCancel}/cancel`);
+                if (!result.ok) {
+                    say(result.text, 'error');
+                    return;
+                }
+                await reload();
+            });
+        });
+    }
+
+    /**
+     * The free-slot board's controls.
+     *
+     * <p>Same two actions the owner specified, nothing more: post a slot, and take one that is up. The
+     * page says which week a slot is for because a week has more than one friendly slot, and an ad for a
+     * week that has already passed should say so rather than let a manager take it.
+     */
+    function wireFriendlyBoard(root, teamId) {
+        const board = root.querySelector('[data-friendly-board]');
+        if (!board) return;
+
+        const season = board.dataset.season;
+        const week = board.dataset.week;
+
+        const say = (text, kind) => {
+            const box = board.querySelector('[data-offer-message]');
+            if (!box) return;
+            box.hidden = false;
+            box.className = `fm-friendly-message ${kind === 'error' ? 'is-error' : 'is-ok'}`;
+            box.textContent = text;
+        };
+
+        const post = async (path) => {
+            const response = await authFetch(path, { method: 'POST' });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                return { ok: false, text: payload.detail || payload.error
+                    || `That could not be done (status ${response.status}).` };
+            }
+            return { ok: true };
+        };
+
+        const reload = async () => {
+            const freshBoard = await friendlyBoard.loadBoard(season, week);
+            const freshMine = await friendlyBoard.loadMine(teamId, season, week);
+            const holder = document.createElement('div');
+            holder.innerHTML = friendlyBoard.buildHtml(freshBoard, freshMine, teamId);
+            const replacement = holder.firstElementChild;
+            if (replacement) {
+                board.replaceWith(replacement);
+                wireFriendlyBoard(document.getElementById('main-content'), teamId);
+            }
+        };
+
+        const showForm = board.querySelector('[data-offer-post]');
+        const closeForm = board.querySelector('[data-offer-cancel]');
+        const form = board.querySelector('[data-offer-form]');
+        if (showForm) {
+            showForm.addEventListener('click', () => {
+                if (form) form.hidden = !form.hidden;
+            });
+        }
+        if (closeForm) {
+            closeForm.addEventListener('click', () => {
+                if (form) form.hidden = true;
+            });
+        }
+
+        const confirm = board.querySelector('[data-offer-post-confirm]');
+        if (confirm) {
+            confirm.addEventListener('click', async () => {
+                const select = board.querySelector('[data-offer-slot]');
+                const slot = select ? select.value : '1';
+                const result = await post(`/api/season/friendly-offers?teamId=${teamId}&week=${week}&slot=${slot}`);
+                if (!result.ok) {
+                    say(result.text, 'error');
+                    return;
+                }
+                await reload();
+            });
+        }
+
+        board.querySelectorAll('[data-offer-claim]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const result = await post(
+                    `/api/season/friendly-offers/${button.dataset.offerClaim}/claim?teamId=${teamId}`);
                 if (!result.ok) {
                     say(result.text, 'error');
                     return;

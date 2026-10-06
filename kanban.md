@@ -2001,7 +2001,7 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
-- [x] **The free-slot ad board: service done, page not.** Owner rules, both honoured: **only human teams
+- [x] **The free-slot ad board: service done, page done.** Owner rules, both honoured: **only human teams
       play friendlies** (asked of the club, not the caller) and a posting **expires with its own slot**,
       which is why season/week/day are columns and why expiry compares days and not weeks. Taking an ad
       goes through the real request service, so "one live request per side per slot" applies to ads too.

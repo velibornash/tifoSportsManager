@@ -529,6 +529,22 @@ a club: it is the one place a manager fills a slot, which is the point of publis
 **a posting for a league slot is refused too** — the board is checked against the same four-slot calendar,
 not a hardcoded idea of which days are league days.
 
+### The page (owner, 2026-10-06)
+
+`pages/views/friendly-board.js`, on the club view beside the friendly panel. Two actions and only those,
+because the owner named them: **posting a slot** and **taking one**. Each posting prints its week, season
+and day — a week has more than one friendly slot, and an advertisement that did not name its own period
+would be a claim on the wrong day, which is the question asked twice on the owner's side already.
+
+There is no "accept this club's invitation" here. That is the request's polite half, and it is on the
+friendly panel above. This page is the other door: the slot is published rather than offered to one
+manager.
+
+The form offers the two slots that are friendly-capable in an ordinary week — day 1 and day 5. **Week 6,
+when all four days are friendly-capable, is the one week it does not cover**; the service accepts all four
+there, and the page's narrower list is a deliberate conservative choice rather than the service's own.
+
+
 ---
 
 ## P2-10 exit criterion — the final is reached (owner, 2026-10-06)
