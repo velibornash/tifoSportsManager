@@ -450,6 +450,11 @@ missing international rows before filling static simulated-country tables, and t
 week-1 job repeats that durable repair boundary before drawing. The domestic cup draw is separately country-scoped
 and no longer selects one primary cup globally.
 
+The repair boundary was verified against PostgreSQL on 2026-10-06: all 15 competition rows existed, all
+three tier-1 cup endpoints returned HTTP 200, and the World payload exposed competition IDs for every tier.
+The simulated-world seed continues separately and must finish before its qualifying counts are treated as
+the final live field sizes.
+
 ### 8.5 National teams and tournaments
 
 National teams have senior and U-21 levels, elections/appointments and squad management. The newer

@@ -2,6 +2,14 @@
 
 ## 2026-10-06 — documentation reconciliation after international cup repair
 
+## 2026-10-06 — live international cup repair verification
+
+After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
+competition rows. The tier-1 Champions, Masters and Challenge endpoints each returned HTTP 200, and the
+World payload exposed competition IDs for all 15 tier rows. This closes the original “has no competition
+row” read-path failure. The simulated-world seed was still running during the check, so final qualifying
+counts remain a separate live observation.
+
 Reconciled the root documentation with the current source and the latest football UI changes. The
 international cup read path now has a repair action, creates all 15 competition rows, prepares simulated
 country tables and reports the expected World-page fields of Champions 48, Masters 96 and Challenge 48.

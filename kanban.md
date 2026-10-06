@@ -572,6 +572,12 @@ The table shows the expected fields: Champions `48`, Masters `96`, Challenge `48
 repair action durably creates missing international competition rows before it fills simulated-country
 static tables; the week-1 cup job repeats that durable boundary before drawing.
 
+**Live verification 2026-10-06:** after a clean restart and one repair request, PostgreSQL contained all
+15 international club cup rows. `/club-cups/champions?tier=1`, `/club-cups/masters?tier=1` and
+`/club-cups/challenge?tier=1` returned HTTP 200, and the World payload exposed competition IDs for all
+15 tier rows. The long simulated-world seed was still running when the check ended, so its qualifying
+counts were not used as the final field-size assertion.
+
 **Exit criteria:**
 - [x] Three links from the World page, one per cup · [x] tier 1–5 are tabs inside each
 - [x] Each tab shows the group tables, the results and the bracket · [x] all 15 cups are reachable
