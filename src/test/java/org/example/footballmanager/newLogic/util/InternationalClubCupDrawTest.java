@@ -134,6 +134,46 @@ class InternationalClubCupDrawTest extends BaseTest {
     }
 
     @Test
+    @DisplayName("a field that does not divide by six still gives groups of at most six")
+    void aSmallFieldIsNotDealtIntoOneEnormousGroup() {
+        // P0-CUPS-5. dealIntoGroups() counted groups with integer division, so it floored: eight entrants
+        // gave 8 / 6 = 1, and the eight champions were dealt into ONE group of eight.
+        //
+        // A group of eight has seven matchdays, so its round numbers run 1..7 — and rounds 6 and 7 are
+        // the last sixteen and the quarter final. The bracket then read a knockout stage out of the middle
+        // of a group stage, and the Champions Cup of a small field had a "last sixteen" that was two
+        // group matchdays.
+        //
+        // It never showed for a real field, because the fields are 48, 96 and 48 and all three divide
+        // exactly by six. It shows the moment a country is removed or a tier is short.
+        List<List<Team>> groups = draw.dealIntoGroups(entrants(8));
+
+        assertEquals(2, groups.size(), "eight clubs is two groups, not one — the ceiling, not the floor");
+        for (List<Team> group : groups) {
+            assertTrue(group.size() <= InternationalClubCupDraw.GROUP_SIZE,
+                    "a group holds at most " + InternationalClubCupDraw.GROUP_SIZE + " clubs, and this one "
+                            + "holds " + group.size());
+        }
+        assertEquals(8, groups.stream().mapToInt(List::size).sum(), "every club is dealt exactly once");
+    }
+
+    @Test
+    @DisplayName("the group count asked for and the group count built are the same number")
+    void theTwoGroupCountsAgree() {
+        // They did not: groupCountFor() already answered this with a ceiling while dealIntoGroups() built
+        // with a floor, so the count that was asked about and the count that was dealt were different for
+        // every field that is not a multiple of six.
+        for (int field = InternationalClubCupDraw.MIN_FIELD_FOR_GROUPS; field <= 100; field++) {
+            int asked = draw.groupCountFor(field);
+            int built = draw.dealIntoGroups(entrants(field)).size();
+            assertEquals(asked, built,
+                    "field of " + field + ": groupCountFor says " + asked + " and the draw built " + built
+                            + ". Two methods answering one question differently is how a group of eight "
+                            + "gets dealt when the format says groups of six.");
+        }
+    }
+
+    @Test
     @DisplayName("each group holds six clubs, and each club is in exactly one group")
     void groupsAreDisjoint() {
         draw.ensureGroupStage(cup, entrants(48), InternationalClubCupDraw.CHAMPIONS_QUALIFY_PER_GROUP, season);

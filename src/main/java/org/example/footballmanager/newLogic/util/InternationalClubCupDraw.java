@@ -40,9 +40,9 @@ import java.util.Set;
  * Cup is the same as the Champions. From the knockout stage they are identical: 1/8, 1/4, 1/2, a final
  * and a third-place play-off.
  *
- * <p><b>Week 6 is a national-team pause</b>, so it carries no club match. The five group matchdays
- * therefore fill weeks 1-5 exactly and the knockouts take weeks 7-11, which is ten weeks of a
- * twelve-week season with two left over.
+ * <p><b>Week 6 is a national-team pause</b>, so it carries no club match, and week 12 is the other
+ * national-team week. The five group matchdays therefore fill weeks 1-5 exactly and the knockouts take
+ * weeks 7-10, with the final and the third-place play-off sharing week 10.
  *
  * <h2>The group draw is mine, and it is the one choice here that was not specified</h2>
  *
@@ -70,15 +70,33 @@ public class InternationalClubCupDraw {
     /** Single round robin, so 5 matchdays. */
     public static final int GROUP_MATCHDAYS = GROUP_SIZE - 1;
 
-    /** The cup plays on the one cup day in the week. */
-    public static final int CUP_DAY = 5;
-    public static final int CUP_HOUR = 18;
+    /**
+     * Day 1, 20:45 — the international slot, not the domestic cup slot (owner, 2026-10-06).
+     *
+     * <p>Was day 5 at 18:00, which is the <b>domestic</b> cup's slot. The country-side calendar says
+     * day 1 is International and day 5 is Cup, and all fifteen of these competitions are international:
+     * the Champions Cup, the Masters Cup and the Challenge Cup at every tier. Day 5 stays the national
+     * cup and nothing else.
+     */
+    public static final int CUP_DAY = 1;
 
     /**
-     * Five group matchdays, then five knockout rounds, and week 6 skipped because it is a national-team
-     * pause. Week 12 is left clear.
+     * Five group matchdays in weeks 1-5, then the knockouts in weeks 7-10 — owner, 2026-10-06.
+     *
+     * <p>Week 6 is skipped because it is a national-team match week, and week 12 is the other one.
+     * Week 11 belongs to the league promotion play-off.
+     *
+     * <p><b>Nine weeks, not ten, and the last two rounds share week 10.</b> There are five knockout
+     * rounds — last sixteen, quarter, semi, third place, final — and four knockout weeks, so the final
+     * and the third-place play-off are both played in week 10. The owner's words were "5 meceva izmedju
+     * week 1 i week 5" and "eliminaciona faza izmedju week 7 i week 10"; the fifth round fits because
+     * the final and the third place are decided the same evening, which is how a cup final day works.
+     *
+     * <p>{@link #weekFor} already clamps its index to this array's length, so a tenth stage resolves to
+     * the ninth week rather than throwing — which is what puts the final on week 10 without a special
+     * case anywhere else.
      */
-    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10, 11};
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
 
     /** How many from each group reach the knockouts, by cup. */
     public static final int CHAMPIONS_QUALIFY_PER_GROUP = 2;
@@ -238,7 +256,20 @@ public class InternationalClubCupDraw {
      * easier against a method than against a loop buried in a seeder.
      */
     public List<List<Team>> dealIntoGroups(List<Team> rankedDescending) {
-        int groupCount = Math.max(1, rankedDescending.size() / GROUP_SIZE);
+        // **groupCountFor, not `size() / GROUP_SIZE` — P0-CUPS-5.**
+        //
+        // This was integer division, so it floored. Eight entrants gave `8 / 6 = 1` group, and the eight
+        // champions of a small field were dealt into **one group of eight**: seven matchdays instead of
+        // five, whose round numbers ran 1..7 — and rounds 6 and 7 are the last sixteen and the quarter
+        // final. The bracket then read a knockout stage out of the middle of a group stage.
+        //
+        // It never showed for a real field, because the fields are 48, 96 and 48 and all three divide
+        // exactly by six. It shows the moment a country is removed or a tier is short.
+        //
+        // The two methods also disagreed with each other: `groupCountFor` already answered this question
+        // with a ceiling, so the count that was asked for and the count that was built were not the same
+        // number. One method answers it now.
+        int groupCount = Math.max(1, groupCountFor(rankedDescending.size()));
         List<List<Team>> groups = new ArrayList<>();
         for (int i = 0; i < groupCount; i++) {
             groups.add(new ArrayList<>());
@@ -250,6 +281,16 @@ public class InternationalClubCupDraw {
             int offset = index % groupCount;
             int group = pass % 2 == 0 ? offset : groupCount - 1 - offset;
             groups.get(group).add(rankedDescending.get(index));
+        }
+        // A group larger than six has more than five matchdays, and its round numbers would run into the
+        // knockout's. The count above cannot produce one, and this says so rather than letting it happen.
+        for (List<Team> group : groups) {
+            if (group.size() > GROUP_SIZE) {
+                throw new IllegalStateException("a group of " + group.size() + " clubs was dealt for "
+                        + rankedDescending.size() + " entrants; a group may hold at most " + GROUP_SIZE
+                        + ", or its matchdays run past " + GROUP_MATCHDAYS + " and collide with the "
+                        + "knockout rounds.");
+            }
         }
         return groups;
     }

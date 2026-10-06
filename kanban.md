@@ -271,44 +271,84 @@ it holds because an `ACTIVE` country's clubs already have squads from `PyramidBu
 clubs that arrive empty *are* the simulated ones. A second `state == SIMULATED` test would be a second
 statement of the same fact, free to disagree with the first.
 
-### P0-CUPS-4 — the draw is never run
+### P0-CUPS-4 — DONE: the draw runs — a job, on day 1, at 08:00
 
-`InternationalClubCupDraw` is a `@Service` with **zero references in `src/main`**. `ensureGroupStage`,
-`ensureKnockouts`, `buildGroupStage`, `buildKnockouts` and `drawFinalAndThirdPlace` are called only from
-`InternationalClubCupDrawTest`. Confirmed by grep across `src/main` and `src/test`.
+`InternationalClubCupJob` (`jobs/impl/`), key `club-cup-draw`, day 1, hour 8, order 30 — **ahead of the
+day-1 matchday job at 20:00, because this job creates the fixtures that job plays.**
 
-So: 15 competitions exist, clubs qualify, and **no club ever enters a group or plays a tie.** The
-`matchday-cup` job on Day 5 is registered and would play their fixtures — there are none.
+| Week | What it does |
+|---|---|
+| **1** | For each of the 15 cups: read the clubs that qualified off **last season's finished tables**, give the empty ones a squad, draw the group stage |
+| **2–5** | Nothing — these are group matchdays, played by the day-1 matchday job |
+| **6** | Nothing — national-team week |
+| **7–10** | One knockout round per cup, as far as the results reach. Week 10 carries the final **and** the third place |
+| **11** | Nothing — league promotion play-off |
+| **12** | Nothing — national-team week |
 
-Needs a `DayJob`, on **Day 1, 20:45**, that in **week 1** reads `qualifiedFor(cup, season − 1)` for all 15
-cups, ensures squads, and draws the group stage; then walks **one knockout round per week in weeks 7–10**,
-with the final and the third-place play-off sharing week 10.
+**The calendar moved to the owner's, and the code's values were wrong:**
 
-`CUP_WEEKS` becomes `{1,2,3,4,5,7,8,9,10}` — nine days. Weeks 6, 11 and 12 stay clear: week 6 and week 12
-are national-team match weeks, week 11 is the league playoff. **The owner's calendar fits the cup exactly
-with no collision**, which is worth stating because it was not designed to.
+- **`CUP_DAY` 5 → 1.** Day 5 at 18:00 is the **domestic** cup's slot. The fifteen continental cups are
+  international: day 1, 20:45. Day 5 keeps the national cup and nothing else.
+- **`CUP_WEEKS` {1,2,3,4,5,7,8,9,10,11} → {1,2,3,4,5,7,8,9,10}.** Nine weeks, not ten: five knockout
+  rounds, four knockout weeks, so the final and the third-place play-off share week 10. `weekFor()` already
+  clamped its index to the array length, so this needed no special case anywhere else.
 
-`MatchdayJob` filters by `CompetitionType` only, so a Day-1 CUP job and the Day-5 domestic one would each
-see all 16 CUP competitions and separate only by day. That works, but it is accidental: **filter the Day-1
-job on `scope = INTERNATIONAL`** so it is explicit.
+**Which season's tables.** The **finished** one, `season − 1`, clamped at 1. A club that wins its division
+in week 12 cannot enter the same season's Champions Cup by winning it in week 12. The clamp makes season 1
+honest: there is no season 0, nothing has finished, and no field is invented from a season never played.
+
+**The lookup is scoped and tiered.** Sixteen `CUP` competitions exist — one domestic cup and fifteen
+continental — so asking for "a CUP" answers with whichever row came first, which is P0-CUPS-6. It uses the
+indexed `findByTypeAndTier(CUP, tier)` rather than fifteen reads of the whole table.
 
 **Exit criteria:**
-- [ ] One season of all 15 cups draws — approximately **2,400 group + 325 knockout fixtures**
-- [ ] Every group is decided on points, and the knockout reaches a final and a third place
-- [ ] Week 6, 11 and 12 carry no club cup fixture
-- [ ] Re-running the job draws nothing twice
-- [ ] **Proven able to fail:** the job is run twice in one week and the fixture count is asserted unchanged
+- [x] The job draws the group stage for every cup that has qualified clubs
+- [x] Group matchdays land in weeks 1–5, on **day 1**
+- [x] Weeks 6, 11 and 12 carry no club cup fixture
+- [x] Re-running the job draws nothing twice
+- [x] **Proven able to fail** — removing the squad call and reverting P0-CUPS-5 both fail loudly
+- [ ] **A real season observed in the database.** Every assertion here is an integration test against the
+      real write path, and this is the one criterion still open: it needs the app running with a world that
+      has a finished season behind it.
 
-### P0-CUPS-5 — the smaller fields, and the knockout they are promised
+### P0-CUPS-5 — DONE: a field that does not divide by six was dealt into one enormous group
 
-`MIN_FIELD_FOR_GROUPS = 8` promises that a field below eight *"starts at the knockout"* — and
-`buildKnockouts()` then looks for group fixtures, finds none, and returns. **A cup with fewer than eight
-entrants draws nothing at all.** With 48 countries the fields should be exactly 48/96/48, so this only
-bites when a country is removed or a tier is short — but then it is silent.
+**Found while writing P0-CUPS-4's test, not by reading the code.** `dealIntoGroups` counted groups with
+**integer division**, so it floored:
 
-**Exit criteria:** [ ] a cup with 2–7 entrants produces a knockout bracket · [ ] the log says so rather
-than returning an empty `DrawResult`
+```java
+int groupCount = Math.max(1, rankedDescending.size() / GROUP_SIZE);   // 8 / 6 = 1, not 2
+```
 
+Eight entrants therefore became **one group of eight**. A group of eight has seven matchdays, so its round
+numbers run 1–7 — and **rounds 6 and 7 are the last sixteen and the quarter final.** The bracket then read
+a knockout stage out of the middle of a group stage: a Champions Cup with a "last sixteen" that was two
+group matchdays.
+
+**It never showed for a real field,** because the fields are 48, 96 and 48 and all three divide exactly by
+six. It appears the moment a country is removed or a tier is short.
+
+**And the two methods disagreed.** `groupCountFor()` already answered this question with a **ceiling**, so
+the count that was asked for and the count that were built were different numbers for every field that is
+not a multiple of six. One method answers it now, and `dealIntoGroups` throws if a group ever exceeds six.
+
+**Exit criteria:**
+- [x] A field that does not divide by six gives groups of **at most** six
+- [x] `groupCountFor()` and `dealIntoGroups()` give the same number — asserted across **every** field from 8 to 100
+- [x] A group over six throws and names the reason, rather than silently overrunning the knockout rounds
+
+### P0-CUPS-7 — OPEN: a field under eight still draws nothing
+
+`MIN_FIELD_FOR_GROUPS = 8` promises that a field below eight *"starts at the knockout"*, and
+`buildKnockouts()` looks for group fixtures, finds none, and returns. **A cup with 2–7 entrants still draws
+nothing at all**, and the log line says it starts at the knockout.
+
+Not reachable while 48 countries qualify for every cup. It is here because the promise is in the code and
+the code does not keep it.
+
+**Exit criteria:** [ ] a cup with 2–7 entrants produces a knockout bracket · [ ] the log agrees with what
+was drawn · [ ] decided with the owner, since a two-club "Champions Cup" may deserve to be no competition
+at all
 ---
 
 ### P0-CUPS-6 — the domestic cup seed can pick a continental cup, and nothing guards the fix

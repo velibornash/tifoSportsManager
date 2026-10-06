@@ -2,6 +2,109 @@
 
 ---
 
+## P0-CUPS-4 and P0-CUPS-5 — the draw runs, and a floor division that would have made a fake last sixteen
+
+### The job
+
+`InternationalClubCupJob`, key `club-cup-draw`, **day 1, hour 8, order 30**. Order 30 puts it ahead of the
+day-1 matchday job at 20:00, because this job *creates* the fixtures that job plays — a matchday with
+nothing to select is a wasted tick.
+
+| Week | 1 | 2–5 | 6 | 7–10 | 11 | 12 |
+|---|---|---|---|---|---|---|
+| | group stage, qualified off season −1 | group matchdays | national teams | one knockout round per week | league playoff | national teams |
+
+Week 10 carries the final **and** the third-place play-off.
+
+**The calendar in the code was wrong on both counts and the owner's calendar was right.** `CUP_DAY` was 5 —
+the **domestic** cup's slot — and is now 1. `CUP_WEEKS` had ten entries and now has nine: five knockout
+rounds in four knockout weeks, so the last two share week 10. `weekFor()` already clamped its index to the
+array length, so no special case was needed for a tenth round to land on the ninth week.
+
+**Which season's tables.** `season − 1`, clamped at 1. Every test in `InternationalClubCupJobTest` builds a
+finished table in `season − 1` and runs the job in `season`, so a job that read the season in progress would
+qualify nobody and fail all of them — the claim is covered by the whole class rather than by one test.
+
+### The defect I did not go looking for
+
+`theGroupStageIsFiveWeeks` failed with `expected: <[1,2,3,4,5]> but was: <[1,2,3,4,5,7,8]>`. Weeks 7 and 8
+are the last sixteen and the quarter final, in a draw that had only run the group stage.
+
+The first three explanations were wrong. `weekFor(1 + matchday)` is correct — matchday starts at 0, so stages
+are 1–5. The nine-week map is correct. And it was not cross-test pollution, because every test in that class
+works in its own season.
+
+A diagnostic inside a transaction showed rounds 1–7 all carrying `grp=GA` — **a group of eight**:
+
+```
+DIAG id=273 ... round=6 week=7 grp=GA played=false season=24
+DIAG id=277 ... round=7 week=8 grp=GA played=false season=24
+```
+
+`dealIntoGroups` counted groups with `size() / GROUP_SIZE` — integer division, so it floored. `8 / 6 = 1`
+group, holding all eight clubs. A group of eight has seven matchdays, so its round numbers run 1–7, and
+rounds 6 and 7 are the knockout's.
+
+It never showed for a real field: 48, 96 and 48 all divide exactly by six. And `groupCountFor()` already
+answered the same question with a **ceiling**, so the count that was asked about and the count that were
+built were different numbers for every field that is not a multiple of six.
+
+Fixed: one method answers it, and `dealIntoGroups` throws if a group exceeds six.
+
+| Mutation | Result |
+|---|---|
+| revert to `size() / GROUP_SIZE` | **2 red**: *"a group of 8 clubs was dealt for 8 entrants; a group may hold at most 6, or its matchdays run past 5 and collide with the knockout rounds"* |
+| remove `buildGroupStage`'s squad call | `InternationalClubCupDrawTest` red: *"entered a group with no squad"* |
+
+**The field in the job test had to change because of this.** Eight countries was the smallest field that
+draws groups at all, but eight champions make two groups of **four** — three matchdays — so
+`theGroupStageIsFiveWeeks` would have had to assert three weeks and stop describing the specified format. It
+is now **twelve** countries, the smallest field that produces the real shape. The eight-club case is covered
+where it belongs, in `InternationalClubCupDrawTest`.
+
+The first diagnostic attempt is worth recording too: it died on `LazyInitializationException` touching
+`getCompetition().getName()` outside a session, **before printing anything**, and I briefly read that as
+the weeks problem being gone. It was not — the assertion simply had not been reached.
+
+### What this test class had to be shaped like, and why
+
+Not `@Transactional`. The job's draws commit in their own transaction, as they do in the running app, so the
+test must see committed data and the job must see the test's. Rolling the test back would roll back the
+world the job is about to qualify from. That costs three things, each handled:
+
+- rows persist between tests, so `Country.isoCode` — unique, **three** characters — collided and the class
+  died on a constraint violation before asserting anything. Codes now come from a JVM-wide counter encoded
+  in base 26. The first version used `"CJ01"`, which is four characters.
+- a lazy `Team` read outside a session throws, so names are read inside a `TransactionTemplate`.
+- fixtures from an earlier test persist, so **every test works in its own season.**
+
+**Assertions are about membership, never counts.** These tests share a database with every other class, so
+the tier-1 divisions they build join a world other classes have filled, and `qualifiedFor` reads every
+tier-1 division there is. *"8 groups of 6"* would be a statement about what else had run first. *"Every one
+of these twelve clubs is in the Champions Cup"* is a statement about the job.
+
+`theChampionsCup` resolves the cup through the **same call the job makes, in the same order**, because many
+classes in this repository create a competition named `"Champions Cup"` and resolving it any other way
+reads a different cup from the one the job drew.
+
+### Verified
+
+`InternationalClubCupJobTest` 6, `InternationalClubCupDrawTest` 15 (was 12), `JobTriggerUniquenessTest` 2 —
+the new job's `(day 1, club-cup-draw)` pair does not collide with the day-1 international matchday.
+
+### Still not verified, and it is the criterion that matters
+
+**No season has been observed.** Every assertion is an integration test against the real write path. A job is
+not done until it has been seen changing data, and that needs the app running against a world with a
+finished season — which also depends on **P1-CUPS-6**, the open question about whether simulated countries
+play their own league, because that decides what the qualification tables contain.
+
+`EveryGameDayHasAJobTest.daySixIsNamedAndUnscheduled` fails on `matchday-qualifier-6` and
+`matchday-tournament-6` — **parallel national-team work, not this** — and its own message says *"That is the
+fix — so update this test and close B9's second half."*
+
+---
+
 ## Mobile, at the reference device — and one defect that was not mine
 
 **iPhone 14 Pro Max, portrait: 430 × 932 CSS px, DPR 3.** Every page loaded and measured in Chromium at
