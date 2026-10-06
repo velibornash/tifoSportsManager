@@ -880,7 +880,6 @@ function buildPageNavState(page, options = {}) {
                     <td class="sq-name"><strong>${escapeHtml(name)}</strong></td>
                     <td>Club competition</td>
                     <td>${badge}</td>
-                    <td class="fm-world-competition-action">Open →</td>
                 </tr>`;
     }
 
@@ -945,9 +944,8 @@ function buildPageNavState(page, options = {}) {
                         </div>
                         <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
                         <dl class="fm-country-facts">
-                            <div class="fm-country-fact"><dt>Countries</dt><dd>${world.totalCountries}</dd></div>
-                            <div class="fm-country-fact"><dt>Active</dt><dd>${world.activeCountries}</dd></div>
-                            <div class="fm-country-fact"><dt>Users</dt><dd>Registered ${world.registeredPlayers ?? '-'} · Online now ${world.onlinePlayers ?? '-'}</dd></div>
+                            <div class="fm-country-fact fm-world-fact"><dt>Countries:</dt><dd><span class="fm-world-fact-number">${world.totalCountries}</span></dd></div>
+                            <div class="fm-country-fact fm-world-fact"><dt>Registered users:</dt><dd><span class="fm-world-fact-number">${world.registeredPlayers ?? '-'}</span> · Online now: <span class="fm-world-fact-number">${world.onlinePlayers ?? '-'}</span></dd></div>
                         </dl>
                     </header>
 
@@ -958,21 +956,12 @@ function buildPageNavState(page, options = {}) {
 
                     <section class="fm-panel">
                         <div class="fm-panel-head">
-                            <h3>General</h3>
-                        </div>
-                        <p class="fm-hint">This world is not a replica of the real one. Online means a request
-                            in the last ${world.onlineWindowMinutes ?? 5} minutes; registered users are every
-                            account that has signed in.</p>
-                    </section>
-
-                    <section class="fm-panel">
-                        <div class="fm-panel-head">
                             <h3>International competitions</h3>
                         </div>
                         <div class="fm-squad-wrap fm-world-competitions-table-wrap">
                             <table class="fm-squad fm-world-competitions-table">
                                 <thead>
-                                    <tr><th>Competition</th><th>Type</th><th>Field</th><th></th></tr>
+                                    <tr><th>Competition</th><th>Type</th><th>Field</th></tr>
                                 </thead>
                                 <tbody>
                                     ${clubCupRow('Champions Cup', 'champions', world.clubCups)}
@@ -986,8 +975,7 @@ function buildPageNavState(page, options = {}) {
                                             data-national-level="${definition.level}" data-national-stage="${definition.stage}"
                                             tabindex="0" role="link">
                                             <td class="sq-name"><strong>${definition.label}</strong></td>
-                                            <td>National teams</td><td><span class="fm-badge">${status}</span></td>
-                                            <td>${item.exists ? 'Open →' : ''}</td></tr>`;
+                                            <td>National teams</td><td><span class="fm-badge">${status}</span></td></tr>`;
                                     }).join('')}
                                 </tbody>
                             </table>

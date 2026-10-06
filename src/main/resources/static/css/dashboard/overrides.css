@@ -1177,6 +1177,20 @@
     color: var(--fm-subtle, #93a1bd);
 }
 
+.fm-world-fact dt,
+.fm-world-fact dd {
+    font-size: 15px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: #eef3ff;
+}
+
+.fm-world-fact-number {
+    color: #46c878;
+    font-weight: 700;
+}
+
 .fm-country-fact dd {
     margin: 0;
     font-size: 15px;
