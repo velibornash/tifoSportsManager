@@ -429,6 +429,25 @@ function buildActionRowHtml(actions, currentPage = '') {
         </div>`;
 }
 
+/**
+ * The two Community screens, as an option row under the Community tab.
+ *
+ * <p>Forum and Messages are two tabs in this application's terms and two <b>options</b> in the owner's:
+ * one Community entry in the top bar, with the choice made on the page — exactly how Club carries First
+ * Team, Schedule and the rest. Phase 4 gave them a top-bar button each, which was the wrong shape.
+ *
+ * <p>{@code currentPages} lists every route each option covers, so "Forum" stays lit while you are
+ * reading a topic rather than only on the section list.
+ */
+export function buildCommunityActionsHtml(currentPage = '') {
+    return buildActionRowHtml([
+        { label: 'Forum', page: 'forum', variant: 'primary',
+          currentPages: ['forum', 'forumSection', 'forumTopic'] },
+        { label: 'Messages', page: 'messages',
+          currentPages: ['messages', 'messageThread'] },
+    ], currentPage);
+}
+
 export function buildClubActionsHtml(currentPage = '') {
     return buildActionRowHtml([
         { label: 'First Team', page: 'firstTeam', variant: 'primary' },

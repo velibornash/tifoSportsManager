@@ -17,8 +17,11 @@
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
 	    <div id="country-menu-button" class="menu-button desktop-only" onclick="showMyCountry()">&#127758; Country</div>
 	    <div class="menu-button desktop-only" onclick="loadPage('world')">🌍 World</div>
-    <div class="menu-button desktop-only" onclick="loadPage('forum')">&#128172; Forum</div>
-    <div class="menu-button desktop-only" onclick="loadPage('messages')">&#9993; Messages</div>
+    <!-- One Community entry with Forum and Messages as options on the page, the way Club carries
+         First Team and Schedule. The envelope is scaled because U+2709 renders small beside the emoji
+         the other buttons use, and a different glyph would make the row stop reading as one set. -->
+    <div class="menu-button desktop-only community-menu-button"
+         onclick="loadPage('forum')"><span class="community-menu-icon" aria-hidden="true">&#9993;</span> Community</div>
     <!-- The notification bell. Not a menu button: it opens a panel rather than navigating, and it is
          the only part of the top bar that changes without the manager doing anything. -->
     <div class="notification-bell-wrap">
@@ -117,11 +120,12 @@
 	        </div>
 
 	        <div class="mobile-accordion">
-	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('forum')">
-	                &#128172; Forum
+	            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+	                <span class="community-menu-icon" aria-hidden="true">&#9993;</span> Community
 	            </div>
-	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('messages')">
-	                &#9993; Messages
+	            <div class="accordion-content">
+	                <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
+	                <div onclick="loadPage('messages'); closeMobileMenu()">Messages</div>
 	            </div>
 	        </div>
 

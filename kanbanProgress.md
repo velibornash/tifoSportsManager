@@ -2,6 +2,80 @@
 
 ---
 
+## P2-20 polish — six corrections the owner made after looking at it running
+
+Everything in P2-20 was verified by rendering modules and driving endpoints with curl. The owner then
+opened it, and six things were wrong. All six are now **measured in a browser**, because two of them are
+invisible to any other kind of check.
+
+### The overflow, measured
+
+`.community-compose-textarea` set `width: 100%` and `padding: 14px 16px` under the default
+`content-box`, so the rendered box is 100% + 32px. At 1400px viewport:
+
+| | before | after |
+|---|---|---|
+| compose wrapper, right edge | **1303** | **1171** |
+| the panel it belongs to | 1290 | 1290 |
+| subject field width | **147** | **1006** |
+| message box width | **182** | **1006** |
+
+### A test that measured the wrong box, twice
+
+**First: I measured the input instead of the wrapper.** The class is on the *wrapper* in every call site,
+so a rule reading `textarea.community-compose-textarea` matched nothing — and the field was still 182px
+after what looked like a fix. The rule is now a descendant selector.
+
+**Second: "does not overflow the panel" was not enough.** Removing `box-sizing` again left the test
+**green**, because the `max-width` the owner also asked for (1040px) is smaller than the panel and hid
+the 32px. The two fixes were masking each other.
+
+So the assertion is now the actual invariant: **the wrapper's width must not exceed the width its own
+rule declares.** With `box-sizing` it is 1040; without, 1074. That mutation now fails.
+
+### The Back button needed a second kind of button
+
+`backButtonHtml` carries `data-nav-back`, and `pages.js` hands that to `goBackSmart(fallback)` — which
+**prefers the navigation history** and only uses the argument as a fallback. So "Back" from a forum
+section opened from the index popped back to the index: exactly the previous screen the owner asked not
+to go back to. The argument could never win.
+
+`backToDashboardHtml` is the same markup with the same classes, differing in the one attribute and the
+one handler. It calls `loadDashboard()` and **not** `loadPage('dashboard')`, because the router's switch
+has no `dashboard` case — that fell through to "Page not found" first.
+
+### A backtick in a comment inside a template literal
+
+The comment explaining that last decision contained `backButtonHtml` in backticks. It sits inside a
+template literal. **The backticks terminated the string**, and the whole `forum-view.js` module failed to
+parse — which surfaced as `window.loadPage is not a function` on every page, and is the third time this
+repository has been bitten by something that "looked right".
+
+### The searchable picker
+
+A text box over a hidden `<select>`, matching anywhere in the name or the login. The `<select>` stays
+because it is what the form submits and what browser validation reads — the chosen id has to survive a
+failed send and a re-render.
+
+`/messages/recipients` now sends `login` as a named field. It is the same string as the email on a real
+account (`User.username` is an address that doubles as the login) and the route is authenticated, so
+nothing new is disclosed; the test asserts `email` is absent **as a field** while `login` is present, which
+documents which of the two is intentional.
+
+**The filter test took two attempts.** Using the first three characters of the name tested it as a prefix
+match, and narrowing `includes` to `startsWith` left it green. The fragment now comes from the middle of
+the name, which is the behaviour that makes the box useful — you type "eck" because you have half a name
+in mind, not because you are reading the first letters off a list.
+
+### Three mutations
+
+| Mutation | Result |
+|---|---|
+| `box-sizing` removed from the wrapper | fails on the declared-width invariant |
+| Back button carries `data-nav-back` again | fails — and the message says why |
+| The filter narrowed to `startsWith` | fails on a fragment from the middle of the name |
+
+
 ## The full suite, run — and the one bug it found that nothing else did
 
 **1,359 tests, 15 failures, 7 errors, 22 red, ~21 minutes**, app up on `:8080`, allowed to finish.

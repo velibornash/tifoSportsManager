@@ -343,7 +343,14 @@ class MessageServiceTest extends BaseTest {
 
         for (Map<String, Object> row : recipients) {
             assertFalse(row.containsKey("password"), "the recipient list carries a password hash");
-            assertFalse(row.containsKey("email"), "the recipient list carries an email address");
+            // The `login` field is deliberately present and the `email` field deliberately absent. They
+            // are the same string on a real account - User.username is an address that doubles as the
+            // login - and the picker needs something to search on. Asserting the email is gone while
+            // login is there documents which of the two is intentional.
+            assertFalse(row.containsKey("email"),
+                    "the recipient list carries an email address as a named field");
+            assertNotNull(row.get("login"),
+                    "the picker has nothing to search on for a manager with no chosen name");
             assertNotNull(row.get("displayName"));
         }
     }

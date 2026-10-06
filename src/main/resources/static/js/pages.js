@@ -1,7 +1,7 @@
 ﻿// pages.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
@@ -351,12 +351,16 @@ function buildPageNavState(page, options = {}) {
     });
     // The forum. Replaces `createCommunityFeature`, whose `forum`, `chat` and `events` routes all
     // rendered the same screen (community.js:314-320) - the forum route pointed at a chat.
+    // Both Community screens carry the same Forum / Messages option row, so the injected builder is the
+    // one place that decides which of the two is lit.
     const forumView = createForumView({
         authFetch,
         getUsername: () => currentUsername,
+        buildCommunityActionsHtml,
     });
     const messagesView = createMessagesView({
         authFetch,
+        buildCommunityActionsHtml,
     });
 
     const matchView = createMatchView({

@@ -1634,6 +1634,35 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## 🔧 P2-20 polish — the owner's interface corrections, 2026-10-06
+
+Six changes asked for after looking at the running application. Each is pinned by a measurement in
+`CommunityInterfaceTest` rather than by a class name or a stylesheet rule.
+
+| # | Asked for | What was wrong |
+|---|---|---|
+| 1 | Forum and Messages as **options under one Community tab**, as it was | Phase 4 gave them a top-bar button each |
+| 2 | A bigger envelope | U+2709 renders small beside the emoji the other buttons use |
+| 3 | The compose field's background ran **past the panel** | `width:100%` + `padding: 14px 16px` under the default `content-box` |
+| 4 | Narrower, and the message box wider | Both defaulted to a character-based width: **147px** and **182px** |
+| 5 | Type a name to find a manager | The picker was a native `<select>` |
+| 6 | A forum section's Back goes to the **dashboard** | `data-nav-back` pops the navigation history, so it went to the index |
+
+- [x] One Community entry, with Forum / Messages as an option row on all three forum screens and both
+      message screens. "Forum" stays lit while reading a topic.
+- [x] Envelope scaled, not swapped — a different glyph would stop the row reading as one set
+- [x] `box-sizing: border-box` and a `max-width` inset: measured **1303 → 1171** against a panel edge at 1290
+- [x] Subject and body take the field width: **147px → 1006px**, **182px → 1006px**
+- [x] A searchable picker over a hidden `<select>`, matching anywhere in the name or the login
+- [x] `backToDashboardHtml`, which calls `loadDashboard()` rather than going through the history
+
+**Exit criteria:**
+- [x] Every one of the six is measured in a browser, not asserted from the stylesheet
+- [x] Three mutations proven
+- [x] `CommunityInterfaceTest` green alongside the rest of the P2-20 suite
+
+---
+
 ## ✅ P2-20 browser check — DONE
 
 `CommunityScreensRenderTest`: a real Chromium, a real login, and clicks through every screen P2-20 added.

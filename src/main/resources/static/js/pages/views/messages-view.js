@@ -26,7 +26,7 @@ const MAX_BODY = 4000;
 const MAX_SUBJECT = 150;
 
 export function createMessagesView(deps) {
-    const { } = deps;
+    const { buildCommunityActionsHtml } = deps;
 
     // ── The inbox ───────────────────────────────────────────────────────────────────────────────────
 
@@ -62,6 +62,8 @@ export function createMessagesView(deps) {
                         <div><strong>${unread}</strong><span>Unread</span></div>
                     </div>
                 </section>
+
+                ${buildCommunityActionsHtml('messages')}
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">
@@ -132,6 +134,8 @@ export function createMessagesView(deps) {
                         <div><strong>${escapeHtml(formatWhen(thread.lastActivityAt))}</strong><span>Last activity</span></div>
                     </div>
                 </section>
+
+                ${buildCommunityActionsHtml('messageThread')}
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">History</div>
@@ -255,11 +259,23 @@ export function createMessagesView(deps) {
     function composeFormHtml() {
         return `
             <form class="community-compose-form js-compose" id="message-compose">
-                <div class="community-compose-toolbar">
-                    <label class="fm-field-label" for="message-recipient">To</label>
-                    <select id="message-recipient" name="recipientUserId" required>
+                <div class="compose-recipient">
+                    <label class="fm-field-label" for="message-recipient-search">To</label>
+                    <!-- A text box over a hidden select, not a native <select>.
+                         The owner asked to be able to type a name to find a manager, and a native select
+                         cannot: it scrolls, it matches from the start only, and it is unusable on a
+                         phone once there are more than a handful of managers. The <select> is kept
+                         behind it because it is what the form submits and what the tests read - the
+                         chosen id has to survive a validation error and a page re-render. -->
+                    <input type="text" id="message-recipient-search" class="compose-recipient-input"
+                           placeholder="Type a name to find a manager"
+                           autocomplete="off" role="combobox" aria-expanded="false"
+                           aria-controls="message-recipient-list" aria-autocomplete="list" />
+                    <ul class="compose-recipient-list" id="message-recipient-list" role="listbox" hidden></ul>
+                    <select id="message-recipient" name="recipientUserId" required hidden>
                         <option value="">Loading managers...</option>
                     </select>
+                    <div class="fm-subtle" id="message-recipient-status"></div>
                 </div>
                 <div class="community-compose-textarea">
                     <input type="text" name="subject" maxlength="${MAX_SUBJECT}"
@@ -274,6 +290,27 @@ export function createMessagesView(deps) {
                 </div>
                 <div class="community-compose-toolbar fm-subtle" id="message-compose-status"></div>
             </form>`;
+    }
+
+    /**
+     * Filters the manager list as you type.
+     *
+     * <p>Matches on the name anywhere in the string, case-insensitively, so "kec" finds Kecko and
+     * "cko" does too. Also matches the login, because a manager who never set a name is shown his login
+     * and that is what you would be typing.
+     *
+     * <p>Filtering is done here rather than server-side: the recipient list is every account, so it is
+     * already in the page, and a request per keystroke would be slower and would fail on a flaky
+     * connection at exactly the moment somebody is trying to find somebody.
+     */
+    function filterRecipients(list, query) {
+        const wanted = String(query || '').trim().toLowerCase();
+        if (!wanted) return list;
+        return list.filter(r => {
+            const name = String(r.displayName || '').toLowerCase();
+            const login = String(r.login || '').toLowerCase();
+            return name.includes(wanted) || login.includes(wanted);
+        });
     }
 
     function emptyHtml(message) {
@@ -295,25 +332,111 @@ export function createMessagesView(deps) {
         return then.toLocaleDateString();
     }
 
-    /** Fills the recipient dropdown and binds the compose form. */
+    /** Fills the recipient picker and binds the compose form. */
     function bindCompose(main) {
         const form = main.querySelector('.js-compose');
         if (!form) return;
         const status = form.querySelector('#message-compose-status');
 
-        void loadRecipients().then((recipients) => {
-            const select = form.querySelector('[name="recipientUserId"]');
-            if (!select) return;
-            if (!recipients.length) {
-                select.innerHTML = '<option value="">No other managers yet</option>';
+        const search = form.querySelector('#message-recipient-search');
+        const list = form.querySelector('#message-recipient-list');
+        const pickerStatus = form.querySelector('#message-recipient-status');
+        const select = form.querySelector('[name="recipientUserId"]');
+        let everyone = [];
+        let shown = [];
+
+        function closeList() {
+            if (!list) return;
+            list.hidden = true;
+            list.innerHTML = '';
+            if (search) search.setAttribute('aria-expanded', 'false');
+        }
+
+        function renderList(matches, query) {
+            if (!list) return;
+            shown = matches;
+            if (!matches.length) {
+                list.hidden = false;
+                list.innerHTML = `<li class="compose-recipient-none">${
+                    everyone.length
+                        ? `No manager matches "${escapeHtml(query)}".`
+                        : 'There are no other managers yet.'}</li>`;
+                if (search) search.setAttribute('aria-expanded', 'true');
                 return;
             }
+            list.hidden = false;
+            if (search) search.setAttribute('aria-expanded', 'true');
+            list.innerHTML = matches.map(r => {
+                const name = r.displayName || 'Manager';
+                const suffix = r.hasChosenName ? '' : ' \u00b7 no name set';
+                return `<li class="compose-recipient-option" role="option" data-user-id="${escapeHtml(r.userId)}">`
+                    + `<span class="compose-recipient-name">${escapeHtml(name)}</span>`
+                    + `<span class="fm-subtle">${escapeHtml(suffix)}</span></li>`;
+            }).join('');
+            list.querySelectorAll('.compose-recipient-option').forEach(option => {
+                option.addEventListener('mousedown', (event) => {
+                    // mousedown, not click: the input's blur closes the list before a click lands.
+                    event.preventDefault();
+                    choose(option.dataset.userId);
+                });
+            });
+        }
+
+        function choose(userId) {
+            const chosen = everyone.find(r => String(r.userId) === String(userId));
+            if (!chosen) return;
+            if (select) select.value = String(chosen.userId);
+            if (search) {
+                search.value = chosen.displayName || chosen.login || '';
+                search.setAttribute('aria-expanded', 'false');
+            }
+            closeList();
+            if (pickerStatus) pickerStatus.textContent = `To: ${chosen.displayName || chosen.login}`;
+        }
+
+        void loadRecipients().then((recipients) => {
+            everyone = recipients;
+            if (!select) return;
+            if (!everyone.length) {
+                select.innerHTML = '<option value="">No other managers yet</option>';
+                if (pickerStatus) pickerStatus.textContent = 'There is nobody to write to yet.';
+                if (search) search.disabled = true;
+                return;
+            }
+            // Populated even though the select is hidden: it is what the form submits and what the
+            // browser validation reads, so the chosen id survives a failed send.
             select.innerHTML = '<option value="">Choose a manager</option>'
-                + recipients.map(r => {
+                + everyone.map(r => {
                     const name = r.displayName || 'Manager';
                     const suffix = r.hasChosenName ? '' : ' (login, no name set)';
                     return `<option value="${escapeHtml(r.userId)}">${escapeHtml(name)}${escapeHtml(suffix)}</option>`;
                 }).join('');
+            if (search) search.disabled = false;
+        });
+
+        search?.addEventListener('input', () => renderList(filterRecipients(everyone, search.value), search.value));
+        search?.addEventListener('focus', () => renderList(filterRecipients(everyone, search.value), search.value));
+        search?.addEventListener('blur', () => {
+            // The list is under the input, so a plain click on an option blurs the input first. Deferred
+            // by a tick so the option's mousedown has run.
+            window.setTimeout(() => { if (!list?.matches(':hover')) closeList(); }, 120);
+        });
+        search?.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closeList();
+                search.blur();
+                return;
+            }
+            if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
+            const first = shown[0];
+            if (!first) return;
+            event.preventDefault();
+            choose(first.userId);
+        });
+        document.addEventListener('click', (event) => {
+            if (!list || list.hidden) return;
+            if (list.contains(event.target) || search?.contains(event.target)) return;
+            closeList();
         });
 
         form.addEventListener('submit', async (event) => {

@@ -18,7 +18,7 @@
 import { authFetch } from '../../auth.js';
 import { escapeHtml } from '../../ui/escape.js';
 import { buildEmptyState } from './utils.js';
-import { backButtonHtml } from '../../ui/components.js';
+import { backButtonHtml, backToDashboardHtml } from '../../ui/components.js';
 
 const TOPICS_PAGE = 30;
 const POSTS_PAGE = 30;
@@ -31,7 +31,7 @@ const SECTION_LABELS = {
 };
 
 export function createForumView(deps) {
-    const { getUsername } = deps;
+    const { getUsername, buildCommunityActionsHtml } = deps;
 
     // ── The section list, with a topic count on each ────────────────────────────────────────────────
 
@@ -69,6 +69,8 @@ export function createForumView(deps) {
                         <div><strong>${counts.GENERAL}</strong><span>In non-TIFO</span></div>
                     </div>
                 </section>
+
+                ${buildCommunityActionsHtml('forum')}
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">Sections</div>
@@ -125,7 +127,21 @@ export function createForumView(deps) {
         main.innerHTML = `
             <div class="fm-page fm-page--club">
                 <section class="fm-panel fm-club-hero">
-                    ${backButtonHtml('Back', 'forum')}
+                    <!--
+                        Back goes to the DASHBOARD, not to the forum index.
+
+                        Owner instruction, 2026-10-06. The ordinary backButtonHtml would not do it: it
+                        carries data-nav-back, and pages.js hands that to goBackSmart, which prefers
+                        the navigation history and only uses the argument as a fallback. Opening a
+                        section from the index means the index is what Back pops to, which is exactly
+                        the previous screen the owner asked not to go back to.
+
+                        No backticks in this comment on purpose: it sits inside a template literal and
+                        a pair of them terminates the string. That produced a syntax error which took
+                        out the whole module, and the symptom was "window.loadPage is not a function"
+                        on every page.
+                    -->
+                    ${backToDashboardHtml('Back')}
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Forum</div>
@@ -138,6 +154,8 @@ export function createForumView(deps) {
                         </button>
                     </div>
                 </section>
+
+                ${buildCommunityActionsHtml('forumSection')}
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">Topics</div>
@@ -175,7 +193,7 @@ export function createForumView(deps) {
         main.innerHTML = `
             <div class="fm-page fm-page--club">
                 <section class="fm-panel fm-club-hero">
-                    ${backButtonHtml('Back', topic.section ? `forumSection:${topic.section}` : 'forum')}
+                    ${backToDashboardHtml('Back')}
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">${escapeHtml(SECTION_LABELS[topic.section] || 'Forum')}</div>
@@ -189,6 +207,8 @@ export function createForumView(deps) {
                         <div><strong>${escapeHtml(topic.sectionLabel || '—')}</strong><span>Section</span></div>
                     </div>
                 </section>
+
+                ${buildCommunityActionsHtml('forumTopic')}
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">Replies</div>

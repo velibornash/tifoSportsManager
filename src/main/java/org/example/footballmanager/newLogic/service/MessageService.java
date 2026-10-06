@@ -324,6 +324,14 @@ public class MessageService {
             row.put("userId", user.getId());
             row.put("displayName", nameOf(user));
             row.put("hasChosenName", user.getDisplayName() != null && !user.getDisplayName().isBlank());
+            // The login as a separate field, for searching and nothing else. The picker filters on it
+            // because a manager who never set a name is displayed by his login, and typing "kecko" has
+            // to find Kecko whichever of the two you would have typed.
+            //
+            // It is the same string as the email address on a real account - `User.username` is an
+            // address that doubles as the login - and this route is authenticated, so nothing new is
+            // disclosed here. `CommunityRecipientDTO` sent it to every logged-in manager years ago.
+            row.put("login", user.getUsername());
             rows.add(row);
         }
         rows.sort(Comparator.comparing(r -> String.valueOf(r.get("displayName"))));

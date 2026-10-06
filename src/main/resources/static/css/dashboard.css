@@ -927,7 +927,22 @@ button.training-week-item {
 }
 
 .community-compose-textarea {
+    /*
+     * box-sizing was missing here, and it is the whole bug the owner reported: the class sets
+     * width: 100% AND padding: 14px 16px under the default content-box, so the rendered box is
+     * 100% plus 32px. Measured in a browser at 1400px wide: the compose wrapper's right edge sat at
+     * 1303 while the panel it belongs to ended at 1290 - the field's background ran past the panel
+     * it was drawn on, to the right, exactly as described.
+     */
+    box-sizing: border-box;
     width: 100%;
+    /*
+     * Inset from the panel rather than flush with it: the owner asked for a couple of centimetres
+     * back from the right edge. Capped in pixels rather than a percentage so the gap is the same
+     * visual size on a phone and on a desktop, and so it does not shrink to nothing on a narrow
+     * screen where 4% is four pixels.
+     */
+    max-width: min(100%, 1040px);
     min-height: 110px;
     resize: vertical;
     border-radius: 14px;
@@ -937,6 +952,67 @@ button.training-week-item {
     padding: 14px 16px;
     font: inherit;
     line-height: 1.5;
+}
+
+/*
+ * The subject and the message body default to a fixed character-based width - about 150px and 180px
+ * respectively - so they sat as small boxes on the left of a 1100px panel. They are the two things a
+ * manager types into, so they take the field width.
+ *
+ * <p>The class sits on the WRAPPER in every call site, not on the input itself, so the first attempt at
+ * this rule targeted `textarea.community-compose-textarea` and matched nothing. Verified in a browser:
+ * the field was still 182px wide after a rule that looked like it fixed it. Hence the descendant
+ * selector, and the assertion in the browser test that measures the rendered width rather than trusting
+ * the stylesheet.
+ *
+ * <p>The wrapper's own min-height is dropped when it wraps a one-line input, or the subject field would
+ * be 110px tall.
+ */
+.community-compose-textarea:has(> input) {
+    min-height: 0;
+}
+
+.community-compose-textarea > input,
+.community-compose-textarea > textarea {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+.community-compose-textarea > input {
+    min-height: 0;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #eef4ff;
+    font: inherit;
+}
+
+.community-compose-textarea > input:focus {
+    outline: none;
+    border-color: rgba(143, 211, 255, 0.36);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.12);
+}
+
+.community-compose-textarea > textarea {
+    min-height: 110px;
+    resize: vertical;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #eef4ff;
+    font: inherit;
+    line-height: 1.5;
+}
+
+.community-compose-textarea > textarea:focus {
+    outline: none;
+    border-color: rgba(143, 211, 255, 0.36);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.12);
 }
 
 .community-compose-textarea:focus {
@@ -5159,4 +5235,92 @@ body {
 .forum-post.is-mine {
     background: rgba(127, 208, 255, 0.07);
     border-color: rgba(127, 208, 255, 0.18);
+}
+
+/*
+ * The searchable recipient picker on the compose form (owner, 2026-10-06).
+ *
+ * <p>A text box over a hidden <select>, because a native select cannot be filtered: it scrolls, it
+ * matches from the start, and it is unusable on a phone once there are more than a handful of
+ * managers. The select stays behind it because that is what the form submits and what the browser
+ * validation reads - the chosen id has to survive a failed send and a re-render.
+ */
+.compose-recipient {
+    position: relative;
+    max-width: min(100%, 1040px);
+}
+
+.compose-recipient-input {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #eef4ff;
+    font: inherit;
+}
+
+.compose-recipient-input:focus {
+    outline: none;
+    border-color: rgba(143, 211, 255, 0.36);
+    box-shadow: 0 0 0 3px rgba(143, 211, 255, 0.12);
+}
+
+.compose-recipient-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 320;
+    max-height: 260px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: #16202e;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.compose-recipient-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 11px;
+    border-radius: 9px;
+    cursor: pointer;
+}
+
+.compose-recipient-option:hover {
+    background: rgba(127, 208, 255, 0.12);
+}
+
+.compose-recipient-name {
+    color: #eef4ff;
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.compose-recipient-none {
+    padding: 11px;
+    color: #99a6bb;
+    font-size: 0.88rem;
+}
+
+/*
+ * The envelope on the Community menu button.
+ *
+ * <p>U+2709 renders small next to the emoji the other buttons use, so it is scaled rather than swapped:
+ * a different glyph would mean the row no longer reads as one set. The bell next to it is left alone -
+ * it is a notification affordance and it is already large enough to find.
+ */
+.community-menu-button .community-menu-icon {
+    font-size: 1.15em;
+    line-height: 1;
+    display: inline-block;
+    transform: translateY(1px);
 }
