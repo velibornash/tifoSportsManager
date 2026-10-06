@@ -62,9 +62,12 @@ public class WorldRepairService {
             case "international-cups", "club-cups" -> {
                 int season = seasons.getActiveSeasonYear();
                 int qualifyingSeason = Math.max(1, season - 1);
+                // The rows are needed by the World and cup pages immediately. Commit this small,
+                // durable boundary before the expensive static-world seed, which may touch roughly
+                // 14,000 simulated clubs and must not hide the competition rows until it finishes.
+                int competitions = internationalClubCups.ensureCompetitionsDurably().size();
                 SimulatedWorldSeeder.Summary qualifyingWorld = simulatedWorldSeeder.seedAllSimulated(qualifyingSeason);
                 SimulatedWorldSeeder.Summary currentWorld = simulatedWorldSeeder.seedAllSimulated(season);
-                int competitions = internationalClubCups.ensureCompetitions().size();
                 out.put("action", "International club cups repaired");
                 out.put("competitionRows", competitions);
                 out.put("simulatedCountries", Math.max(qualifyingWorld.countries(), currentWorld.countries()));

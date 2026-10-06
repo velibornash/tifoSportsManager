@@ -19,7 +19,9 @@ Remaining work recorded from the source:
   observation of a repaired multi-country world remains open.
 - P0-CUPS-7: implementation is complete. Small fields now draw direct knockouts; two clubs play one final
   and odd fields carry a bye. `DrawResult` and logs report the fixtures created.
-- P0-CUPS-4: observe a real repaired world and cup page against the running database.
+- P0-CUPS-4: the live repair exposed an ordering defect: static-world seeding ran before competition rows
+  committed. Repair and week-1 job now commit the 15 competition rows first. Re-run the live observation
+  after restarting the app with this commit.
 - P1-CUPS-1: widen the calendar to four slots on days 1, 3, 5 and 7 while keeping league fixtures on days
   3 and 7.
 - P1-CUPS-2: verify and simplify the training contract after the zero-cost friendly change.

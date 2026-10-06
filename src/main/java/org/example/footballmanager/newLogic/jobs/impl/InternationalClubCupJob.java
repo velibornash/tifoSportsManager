@@ -123,7 +123,7 @@ public class InternationalClubCupJob implements DayJob {
         // an older database was created before this competition family existed. The job is the first
         // live writer that needs them, so make that boundary idempotent and self-healing. This remains
         // explicit world work; boot still does not seed anything.
-        cups.ensureCompetitions();
+        cups.ensureCompetitionsDurably();
 
         if (week == 1) {
             // Simulated clubs are deliberately playerless until a competition needs them. Qualification
