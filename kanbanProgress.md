@@ -1,5 +1,65 @@
 # kanbanProgress.md — the append-only log
 
+## A forum ban told nobody, because the notifier had no callers (owner, 2026-10-07)
+
+### What was asked for
+
+> **kada igrac banovan s foruma treba da dobije i info u notifications (ostaje ono sto mu izadje ako pokusa
+> da pise)**
+
+The parenthetical matters: the refusal on a write attempt **stays**. This is in addition to it.
+
+### What was there
+
+`NotificationService.notifyModeratorsOfBan` existed, wrote a `FORUM_BANNED` notification, and had
+**zero callers**:
+
+```
+$ grep -rn "notifyModeratorsOfBan" src/main src/test
+src/main/java/.../NotificationService.java:171:    public void notifyModeratorsOfBan(...)
+```
+
+So a ban produced **no notification at all** — not to the banned manager, and not to the moderators
+either. The method's own Javadoc argued that "a ban applied with no notification is a manager discovering
+he cannot post and having no idea why", which was a correct argument about a code path that did not run.
+
+And the `FORUM_BANNED` kind, which existed solely for this, was reachable from nowhere.
+
+### What it does now
+
+`ModerationService.banFromForum` notifies **both** sides:
+
+- **the banned manager**, with the length in days, the reason, and who applied it — the reason is in
+  there because a ban nobody can see the reason for cannot be argued with, which the ban path has always
+  required it to have;
+- **the moderators**, so the decision is on the record for the people who made it.
+
+`liftForumBan` sends nothing. A lift is the absence of something, and a notification for it would be a
+second row explaining that the first row no longer applies.
+
+The refusal on a write attempt is untouched — the forum gate still refuses, and still says why.
+
+### The circular dependency that was not one
+
+`ModerationService` now takes `NotificationService`, which sounds like the cycle this codebase keeps
+warning about. It is not: `NotificationService` depends on `NotificationRepository` and `UserRepository`
+only, and knows nothing about moderation. The dependency points one way.
+
+### Tests
+
+`ModerationServiceTest` **19/19** (was 16), with three added:
+
+| Test | Pins |
+|---|---|
+| `aBanNotifiesTheBannedManager` | one notification, the right kind, unread, carrying days + reason + moderator |
+| `aBanNotifiesTheModerators` | the previously-uncalled method has a caller |
+| `liftingABanSendsNothing` | only the ban is announced |
+
+**Re-proven by breaking it:** removing the one line that notifies the banned manager fails with
+`expected: <1> but was: <0>`.
+
+---
+
 ## The bell never worked, and the ticker never emptied (owner, 2026-10-07)
 
 ### What was asked for

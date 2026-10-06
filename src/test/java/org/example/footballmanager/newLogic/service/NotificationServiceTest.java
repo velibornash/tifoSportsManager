@@ -265,7 +265,7 @@ class NotificationServiceTest extends BaseTest {
     @DisplayName("days left on a ban round up, so a six-hour ban is never shown as zero")
     void remainingBanDaysRoundsUp() {
         // Reuses ModerationService's arithmetic because both surfaces show the same number.
-        ModerationService moderation = new ModerationService(users);
+        ModerationService moderation = new ModerationService(users, service);
         User me = aUser(UserRole.REGULAR);
         assertEquals(0, moderation.remainingBanDays(me));
     }

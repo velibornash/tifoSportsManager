@@ -161,6 +161,35 @@ public class NotificationService {
     }
 
     /**
+     * Tells a manager he has been banned from the forum, and why.
+     *
+     * <p>The owner's rule (2026-10-07): a forum ban has to reach the person it was applied to. It did
+     * not — {@link #notifyModeratorsOfBan} told the moderators and <b>had no callers at all</b>, so a ban
+     * produced no notification anywhere: the target found out by trying to post and being refused.
+     *
+     * <p>Best-effort like every other {@code notify}. A notification failing is not a reason to roll back
+     * a moderation action that has already been applied and recorded on the account.
+     *
+     * @param days how long the ban lasts, stated in days rather than as a date because that is how the
+     *             moderator was asked for it and how the account screen will show it
+     */
+    @Transactional
+    public void notifyForumBan(User banned, String moderatorName, int days, String reason) {
+        if (banned == null || banned.getId() == null) {
+            return;
+        }
+        String who = moderatorName == null || moderatorName.isBlank() ? "a moderator" : moderatorName.trim();
+        String summary = "You have been banned from posting in the forum for " + days + " day(s)"
+                + " by " + who + ".";
+        if (reason != null && !reason.isBlank()) {
+            summary = summary + " Reason: " + reason.trim();
+        }
+        // targetPage "admin" is where a moderator would look; the banned manager cannot moderate, so
+        // this row exists to be read, not to be clicked into a page he may not open.
+        notify(banned, NotificationKind.FORUM_BANNED, summary, "admin", null);
+    }
+
+    /**
      * Notifies the moderators that an account has been banned, so the decision is not silent.
      *
      * <p>A ban applied with no notification is a manager discovering he cannot post and having no idea

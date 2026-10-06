@@ -2255,6 +2255,23 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Forum bans now tell the person they were applied to — owner, 2026-10-07
+
+> **kada igrac banovan s foruma treba da dobije i info u notifications (ostaje ono sto mu izadje ako pokusa
+> da pize)**
+
+- [x] **`notifyModeratorsOfBan` had zero callers.** A ban produced no notification anywhere — neither to
+      the banned manager nor to the moderators. `FORUM_BANNED` was reachable from nowhere.
+- [x] **`banFromForum` now notifies the banned manager**: the length in days, the reason, and who applied
+      it. And the moderators, so the decision is on the record.
+- [x] **The write refusal is unchanged**, exactly as asked — the notification is in addition to it, not
+      instead of it.
+- [x] **Lifting a ban sends nothing.** A lift is the absence of something.
+- [x] `ModerationServiceTest` **19/19**, the notify line **re-proven by breaking it**
+      (`expected: <1> but was: <0>`).
+
+---
+
 ## ✅ Notifications: the bell was never polled, and read items never left the ticker — owner, 2026-10-07
 
 > **notification - niti zvuka kad stigne niti crvene tacke - nista, testirao sam** ·

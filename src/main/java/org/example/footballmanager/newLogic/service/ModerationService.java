@@ -42,9 +42,11 @@ public class ModerationService {
     private static final int MAX_BAN_DAYS = 365;
 
     private final UserRepository users;
+    private final NotificationService notifications;
 
-    public ModerationService(UserRepository users) {
+    public ModerationService(UserRepository users, NotificationService notifications) {
         this.users = users;
+        this.notifications = notifications;
     }
 
     /**
@@ -76,7 +78,21 @@ public class ModerationService {
         target.setForumBanReason(cleanReason);
         target.setForumBanBy(displayNameOf(moderator));
         target.setForumBanAt(now);
-        return users.save(target);
+        User banned = users.save(target);
+
+        // **Tell him.** A ban applied silently is a manager discovering he cannot post and having no
+        // idea why; the ban is visible on his profile, and the profile is not somewhere a banned
+        // manager is told to look (owner, 2026-10-07).
+        //
+        // The refusal he gets if he tries to write anyway is unchanged and still happens — this is in
+        // addition to it, not instead of it. A notification is what he can find later; the refusal is
+        // what stops him now, and a notification alone would leave him guessing at the cause each time
+        // he hits it.
+        notifications.notifyForumBan(banned, displayNameOf(moderator), days, cleanReason);
+
+        // And tell the moderators, so the decision is on the record for the people who made it.
+        notifications.notifyModeratorsOfBan(banned, displayNameOf(moderator), days, cleanReason);
+        return banned;
     }
 
     /** Lifts an active ban, keeping the reason on the row so moderators can see it happened. */

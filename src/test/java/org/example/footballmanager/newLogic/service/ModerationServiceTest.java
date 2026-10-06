@@ -5,6 +5,8 @@ import org.example.commonmanager.model.UserRole;
 import org.example.commonmanager.model.UserRoles;
 import org.example.commonmanager.repository.UserRepository;
 import org.example.footballmanager.BaseTest;
+import org.example.footballmanager.newLogic.model.Notification;
+import org.example.footballmanager.newLogic.model.NotificationKind;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,6 +48,66 @@ class ModerationServiceTest extends BaseTest {
 
     @Autowired
     org.example.footballtextmanager.repository.CSTeamRepository csTeams;
+
+    @Autowired
+    org.example.footballmanager.newLogic.repository.NotificationRepository notifications;
+
+    // ── The ban tells the person it was applied to ───────────────────────────────────────────────
+
+    @Test
+    @Transactional
+    @DisplayName("a banned manager is notified, with the length and the reason")
+    void aBanNotifiesTheBannedManager() {
+        User moderator = aUser(UserRole.MOD);
+        moderator.setDisplayName("The Moderator");
+        users.save(moderator);
+        User target = aUser(UserRole.REGULAR);
+
+        moderation.banFromForum(moderator, target.getId(), 7, "Spam in the general section");
+
+        List<Notification> theirs = notificationsFor(target);
+        assertEquals(1, theirs.size(),
+                "the banned manager is told he is banned. He has no other way to find out: he discovers "
+                        + "it by trying to post and being refused.");
+        Notification note = theirs.get(0);
+        assertEquals(NotificationKind.FORUM_BANNED, note.getKind());
+        assertTrue(note.getSummary().contains("7 day(s)"), "how long: " + note.getSummary());
+        assertTrue(note.getSummary().contains("Spam in the general section"),
+                "why, because a ban nobody can see the reason for cannot be argued with: " + note.getSummary());
+        assertTrue(note.getSummary().contains("The Moderator"), "who: " + note.getSummary());
+        assertNull(note.getReadAt(), "and it arrives unread, which is the point of a notification");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("the moderator is told too, so the decision is on the record")
+    void aBanNotifiesTheModerators() {
+        User moderator = aUser(UserRole.MOD);
+        User target = aUser(UserRole.REGULAR);
+
+        moderation.banFromForum(moderator, target.getId(), 5, "Insisting");
+
+        List<Notification> theirs = notificationsFor(moderator);
+        assertEquals(1, theirs.size(),
+                "notifyModeratorsOfBan existed with no callers, so a ban was recorded nowhere at all");
+        assertTrue(theirs.get(0).getSummary().contains("banned"), theirs.get(0).getSummary());
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("lifting a ban does not send another notification")
+    void liftingABanSendsNothing() {
+        User moderator = aUser(UserRole.MOD);
+        User target = aUser(UserRole.REGULAR);
+        moderation.banFromForum(moderator, target.getId(), 2, "Insisting");
+
+        moderation.liftForumBan(moderator, target.getId());
+
+        List<Notification> theirs = notificationsFor(target);
+        assertEquals(1, theirs.size(),
+                "only the ban is announced. A lift is the absence of something, and a notification for it "
+                        + "would be a second row explaining that the first row no longer applies.");
+    }
 
     // ── The ban stops writing, and nothing else ────────────────────────────────────────────────────
 
@@ -290,6 +353,12 @@ class ModerationServiceTest extends BaseTest {
     }
 
     // ── Fixtures ───────────────────────────────────────────────────────────────────────────────────
+
+    /** One account's notifications, newest first. */
+    private List<Notification> notificationsFor(User user) {
+        return notifications.findByRecipientIdOrderByCreatedAtDescIdDesc(
+                user.getId(), org.springframework.data.domain.PageRequest.of(0, 30));
+    }
 
     private User aUser(UserRole role) {
         User user = new User();
