@@ -376,9 +376,68 @@ national cup below it decides whether the old code would pass. A test that is gr
 worse than no test, so none was written.
 
 **Exit criteria:**
-- [ ] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does — **done**, `seedIfMissing` now calls `primaryCup()`
-- [ ] A boot with all 15 continental cups present still draws the domestic cup — **needs a test; blocked on the decision above**
-- [ ] `CupFixtureSeederCountryTest` and `CupDrawSeedingTest` are green in **one JVM** — **blocked on the decision above**
+- [x] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does
+- [ ] A boot with all 15 continental cups present still draws the domestic cup — **unblocked: owner chose
+      one cup per country on 2026-10-06, which removes the ordering entirely**
+- [ ] `CupFixtureSeederCountryTest` and `CupDrawSeedingTest` green in **one JVM** — same unblock
+
+**Owner decision 2026-10-06: option A — one cup per country.** `CupDrawJob` and `seedIfMissing()` take a
+country and draw that country's cup, so there is no "lowest id" left to depend on and neither test class can
+be poisoned by the other. 48 draws per season instead of 1.
+
+---
+
+## ✅ Owner decisions, 2026-10-06 — taken after the analysis, before P0-CUPS-4
+
+Four questions asked with the measured state in front of them. **All four are now closed.**
+
+### 1. A simulated country's division has no "better" club — and that is fine
+
+**Decision: leave it. For a simulated league the order is arbitrary — a reproducible draw.**
+
+Measured, and it looked like a P0: `PyramidBuilder.fillStaticDivision()` gives all ten clubs in a
+division one identical `reputationFor(tier)`, writes `points(0)` and leaves goals unset, and sorts by
+`reputation desc, then name`. So the stored `position` is alphabetical. And nothing reads it —
+`InternationalClubCups.qualifyFrom()` orders by `LeagueTableOrder` (points → goal difference → goals
+scored → **team id**), every row ties on all four, and the club entering the Champions Cup is the one with
+**the lowest database id** in its division.
+
+**The owner's answer is that this does not need fixing, and it is the right answer.** `LeagueTableOrder`'s
+last key being team id means the order is *arbitrary but stable* — the same table produces the same order
+every time it is asked for, which is exactly the property a draw needs. Adding an intra-division strength
+spread would make the simulated field look like it was decided on merit, and it would be decided on a
+reputation number that was invented at seed time.
+
+**So this is recorded as a non-defect, and the reason is written down here on purpose.** The B6 comment in
+`fillDivision()` records a *previous* attempt at exactly this fix —
+
+> *"Every club in a division used to be created with one identical reputation… continental qualification
+> read that table, which made entry alphabetical for 47 of 48 countries."*
+
+— and that fix was applied to `fillDivision()` (active countries) and **not** to `fillStaticDivision()`
+(simulated countries). A future reader comparing the two methods will take that as an oversight and
+"correct" it. **It is not an oversight. Do not add the spread to `fillStaticDivision`.**
+
+`poolAt()` sorts each cross-division pool by reputation too, which is equally degenerate for a simulated
+country and equally deliberate: stable and arbitrary.
+
+### 2. The domestic cup is one cup per country
+
+**Decision: option A.** `CupDrawJob` and `seedIfMissing()` take a country and draw that country's cup.
+Closes **P0-CUPS-6** and unblocks its test. 48 draws per season instead of 1, which is a scale question
+and belongs in P1 when it is measured.
+
+### 3. `MatchFormat` is deleted
+
+**Decision: delete.** 144 lines, zero callers, and provably the wrong shape — a cup has two formats in one
+competition. Deleted; `CompetitionType`'s javadoc now carries the reason and points at
+`Match.groupCode`. P0-10 set the precedent on the same grounds.
+
+### 4. There is parallel work in this tree
+
+**Confirmed by the owner.** National-team competition work (`Competition.nationalLevel`,
+`Competition.nationalStage`, `NationalTournamentSeeder` and five related files) is in flight and is not
+mine. **Every P0-CUPS commit stages only its own files.** The tree compiles as of `fec7aa5`.
 
 ---
 

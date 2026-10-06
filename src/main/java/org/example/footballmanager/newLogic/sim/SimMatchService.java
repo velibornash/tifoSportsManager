@@ -551,35 +551,41 @@ public class SimMatchService {
      * may finish level and is scored as a draw; a domestic cup tie, which has no groups at all, is a
      * knockout tie and always has been.
      *
-     * <h2>About {@code MatchFormat}, and why this did not use it</h2>
+     * <h2>About {@code MatchFormat}, which used to be the recommended fix and no longer exists</h2>
      *
      * <p>Three comments in this repository, including the one above this method, said the fix was to
      * wire {@code MatchFormat} and that a format column had to land <b>before</b> the group stage. That
      * ordering constraint was right about the deadline and wrong about the shape.
      *
-     * <p>{@code MatchFormat} is a <i>competition</i>'s format, and it answers {@code goesToPenalties()}
-     * for the whole competition. But a Champions Cup <b>has two formats in one competition</b>: five
-     * group matchdays that may be drawn, and five knockout rounds that may not. A column on
-     * {@code Competition} cannot hold "knockout for rounds 6–10, group for rounds 1–5". {@code
-     * MatchFormat}'s own {@code Tournament} subclass admits the problem in its javadoc — *"knockout
-     * rounds go to penalties and the group phase does not"* — which is a per-match distinction wearing a
+     * <p>{@code MatchFormat} was a <i>competition</i>'s format, answering {@code goesToPenalties()} for
+     * the whole competition. But a Champions Cup <b>has two formats in one competition</b>: five group
+     * matchdays that may be drawn, and five knockout rounds that may not. A column on
+     * {@code Competition} cannot hold "knockout for rounds 6–10, group for rounds 1–5".
+     * {@code MatchFormat}'s own {@code Tournament} subclass admitted the flaw in its javadoc — *"knockout
+     * rounds go to penalties and the group phase does not"* — a per-match distinction wearing a
      * per-competition type.
      *
-     * <p>So the discriminator has to be per match, and it already is: the match records the cup group it
-     * was played in. {@code P0-CUPS-1} put that field on {@code Match} for the table rule, and this
-     * method reads the same one with the opposite sense. One field, two rules, no migration and no new
-     * type. {@code MatchFormat} remains unused — see the board on whether to delete it.
+     * <p>So the discriminator has to be per match, and P0-CUPS-1 had already put it there: the match
+     * records the cup group it was played in. {@code P0-CUPS-1} put that field on {@code Match} for the
+     * table rule and this method reads the same one with the opposite sense. <b>One field, two rules,
+     * no migration and no new type.</b> {@code MatchFormat} was deleted on the owner's decision,
+     * 2026-10-06, on the grounds that it had zero callers and was the wrong shape for the question.
      */
     private static boolean isKnockoutTie(Match match) {
         if (match.getCompetition() == null) {
             return false;
         }
         Competition competition = match.getCompetition();
-        if (competition.getType() != CompetitionType.CUP) {
+        if (competition.getType() != CompetitionType.CUP
+                && competition.getType() != CompetitionType.TOURNAMENT) {
             return false;
         }
-        // A cup tie outside a group has to be won. A tie inside one may finish level, and settling it
+        // A tie outside a group has to be won. A tie inside one may finish level, and settling it
         // from the spot would decide the group on penalties instead of on points.
+        //
+        // TOURNAMENT is here for the national-team competitions: a World Cup knockout tie is decided
+        // on the night, and it is a TOURNAMENT row that no CUP predicate would ever have reached.
+        // The group test still protects the qualifying groups, which are TOURNAMENT rows too.
         return !MatchType.isGroupMatch(match);
     }
 
