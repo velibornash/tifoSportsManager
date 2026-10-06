@@ -278,7 +278,8 @@ fixtures.
 The World page now shows the three international club cups as rows in one competition table. Each row
 shows the expected field size (Champions 48, Masters 96, Challenge 48) and opens `club-cup-view.js`,
 which has tier tabs, group tables, results and knockout bracket data. The four national-team competitions
-are listed as unavailable rows because the national-tournament screen is unfinished.
+are listed from `/api/national-tournaments`; drawn rows open the shared national-tournament view and
+undrawn rows show their planned week.
 
 ## 6. What the manager can do
 
