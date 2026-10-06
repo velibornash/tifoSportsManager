@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-10-06 — current football UI technical overview
+
+Updated the root `TECHNICAL_OVERVIEW.md` from the current source, using the archived overview for
+structure and the root board/progress plus archived audits for historical corrections. The document now
+covers the graphical football UI, its router and current pages, authentication, clock/jobs, admin world
+building, domestic and international competitions, national tournaments, match simulation, management
+systems, API groups, and current unfinished paths. Historical claims that no longer match the source
+are marked as stale or omitted. No code or tests were changed.
+
 ## 2026-10-06 — finishing the International cup work; NT session summary
 
 ### International — what is DONE

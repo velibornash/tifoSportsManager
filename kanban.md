@@ -2220,6 +2220,13 @@ The test is mutation-proven: routing `loadPage('forum')` to a wrong section fail
 
 # 🗂 Agent session log — 2026-10-06, three commits after the measured run
 
+## ✅ Documentation — current football UI technical overview
+
+`TECHNICAL_OVERVIEW.md` was rebuilt from the current `footballmanager.newLogic` source and graphical
+football UI. It incorporates the current international club cup UI, the forum/private-message
+replacement, the national-tournament backend state, current security/boot behaviour, and the open gaps
+recorded on this board. `archive/TECHNICAL_OVERVIEW.md` remains historical.
+
 **Exactly three commits sit on top of `7df4af2`, the run that measured 20 red.** So the 20 is stale in a
 way that is worth stating precisely, because only one of the three can move a number:
 
@@ -2258,4 +2265,3 @@ than failing. This run had it up, and `CommunityScreensRenderTest` is a fourth.
 **The earlier figures — 992 tests, 29 red, ~2 h 52 m — described a different application** and are
 superseded twice over. The wall clock changed because boot writes nothing; the test count changed because
 P2-20 added 112.
-
