@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.jobs.config;
 
+import org.example.footballmanager.newLogic.jobs.impl.FriendlyMatchdayJob;
 import org.example.footballmanager.newLogic.jobs.impl.MatchdayJob;
 import org.example.footballmanager.newLogic.jobs.impl.NationalMatchdayJob;
 import org.example.footballmanager.newLogic.model.CompetitionType;
@@ -42,6 +43,35 @@ public class MatchdayJobsConfig {
      * 20:00 where the template has none — days 2, 4 and 6 are finance, training and morale, and carry
      * no time of their own.
      */
+    /**
+     * The friendlies of a day.
+     *
+     * <p>Three days, three beans: days 3 and 7 are the league's two club slots, day 1 is where a national
+     * warm-up is played (week 6 day 1, the day before the first qualifier). Separate keys because the
+     * done-flag is keyed on (season, week, day, key).
+     *
+     * <p>These select by match <b>type</b> rather than by competition, which is the only reason a friendly
+     * is playable at all: it belongs to no competition, so every competition-scoped matchday could not
+     * find it.
+     */
+    @Bean
+    public FriendlyMatchdayJob friendlyMatchdayOne(MatchFixtureRepository fixtures,
+                                                  AsyncSimulationRunner runner) {
+        return new FriendlyMatchdayJob("matchday-friendly-1", 1, fixtures, runner);
+    }
+
+    @Bean
+    public FriendlyMatchdayJob friendlyMatchdayThree(MatchFixtureRepository fixtures,
+                                                    AsyncSimulationRunner runner) {
+        return new FriendlyMatchdayJob("matchday-friendly-3", 3, fixtures, runner);
+    }
+
+    @Bean
+    public FriendlyMatchdayJob friendlyMatchdaySeven(MatchFixtureRepository fixtures,
+                                                     AsyncSimulationRunner runner) {
+        return new FriendlyMatchdayJob("matchday-friendly-7", 7, fixtures, runner);
+    }
+
     @Bean
     public MatchdayJob qualifierMatchdayTwo(CompetitionRepository competitions,
                                             MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {

@@ -578,7 +578,8 @@ carries a non-empty name plus its status.
   answer a request — today bots pair themselves up and nothing posts to a bot.
 - **The free-slot ad board.** A page where a team posts an open slot and anyone accepts. Needs a listing
   with an expiry and a decision on whether a bot side may accept one; today AI clubs pair themselves up in
-  `runAiFriendlyWeek`.
+  `runAiFriendlyWeek`. **Now unblocked** - an agreed friendly can actually be played, so a posting is
+  worth something.
 - **A `FRIENDLY_REQUESTED` notification kind**, so the notification bell fires. The ticker already lists
   the request; only the bell is missing.
 
@@ -641,6 +642,62 @@ day is busy; and a request answerable only by its addressee.
 
 **Not done:** no controller endpoint or UI yet for national requests, and a national side is still not
 auto-paired as a bot — that is an owner decision, recorded below.
+
+---
+
+## A friendly could be agreed, written, shown, and never played (2026-10-06)
+
+Taken before the rest of the friendly feature deliberately: **no amount of UI makes this feel finished.**
+
+### The defect
+
+Every matchday in this framework selects its fixtures by **competition type**. A friendly belongs to no
+competition - correctly, since it decides nothing - so **no matchday could find one.** And the fixture the
+club service wrote carried no `matchType` and no `dayNumber` either, so there was nothing to select on even
+if a job had looked. The whole path worked: two managers agreed it, it was written, it showed on the club
+page and in the dashboard ticker, and **nothing ever played it**.
+
+### Two halves, and the second is the one that would have been missed
+
+1. **`FriendlyRequestService.createFixture` now writes a `matchType` and a `dayNumber`.** The day is
+   derived from the slot via `SeasonCalendar.SLOT_ONE_DAY` / `SLOT_TWO_DAY` rather than restated, so a
+   slot's day cannot disagree with the calendar's own idea of it.
+2. **A matchday that selects by what a fixture *is* rather than what competition it belongs to.**
+   `findUnplayedFriendliesOnDay` filters `matchType = FRIENDLY` - a type test, not a null check, because a
+   null type is a row written before the column existed and those rows carry no day either.
+   `FriendlyMatchdayJob` is registered for **days 1, 3 and 7**: days 3 and 7 are the league's two club
+   slots, day 1 is where a national warm-up is played. Three beans because the done-flag is keyed on
+   (season, week, day, key).
+
+Writing the fields alone would have changed nothing observable.
+
+### `FriendlyFixtureIsPlayableTest` - 4/4, and two of its assertions were wrong first
+
+An agreed friendly carries a type and a day; the friendly matchday finds it and hands it to the engine; a
+league fixture on the same day is not dragged along with it; and it has **no competition**, which is
+precisely why the competition-scoped matchdays dropped it.
+
+**Two corrections I had to make to my own test, both worth recording:**
+
+- It first claimed the *query* `findBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse` was
+  competition-scoped. **It is not** - `MatchdayJob` fetches by day and filters by competition in Java
+  afterwards. The premise was the filter, not the query, and asserting against the query tested something
+  that was never true.
+- It created a league fixture for both sides *before* arranging the friendly, which makes both busy and the
+  request correctly refused. The failure was `Optional.orElseThrow` with no message and every obvious
+  suspect was wrong; the real cause was an in-memory test database with **no `game_clock` row**, so
+  `requestFriendly` - which refuses to invent a season - returned empty for every request.
+
+**Proven by breaking it:** removing the `matchType` write gives 3 of 4 red, including
+`without a type there is nothing for the friendly matchday to select on - expected: <FRIENDLY> but was:
+<null>`.
+
+### Note for whoever runs the season
+
+Fixtures written **before** this change have no `matchType` and no `dayNumber`, so they stay unplayable.
+They are not backfilled: `ddl-auto=update` adds columns but does not invent values, and guessing a day for
+a row that has only a week would put a friendly on the wrong day silently. **Either clear them or write a
+backfill that derives the day from the round number** - an owner decision, not a guess.
 
 ---
 

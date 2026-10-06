@@ -35,6 +35,25 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
                                          @Param("weekNumber") Integer weekNumber,
                                          @Param("dayNumber") Integer dayNumber);
 
+    /**
+     * Unplayed <b>friendlies</b> for one day, whatever competition they belong to.
+     *
+     * <p><b>The query that makes a friendly playable at all.</b> Every other matchday selects by
+     * {@code competition.type}, and a friendly belongs to no competition — deliberately, since it decides
+     * nothing. So a friendly fixture was invisible to every matchday in the framework: it could be
+     * agreed, written, and shown, and never played.
+     *
+     * <p>Selected by {@code matchType} instead, which is the field that says what the fixture *is* rather
+     * than what competition it belongs to. {@code matchType = FRIENDLY} and not a null check, because a
+     * null type is a row written before the column existed and those rows also carry no day.
+     */
+    @Query("select f from MatchFixture f where f.seasonYear = :seasonYear and f.weekNumber = :weekNumber "
+            + "and f.dayNumber = :dayNumber and f.played = false "
+            + "and f.matchType = org.example.footballmanager.newLogic.model.MatchType.FRIENDLY")
+    List<MatchFixture> findUnplayedFriendliesOnDay(@Param("seasonYear") Integer seasonYear,
+                                                   @Param("weekNumber") Integer weekNumber,
+                                                   @Param("dayNumber") Integer dayNumber);
+
     List<MatchFixture> findBySeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
             Integer seasonYear, Integer weekNumber, Integer dayNumber);
 

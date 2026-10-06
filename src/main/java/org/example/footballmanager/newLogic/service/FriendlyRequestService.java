@@ -339,14 +339,34 @@ public class FriendlyRequestService {
         MatchFixture fixture = new MatchFixture();
         fixture.setHomeTeam(home);
         fixture.setAwayTeam(away);
+        // **A type and a day, which this fixture did not have for the whole of its life.**
+        //
+        // It carried no competition - correctly, a friendly belongs to none - but it also carried no
+        // `matchType` and no `dayNumber`, and both are what makes a fixture findable. Every matchday job
+        // in the framework selects by *competition type*, so a competition-less fixture was invisible to
+        // all of them; and with no day there was no date to select on either. The result was that a
+        // friendly could be agreed, written to the database, shown on two screens, and **never played**.
+        //
+        // The type is what lets the new friendly matchday find it, and the day is what it plays on.
+        fixture.setMatchType(org.example.footballmanager.newLogic.model.MatchType.FRIENDLY);
         fixture.setSeasonYear(request.getSeason());
-        // The round number is derived from the week and slot so two friendlies in the same week
-        // never collide with each other or with a league round.
         fixture.setRoundNumber(SeasonCalendar.friendlyRoundNumber(request.getWeek(), request.getSlot()));
         fixture.setWeekNumber(request.getWeek());
+        fixture.setDayNumber(dayOf(request.getWeek(), request.getSlot()));
         fixture.setMatchDate(LocalDateTime.now().plusWeeks(request.getWeek()));
         fixture.setPlayed(false);
         return fixture;
+    }
+
+    /**
+     * The game day a club slot is played on.
+     *
+     * <p>Slot 1 is the league's first day and slot 2 its second, which is the pair
+     * {@link SeasonCalendar} already defines and asserts against the week template. Derived rather than
+     * restated, so a slot's day cannot disagree with the calendar's own idea of it.
+     */
+    static int dayOf(int week, int slot) {
+        return slot == 1 ? SeasonCalendar.SLOT_ONE_DAY : SeasonCalendar.SLOT_TWO_DAY;
     }
 
     // ------------------------------------------------------------------ the AI

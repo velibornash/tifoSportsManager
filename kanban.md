@@ -2001,6 +2001,12 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
       copies). **Unverified in running app.**
+- [x] **Friendlies are playable.** They were not, and never had been: every matchday selects by
+      **competition type**, a friendly belongs to no competition, and the written fixture carried no
+      `matchType` and no `dayNumber`. A friendly could be agreed, written and shown and **never played**.
+      Fixed on both halves — the fields, and a `FriendlyMatchdayJob` that selects by type on days 1, 3
+      and 7. `FriendlyFixtureIsPlayableTest` 4/4, re-proven by deleting the type write. **Pre-existing
+      fixtures stay unplayable** and are not backfilled; that is a decision, recorded.
 - [x] **NT friendlies: week 6 day 1, national against national.** The owner's rule settles the slot
       question — a club and a nation have **no slot in common**, since day 3 of week 6 is a qualifying
       matchday. A separate service rather than a mode of the 596-line club one, because every rule in that
