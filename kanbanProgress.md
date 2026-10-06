@@ -2,6 +2,61 @@
 
 ---
 
+## The Back button, corrected — and the defect the wrong fix had been hiding
+
+I read "a forum section's Back should go to the dashboard" as *build a Back button that goes to the
+dashboard*, and made `backToDashboardHtml` — the same markup, one attribute and one handler different,
+bypassing the navigation history on purpose.
+
+The owner corrected it: **Back goes to the PREVIOUS screen, the way almost every other Back in this
+application does. Copy the Club section; do not invent.**
+
+### Copying it found the actual defect
+
+The forum's own Back was never wrong. **The navigation was.**
+
+Clicking a forum section, or a topic, or a conversation called the **view function directly**:
+
+```js
+button.addEventListener('click', () => loadForumSection(button.dataset.section));
+```
+
+`loadForumSection` renders. It does not navigate, and **the router is what pushes the navigation
+history** — `loadPage` calls `pushNavState(buildPageNavState(page))` and the view function does not.
+So those navigations were never recorded anywhere.
+
+Back then popped whatever was open *before* the forum. Measured in the browser, with the standard button
+restored:
+
+```
+forum index -> TIFO section -> Back  ->  "Messages"
+```
+
+Which is a worse bug than the one I was sent to fix, and it was present the whole time — the invented
+button was hiding it, because it never consulted the history in the first place.
+
+The fix is three clicks routed through the router:
+
+```js
+window.loadPage('forumSection', { section });
+window.loadPage('forumTopic', { topicId: id });
+window.loadPage('messageThread', { threadId });
+```
+
+with the direct call kept as the fallback when `loadPage` is absent. `components.js` is back to one
+button and its javadoc records the wrong turn so the next reader does not repeat it.
+
+### What this says about the other three levels
+
+League, Country and Club all navigate through `loadPage`. The three Community screens were the only ones
+calling a view function straight from a click handler, which is why Back was unreliable there and
+reliable everywhere else — and why "it goes to the dashboard" was the symptom rather than the cause.
+
+The interface test now asserts the behaviour rather than the markup: navigate from the forum index into
+a section, press Back, and require the forum index. Reverting the section click to the direct call
+fails it with `went to 'Messages' instead of the previous screen`.
+
+
 ## P0-CUPS-1 and P0-CUPS-2 — the group stage decides itself, and then it is decided by penalties
 
 Two commits, `aa195d4` and `d7a796f`. Both defects were on the board's P0 list as *"the draw is not

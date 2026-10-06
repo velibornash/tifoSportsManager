@@ -2003,7 +2003,22 @@ Six changes asked for after looking at the running application. Each is pinned b
 - [x] `box-sizing: border-box` and a `max-width` inset: measured **1303 → 1171** against a panel edge at 1290
 - [x] Subject and body take the field width: **147px → 1006px**, **182px → 1006px**
 - [x] A searchable picker over a hidden `<select>`, matching anywhere in the name or the login
-- [x] `backToDashboardHtml`, which calls `loadDashboard()` rather than going through the history
+- [x] **Back returns to the previous screen, the same button the Club section uses** — see below
+
+#### The sixth item was wrong twice, and the real defect was elsewhere
+
+The first reading of "a section's Back should go to the dashboard" was implemented as a **second kind of
+Back button** that bypassed the history. The owner's correction: **Back goes to the previous screen, like
+almost every other Back in this application — copy the Club section, do not invent.**
+
+Copying it exposed the defect that the invented button had been hiding:
+
+> Clicking a forum section, or a topic, or a conversation, called the **view function directly** rather
+> than the router. The router is what pushes the navigation history, so those navigations were never
+> recorded. Back then popped whatever happened to be open **before** the forum — measured: **Back from
+> the TIFO section landed on Messages.**
+
+So the fix is in the navigation, not the button. `components.js` has one button again.
 
 **Exit criteria:**
 - [x] Every one of the six is measured in a browser, not asserted from the stylesheet

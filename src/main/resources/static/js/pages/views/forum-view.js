@@ -18,7 +18,7 @@
 import { authFetch } from '../../auth.js';
 import { escapeHtml } from '../../ui/escape.js';
 import { buildEmptyState } from './utils.js';
-import { backButtonHtml, backToDashboardHtml } from '../../ui/components.js';
+import { backButtonHtml } from '../../ui/components.js';
 
 const TOPICS_PAGE = 30;
 const POSTS_PAGE = 30;
@@ -127,21 +127,7 @@ export function createForumView(deps) {
         main.innerHTML = `
             <div class="fm-page fm-page--club">
                 <section class="fm-panel fm-club-hero">
-                    <!--
-                        Back goes to the DASHBOARD, not to the forum index.
-
-                        Owner instruction, 2026-10-06. The ordinary backButtonHtml would not do it: it
-                        carries data-nav-back, and pages.js hands that to goBackSmart, which prefers
-                        the navigation history and only uses the argument as a fallback. Opening a
-                        section from the index means the index is what Back pops to, which is exactly
-                        the previous screen the owner asked not to go back to.
-
-                        No backticks in this comment on purpose: it sits inside a template literal and
-                        a pair of them terminates the string. That produced a syntax error which took
-                        out the whole module, and the symptom was "window.loadPage is not a function"
-                        on every page.
-                    -->
-                    ${backToDashboardHtml('Back')}
+                    ${backButtonHtml('Back', 'dashboard')}
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Forum</div>
@@ -193,7 +179,7 @@ export function createForumView(deps) {
         main.innerHTML = `
             <div class="fm-page fm-page--club">
                 <section class="fm-panel fm-club-hero">
-                    ${backToDashboardHtml('Back')}
+                    ${backButtonHtml('Back', 'dashboard')}
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">${escapeHtml(SECTION_LABELS[topic.section] || 'Forum')}</div>
@@ -387,7 +373,15 @@ export function createForumView(deps) {
         main.querySelectorAll('.js-open-topic').forEach(button => {
             button.addEventListener('click', () => {
                 const id = button.dataset.topicId;
-                if (id) loadForumTopic(id);
+                // Through loadPage, not straight to the view: the router is what pushes the navigation
+                // history, and calling the view directly navigated without recording where from.
+                // Back then popped whatever was open before the forum, which is how a section's Back
+                // ended up on the messages screen.
+                if (id && typeof window.loadPage === 'function') {
+                    window.loadPage('forumTopic', { topicId: id });
+                } else if (id) {
+                    loadForumTopic(id);
+                }
             });
         });
         main.querySelectorAll('.js-open-manager').forEach(button => {
@@ -397,7 +391,14 @@ export function createForumView(deps) {
             });
         });
         main.querySelectorAll('.js-section').forEach(button => {
-            button.addEventListener('click', () => loadForumSection(button.dataset.section));
+            button.addEventListener('click', () => {
+                const section = button.dataset.section;
+                if (typeof window.loadPage === 'function') {
+                    window.loadPage('forumSection', { section });
+                } else {
+                    loadForumSection(section);
+                }
+            });
         });
         main.querySelectorAll('.js-new-topic').forEach(button => {
             button.addEventListener('click', () => showNewTopicForm(button.dataset.section));

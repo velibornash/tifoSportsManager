@@ -265,16 +265,21 @@ class CommunityInterfaceTest {
             assertTrue(chosen != null && !chosen.isBlank(),
                     "clicking a manager did not set the id the form submits");
 
-            // ── 6. A forum section's Back goes to the dashboard, not to the previous screen ────────────
+            // ── 6. Back goes to the PREVIOUS screen, the way every other Back in this app does ────────
+            //
+            // Owner correction, 2026-10-06. This was briefly a second kind of button that always went to
+            // the dashboard, read as "a section's Back should leave the Community area". It should not:
+            // Back goes back, exactly as the Club section's does, and the instruction was to copy that
+            // rather than invent a third behaviour. `components.js` has one button again.
+            //
+            // Two assertions, because either alone passes with the wrong button in place. The attribute
+            // is what makes pages.js hand the click to goBackSmart, which pops the history and falls
+            // back to the dashboard; then the behaviour itself, navigated there from somewhere known.
             page.evaluate("() => window.loadPage('forum')");
             page.waitForTimeout(1800);
             page.locator(".js-section").first().click();
             page.waitForTimeout(1800);
 
-            // The attribute is the point. `data-nav-back` makes pages.js hand the click to goBackSmart,
-            // which prefers the navigation history and only uses the argument as a fallback - so a
-            // section opened from the index would pop back to the index, which is exactly the previous
-            // screen the owner asked not to go back to. The button must navigate directly instead.
             Object backValue = page.evaluate(
                     "() => { const b = document.querySelector('.back-to-dashboard');"
                     + " return b ? { navBack: b.dataset.navBack ?? null,"
@@ -282,24 +287,28 @@ class CommunityInterfaceTest {
             @SuppressWarnings("unchecked")
             Map<String, Object> backAttrs = (Map<String, Object>) backValue;
             assertTrue(backAttrs != null, "the section screen has no Back button");
-            assertEquals(null, backAttrs.get("navBack"),
-                    "the Back button carries data-nav-back, so it pops the navigation history "
-                            + "and lands on the forum index instead of the dashboard");
-            // loadDashboard, not loadPage: the router's switch has no dashboard case, so loadPage
-            // falls through to "Page not found". Which is what happened first.
-            assertTrue(String.valueOf(backAttrs.get("onclick")).contains("loadDashboard"),
-                    "the Back button does not call loadDashboard directly: " + backAttrs);
+            assertEquals("dashboard", backAttrs.get("navBack"),
+                    "a section's Back is not the standard button - it carries navBack='"
+                            + backAttrs.get("navBack") + "' instead of \"dashboard\"");
+            assertEquals(null, backAttrs.get("onclick"),
+                    "the Back button has its own onclick, so it bypasses the shared history handling "
+                            + "and always goes to one place - the thing that was just removed");
 
+            // The behaviour: forum index -> a section -> Back returns to the index.
+            String sectionHeading = String.valueOf(page.evaluate(
+                    "() => (document.querySelector('.fm-club-hero h2') || {}).textContent || ''"));
             page.locator(".back-to-dashboard").click();
             page.waitForTimeout(2500);
+
             Object afterBack = page.evaluate(
-                    "() => ({ page: window.currentPageIdProbe || null,"
-                    + " dashboard: !!document.querySelector('.fm-dashboard-view') })");
+                    "() => ({ heading: (document.querySelector('.fm-club-hero h2') || {}).textContent || '',"
+                    + " notFound: document.body.textContent.includes('Page not found') })");
             @SuppressWarnings("unchecked")
             Map<String, Object> landed = (Map<String, Object>) afterBack;
-            assertEquals(Boolean.TRUE, landed.get("dashboard"),
-                    "Back from a forum section did not land on the dashboard. main-content starts: "
-                            + String.valueOf(page.evaluate("() => document.getElementById('main-content').innerHTML.slice(0, 200)")));
+            assertEquals(Boolean.FALSE, landed.get("notFound"), "Back landed on 'Page not found'");
+            assertEquals("Forum", String.valueOf(landed.get("heading")).trim(),
+                    "Back from '" + sectionHeading + "' went to '" + landed.get("heading")
+                            + "' instead of the previous screen");
 
             assertTrue(pageErrors.isEmpty(), "uncaught errors on the page: " + pageErrors);
         } finally {

@@ -82,7 +82,17 @@ export function createMessagesView(deps) {
             </div>`;
 
         main.querySelectorAll('.js-open-thread').forEach(button => {
-            button.addEventListener('click', () => loadMessageThread(button.dataset.threadId));
+            button.addEventListener('click', () => {
+                // Through the router, so it pushes the navigation history. Calling the view directly
+                // navigated without recording where from, and Back then popped whatever was open before
+                // the inbox rather than the inbox.
+                const threadId = button.dataset.threadId;
+                if (typeof window.loadPage === 'function') {
+                    window.loadPage('messageThread', { threadId });
+                } else {
+                    loadMessageThread(threadId);
+                }
+            });
         });
         main.querySelectorAll('.js-open-manager').forEach(button => {
             button.addEventListener('click', () => {
