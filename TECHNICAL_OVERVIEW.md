@@ -445,7 +445,7 @@ GET /club-cups/{key}?tier=N
 ```
 
 The World page links into `club-cup-view.js`, which renders each tier's groups, results and bracket. The
-three World rows report 48, 96 and 48 expected entrants. Small fields of 2–7 entrants now use a knockout
+three World rows report complete 48, 96 and 48 fields once a finished season exists. Small fields of 2–7 entrants now use a knockout
 path; two entrants play a direct final and odd fields carry a bye. The repair action durably creates
 missing international rows before filling static simulated-country tables, and the
 week-1 job repeats that durable repair boundary before drawing. The domestic cup draw is separately country-scoped

@@ -147,7 +147,6 @@ public class CountryController {
         // A world that is short of the catalogue is broken, not interesting, so it is surfaced rather
         // than rendered as a smaller world.
         out.put("complete", all.size() == CountryCatalog.all().size());
-        out.put("startRating", WorldCatalogSeeder.STARTING_RATING);
         // <b>Two numbers, both labelled for what they are.</b> This used to be one number called
         // "users" and rendered as "Human players", and it was `countByRoleIsNotNull()` — registered
         // accounts, every one of which has been counted since the day they registered. The owner's note
@@ -166,7 +165,9 @@ public class CountryController {
         // nothing to qualify from yet and the counts are honestly zero rather than invented. The
         // subtraction is guarded at 1: there is no season 0, so a world in season one qualifies nobody
         // rather than reading a season that was never played.
-        out.put("clubCups", internationalClubCups.summarise(Math.max(1, activeSeason - 1)));
+        // Season 1 has no finished domestic tables. Keep all international fields empty until season 2;
+        // displaying a partial field here would make the World page claim that a competition is running.
+        out.put("clubCups", internationalClubCups.summarise(activeSeason > 1 ? activeSeason - 1 : 0));
         return out;
     }
 

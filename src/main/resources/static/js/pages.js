@@ -870,10 +870,10 @@ function buildPageNavState(page, options = {}) {
 
         const badge = !known
             ? '<span class="fm-badge">Unavailable</span>'
-            : qualified > 0
-                ? `<span class="fm-badge fm-badge--ok">${qualified} / ${expected} qualified${
+            : qualified === expected
+                ? `<span class="fm-badge fm-badge--ok">${expected} qualified${
                     tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
-                : `<span class="fm-badge">0 / ${expected} qualified</span>`;
+                : `<span class="fm-badge">Not drawn yet</span>`;
 
         return `<tr class="fm-world-competition-row is-real" data-club-cup="${escapeHtml(key)}"
                     tabindex="0" role="link">
@@ -947,9 +947,7 @@ function buildPageNavState(page, options = {}) {
                         <dl class="fm-country-facts">
                             <div class="fm-country-fact"><dt>Countries</dt><dd>${world.totalCountries}</dd></div>
                             <div class="fm-country-fact"><dt>Active</dt><dd>${world.activeCountries}</dd></div>
-                            <div class="fm-country-fact"><dt>Registered</dt><dd>${world.registeredPlayers ?? '-'}</dd></div>
-                            <div class="fm-country-fact"><dt>Online now</dt><dd>${world.onlinePlayers ?? '-'}</dd></div>
-                            <div class="fm-country-fact"><dt>Starting rating</dt><dd>${world.startRating}</dd></div>
+                            <div class="fm-country-fact"><dt>Users</dt><dd>Registered ${world.registeredPlayers ?? '-'} · Online now ${world.onlinePlayers ?? '-'}</dd></div>
                         </dl>
                     </header>
 
@@ -962,10 +960,9 @@ function buildPageNavState(page, options = {}) {
                         <div class="fm-panel-head">
                             <h3>General</h3>
                         </div>
-                        <p class="fm-hint">Every country starts on ${world.startRating} and earns its rating
-                            from results. This world is not a replica of the real one.
-                            Online means a request in the last ${world.onlineWindowMinutes ?? 5} minutes &mdash;
-                            registered players is every account that has ever signed in.</p>
+                        <p class="fm-hint">This world is not a replica of the real one. Online means a request
+                            in the last ${world.onlineWindowMinutes ?? 5} minutes; registered users are every
+                            account that has signed in.</p>
                     </section>
 
                     <section class="fm-panel">

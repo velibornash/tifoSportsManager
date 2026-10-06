@@ -119,7 +119,8 @@ export function createCountryView(deps) {
                     ${(Array.isArray(tier.cups) ? tier.cups : []).map(cup => `
                         <div class="fm-qualifying-division">
                             <div class="fm-subtle">${htmlEscape(cup.cup)} · ${htmlEscape(cup.places)} place${cup.places === 1 ? '' : 's'}</div>
-                            <table class="fm-table fm-qualifying-table">
+                            <div class="fm-squad-wrap">
+                            <table class="fm-squad fm-league-table fm-qualifying-table">
                                 <thead><tr><th>Pos</th><th>Club</th><th>Pts</th><th>GD</th><th>Status</th></tr></thead>
                                 <tbody>${(Array.isArray(cup.standings) ? cup.standings : []).map(row => `
                                     <tr${row.qualifies ? ' class="is-qualified"' : ''}>
@@ -130,6 +131,7 @@ export function createCountryView(deps) {
                                         <td>${row.qualifies ? 'Qualifies' : 'Candidate'}</td>
                                     </tr>`).join('')}</tbody>
                             </table>
+                            </div>
                         </div>`).join('')}
                 </div>`).join('');
         return `

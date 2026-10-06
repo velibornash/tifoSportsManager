@@ -1,5 +1,12 @@
 # kanbanProgress.md — the append-only log
 
+## 2026-10-06 — World facts and first-season field correction
+
+Country qualifying tables now use the standard `fm-squad fm-league-table` markup. The World header groups
+registered and online values under Users and removes Starting rating. Season 1 no longer reads season 1 as
+its own finished qualifying season, and World club-cup badges show a field only when the complete 48/96/48
+field exists; partial fields remain Not drawn yet.
+
 ## 2026-10-06 — documentation reconciliation after international cup repair
 
 ## 2026-10-06 — P1-CUPS-1 four-slot calendar
