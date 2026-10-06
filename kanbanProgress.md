@@ -2,6 +2,113 @@
 
 ---
 
+## P0-CUPS-1 and P0-CUPS-2 — the group stage decides itself, and then it is decided by penalties
+
+Two commits, `aa195d4` and `d7a796f`. Both defects were on the board's P0 list as *"the draw is not
+wired"* and *"wire `MatchFormat` first"*, and **neither of those was the thing that was actually wrong.**
+
+### P0-CUPS-1 — a cup group table was never written
+
+`MatchType.countsForTable()` returned `this == LEAGUE`. `SimMatchService.persist()` gates
+`updateLeagueTable` on it. So **no cup match anywhere in this game ever wrote a table row.**
+
+`ensureTableRows()` creates the rows, so the table was not empty — it was *present and blank*, which is
+worse. `InternationalClubCupDraw.rankingWithin()` ranked eight blank rows by points, goal difference and
+goals scored, all zero, and fell through `LeagueTableOrder` to its last key: **team id**. The Champions
+Cup's "top two advance" was resolving to **the two lowest database ids in each group**.
+
+**Why twelve green tests never saw it:** `InternationalClubCupDrawTest` builds its played matches by
+hand — `matchRepository.save(match)` with a handful of setters — because `ensureKnockouts()` runs in its
+own transaction and needs the commit. So it exercises the **draw** and never the **write path**. The two
+halves were tested apart and neither test could fail, which is rule 3 of this repository happening for a
+fourth time in a new shape.
+
+The fix reads the fixture's own `groupCode`, copied onto `Match`:
+
+- `Match.groupCode` — new column, set in `persist()` from the fixture.
+- `MatchType.countsForTable(Match)` — `LEAGUE` always; `CUP` only when the match is in a group.
+- `LeagueTableReconciliationService:159` — passes the match, so a group table **rebuilds** correctly too.
+- The **no-argument overload was deleted**, not kept. It would still be right for a domestic cup and
+  wrong for a continental one, and nothing in its signature would say so.
+
+**Why not the round number.** A Champions Cup's rounds 1–5 *are* its group matchdays; a domestic cup's
+rounds 1–5 are knockout ties. Any rule built on `roundNumber` gets one of those two wrong, silently. There
+is a test whose only job is to hold two fixtures at the same round number with different group codes and
+prove both halves.
+
+#### Two mutations, and both of my own tests were wrong first
+
+The first run failed **twice, and neither failure was the code**:
+
+- `aDomesticCupTieDecidesNoTable` errored with *"no season row"* — my helper threw where the expected
+  answer *was* the absence. A negative assertion needs a null-returning lookup.
+- `aGroupRanksOnWhatItPlayed` said *"four points beats three"* and got the reverse. **My arithmetic was
+  wrong**: I had written five fixtures for a three-team group where a round robin has three, so both clubs
+  finished on four and the code correctly ordered them on goal difference.
+
+Rewritten so that **all three clubs finish on three points**, which makes the tie-break chain the only
+thing that can order them — the one scenario in which the old behaviour and the new behaviour cannot
+coincide.
+
+| Mutation | Result |
+|---|---|
+| `countsForTable` → `false` (the old rule) | **4 of 8 fail.** `aDomesticCupTieDecidesNoTable` still passes — correct, that half was never broken |
+| `countsForTable` → `CUP` (drop the group guard) | **2 fail**, both the negative assertions |
+| group rule intact, penalty rule → `true` | `aLevelGroupMatchIsNotSettledFromTheSpot` fails: `homePenaltyGoals` was **2** |
+| group rule intact, penalty rule → `false` | `aLevelKnockoutTieIsStillSettledFromTheSpot` fails |
+
+Regressions green: `InternationalClubCupDrawTest` 12, `InternationalClubCupsTest` 9,
+`ExhibitionChangesNothingTest` 9, `LeagueTableOrderTest` 5, `PenaltyShootoutTest` 11,
+`SimMatchPersistWiringTest` 5, `CupDrawSeedingTest` 8, `PromotionLadderTest` 5, new class 8.
+
+### P0-CUPS-2 — and then every group match went to penalties
+
+`isKnockoutTie()` was `type == CUP`. Its own comment had predicted this exact failure by name.
+
+**The recorded ordering constraint was right about the deadline and wrong about the shape.** Three
+comments said: wire `MatchFormat`, which needs a column, *before* wiring a group stage. `MatchFormat` is a
+**competition's** format and answers `goesToPenalties()` for the whole competition — but a Champions Cup
+**has two formats in one competition**: five group matchdays that may be drawn and five knockout rounds
+that may not. A column on `Competition` cannot hold "knockout for rounds 6–10, group for rounds 1–5".
+`MatchFormat`'s own `Tournament` subclass admits it in its javadoc — *"knockout rounds go to penalties and
+the group phase does not"* — a per-match distinction wearing a per-competition type.
+
+So the discriminator has to be per match, and P0-CUPS-1 had already put it there. `isKnockoutTie()` is now
+`CUP && !isGroupMatch(match)`: **one field, two rules, opposite senses, no migration and no new type.**
+
+`MatchFormat` is still unused. **That is now a finding, not a task** — it is the wrong shape for the
+question, so "wire it" was never reachable. Deleting it is on the list below rather than done here,
+because three documents cite it as the fix and that is the owner's call.
+
+### A pre-existing red, measured rather than assumed
+
+`CupFixtureSeederCountryTest` went **5 red** in the regression batch. Before blaming or reverting
+anything I ran the identical batch in a worktree at `95151e6` — the commit before any P0-CUPS code.
+
+**Same five failures.** So it is not mine, and it is not hypothetical: `seedIfMissing():142` filters on
+`type == CUP` **with no scope filter**, so it takes the lowest-id CUP row of any scope — which, once
+`InternationalClubCups` has created the 15 continental cups, is one of those. They have `country == null`,
+`rankedClubs():210` logs *"has no country; nothing to rank"*, and **the domestic cup is not drawn at all.**
+
+It also corrects a comment that has been wrong since it was written: `seedIfMissing` says `findAll()` was
+kept *"on purpose"* because `findFirst()` over an unordered result is a silent coupling. But `findAll()`
+**is** the unordered result — `findByType()` was never what made the choice deterministic, and dropping the
+scope filter is precisely what reintroduced the coupling. `primaryCup()` in the same class already does it
+correctly.
+
+**This is P0-CUPS-6, and it is not a test-isolation footnote.** P0-CUPS-4 makes those 15 rows exist in the
+running app. Left alone, the national cup — something the owner has played since before this board existed
+— goes quietly empty on the next boot.
+
+### Not verified, and worth saying plainly
+
+**No database was observed.** Every assertion here is an integration test against the real write path, and
+the group tables were read back out of `CompetitionEntry` after `persist()`. But AGENTS.md rule 2 asks for
+a job to be seen changing data, and that becomes answerable at **P0-CUPS-4**, when there is a job and a
+season to run. Until then "the group table is written" is a tested statement, not an observed one.
+
+---
+
 ## P0-CUPS — where the international club cups stand, 2026-10-06
 
 **Nothing in this block is implemented. This entry is the analysis, the decisions taken, and the order

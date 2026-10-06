@@ -299,6 +299,45 @@ than returning an empty `DrawResult`
 
 ---
 
+### P0-CUPS-6 — the domestic cup seed can pick a continental cup and then draw nothing
+
+**Found 2026-10-06, while running the P0-CUPS-1 and P0-CUPS-2 regressions.** Not hypothetical: it is the
+reason `CupFixtureSeederCountryTest` goes red the moment `InternationalClubCupDrawTest` runs first in the
+same JVM, and that pollution was measured to **predate P0-CUPS-1** (identical five failures at `95151e6`),
+so it is reported rather than introduced.
+
+`CupFixtureSeeder` picks its target two different ways, and they disagree:
+
+| Method | Selection | Scope filter |
+|---|---|---|
+| `primaryCup():293` — used by `drawRoundForWeek`, i.e. by the day-2 `CupDrawJob` | `findFirstNationalScoped(CUP, INTERNATIONAL, Limit.of(1))` | **yes** |
+| `seedIfMissing():142` — used by **boot** and by `WorldRepairService.repair("cup")` | `findAll().stream().filter(type == CUP).findFirst()` | **no** |
+
+So `seedIfMissing()` will take the **lowest-id CUP row of any scope**. The 15 continental cups are exactly
+that: `country == null`. `rankedClubs():210` then hits `cup.getCountry() == null`, logs *"Cup Champions Cup
+has no country; nothing to rank"*, and returns an empty list — and **the domestic cup is never drawn.**
+
+**Why this is P0 and not a test-isolation footnote:** P0-CUPS-4 makes those 15 rows exist in the running
+app. The day-2 job would then draw into the right competition while boot had already seeded the wrong one,
+and the national cup — a competition the owner has played since before this board existed — would go
+quietly empty. `seedIfMissing`'s own comment says the selection is *"already a parked owner decision"* and
+that making it deterministic *"belongs with the decision rather than inside a performance change"*. The
+performance change is long since made; the correctness half was left behind.
+
+The comment also records a false belief worth correcting: it says `findAll()` was kept *"on purpose"* so
+that `findFirst()` over an unordered result does not silently change which cup is picked. But
+`findAll()` **is** an unordered result — `findByType()` was not what made the choice deterministic, and
+removing the scope filter is what reintroduced the silent coupling. The fix is to select the same
+`primaryCup()` the rest of the class uses.
+
+**Exit criteria:**
+- [ ] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does
+- [ ] A boot with all 15 continental cups present still draws the domestic cup
+- [ ] **`CupFixtureSeederCountryTest` is green after `InternationalClubCupDrawTest` in one JVM** — the
+      regression that exposed this, written as a guard so it cannot come back
+
+---
+
 ## 🟠 P1-CUPS — the calendar, the slot model, and the two screens
 
 ### P1-CUPS-1 — a week has two slots and they are hardcoded to day 3 and day 7
