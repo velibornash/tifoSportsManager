@@ -423,14 +423,14 @@ worse than no test, so none was written.
 **Exit criteria:**
 - [x] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does (calls `primaryCup()`
       instead of `findAll()`)
-- [ ] The owner's **Option A — one cup per country** is implemented: a `CupDrawJob` taking a country
-      instead of one global draw. This is the remaining piece of P0-CUPS-6; until it lands, `seedIfMissing`
-      still picks "one cup" by lowest id.
+- [x] The owner's **Option A — one cup per country** is implemented: both `seedIfMissing()` and the
+      scheduled `drawRoundForWeek()` iterate every national cup and scope entrants to that cup's country.
+      International cup rows are excluded by `scope`.
 
-**Owner decision 2026-10-06: option A — one cup per country.** The decision is recorded, but the source
-still has the old global `CupDrawJob` and `CupFixtureSeeder.primaryCup()` path. Implementing the decision
-requires passing a country through the draw job and repair/bootstrap callers, then observing all 48
-domestic cups being drawn. Until that lands, the lowest-id domestic cup remains the production selector.
+**Owner decision 2026-10-06: option A — one cup per country.** Implemented in `CupFixtureSeeder`: the
+repair/bootstrap path and the scheduled job both iterate national cup rows, and each round resolves its
+survivors from that cup's country. The remaining evidence is live observation of all available country
+cups being drawn in a real world.
 
 ---
 

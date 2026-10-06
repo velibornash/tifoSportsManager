@@ -126,32 +126,8 @@ public class CupFixtureSeeder {
 
     @Transactional
     public void seedIfMissing() {
-        // **primaryCup(), not a stream over findAll() — P0-CUPS-6.**
-        //
-        // This used to be `findAll().stream().filter(type == CUP).findFirst()`, and the comment above it
-        // explained that findAll() was kept on purpose because "findFirst() over an unordered result is a
-        // silent coupling to whatever order the rows come back in". That was true and it did not apply:
-        // findAll() *is* the unordered result, findByType() was never what made the choice
-        // deterministic, and the one thing missing from the filter was **scope**.
-        //
-        // The filter said CUP and nothing else, so it took the lowest-id CUP row in the world whichever
-        // kind it was. InternationalClubCups creates fifteen continental cups with country == null, and a
-        // continental cup is a perfectly good answer to "the first CUP row". So the domestic cup seed
-        // took one, rankedClubs() hit `cup.getCountry() == null`, logged "has no country; nothing to
-        // rank", returned an empty list — and the national cup was never drawn.
-        //
-        // The class already had the right answer one method down. primaryCup() is the same "one cup"
-        // question answered with findFirstNationalScoped, and drawRoundForWeek() — the day-2 job — has
-        // always used it. Two methods in one class asking the same question and getting different answers
-        // is what made the national cup depend on the id ordering of fifteen rows it has no relationship
-        // to.
-        //
-        // The parked decision this comment used to defer to — one job drawing 48 national cups, or one
-        // draw per country — is untouched by this. primaryCup() picks one domestic cup, deterministically,
-        // exactly as it did for the matchday job. What changed is that boot and the job now agree.
-        // P0-CUPS-6 Option A: draw per active country (simulated skip per owner 2026-10-06).
-        // P0-CUPS-6 Option A (FINISHED): draw per active country — only active countries have cup.
-        // Simulated countries have no cup (owner clarification 2026-10-06: no international pass-through).
+        // P0-CUPS-6 Option A: draw every national cup independently. This keeps the repair path aligned
+        // with the scheduled path and avoids selecting one country by database id.
         List<Competition> nationalCups = competitions.findByTypeAndScope(CompetitionType.CUP, CompetitionScope.NATIONAL);
         int drawn = 0;
         for (Competition cup : nationalCups) {
@@ -199,8 +175,7 @@ public class CupFixtureSeeder {
         // did not match it - "a Serbia dependency expressed as a continue". Two things were wrong with
         // that. It scanned every club in the world to answer a question about one country, and the
         // country it settled on was whichever came first from an unordered query, so the draw silently
-        // depended on database row order. `primaryCup()` picks the lowest-id domestic cup, so once more
-        // than one country had a cup the field went to the wrong country's clubs.
+        // is scoped to the cup's country, so a second country's clubs cannot affect this field.
         if (cup == null || cup.getCountry() == null || cup.getCountry().getId() == null) {
             log.warn("Cup {} has no country; nothing to rank.", cup == null ? "null" : cup.getName());
             return new ArrayList<>();
@@ -260,56 +235,35 @@ public class CupFixtureSeeder {
      * half-drawn tournament is worse than an obviously empty one.
      */
     @Transactional
-    /**
-     * The country's own cup, by what it is rather than by where it sits in a list.
-     *
-     * <p>This used to be {@code findAll().stream().filter(type == CUP).findFirst()} — the first cup row
-     * the database happened to return. With one national cup that was fine. It is not fine now: there are
-     * sixteen CUP competitions, and "the first" is whichever one comes back, so the draw job could be
-     * drawing the Champions Cup on the national cup's calendar, with the national cup never drawn at all.
-     * A "find first" over a growing table is a silent coupling to insertion order.
-     *
-     * <p>The discriminator is {@code scope}. A domestic cup is {@code NATIONAL}; the Champions, Masters
-     * and Challenge cups are {@code INTERNATIONAL}, which is the only column that says the entrants come
-     * from several countries — and they have their own draw, their own week map and their own format, so
-     * running the national cup's round-for-week arithmetic over them was never going to be right.
-     */
-    /**
-     * The one cup this seeder draws, chosen by lowest id.
-     *
-     * <p>Was called {@code nationalCup()}, and the name was a lie in the direction that mattered: it
-     * queries {@code CompetitionScope.INTERNATIONAL}. Renamed to {@code primaryCup()}, because that is
-     * what it does -- pick one cup -- and because {@code INTERNATIONAL} here is a property of how the
-     * rows are stored rather than a claim that this is a continental competition. {@code
-     * findFirstNationalScoped} is misleadingly named for the same reason; renaming that is a wider
-     * change than this task, so the oddity is recorded here and in the repository instead.
-     */
-    private Competition primaryCup() {
-        return competitions.findFirstNationalScoped(CompetitionType.CUP, CompetitionScope.INTERNATIONAL,
-                        org.springframework.data.domain.Limit.of(1))
-                .orElse(null);
-    }
-
     public int drawRoundForWeek(int week) {
-        Competition cup = primaryCup();
-        if (cup == null) {
-            return 0;
-        }
         int round = roundForWeek(week);
         if (round <= 0) {
             return 0;
         }
-        long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
-                cup.getId(), seedSeason(), round);
-        if (existing > 0) {
-            return 0;
+        int drawn = 0;
+        List<Competition> nationalCups = competitions.findByTypeAndScope(
+                CompetitionType.CUP, CompetitionScope.NATIONAL);
+        for (Competition cup : nationalCups) {
+            if (cup.getCountry() == null || cup.getCountry().getId() == null) {
+                continue;
+            }
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
+                    cup.getId(), seedSeason(), round);
+            if (existing > 0) {
+                continue;
+            }
+            List<Team> survivors = survivorsOf(cup, round);
+            if (survivors.size() < 2) {
+                log.info("Cup {} ({}) round {}: {} survivor(s), nothing to pair.", cup.getName(),
+                        cup.getCountry().getIsoCode(), round, survivors.size());
+                continue;
+            }
+            int cupDrawn = drawRound(cup, round, survivors, seedSeason()).size();
+            drawn += cupDrawn;
+            log.info("Cup draw: {} tie(s) drawn for {} ({}) round {}.", cupDrawn, cup.getName(),
+                    cup.getCountry().getIsoCode(), round);
         }
-        List<Team> survivors = survivorsOf(cup, round);
-        if (survivors.size() < 2) {
-            log.info("Cup {} round {}: {} survivor(s), nothing to pair.", cup.getName(), round, survivors.size());
-            return 0;
-        }
-        return drawRound(cup, round, survivors, seedSeason()).size();
+        return drawn;
     }
 
     /**

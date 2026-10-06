@@ -421,9 +421,9 @@ entire season rollover has been observed end to end.
 ### 8.3 Domestic cup
 
 The domestic cup is a national competition represented by `Competition` plus `MatchFixture.roundNumber`;
-there is no separate `CupRound` entity. The current domestic draw code is still being narrowed to the
-owner's decision of one domestic cup per country. `CupFixtureSeeder` selects the primary cup for the
-draw path, while the board still has the open work to make the per-country operation explicit.
+there is no separate `CupRound` entity. The domestic draw is country-scoped: `CupFixtureSeeder` iterates
+every national cup for both repair and scheduled draw paths, and each cup ranks clubs from its own country.
+International cup rows are excluded by competition scope.
 
 The draw is deterministic from ranked entrants and does not use a coin flip to settle an unresolved
 winner. A cup field below the normal group threshold now has a small-field knockout path, but the

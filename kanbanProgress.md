@@ -14,8 +14,9 @@ these behaviours.
 
 Remaining work recorded from the source:
 
-- P0-CUPS-6: implement the owner’s decision to draw the domestic cup once per country. The current
-  `CupDrawJob` still calls the global `primaryCup()` selector.
+- P0-CUPS-6: implementation is complete. `CupFixtureSeeder` now iterates every national cup for repair
+  and scheduled rounds, scopes each field to its cup's country and excludes international rows. Live
+  observation of a repaired multi-country world remains open.
 - P0-CUPS-7: decide whether a two-club international cup should exist and finish the draw log assertion.
 - P0-CUPS-4: observe a real repaired world and cup page against the running database.
 - P1-CUPS-1: widen the calendar to four slots on days 1, 3, 5 and 7 while keeping league fixtures on days
