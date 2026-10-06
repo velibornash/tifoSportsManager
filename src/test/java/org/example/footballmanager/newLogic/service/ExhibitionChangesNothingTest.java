@@ -283,10 +283,25 @@ class ExhibitionChangesNothingTest {
     @Test
     @DisplayName("every type states what it counts for, and the exhibition counts for nothing")
     void theRulesLiveInTheType() {
-        assertTrue(MatchType.LEAGUE.countsForTable());
-        assertFalse(MatchType.CUP.countsForTable());
-        assertFalse(MatchType.FRIENDLY.countsForTable());
-        assertFalse(MatchType.EXHIBITION.countsForTable());
+        // A cup match is no longer a yes/no — it is a group match or not (P0-CUPS-1). Building the
+        // match here is the point: the old no-argument form answered false for every cup, which is
+        // right for a domestic cup and wrong for a Champions Cup group, and nothing in the signature
+        // said so.
+        Match league = new Match();
+        assertTrue(MatchType.LEAGUE.countsForTable(league));
+        assertFalse(MatchType.FRIENDLY.countsForTable(league));
+        assertFalse(MatchType.EXHIBITION.countsForTable(league));
+
+        Match groupMatch = new Match();
+        groupMatch.setGroupCode("A");
+        assertTrue(MatchType.CUP.countsForTable(groupMatch), "a cup group match decides its group's table");
+
+        Match knockout = new Match();
+        knockout.setRoundNumber(7);
+        assertFalse(MatchType.CUP.countsForTable(knockout),
+                "a cup tie with no group is a knockout tie and decides no table");
+        assertFalse(MatchType.CUP.countsForTable(new Match()),
+                "a cup match that was never put in a group decides no table");
 
         assertTrue(MatchType.LEAGUE.countsForRatings());
         assertTrue(MatchType.CUP.countsForRatings());

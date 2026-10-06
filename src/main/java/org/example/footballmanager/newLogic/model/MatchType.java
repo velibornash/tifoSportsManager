@@ -55,9 +55,40 @@ public enum MatchType {
         return label;
     }
 
-    /** Does this match decide a league table? */
-    public boolean countsForTable() {
-        return this == LEAGUE;
+    /**
+     * Does this match decide a competition table? — P0-CUPS-1.
+     *
+     * <p><b>It takes the match, and that is the correction.</b> This used to take nothing and answer
+     * yes for {@link #LEAGUE} only, which said <i>no</i> to every cup match — so the eight tables of a
+     * Champions Cup stayed at zero and "top two advance" fell through {@code LeagueTableOrder} to its
+     * last key, team id. Every group was decided by seed order before a ball was kicked. A rule that
+     * cannot see the match cannot answer a question about the match, so the no-argument form is gone
+     * rather than kept beside it: it would still be right for a domestic cup and wrong for a
+     * continental one, which is the worst shape a helper of this kind can have.
+     *
+     * <p>Group membership is read from the match's own {@code groupCode} rather than from its round
+     * number, because the two cups in this world disagree about what a round number means: the domestic
+     * cup's rounds 1–5 are knockout ties and the continental cups' rounds 1–5 are a group stage.
+     */
+    public boolean countsForTable(Match match) {
+        if (this == LEAGUE) {
+            return true;
+        }
+        return this == CUP && isGroupMatch(match);
+    }
+
+    /**
+     * Whether this match was played inside a cup group.
+     *
+     * <p>Null-safe both ways: a match that was never given a group still has an answer, and a
+     * competition with no group stage never sets one.
+     */
+    public static boolean isGroupMatch(Match match) {
+        if (match == null || match.getGroupCode() == null) {
+            return false;
+        }
+        String code = match.getGroupCode().trim();
+        return !code.isEmpty();
     }
 
     /**

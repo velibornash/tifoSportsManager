@@ -265,6 +265,10 @@ public class SimMatchService {
             match.setRoundNumber(fixture.getRoundNumber());
             match.setWeekNumber(fixture.getWeekNumber());
             match.setDayNumber(fixture.getDayNumber());
+            // Which cup group this was, if any (P0-CUPS-1). The fixture is the only thing that knows,
+            // and a played match has to remember it: the table rebuild reads played matches, not
+            // fixtures, and the penalty rule needs it too.
+            match.setGroupCode(fixture.getGroupCode());
             match.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate() : LocalDateTime.now());
             match.setHomeGoals(outcome != null ? outcome.homeGoals() : 0);
             match.setAwayGoals(outcome != null ? outcome.awayGoals() : 0);
@@ -367,7 +371,7 @@ public class SimMatchService {
                 }
             }
 
-            if (match.resolvedMatchType().countsForTable()) {
+            if (match.resolvedMatchType().countsForTable(match)) {
                 updateLeagueTable(match, outcome != null ? outcome.homeGoals() : 0,
                         outcome != null ? outcome.awayGoals() : 0);
             }

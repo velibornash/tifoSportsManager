@@ -91,6 +91,23 @@ public class Match {
     // match carried was the wall-clock one, so "which day of the season was that?" had no answer for a
     // played match - the fixture knew, the match did not.
     private Integer dayNumber;
+
+    /**
+     * The cup group this match was played in, copied from its fixture — P0-CUPS-1.
+     *
+     * <p><b>Null means "not in a group", and that single question is the whole of the cup rulebook.</b>
+     * A match in a group decides a table and is allowed to finish level; a match outside one decides
+     * nothing and must be settled. So this one field answers both, and it answers them from the match
+     * itself rather than by counting round numbers — because the two cups in this world disagree about
+     * what a round number means. The domestic cup's rounds 1–5 are knockout ties, and the continental
+     * cups' rounds 1–5 are a group stage.
+     *
+     * <p>It lives on the match, not just the fixture, because {@code LeagueTableReconciliationService}
+     * rebuilds a table from played matches and would otherwise have to re-read every fixture to know
+     * which of them were group matches.
+     */
+    private String groupCode;
+
     @ManyToOne(fetch = FetchType.LAZY)
     private Competition competition;
 

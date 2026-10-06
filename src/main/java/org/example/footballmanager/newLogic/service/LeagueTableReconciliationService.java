@@ -153,10 +153,14 @@ public class LeagueTableReconciliationService {
         // the competition — reintroducing exactly what the write path refused to add. The write path's
         // own guard cannot help here: a null competition skips it, and anything recorded *with* the
         // competition is counted here regardless.
+        //
+        // The type test now also carries group membership (P0-CUPS-1), because the match records the
+        // cup group it was played in. So a Champions Cup group table is rebuilt from its group matches
+        // and not from the knockout ties that follow, which is what a table is.
         List<Match> played = matches.findByCompetitionIdAndSeasonYear(league.getId(), seasonYear).stream()
                 .filter(Match::isPlayed)
                 .filter(m -> m.getHomeTeam() != null && m.getAwayTeam() != null)
-                .filter(m -> m.resolvedMatchType().countsForTable())
+                .filter(m -> m.resolvedMatchType().countsForTable(m))
                 .toList();
 
         for (Match match : played) {
