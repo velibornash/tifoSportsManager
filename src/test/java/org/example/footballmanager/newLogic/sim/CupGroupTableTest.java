@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Lineup;
+import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
@@ -20,6 +21,7 @@ import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.LineupRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -59,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class CupGroupTableTest extends BaseTest {
 
     @Autowired private SimMatchService simMatchService;
+    @Autowired private MatchRepository matchRepository;
     @Autowired private MatchFixtureRepository fixtureRepository;
     @Autowired private PlayerRepository playerRepository;
     @Autowired private TeamRepository teamRepository;
@@ -211,6 +214,79 @@ class CupGroupTableTest extends BaseTest {
                 "level on points, so the goal difference decides, and it must not be team id");
     }
 
+    // ---------- P0-CUPS-2: who has to be decided, and who may finish level ----------
+
+    /**
+     * A level cup group match stays level.
+     *
+     * <p>{@code isKnockoutTie()} used to be {@code type == CUP}, and its own comment named what would
+     * happen the day the group stage went live: *"every level group match is settled by a shootout."* So
+     * this asserts the two things that would be true then — {@code homePenaltyGoals} written, and a
+     * homeGoals/awayGoals pair that no longer matches what was played.
+     */
+    @Test
+    @Transactional
+    @DisplayName("a level cup group match stays level, with no shootout")
+    void aLevelGroupMatchIsNotSettledFromTheSpot() {
+        Competition cup = continentalCup("Champions Cup");
+        Team home = club("Shootout Home", cup);
+        Team away = club("Shootout Away", cup);
+
+        Long matchId = simMatchService.persist(
+                groupFixture(home, away, cup, "C", 5), score(home, away, 0, 0), -1L);
+
+        Match played = matchRepository.findById(matchId).orElseThrow();
+        assertNull(played.getHomePenaltyGoals(),
+                "a group match is scored as a draw; a shootout here decides the group on penalties");
+        assertNull(played.getAwayPenaltyGoals());
+        assertEquals(0, played.getHomeGoals());
+        assertEquals(0, played.getAwayGoals());
+    }
+
+    /**
+     * And the half that must not change: a level tie outside a group is still settled from the spot.
+     *
+     * <p>This is the behaviour the old rule got right, and it is load-bearing. The cup's winner lookup
+     * returns null for a level tie with no shootout recorded, logs "no shootout recorded", and drops the
+     * club — so without this a domestic cup cannot get past its first rounds.
+     */
+    @Test
+    @Transactional
+    @DisplayName("a level cup tie outside a group is still settled from the spot")
+    void aLevelKnockoutTieIsStillSettledFromTheSpot() {
+        Competition nationalCup = nationalCup("Kup Srbije");
+        Team home = club("Spot Home", nationalCup);
+        Team away = club("Spot Away", nationalCup);
+
+        Long matchId = simMatchService.persist(
+                knockoutFixture(home, away, nationalCup, 7, 10), score(home, away, 0, 0), -1L);
+
+        Match played = matchRepository.findById(matchId).orElseThrow();
+        assertNotNull(played.getHomePenaltyGoals(), "a knockout tie must have a winner");
+        assertNotNull(played.getAwayPenaltyGoals());
+        assertNotEquals(played.getHomePenaltyGoals(), played.getAwayPenaltyGoals(),
+                "a shootout that finished level decided nothing");
+        assertEquals(0, played.getHomeGoals(), "the shootout does not go into the scoreline");
+        assertEquals(0, played.getAwayGoals());
+    }
+
+    /** A league draw is not a cup tie and has never been settled from the spot. */
+    @Test
+    @Transactional
+    @DisplayName("a level league match is not settled from the spot")
+    void aLevelLeagueMatchIsNotSettledFromTheSpot() {
+        Competition league = league("Wiring League");
+        Team home = club("League Home", league);
+        Team away = club("League Away", league);
+
+        Long matchId = simMatchService.persist(
+                knockoutFixture(home, away, league, 4, 6), score(home, away, 1, 1), -1L);
+
+        Match played = matchRepository.findById(matchId).orElseThrow();
+        assertNull(played.getHomePenaltyGoals());
+        assertNull(played.getAwayPenaltyGoals());
+    }
+
     // ---------- helpers ----------
 
     private SeasonCompetition seasonCompetitionOf(Competition cup) {
@@ -243,6 +319,17 @@ class CupGroupTableTest extends BaseTest {
         Competition c = new Competition();
         c.setName(name);
         c.setType(CompetitionType.CUP);
+        c.setScope(CompetitionScope.NATIONAL);
+        c.setTeamType(CompetitionTeamType.CLUB);
+        c.setTier(1);
+        c.setCountry(countryRepository.save(country()));
+        return competitionRepository.save(c);
+    }
+
+    private Competition league(String name) {
+        Competition c = new Competition();
+        c.setName(name);
+        c.setType(CompetitionType.LEAGUE);
         c.setScope(CompetitionScope.NATIONAL);
         c.setTeamType(CompetitionTeamType.CLUB);
         c.setTier(1);

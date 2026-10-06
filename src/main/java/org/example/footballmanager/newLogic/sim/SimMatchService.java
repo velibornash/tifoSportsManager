@@ -11,6 +11,7 @@ import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.model.MatchType;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Team;
@@ -286,10 +287,9 @@ public class SimMatchService {
             // dropped the club — so every level tie cost a knockout round a team and the competition
             // could not get past its first rounds.
             //
-            // Only for a CUP. That is the whole of this game's knowledge of knockouts: Competition has
-            // no format column, so a cup tie is taken to be a knockout and a league match is not. A
-            // group stage would need a real flag, and pretending otherwise here would settle league
-            // draws from the spot.
+            // A CUP tie outside a group (P0-CUPS-2). A tie inside a cup group is scored as the draw it
+            // is; settling it from the spot would decide the group on penalties, and a Champions Cup
+            // decided by shootouts is not the competition the owner specified.
             if (isKnockoutTie(match) && match.getHomeGoals() == match.getAwayGoals()) {
                 try {
                     settleFromTheSpot(match);
@@ -541,24 +541,34 @@ public class SimMatchService {
     /**
      * Is this a tie that must be decided, rather than one that may finish level?
      *
-     * <p>It used to be {@code type == CUP}. That is right today and wrong the moment a cup has a group stage:
-     * a group match that ends level would be settled by a shootout, so a cup group would be decided entirely
-     * on penalties. The audit flagged exactly this and named {@code MatchFormat} as the fix — and
-     * {@code MatchFormat} already has {@code goesToPenalties()}, which is the question being asked here.
+     * <p><b>The answer is the same field the group table reads (P0-CUPS-2).</b> It used to be
+     * {@code type == CUP}, which said every cup tie had to be won — and its own comment named the
+     * consequence: *"the day {@code ensureGroupStage} is wired, every level group match is settled by a
+     * shootout."* A Champions Cup group stage decided on penalties is not a group stage, it is sixteen
+     * shootouts and a table nobody chose.
      *
-     * <p><b>It still has no caller from here, and that is the real finding.</b> Nothing carries a format:
-     * neither {@code Match} nor {@code Competition} has a {@code matchFormat} column, which is why
-     * {@code MatchFormat} has zero callers anywhere in the application. So the behaviour cannot be moved
-     * onto it without a schema change, and inventing one mid-fix would be a larger decision than this one.
+     * <p>So a cup match is a knockout tie exactly when it is <b>not</b> in a group. A cup group match
+     * may finish level and is scored as a draw; a domestic cup tie, which has no groups at all, is a
+     * knockout tie and always has been.
      *
-     * <p>What is done here: the predicate is named for what it means, the shootout path is guarded by an
-     * explicit comment about the group-stage hazard, and the one case that is unambiguous today — a cup
-     * match that has a playoff round number — is separated out. {@code PLAYOFF_WEEK} is the marker the cup
-     * itself uses for a decided tie, so a cup league-stage match is not treated as a knockout merely for
-     * being in a cup.
+     * <h2>About {@code MatchFormat}, and why this did not use it</h2>
      *
-     * <p>The ordering constraint on the board holds and is recorded: wire {@code MatchFormat} (which needs a
-     * column) <b>before</b> wiring a group stage.
+     * <p>Three comments in this repository, including the one above this method, said the fix was to
+     * wire {@code MatchFormat} and that a format column had to land <b>before</b> the group stage. That
+     * ordering constraint was right about the deadline and wrong about the shape.
+     *
+     * <p>{@code MatchFormat} is a <i>competition</i>'s format, and it answers {@code goesToPenalties()}
+     * for the whole competition. But a Champions Cup <b>has two formats in one competition</b>: five
+     * group matchdays that may be drawn, and five knockout rounds that may not. A column on
+     * {@code Competition} cannot hold "knockout for rounds 6–10, group for rounds 1–5". {@code
+     * MatchFormat}'s own {@code Tournament} subclass admits the problem in its javadoc — *"knockout
+     * rounds go to penalties and the group phase does not"* — which is a per-match distinction wearing a
+     * per-competition type.
+     *
+     * <p>So the discriminator has to be per match, and it already is: the match records the cup group it
+     * was played in. {@code P0-CUPS-1} put that field on {@code Match} for the table rule, and this
+     * method reads the same one with the opposite sense. One field, two rules, no migration and no new
+     * type. {@code MatchFormat} remains unused — see the board on whether to delete it.
      */
     private static boolean isKnockoutTie(Match match) {
         if (match.getCompetition() == null) {
@@ -568,10 +578,9 @@ public class SimMatchService {
         if (competition.getType() != CompetitionType.CUP) {
             return false;
         }
-        // No group stage exists yet, so every cup tie today is a knockout tie. This is the line the audit
-        // names: if a cup ever grows a league phase, this is the predicate that has to learn about it, and
-        // it must do so by consulting MatchFormat rather than by widening this expression.
-        return true;
+        // A cup tie outside a group has to be won. A tie inside one may finish level, and settling it
+        // from the spot would decide the group on penalties instead of on points.
+        return !MatchType.isGroupMatch(match);
     }
 
     /**
