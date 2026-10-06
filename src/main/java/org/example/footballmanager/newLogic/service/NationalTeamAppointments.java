@@ -92,17 +92,16 @@ public class NationalTeamAppointments {
             if (activeAppointment(country.getId(), level).isPresent()) {
                 continue;
             }
-            // There is no manager column on Team: a manager is a User whose app_user.cteam_id points
-            // at the club, and the ids are the same space. So the country's selector is the first user
-            // whose club sits in this country.
+            // The footballTeam foreign key is the only Team id source here. CTeam has a separate
+            // identity sequence and must never be compared with football Team ids.
             java.util.Set<Long> clubIds = teams.findClubTeamsForOperations().stream()
                     .filter(team -> team.getId() != null && team.getCountry() != null
                             && country.getId().equals(team.getCountry().getId()))
                     .map(Team::getId)
                     .collect(java.util.stream.Collectors.toSet());
             User manager = users.findAll().stream()
-                    .filter(u -> u.getCTeam() != null && u.getCTeam().getId() != null)
-                    .filter(u -> clubIds.contains(u.getCTeam().getId()))
+                    .filter(u -> u.getFootballTeam() != null && u.getFootballTeam().getId() != null)
+                    .filter(u -> clubIds.contains(u.getFootballTeam().getId()))
                     // Sorted by id, not left in findAll order: the owner must win, and repository
                     // order is arbitrary. Without this, Kecko was appointed ahead of Velja.
                     .sorted(Comparator.comparing(User::getId, Comparator.nullsLast(Comparator.naturalOrder())))

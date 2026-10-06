@@ -233,12 +233,12 @@ public class APIController {
         out.put("day", day);
         out.put("week", week);
 
-        if (viewer == null || viewer.getCTeam() == null) {
+        if (viewer == null || viewer.getFootballTeam() == null) {
             out.put("found", false);
             out.put("reason", "No club is attached to this account.");
             return out;
         }
-        Long teamId = viewer.getCTeam().getId();
+        Long teamId = viewer.getFootballTeam().getId();
 
         MatchFixture fixture = matchFixtureRepository
                 .findBySeasonYearAndWeekNumberAndDayNumber(season, week, day)

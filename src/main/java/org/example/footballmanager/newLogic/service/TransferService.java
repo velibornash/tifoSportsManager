@@ -627,7 +627,10 @@ public TransferDTO resolveListingObjection(Long playerId, ObjectionResolution re
             return;
         }
 
-        Set<Long> humanManagedTeamIds = new HashSet<>(userRepository.findDistinctManagedTeamIds());
+        List<Long> clubIds = allTeams.stream().map(Team::getId).toList();
+        Set<Long> humanManagedTeamIds = userRepository.findAllByFootballTeamIdIn(clubIds).stream()
+                .map(user -> user.getFootballTeam().getId())
+                .collect(Collectors.toSet());
 
         Map<Long, Transfer> transferByPlayerId = transferRepository
                 .findByStatusInAndBuyerTeamIsNull(EnumSet.of(TransferStatus.LISTED, TransferStatus.OFFER_RECEIVED)).stream()

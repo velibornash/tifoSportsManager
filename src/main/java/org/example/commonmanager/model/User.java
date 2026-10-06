@@ -175,13 +175,12 @@ public class User implements UserDetails {
      *   <li>{@code PlusFeatureService.viewerTeamId} once returned a {@code CTeam} id from a method
      *       every caller compared against {@code Team.id} (P0-18). It withheld the <b>owner's own
      *       players' talent}, because the owner is the one account the seeders gave a {@code tifoCTeam}.</li>
-     *   <li>{@code UserRepository.findDistinctManagedTeamIds} selects {@code u.tifoCTeam.id} — CTeam
-     *       ids — and is compared against {@code Team.getId()} in {@code TransferService}.</li>
-     *   <li>{@code APIController.myMatch}, {@code TeamController.getMatches/getSchedule} and
-     *       {@code CountryController.getLeagueMatches} each read {@code user.getTifoCTeam().getId()}
-     *       as though it were a {@code Team.id}.</li>
-     *   <li>{@code NationalTeamAppointments} walks clubs to users by claiming "the ids are the same
-     *       space", which is the same false premise written into a comment.</li>
+     *   <li>Football ownership now uses {@code footballTeam.id}; legacy {@code CTeam} ids are not
+     *       football {@code Team} ids and must not be compared with them.</li>
+     *   <li>The affected controllers now read the football-team foreign key instead of the legacy
+     *       {@code CTeam} id.</li>
+     *   <li>{@code NationalTeamAppointments} also walks users through {@code footballTeam}, so the
+     *       two identity sequences are never compared.</li>
      * </ul>
      *
      * <p><b>Why {@link #CTeam} stays.</b> It is the legacy footballtextmanager club and the other three

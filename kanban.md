@@ -1610,11 +1610,12 @@ The owner's specification, in full:
 | Scope of a ban | **Forum writing only.** Reading, messaging and the game are untouched |
 | Reaching a user's profile | **From the club: click the team, see who runs it, click him, see his profile** |
 
-### P0-20 — OPEN: the `CTeam`-id-as-`Team`-id confusion, still live in four places
+### P0-20 — DONE: football ownership uses `User.footballTeam`
 
 **Found while building the `User.footballTeam` FK (P2-20 Phase 1). Not fixed there, and deliberately so.**
 
-`User` now has a real FK to `Team`, which makes a fifth instance of this impossible. These four remain:
+`User` now has a real FK to `Team`, which makes a fifth instance of this impossible. The four affected
+paths now use that FK:
 
 | Where | What |
 |---|---|
@@ -1628,11 +1629,11 @@ is a query that answers with a plausible number rather than failing, which is wh
 P0-18.
 
 **Exit criteria:**
-- [ ] `findDistinctManagedTeamIds` deleted and `TransferService:630` reads `User.footballTeam.id`
-- [ ] `APIController.myMatch` resolves the club through `ClubOwnershipLinker`
-- [ ] `TeamController` / `CountryController` do the same
-- [ ] `NationalTeamAppointments` walks `Team → User` through the FK, and its comment is corrected
-- [ ] A test that fails if any of the four returns a `CTeam` id where a `Team.id` is needed
+- [x] `findDistinctManagedTeamIds` deleted and `TransferService` reads `User.footballTeam.id`
+- [x] `APIController.myMatch` reads the football-team FK
+- [x] `TeamController` / `CountryController` use the football-team ownership path
+- [x] `NationalTeamAppointments` walks `User.footballTeam` through the FK, and its comment is corrected
+- [ ] A dedicated regression test that fails if any of the four returns a `CTeam` id is still pending
 
 ---
 

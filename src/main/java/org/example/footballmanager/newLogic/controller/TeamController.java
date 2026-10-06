@@ -273,7 +273,7 @@ public class TeamController {
     @GetMapping("/{teamId}/matches")
     public ResponseEntity<List<MatchDTO>> getMatches(@PathVariable Long teamId,
                                                      @AuthenticationPrincipal User user) {
-        Long viewerTeamId = user != null && user.getTifoCTeam() != null ? user.getTifoCTeam().getId() : null;
+        Long viewerTeamId = clubOwnership.clubIdOf(user);
         Long dtoViewerTeamId = Objects.equals(viewerTeamId, teamId) ? viewerTeamId : null;
         List<MatchDTO> matches = matchRepository.findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(teamId, teamId)
                 .stream()
@@ -290,7 +290,7 @@ public class TeamController {
                                                                  @AuthenticationPrincipal User user) {
         // Who is asking, because this is the surface where a manager is most likely to see his own
         // result by accident: the schedule is the page a manager opens to see what is next.
-        Long viewerTeamId = user != null && user.getTifoCTeam() != null ? user.getTifoCTeam().getId() : null;
+        Long viewerTeamId = clubOwnership.clubIdOf(user);
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.notFound().build();

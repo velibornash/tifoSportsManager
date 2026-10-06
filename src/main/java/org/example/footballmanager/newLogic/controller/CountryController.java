@@ -762,7 +762,7 @@ public class CountryController {
         // The viewer, so his own result can stay hidden here too. This called the no-viewer form, which
         // means the DTO could never decide anybody was involved - so a league table of results showed
         // the manager his own scoreline before he had asked for it.
-        Long viewerTeamId = user != null && user.getTifoCTeam() != null ? user.getTifoCTeam().getId() : null;
+        Long viewerTeamId = plusFeatures.viewerTeamId(user);
         return matches.stream()
                 .map(m -> MatchDTO.from(m, viewerTeamId))
                 .collect(Collectors.toList());

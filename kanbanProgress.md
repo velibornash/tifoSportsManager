@@ -60,6 +60,13 @@ The local PostgreSQL check now finds `team.supporter_mood integer default 60`, s
 observation is stale for the current database. End-to-end matchday advancement and a real-schema guard
 remain unverified; no application code was changed.
 
+## 2026-10-06 — P0-20 football ownership ids
+
+Replaced the remaining `CTeam`-id comparisons with `User.footballTeam` ids in `APIController`,
+`TeamController`, `CountryController`, `TransferService` and `NationalTeamAppointments`. Removed the
+unused `findDistinctManagedTeamIds` repository query and corrected its model documentation. The main
+source compiles; a dedicated regression test is still pending.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
