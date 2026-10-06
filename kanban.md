@@ -488,7 +488,7 @@ mine. **Every P0-CUPS commit stages only its own files.** The tree compiles as o
 
 ## 🟠 P1-CUPS — the calendar, the slot model, and the two screens
 
-### P1-CUPS-1 — a week has two slots and they are hardcoded to day 3 and day 7
+### P1-CUPS-1 — superseded by owner confirmation: the calendar keeps 2 slots (day 3, 7)
 
 `SeasonCalendar` models a week as exactly `SLOTS_PER_WEEK = 2`, `SLOT_ONE_DAY = 3`, `SLOT_TWO_DAY = 7`, and
 `assertSlotsMatchTemplate()` **throws at class load** if a slot lands on any other day. The model therefore
