@@ -1983,10 +1983,10 @@ that boot no longer performs.
 
 # 🔖 Suite state — MEASURED 2026-10-06
 
-**`mvn test`: 1360 tests, 14 failures, 6 errors, 20 red, ~21 min**, run with the app up on `:8080` and
+**`mvn test`: 1363 tests, 14 failures, 6 errors, 20 red, ~21 min**, run with the app up on `:8080` and
 allowed to finish.
 
-**20 red, down from 32** on 2026-10-04. **Every one of the eleven P2-20 classes is green** — 143 tests across
+**20 red, down from 32** on 2026-10-04. **Every one of the P2-20 classes is green** — 144 tests across twelve of
 them, listed in `kanbanProgress.md`. Two of the twenty were this work's, and both were found and fixed
 inside it: a `readUnreadCount` import that Phase 6's full run caught, and the browser check that now covers
 that class of bug.

@@ -193,7 +193,9 @@ in mind, not because you are reading the first letters off a list.
 
 **1,359 tests, 15 failures, 7 errors, 22 red, ~21 minutes**, app up on `:8080`, allowed to finish.
 
-Re-run after the browser check: **1,360 tests, 14 failures, 6 errors, 20 red.** Every P2-20 class green.
+Re-run twice more since, after the browser check and after the owner's six interface corrections:
+**1,363 tests, 14 failures, 6 errors, 20 red.** Every P2-20 class green, and the same 20 red with the
+same names - so nothing this work did made one worse or fixed one.
 
 **One of the twenty-two was this work's, and the full run is the only thing that found it.**
 
@@ -266,7 +268,8 @@ recording as such rather than as 20 undifferentiated failures.
 | `RegistrationQueueIsOnTheAdminTabTest` | 8 |
 | `ManagerIsVisibleOnAClubTest` | 6 |
 | `CommunityScreensRenderTest` | 1 (browser, 28 s) |
-| **Total** | **138** |
+| `CommunityInterfaceTest` | 1 (browser, 23 s, six measured corrections) |
+| **Total** | **139** |
 
 Plus `ViewerTeamIdIsATeamIdTest` (6), `CommunityScreensRenderTest`'s predecessor `CountryPageRendersTest` (1,
 now green again), and the four existing classes whose constructors had to change for the `UserRoles`
