@@ -188,6 +188,14 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+        if (action === 'create-backup') {
+            await createBackup(button);
+            return;
+        }
+        if (action === 'restore-backup') {
+            await restoreBackup(button.dataset.backupName);
+            return;
+        }
         if (action === 'seed-other-nations') {
             // A job, not a repair: this one takes minutes, so it goes through the polling job path the
             // reset and initialise buttons use rather than runRepair(), which expects a reply now.
@@ -281,6 +289,110 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
      * place in the admin where a click writes 7,750 rows, so the list is cheap to read and the button
      * is the expensive part — with the size stated on the button rather than discovered afterwards.
      */
+    /**
+     * Dumps the database and reports what was written.
+     *
+     * <p>Not runRepair(): that ends by re-reading the world, which a dump does not change, and it
+     * reports the server's whole payload, which for a dump is one file name and a size.
+     */
+    async function createBackup(button) {
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Dumping...';
+        try {
+            const res = await authFetch('/admin/backups', { method: 'POST' });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Backup failed: ${body.message || body.error || res.status}`);
+                return;
+            }
+            const backup = body.backup || {};
+            window.alert(`Backup written: ${backup.name}\n\n${backup.bytes} bytes at ${backup.createdAt}`);
+        } catch (err) {
+            window.alert(`Backup failed: ${err.message}`);
+        } finally {
+            button.textContent = original;
+            button.disabled = false;
+            await showBackups();
+        }
+    }
+
+    /**
+     * Puts a dump back, after saying plainly what it costs.
+     *
+     * <p>A restore replaces the world. The file being restored is named in the confirmation, because
+     * "are you sure?" without saying which file is a question nobody can answer.
+     */
+    async function restoreBackup(name) {
+        if (!name) return;
+        const confirmed = window.confirm(
+            `Replace the database with ${name}?\n\n` +
+            'Everything in the current database is destroyed: countries, clubs, players, fixtures and ' +
+            'results. The dump has to be a complete backup of this application for the restore to succeed.\n\n' +
+            'The application has to be restarted afterwards, because it is connected to the database it ' +
+            'just replaced.');
+        if (!confirmed) return;
+        try {
+            const res = await authFetch(`/admin/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Restore failed: ${body.message || body.error || res.status}`);
+                return;
+            }
+            const restored = body.restore || {};
+            window.alert(restored.note || 'Database restored.');
+        } catch (err) {
+            window.alert(`Restore failed: ${err.message}`);
+        } finally {
+            await showBackups();
+        }
+    }
+
+    /**
+     * The dumps on the server, newest first.
+     *
+     * <p>Rendered as a table rather than more tool cards because the count grows without limit and
+     * the only question the list answers is "which one do I restore", which is a per-row decision.
+     */
+    async function showBackups() {
+        const host = document.getElementById('fm-backups');
+        if (!host) return;
+        try {
+            const res = await authFetch('/admin/backups');
+            if (!res.ok) throw new Error('unavailable');
+            const rows = (await res.json()).backups || [];
+            if (!rows.length) {
+                host.innerHTML = '<p class="fm-subtle">No backups yet. Create one above.</p>';
+                return;
+            }
+            host.innerHTML = `
+                <table class="fm-table">
+                    <thead>
+                        <tr><th>Backup</th><th>Taken</th><th>Size</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(row => `
+                            <tr>
+                                <td>${escapeHtml(row.name)}</td>
+                                <td>${escapeHtml(row.createdAt || '')}</td>
+                                <td>${row.bytes} B</td>
+                                <td>
+                                    <button type="button" class="fm-action-btn"
+                                        data-admin-action="restore-backup"
+                                        data-backup-name="${escapeHtml(row.name)}">Restore</button>
+                                </td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>`;
+            // These rows are rendered after the panel's one-off listener pass, so they bind here.
+            host.querySelectorAll('[data-admin-action="restore-backup"]').forEach((button) => {
+                button.addEventListener('click', () => handleTool(button));
+            });
+        } catch (err) {
+            host.innerHTML = '<p class="fm-subtle">Could not read the backups.</p>';
+        }
+    }
+
     async function showCountryActivation() {
         const host = document.getElementById('fm-activation');
         if (!host) return;
@@ -655,6 +767,28 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
+                            <h3>Database backup</h3>
+                            <p class="fm-subtle">Dumps the whole database to a timestamped file on the server,
+                                and reads one back. Take a dump when the world is in a state you want to keep
+                                — a clean season 1, week 1, day 1 with everything seeded and drawn.</p>
+                        </div>
+                        <span class="fm-panel-action">Backup</span>
+                    </div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Create backup',
+                            body: 'Writes the entire database to yyyy-mm-dd-HH-mm-ss.dump. It only reads, so it is safe to run at any time.',
+                            action: 'create-backup',
+                            label: 'Create backup',
+                            variant: ''
+                        })}
+                    </div>
+                    <div id="fm-backups"><p class="fm-subtle">Reading...</p></div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
                             <h3>World integrity</h3>
                             <p class="fm-subtle">What the world actually holds right now. Repair tops up
                                 what is missing and keeps what is there.</p>
@@ -779,6 +913,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         void showCountryActivation();
         void showUserManagement();
         void showRegistrationQueue();
+        void showBackups();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

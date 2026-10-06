@@ -57,3 +57,9 @@ replay-data/
 manual/img/
 manual/index.html
 manual/manifest-*.txt
+
+# Database dumps written by the admin "Create backup" button (owner, 2026-10-06).
+# A dump is a copy of a world, not source: it is large, it changes every time it is taken, and it
+# belongs on the server that can restore it rather than in the repository.
+backups/
+*.dump

@@ -2255,6 +2255,84 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Admin database backup and restore — owner, 2026-10-06
+
+> *"teba dodati dve funkcionalnosti u Admin deo - jedna je da celu bazu (npr kad postavim cistu bazu na
+> pocetku season 1 week 1 day 1 sa svim timovima seed i svi kupovi draw i sve mi bude ok ili prosto
+> sutradan za backup) uradi backup/dump i naziv je yyyy-mm-dd-HH-mm-ss, a druga da iscita iz backupa bazu
+> i zameni umesto postojece"*
+
+**Exit criteria:**
+
+- [x] **A dump of the whole database, named `yyyy-mm-dd-HH-mm-ss.dump`.** `pg_dump --format=custom`,
+      written to `backups/` (gitignored — a dump is a copy of a world, not source). **The real world dumps
+      to 2.0 MB in ~1 second**, 250 tables, so the button is fast enough to press whenever the state is
+      good rather than only at the end of a session.
+- [x] **A restore that replaces the database.** Validates the archive, **then** drops the schema, then
+      replays it. The ordering is the feature — see below.
+- [x] **The list of backups, and restore per row**, on the admin panel, with the file named in the
+      confirmation. A restore that asks "are you sure?" without saying *which file* is a question nobody can
+      answer.
+- [x] **`/admin/**` role guard holds**, and the `.dump` extension survives the path variable
+      (`AdminBackupControllerTest` 5/5).
+
+**Three decisions that were not obvious:**
+
+1. **The archive is proved readable before anything is dropped.** `pg_restore --list` reads the archive's
+   table of contents without touching the database, so a truncated file fails **before** the schema goes.
+   **Re-proven by moving the drop first:** `aCorruptArchiveIsRefusedBeforeAnythingIsDropped` then fails
+   with `relation "roundtrip_marker" does not exist` — the world is gone and the restore never happened.
+2. **`drop schema public cascade`, not `pg_restore --clean`.** `--clean` drops objects one at a time in
+   the archive's own order and can stop halfway through a dependency chain, which is how a restore ends
+   with half the old world and half the new one. One statement cannot.
+3. **The client tools are chosen against the server, not taken from `PATH`.** See the environment note
+   above: Homebrew's 16.15 cannot read this 18.4 server. Resolved over JDBC; `app.backup.pg-tools`
+   overrides.
+
+**No shell, ever.** Every command is a `ProcessBuilder` list, so a filename from a request can never
+become a command. The password goes in `PGPASSWORD`, not in an argument, so it does not appear in `ps`
+output to every other process on the machine. **stdin is closed**, because a client tool that decides to
+ask a question — `force?`, `password?` — would otherwise read from the console and hang the request
+forever; that is not hypothetical, it hung the first version of the round-trip test.
+
+**A restore needs a restart**, and says so in its own response: the process that just replaced the
+database still holds a connection pool and a persistence context built against the old one.
+
+**Tests:** `DatabaseBackupServiceTest` 6/6 (naming, traversal, listing, refusals — no database needed,
+because the checks that protect a destructive operation must hold on a machine where running it would be
+harmless), and `DatabaseBackupRoundTripTest` **4/4 against real PostgreSQL 18** on a scratch database named
+`sokker_roundtrip_scratch`, dropped and recreated per test. Dump, change, restore, and the change is gone.
+It refuses to start if that name does not carry its marker — a destructive test whose target is a constant
+in a test file is one edit away from dropping the owner's world.
+
+---
+
+## ✅ Notifications: the bell rings and has a red dot — owner, 2026-10-06
+
+> *"kada ima nesto u notification, idealno i neki ring zvuk da se cuje a i da se pojavi neka crvena tacka
+> na zvoncetu koje je ikonica ili tako nesto, i broj neprocitanih mozda 9ne obavezno ali nice to have"*
+
+- [x] **The unread count was already there** — `notification-badge`, painted since 2026-10-05, with
+      `NotificationService.list` returning it beside the rows so badge and dropdown cannot disagree.
+- [x] **A red dot on the bell**, top-left so it does not collide with the count on the right, drawn as a
+      pseudo-element so no template edit can remove it, with a `prefers-reduced-motion` guard that drops
+      the pulse and keeps the mark.
+- [x] **A ring on arrival**, synthesised with Web Audio (two notes a fifth apart — a "ting-ting", not an
+      alarm; most of these are forum replies). No audio file added.
+- [x] **It rings on an INCREASE, not on "there is something unread".** The poll runs every 30 seconds for
+      as long as the tab is open, so the obvious version rings every 30 seconds for the rest of the
+      session. The baseline is `null`, not `0`, so signing in with four unread is not an arrival.
+- [x] **It fails silently.** Browsers block audio until the page is interacted with and the refusal is a
+      *rejected promise* — unhandled, that is a console error on the dashboard, and
+      `CommunityScreensRenderTest` fails on console errors.
+
+`NotificationBellAlertTest` **5/5**, and both guards **re-proven by breaking them**: the `unread > 0`
+version fails the increase test, and renaming the CSS selector so the JS's class has no styling fails the
+dot test — which is exactly how this bug would arrive in production, the class set, a JS-only test green,
+and no dot on screen.
+
+---
+
 ## 🔧 P2-21 — mobile: the iPhone 14 Pro Max pass, 2026-10-06
 
 **Reference device: iPhone 14 Pro Max, portrait — 430 × 932 CSS px at DPR 3.** Measured in Chromium at

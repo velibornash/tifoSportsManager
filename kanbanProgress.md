@@ -1,5 +1,163 @@
 # kanbanProgress.md — the append-only log
 
+## The whole database, dumped and put back (owner, 2026-10-06)
+
+### What was asked for
+
+> **teba dodati dve funkcionalnosti u Admin deo** — one that dumps the whole database, named
+> `yyyy-mm-dd-HH-mm-ss`, so a clean season 1 week 1 day 1 world can be kept; and one that reads a backup
+> back and **replaces** the existing database.
+
+### What it measures like, in the end
+
+A dump of the real world: **2.0 MB, 250 tables, about one second.** Small enough that the button is worth
+pressing whenever the state is good, rather than saved for the end of a session — which is the only reason
+a backup gets taken at all.
+
+### The order of operations is the feature
+
+A restore is the most destructive thing in the application, so the sequence is deliberate:
+
+1. **`pg_restore --list` reads the archive's table of contents.** It touches no database, so a truncated
+   file or a dump of another server fails **before** anything is dropped.
+2. **Only then `drop schema public cascade`**, as one statement.
+3. **Then replay**, with `--exit-on-error` so a partial restore is reported rather than half-succeeded.
+
+**Re-proven by moving step 2 first.** `aCorruptArchiveIsRefusedBeforeAnythingIsDropped` then fails with
+`relation "roundtrip_marker" does not exist` — the world is gone, and the restore never happened. That is
+what the ordering is for.
+
+`pg_restore --clean` was the obvious alternative and is worse: it drops objects one at a time in the
+archive's own order and can stop halfway through a dependency chain, which is how a restore ends with half
+the old world and half the new one.
+
+### Three things that were bugs before they were features
+
+- **`--file` is a `pg_dump` option.** Given to `pg_restore` it is ignored, so the tool reads **standard
+  input**, finds nothing, and fails with *"input file is too short (read 0, expected 5)"* — a complaint
+  about a short file when the file was never opened. The archive is positional.
+- **`show server_version_num` returns `180004`**, not `"18.4"`. Splitting it on a dot compared 180004
+  against 16 and rejected every tool on the machine.
+- **stdin is inherited by default.** `dropdb` asked *"force?"* and waited on the console forever. This is
+  not hypothetical: it hung the first version of the round-trip test. stdin is now `/dev/null`, so a tool
+  that asks a question fails at once.
+
+### The client tools are chosen against the server
+
+`pg_dump` refuses to read a newer server, and here they do not match: the server is **Postgres.app 18.4**,
+the `pg_dump` first on `PATH` is **Homebrew 16.15**. A backup built naively on `PATH` fails every single
+time with a message about versions rather than about backups.
+
+So the tools are **resolved, not trusted**: the server's major version is read over JDBC — the driver is
+already there, so it cannot itself be mismatched — and the first client whose major version is new enough
+wins. Postgres.app's bundled tools are among the candidates. `app.backup.pg-tools` overrides the search.
+
+### No shell, ever
+
+Every command is a `ProcessBuilder` list, so a filename from a request can never become a command. The
+password is passed in **`PGPASSWORD`**, not as an argument, so it does not appear in `ps` output for every
+other process on the machine. A restore **name** is validated three times over: the shape, no `..`, and the
+resolved path still inside the backup directory.
+
+A restore returns a note saying **the application must be restarted** — the process that just replaced the
+database still holds a connection pool and a persistence context built against the old one.
+
+### Tests
+
+`DatabaseBackupServiceTest` **6/6** — naming, traversal, listing, refusals, and **no database needed at
+all**, because the checks that protect a destructive operation have to hold on a machine where performing
+the operation would be harmless.
+
+`DatabaseBackupRoundTripTest` **4/4 against real PostgreSQL 18**, on a scratch database named
+`sokker_roundtrip_scratch`, created and dropped per test: dump, change, restore, **the change is gone**.
+It refuses to start if that name does not carry its marker — a destructive test whose target is a constant
+in a test file is one edit away from dropping the owner's world, so the check has to live in the same file
+as the edit. Skipped rather than failed where there is no PostgreSQL, since the rest of the suite runs on
+H2.
+
+`AdminBackupControllerTest` **5/5**: a non-admin is refused on all three routes, the list answers, an
+invalid name is a **400 in plain words**, and **`.dump` survives the path variable** — Spring can be
+configured to strip a file extension, which would turn every restore into a "not a backup name" refusal.
+
+---
+
+## The bell rings, and the bell has a red dot (owner, 2026-10-06)
+
+### What was asked for
+
+> **kada ima nesto u notification, idealno i neki ring zvuk da se cuje a i da se pojavi neka crvena tacka
+> na zvoncetu koje je ikonica ili tako nesto, i broj neprocitanih mozda 9ne obavezno ali nice to have**
+
+The unread count already existed — `notification-badge`, painted by `paintBell` since 2026-10-05, and
+`NotificationService.list` returns it alongside the rows precisely so the badge and the dropdown cannot
+disagree. So the third item was already met and the work was the first two.
+
+### The red dot is a second mark, not a second badge
+
+The number says whether anything is unread, and it was already there. What it does not do is get
+*noticed* — a manager looking at the middle of the dashboard does not read a number in the corner of the
+top bar in peripheral vision, but he does see a shape change colour. So:
+
+- `bell.classList.toggle('has-unread', unread > 0)`, and the CSS draws the dot with
+  `.notification-bell.has-unread::after`.
+- **Placed top-left**, because the count badge owns top-right. Both showing at once must not overlap, and
+  the top-left is the one corner of the glyph no other mark on that button claims.
+- **A pseudo-element, not a child of the button.** The bell markup is shared in `dashboard.html` with the
+  count badge, and a dot that needs an element to exist is a dot a template edit can silently remove.
+- A 1.4s pulse, and `prefers-reduced-motion: reduce` drops **the movement only** — the dot and the count
+  still say what is unread.
+
+### The ring fires on an increase, and that is the whole design
+
+The poll runs **every 30 seconds for as long as the tab is open**. The obvious implementation —
+`if (unread > 0) ring()` — passes every static look and rings every 30 seconds for the rest of the
+session, which is the fastest available way to make a manager mute a tab. So:
+
+```js
+if (lastSeenUnread !== null && unread > lastSeenUnread) { playNotificationChime(); }
+lastSeenUnread = unread;
+```
+
+- **Tied to the count rising**, which is the actual event the owner described.
+- **The baseline is `null`, not `0`.** Starting at zero rings for the four notifications a manager
+  already had when he signed in — a backlog he owns, not an arrival.
+- **A drop never rings**, so reading on the phone and then looking at the laptop does not set off an alarm
+  on the laptop.
+
+### Synthesised, and silent when it cannot play
+
+The chime is **two Web Audio oscillator notes a fifth apart**, the second quieter and later — a
+"ting-ting" rather than an alarm, because most of these are somebody replying in a forum. No `mp3` in the
+repository, nothing to download, nothing to maintain, and no 40 KB asset kept forever for a two-note sound.
+
+**It fails silently, and that is not politeness.** Browsers block audio until the page has been interacted
+with, and the refusal arrives as a *rejected promise*, not a throw. Left unhandled it becomes a console
+error on the dashboard — and `CommunityScreensRenderTest` treats a console error as a failure, so "no sound
+until you click" would have broken a test that has nothing to do with notifications. A suspended
+`AudioContext` is closed and left alone; the context is closed after the chime so a long session does not
+accumulate one per arrival.
+
+### Tests
+
+`NotificationBellAlertTest` — **5/5**, a source scan with comments stripped, because the rule being
+protected is *which comparison the shipped file contains*, and exporting `announceNewArrivals` for a test
+would not make the shipped bell any more correct.
+
+| Test | Pins |
+|---|---|
+| `theBellHasADotAndTheCount` | the class is set from the count; the badge is still painted |
+| `theRingNeedsAnIncreaseNotMerelyUnread` | `unread > lastSeenUnread`, baseline is null, and no `= 0` |
+| `theRingIsSilentWhenItCannotPlay` | AudioContext, a `catch`, a suspended-context guard |
+| `reducedMotionIsRespected` | the pulse is dropped, the mark is not |
+| `theFilesAreReal` | the scan is not measuring a file that is not served |
+
+**Both guards re-proven by breaking them.** Setting the condition to `unread > 0` and the baseline to `0`
+fails `theRingNeedsAnIncreaseNotMerelyUnread`. Renaming the CSS selector so the class the JS sets has no
+styling fails `theBellHasADotAndTheCount` — which is the failure a real bug here would produce: the class
+is set, the test that only checked the JS passes, and no dot ever appears.
+
+---
+
 ## A senior national side is called Germany, not "Germany National Team" (owner, 2026-10-06)
 
 ### What was asked for
