@@ -54,6 +54,12 @@ fixture match's group marker, so cup and national qualifying groups can draw whi
 penalty path. `MatchFormat` was removed by the owner because its competition-wide shape could not express
 the two formats inside one competition.
 
+## 2026-10-06 — P0-19 schema observation
+
+The local PostgreSQL check now finds `team.supporter_mood integer default 60`, so the old missing-column
+observation is stale for the current database. End-to-end matchday advancement and a real-schema guard
+remain unverified; no application code was changed.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup

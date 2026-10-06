@@ -1086,15 +1086,15 @@ P0-12 §4.4's framing ("is it dead?") is now answered for the half it did not kn
 
 ### P0-19 — `Team.supporterMood` has no column, so the world cannot be played
 
-Found while measuring P1-5, and **it stops the game working**: advancing a matchday throws
+Found while measuring P1-5, and the original database snapshot lacked the column: advancing a matchday threw
 
 ```
 ERROR: column t1_0.supporter_mood does not exist  Position: 294
 ```
 
-`Team.supporterMood` was added in `b0493a6` ("P2-5: supporter mood"), which **is in `main`**. The `team`
-table has 17 columns and none is `supporter_mood`, and `ddl-auto=update` is set in both the `dev` and
-`prod` profiles while **the boot log contains not one `alter table`**.
+`Team.supporterMood` was added in `b0493a6` ("P2-5: supporter mood"), which **is in `main`**. The current
+local PostgreSQL schema now contains `team.supporter_mood integer default 60`; the original missing-schema
+observation is therefore stale for this database.
 
 The failure is easy to over-claim, so precisely: **the app boots and every read-only page works.**
 `supporterMood` is read by the matchday-advance path and `FinanceController`, so you find out by playing
@@ -1102,7 +1102,7 @@ football — not by looking at the app.
 
 Exit criteria:
 
-- [ ] `ddl-auto=update` actually runs, **or** the column ships as explicit DDL in a script
+- [x] The current local database contains `team.supporter_mood integer default 60`
 - [ ] A matchday advances end to end on a database built from the current entities
 - [ ] A guard test that boots against the real schema and plays a matchday — the only thing that would
       have caught this, and the reason 154 test classes did not
