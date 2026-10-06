@@ -87,8 +87,8 @@ Remaining work recorded from the source:
 - P1-CUPS-2: verify and simplify the training contract after the zero-cost friendly change.
 - P1-CUPS-3: expose country-level international qualifying tables and decide whether they are derived or
   persisted and refreshed by a job.
-- P2-10/P2-12: build the national tournament view and country competition tab. The World rows are currently
-  unavailable; the backend endpoint and admin controls exist.
+- P2-10/P2-12: implementation is complete. The World rows and country national-team summaries link to the
+  shared national tournament view; live browser verification remains open.
 - National-team injuries still need live verification, and the pre-existing national-rating test remains
   red.
 - Friendly UI still lacks an invite action, national-team acceptance and the free-slot board.

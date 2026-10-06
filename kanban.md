@@ -235,7 +235,7 @@ state the ordering constraint as **wire `MatchFormat` before wiring a group stag
 - [x] A 0-0 **knockout** match goes to penalties exactly as it does today
 - [x] The per-match group marker is the caller-level discriminator; `MatchFormat` was deleted by owner decision
 
-### P0-CUPS-3 — 960 entrants have no squads, and would be decided by placeholder players
+### P0-CUPS-3 — DONE: simulated-country entrants receive tiered squads
 
 Qualification is one entry per country per cup, so the field is 48 + 96 + 48 = **192 clubs per tier**,
 × 5 tiers = **960 clubs**. **46 of the 48 countries are `SIMULATED`**, and `PyramidBuilder.buildStatic()`
@@ -359,7 +359,7 @@ the next round
 the qualifying field honest when a tier has only two divisions and avoids inventing a group stage.
 ---
 
-### P0-CUPS-6 — the domestic cup seed can pick a continental cup, and nothing guards the fix
+### P0-CUPS-6 — DONE: domestic cup drawing is scoped per country
 
 **Found 2026-10-06 while running the P0-CUPS-1/2 regressions. Fix landed. The fix is NOT yet guarded, and
 the reason it cannot be is a second, older defect — see the correction below.**
@@ -1970,7 +1970,7 @@ Three to four days. The six slider fields have **zero readers** today — they a
 
 **Exit criteria:** the sliders change something observable in a match, or they are removed.
 
-### P2-10 — National team qualifiers and the senior World Cup — **BACKEND BUILT, UI OPEN**
+### P2-10 — National team qualifiers and the senior World Cup — **DONE: backend and football UI**
 
 The mechanism exists; the competitions and formats did not. **Work landed 2026-10-06 — see
 [`kanbanProgress.md`](kanbanProgress.md) for the full inventory and the two bugs the tests caught.**
@@ -1996,7 +1996,7 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT copies). **Unverified in running app.**
       player rows, which are copies. The owner's "players can be injured" rule is unproven.
 
-### P2-12 — U-21 as its own competitions — **structure done, nothing on screen**
+### P2-12 — U-21 as its own competitions — **DONE: separate competitions and football UI**
 
 Explicitly **not tabs on one competition**, per the analysis. **Landed:** its own qualifying
 competition, its own tournament, its own 8 groups, its own 120 qualifying fixtures, its own Elo track

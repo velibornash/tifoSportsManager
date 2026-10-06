@@ -618,8 +618,8 @@ These are current source/board findings, not historical audit claims.
 
 ### 12.2 UI gaps
 
-- National tournament rows on the World page are unavailable and the country page has no complete national
-  tournament tab.
+- National tournament rows on the World page and country national-team summaries link to the shared national
+  tournament view; live browser verification remains open.
 - Some legacy page names remain in the router for compatibility or partial functionality.
 - `playerStats` and `teamStats` routing and aggregate loaders need continued verification against the
   intended screens.
