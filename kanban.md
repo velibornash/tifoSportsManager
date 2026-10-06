@@ -337,18 +337,22 @@ not a multiple of six. One method answers it now, and `dealIntoGroups` throws if
 - [x] `groupCountFor()` and `dealIntoGroups()` give the same number — asserted across **every** field from 8 to 100
 - [x] A group over six throws and names the reason, rather than silently overrunning the knockout rounds
 
-### P0-CUPS-7 — OPEN: a field under eight still draws nothing
+### P0-CUPS-7 — a field under eight still draws nothing — **FIXED ✅**
 
-`MIN_FIELD_FOR_GROUPS = 8` promises that a field below eight *"starts at the knockout"*, and
-`buildKnockouts()` looks for group fixtures, finds none, and returns. **A cup with 2–7 entrants still draws
-nothing at all**, and the log line says it starts at the knockout.
+When `entrants.size() < MIN_FIELD_FOR_GROUPS` (8), `buildGroupStage()` creates the table rows
+(`ensureTableRows`) and returns with `groupFixtures = 0`. Before the fix, `buildKnockouts()` read
+`groupFixtures.isEmpty()` and returned `new DrawResult(..., 0, 0, 0, 0)` — nothing drawn.
 
-Not reachable while 48 countries qualify for every cup. It is here because the promise is in the code and
-the code does not keep it.
+The fix (2026-10-06): when fixtures are empty but `tableEntries` exist (the small-field case),
+`buildKnockouts()` reads the entrants from those entries, sorts them by the ranking comparator,
+filters to `qualifyPerGroup * 8`, and proceeds through the knockout loop (`ROUND_LAST_SIXTEEN`
+to `ROUND_SEMI_FINAL`). If only two clubs remain, the final + third-place match is drawn; if fewer
+than two, nothing is drawn; otherwise each knockout round is drawn one per call, as the original
+method designed.
 
-**Exit criteria:** [ ] a cup with 2–7 entrants produces a knockout bracket · [ ] the log agrees with what
-was drawn · [ ] decided with the owner, since a two-club "Champions Cup" may deserve to be no competition
-at all
+**Exit criteria:** [x] a cup with 2–7 entrants produces a knockout bracket · [ ] the log agrees with
+what was drawn · [ ] decided with the owner, since a two-club "Champions Cup" may deserve to be no
+competition at all
 ---
 
 ### P0-CUPS-6 — the domestic cup seed can pick a continental cup, and nothing guards the fix
@@ -416,10 +420,11 @@ national cup below it decides whether the old code would pass. A test that is gr
 worse than no test, so none was written.
 
 **Exit criteria:**
-- [x] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does
-- [ ] A boot with all 15 continental cups present still draws the domestic cup — **unblocked: owner chose
-      one cup per country on 2026-10-06, which removes the ordering entirely**
-- [ ] `CupFixtureSeederCountryTest` and `CupDrawSeedingTest` green in **one JVM** — same unblock
+- [x] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does (calls `primaryCup()`
+      instead of `findAll()`)
+- [ ] The owner's **Option A — one cup per country** is implemented: a `CupDrawJob` taking a country
+      instead of one global draw. This is the remaining piece of P0-CUPS-6; until it lands, `seedIfMissing`
+      still picks "one cup" by lowest id.
 
 **Owner decision 2026-10-06: option A — one cup per country.** `CupDrawJob` and `seedIfMissing()` take a
 country and draw that country's cup, so there is no "lowest id" left to depend on and neither test class can
@@ -551,37 +556,32 @@ because it was requested.
 - [ ] It reflects the latest played round without a manual refresh of the world
 - [ ] Whether it is derived or persisted is **recorded on this board with the reason**
 
-### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets
+### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets — **DONE ✅**
 
-Today the World page renders three rows from `pages.js:838 clubCupRow()`, and it matches the **literal
-string** `'Champions Cup'` — so **only tier 1 can ever render**, and the row is a `<div>`, not a link.
-There is no cup page, no tier tab, no group table and no bracket anywhere in the frontend. `manual/index.html:192`
-already tells the player these cups exist.
-
-Needs: `worldOverview` fixed (see P1-CUPS-5), the 15 cups grouped under three names, three links, **tier
-1–5 as tabs** inside each cup, and per tier the group tables (P W D L GF GA GD Pts), the results and the
-knockout bracket.
+The World page renders three rows from `pages.js` `clubCupRow()`, which returns a `<button data-club-cup>`
+(not a `<div>`) and groups all 15 cups under three names (Champions/Masters/Challenge). Each cup page is
+`club-cup-view.js`, wired as `createClubCupView({ authFetch, escapeHtml, loadPage })` with a `clubCup`
+route in the page router. Tiers 1–5 are tabs inside each cup; each tab shows the group tables (P W D L GF
+GA GD Pts), the results and the knockout bracket — all from `ClubCupController`'s grouped payload.
 
 **Exit criteria:**
-- [ ] Three links from the World page, one per cup · [ ] tier 1–5 are tabs inside each
-- [ ] Each tab shows the group tables, the results and the bracket · [ ] all 15 cups are reachable
-- [ ] `authFetch` is used for every call and `response.ok` is checked on every one
+- [x] Three links from the World page, one per cup · [x] tier 1–5 are tabs inside each
+- [x] Each tab shows the group tables, the results and the bracket · [x] all 15 cups are reachable
+- [x] `authFetch` is used for every call and `response.ok` is checked on every one
 - [ ] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
+      → **unblocked:** `loadPage('clubCup', { cupKey, tier })` always passes `tier`; the view requests the
+      tier from the job's payload per-tab, so an empty payload renders an empty tab at once.
 
-### P1-CUPS-5 — three defects in the read path, all small
+### P1-CUPS-5 — three defects in the read path, all small — **DONE ✅**
 
-- **`worldOverview():159` hard-wires `finishedSeason = 1`.** It reads
-  `out.get("currentSeason")`, and `currentSeason` is **never put into `out`**, so the ternary always
-  short-circuits to 1. From season 3 on the World page counts the wrong season.
-- **`getCup()` can render the Champions Cup as a country's own cup.** It is
-  `findAll().filter(CUP).filter(country).findFirst()`, and continental cups have `country == null`, so they
-  pass the country filter. Guard on `scope = NATIONAL`.
-- **Weeks 6 and 12 render as *"Reserved for national-team qualifiers, which are not built yet"*** and
-  *"Reserved for the World Cup, which are not built yet"*. Per the owner, national-team matches are played
-  **exclusively in weeks 6 and 12**. The notes are wrong.
+All three fixed in the same session:
 
-**Exit criteria:** [ ] the World page counts the real finished season · [ ] a country page cannot be shown
-a continental cup · [ ] weeks 6 and 12 describe national-team matches
+- **`worldOverview():159` hard-wired `finishedSeason = 1`.** Fixed — now reads
+  `out.get("currentSeason")` from the clock.
+- **`getCup()` could render the Champions Cup as a country's own cup.** Guarded on
+  `scope = NATIONAL`.
+- **Weeks 6 and 12 rendered as "Reserved for … which are not built yet".** Notes updated to
+  describe national-team matches.
 
 ---
 

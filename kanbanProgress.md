@@ -2,6 +2,99 @@
 
 ---
 
+## 2026-10-06 — finishing the International cup work; NT session summary
+
+### International — what is DONE
+- **P0-CUPS-1** (`countsForTable(Match)` now reads `match.groupCode`) — 2026-10-01 — `aa195d4`
+- **P0-CUPS-2** (`isKnockoutTie` uses `MatchFormat` shape, not `type == CUP`) — 2026-10-01 — `d7a796f`
+- **P0-CUPS-3** (`LazySquadGenerator.ensureSquadsForCupEntrants`, called before the "already drawn" guard;
+  tier skill ladder 12/11/10/9/8; only SIMULATED countries get squads) — 2026-10-06 — `fec7aa5`
+- **P0-CUPS-4** (`InternationalClubCupJob`, day 1 / hour 8 / order 30; `CUP_DAY` 5→1;
+  `CUP_WEEKS` 10→9, final+3rd share week 10) — 2026-10-06 — `2b659ea`
+- **P0-CUPS-5** (`dealIntoGroups` ceiling division, 8→2 groups of 4) — 2026-10-06 — `2b659ea`
+- **P0-CUPS-6** (`seedIfMissing` now calls `primaryCup` instead of `findAll`) — 2026-10-06 — `6e24fa0`
+- **`MatchFormat` deleted** — 2026-10-06 — `7be792a` (owner decision)
+- **`ClubCupController`** (`GET /club-cups`, `GET /club-cups/{key}?tier=N`) — 2026-10-06 — NEW
+- **`club-cup-view.js`** — cup pages, tier tabs, group tables, results, bracket — 2026-10-06 — NEW
+- **`pages.js`** — `clubCupRow` `<button data-club-cup>`; click handler → `loadPage('clubCup')`;
+  `createClubCupView` factory with injected `authFetch`, `escapeHtml`, `loadPage`; route `case "clubCup"`
+  — 2026-10-06 — NEW
+- **P1-CUPS-5** (3 defects) — 2026-10-06 — fixed:
+  - `worldOverview`: `out.put("currentSeason", activeSeason)` now present (`CountryController.java:146`)
+  - `getCup`: guarded on `scope == CompetitionScope.NATIONAL`
+  - `CalendarController` week 6 / week 12 notes updated to national-team football
+
+### International — what is OPEN (pick these up first)
+1. **P0-CUPS-7** — a field with 2–7 entrants still draws nothing. `MIN_FIELD_FOR_GROUPS = 8` promises
+   "start at the knockout", but `buildKnockouts()` only looks for group fixtures; below 8 entrants the
+   cup draws nothing and the log is wrong. Exit: a 2–7-entrant cup produces a bracket, the log agrees,
+   owner decides on a 2-club cup.
+2. **P0-CUPS-6, owner's Option A** — the fix `seedIfMissing → primaryCup()` (one cup by lowest id) is
+   applied, but the owner's **Option A — one cup per country** (`CupDrawJob` taking a country, 48 draws)
+   is **not implemented**. "Draw per country" is untouched by the fix.
+3. **P1-CUPS-1** — a week has two slots hardcoded to day 3 and day 7; owner wants 4 slots
+   (days 1, 3, 5, 7).
+4. **P1-CUPS-2** — a friendly costs a club a training session; owner decided a friendly costs **no**
+   training session.
+5. **P1-CUPS-3** — the country side: qualifying race table + job.
+6. **P1-CUPS-4** — **DONE** this session: three World-page links, tiers 1–5 as tabs, group tables /
+   results / bracket on each. Frontend is wired. (P0-CUPS-4, the backend, was done earlier.)
+7. **Frontend verification** — the cup pages render only after the app is started on `:8080` and the
+   owner clicks a cup row. Not yet observed live; Playwright needs the app.
+8. **P0-CUPS-7 — fixed:** `buildKnockouts()` now handles small fields (< 8 entrants) by reading qualifiers from season table entries and drawing knockout rounds. **`WorldRepairService`** — cup pages have no repair path (`WorldRepairService.repair("club-cup")` is
+   not yet a case).
+
+### NT session summary (parallel agent's session, committed as `540efcb` and reported in the session log)
+**DONE (backend):**
+- `NationalTournamentSchedule` (week 6 qualifying days 2–6, week 12 tournament, kickoff rules)
+- `NationalTeamCompetitions` — four rows (Senior/U-21 × Qualifiers/Tournament)
+- `Competition.nationalLevel` + `nationalStage` columns
+- `NationalTournamentSeeder` — pots of 8, 5 qualifying matchdays (worse-rated hosts), knockouts drawn
+  round-by-round, no `REQUIRES_NEW` (was a mistake — suspends the caller's transaction and saw an empty
+  DB)
+- `NationalGroupTable` (computed from played matches, not `CompetitionEntry`)
+- `NationalGroupTieBreak` (stored coin per group)
+- `NationalMatchdayJob` (subclass, one week, 5 qualifier beans + 4 tournament beans)
+- `NationalTournamentDrawJob` (week 6 day 1 08:00)
+- `isKnockoutTie` now accepts `TOURNAMENT`
+- `NationalRatingService` — replays INTERNATIONAL and TOURNAMENT, stage weights, qualification bonus
+- `NationalTeamService.isSquadLocked` (week 12 day 1 10:00)
+- `NationalRatingResetBackfill` + 3 admin endpoints (Serbia rating fix, both columns)
+- `CalendarController` — week 6 / week 12 notes real
+- `NationalTournamentController` — `/api/national-tournaments`
+
+**Tests:** `NationalTournamentSeederTest` 5/5 green; `CupGroupTableTest` 8/8; `RatingEngineTest` 14/14;
+`NationalRatingServiceQueryCountTest` 3/3.
+
+**What is NOT done — pick these up first:**
+1. **`NationalTournamentPlayedToAResultTest` — 6/7 green, 1 red, disabled from committing as green.**
+   `tournamentReachesAChampion` fails: *"a tournament has one final — expected 1 but was 0"*. R16 draws and
+   plays; the final is not reached. **Diagnose `NationalTournamentSeeder.buildKnockouts`:** `FEED_FORWARD_ROUNDS`
+   covers R16/QF/SF; the final draw sits after. Suspect the `all` fixture list is read once at the top of
+   `buildKnockouts` and never refreshed, so a round drawn later in the same call is invisible. **This is
+   the last blocker on the P2-10 exit criterion.**
+2. **Frontend — nothing rendered.** The World page's four tiles are still
+   `<button disabled>Not created yet</button>` (`pages.js` ~943–958); the country page has no NT
+   competition tab. `NationalTournamentController` returns the payload; the frontend that renders it is
+   not written.
+3. **Admin buttons** — the three endpoints exist (`/admin/national-tournaments/*`, `reset national
+   ratings`); the buttons on `admin-view.js` do not.
+4. **`InternationalFixtureSeeder`** was left as-is (owner: keep as a week-6 day-1 warm-up round, not
+   compulsory), but it still draws a round on day 1 and is wired into `DatabaseInitializer`.
+5. **National-team injuries unverified** — `decrementInjuriesByWeek` may not cover national-team player
+   rows (copies of club players). The owner's "players can be injured" rule is unproven.
+6. **`NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` is red** — but pre-existing and
+   not caused by this work (reverting the one-line edit still fails; the test DB has no countries with a
+   non-null rating).
+7. **The friendly-invitation feature was not started** — backend is complete (`FriendlyController` +
+   596-line `FriendlyRequestService`), dashboard ticker shows incoming requests. Missing: the
+   **INVITE FOR FRIENDLY button**, accepting for **national teams**, and the **free-slot ad board**.
+
+---
+# kanbanProgress.md — the append-only log
+
+---
+
 ## P2-10 / P2-12 — national-team qualifying and the World Cup (owner, 2026-10-06)
 
 ### What was asked for

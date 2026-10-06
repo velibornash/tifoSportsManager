@@ -369,6 +369,69 @@ public class InternationalClubCupDraw {
                 .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() <= GROUP_MATCHDAYS)
                 .toList();
         if (groupFixtures.isEmpty()) {
+            // Small field (< MIN_FIELD_FOR_GROUPS): no group fixtures, but the table rows were written
+            // (see buildGroupStage at line 218). Read the entrants from those entries and proceed
+            // straight to the knockout, which is what the owner's format says.
+            List<CompetitionEntry> tableEntries = entries.findBySeasonCompetition(sc);
+            if (!tableEntries.isEmpty()) {
+                List<Team> fromTable = tableEntries.stream()
+                        .map(CompetitionEntry::getTeam)
+                        .sorted((a, b) -> {
+                            CompetitionEntry ea = entryFor(sc, a);
+                            CompetitionEntry eb = entryFor(sc, b);
+                            return LeagueTableOrder.comparator().compare(ea, eb);
+                        })
+                        .toList();
+                log.info("{}: field of {} club(s) has no group stage; starting knockout from table.",
+                        cup.getName(), fromTable.size());
+                List<Team> qualifiers = fromTable.subList(0,
+                        Math.min(qualifyPerGroup * 8, fromTable.size()));
+                // The knockout for a small field: start from R16 (6) or adjust. For simplicity,
+                // draw the final directly if only 2 clubs remain after filtering, else start at R16.
+                if (qualifiers.size() < 2) {
+                    return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, 0);
+                }
+                int made = 0;
+                List<Team> alive = new ArrayList<>(qualifiers);
+                // A small field skips straight to knockouts; draw the rounds that apply.
+                for (int round = ROUND_LAST_SIXTEEN; round <= ROUND_SEMI_FINAL; round++) {
+                    final int stage = round;
+                    final List<Team> aliveHere = new ArrayList<>(alive);
+                    List<MatchFixture> thisRound = allFixtures.stream()
+                            .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == stage)
+                            .toList();
+                    if (!thisRound.isEmpty() && thisRound.stream().anyMatch(f -> !f.isPlayed())) {
+                        return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+                    }
+                    if (thisRound.isEmpty()) {
+                        if (aliveHere.size() == 2) {
+                            made += drawFinalAndThirdPlace(cup, sc, aliveHere, seasonYear);
+                            return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+                        }
+                        if (aliveHere.size() < 2) {
+                            return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+                        }
+                        made += drawOneKnockoutRound(cup, sc, aliveHere, stage, seasonYear);
+                        // The fixtures were just drawn but not played; winners will be read on the
+                        // next call when the fixtures have results. The return stops here by design.
+                        return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+                    }
+                    // Round finished: carry winners forward
+                    List<Team> winners = new ArrayList<>();
+                    for (MatchFixture tie : thisRound) {
+                        Team w = winnerOf(tie);
+                        if (w != null) winners.add(w);
+                    }
+                    if (winners.isEmpty()) {
+                        return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+                    }
+                    alive = winners;
+                }
+                if (alive.size() == 2) {
+                    made += drawFinalAndThirdPlace(cup, sc, alive, seasonYear);
+                }
+                return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
+            }
             return new DrawResult(cup.getName(), 0, 0, 0, 0);
         }
         if (groupFixtures.stream().anyMatch(f -> !f.isPlayed())) {

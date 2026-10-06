@@ -27,6 +27,7 @@ import { createMedicalView } from './pages/views/medical-view.js';
 import { createLeagueView } from './pages/views/league-view.js';
 import { createFixtureView } from './pages/views/fixture-view.js';
 import { createCountryView } from './pages/views/country-view.js';
+import { createClubCupView } from './pages/views/club-cup-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createClubView } from './pages/views/club-view.js';
 import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
@@ -439,6 +440,11 @@ function buildPageNavState(page, options = {}) {
         getSeasonYear: () => currentSeasonYear,
         buildClubActionsHtml
     });
+    const clubCupView = createClubCupView({
+        authFetch,
+        escapeHtml,
+        loadPage: (...args) => loadPage(...args)
+    });
     const statsView = createStatsView({
         authFetch, getTeamId: () => currentUserTeamId,
         ensureCurrentLeagueId,
@@ -579,6 +585,12 @@ function buildPageNavState(page, options = {}) {
                     // can say what that means instead of showing an empty divisions table that
                     // reads as a broken page.
                     await loadCountryPage(options);
+	                    break;
+
+	                case "clubCup":
+	                    // Options: { cupKey, tier }. The World page's three rows link here and the
+	                    // tier tabs link here too, so this is one route rather than one per tier.
+	                    await clubCupView.loadClubCup(options.cupKey || 'champions', options.tier || 1);
 	                    break;
 
 	                case "countryCup":
@@ -835,21 +847,31 @@ function buildPageNavState(page, options = {}) {
      * about the database being empty. They exist, they have entrants, and the number is what decides
      * between "no club has finished a season yet" and "not created".
      */
-    function clubCupRow(name, cups) {
-        const found = Array.isArray(cups) ? cups.find(cup => cup && cup.name === name) : null;
-        if (!found) {
-            return `<button type="button" class="fm-competition" disabled>
-                        <span class="fm-competition-name">${escapeHtml(name)}</span>
-                        <span class="fm-badge">Unavailable</span>
-                    </button>`;
-        }
-        const qualified = Number(found.qualified || 0);
-        return `<div class="fm-competition is-real">
+    function clubCupRow(name, key, cups) {
+        // **The row is a link now (P1-CUPS-4).** It was a <div>, so the World page had three lines of
+        // text about the cups and no way into any of them - and it matched the literal string
+        // 'Champions Cup', so only tier 1 could ever render and tiers 2-5 were invisible from here.
+        //
+        // The count is the sum over all five tiers, because from this page the cup is one competition
+        // with five levels, and "Champions Cup 1 qualified" meant "one of the 48 that exist".
+        const tiers = Array.isArray(cups)
+            ? cups.filter(cup => cup && typeof cup.name === 'string' && cup.name.endsWith(name))
+            : [];
+        const known = tiers.length > 0;
+        const qualified = tiers.reduce((total, cup) => total + Number(cup.qualified || 0), 0);
+        const tiersWithClubs = tiers.filter(cup => Number(cup.qualified || 0) > 0).length;
+
+        const badge = !known
+            ? '<span class="fm-badge">Unavailable</span>'
+            : qualified > 0
+                ? `<span class="fm-badge fm-badge--ok">${qualified} qualified${
+                    tiersWithClubs > 1 ? ` across ${tiersWithClubs} tiers` : ''}</span>`
+                : '<span class="fm-badge">No club has finished a season</span>';
+
+        return `<button type="button" class="fm-competition is-real" data-club-cup="${escapeHtml(key)}">
                     <span class="fm-competition-name">${escapeHtml(name)}</span>
-                    <span class="fm-badge ${qualified > 0 ? 'fm-badge--ok' : ''}">${
-                        qualified > 0 ? `${qualified} qualified` : 'No club has finished a season'
-                    }</span>
-                </div>`;
+                    ${badge}
+                </button>`;
     }
 
     async function loadWorldPage() {
@@ -937,9 +959,9 @@ function buildPageNavState(page, options = {}) {
                             <h3>International competitions</h3>
                         </div>
                         <div class="fm-world-competitions">
-                            ${clubCupRow('Champions Cup', world.clubCups)}
-                            ${clubCupRow('Masters Cup', world.clubCups)}
-                            ${clubCupRow('Challenge Cup', world.clubCups)}
+                            ${clubCupRow('Champions Cup', 'champions', world.clubCups)}
+                            ${clubCupRow('Masters Cup', 'masters', world.clubCups)}
+                            ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
                             <button type="button" class="fm-competition" disabled>
                                 <span class="fm-competition-name">NT Qualifiers</span>
                                 <span class="fm-badge">Not created yet</span>
@@ -957,8 +979,10 @@ function buildPageNavState(page, options = {}) {
                                 <span class="fm-badge">Not created yet</span>
                             </button>
                         </div>
-                        <p class="fm-hint">These competitions are not built yet. They are listed here so the
-                            shape of the world is visible, and each one turns into a link when it is created.</p>
+                        <p class="fm-hint">The three club cups are open: pick one to see its groups,
+                            its results and its bracket, tier by tier. The national-team competitions are
+                            listed so the shape of the world is visible, and each one turns into a link
+                            when it is played.</p>
                     </section>
 
                     <section class="fm-panel">
@@ -992,6 +1016,14 @@ function buildPageNavState(page, options = {}) {
                 setActiveLeagueContext({ countryIsoCode: iso, backTarget: 'world' });
                 loadPage('country', { simulatedCountry: isSimulated ? iso : '' });
             };
+
+            // The three cups are links now (P1-CUPS-4). They were <div>s, so the World page had three
+            // lines of text about the cups and no way into any of them.
+            mainContent.querySelectorAll('[data-club-cup]').forEach(button => {
+                button.addEventListener('click', () => {
+                    loadPage('clubCup', { cupKey: button.dataset.clubCup, tier: 1 });
+                });
+            });
 
             // The row is the link now, not the button inside it, so the keyboard case has to be handled
             // here: a <tr> with role="link" and tabindex does not get Enter or Space for free, and a row
