@@ -1990,17 +1990,31 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 `/api/national-tournaments` endpoint returning groups, standings and results.
 
 **Exit criteria still open:**
-- [x] **A tournament is played to a champion.** `FEED_FORWARD_ROUNDS` was missing `ROUND_FINAL` (5);
-      the loop never reached the final, so the bracket stopped at the semi-final. Fixed 2026-10-06:
-      added `ROUND_FINAL` to the feed-forward list (`NationalTournamentSchedule:48`). The final
-      and third-place fixtures are now drawn when `alive` reaches 2 after SF.
+- [x] **A tournament is played to a champion.** `NationalTournamentPlayedToAResultTest` is **7/7** on a
+      fresh report: qualifying to sixteen, a level group tie left level, a level knockout tie settled from
+      the spot, the coin stable across three reads, the qualification bonus paid exactly once across three
+      replays, senior and U-21 separate, and a final **plus a third-place play-off**.
 - [x] **The World page lists the four national competitions** and links each drawn competition to its
       groups, results and bracket; undrawn rows remain visible with their planned week. Country national
       team summaries expose the same two competition links for senior and U-21.
 - [x] **Admin controls** for seeding national tournaments, resetting ratings and reading rating violations
       are present in `admin-view.js`; live operation still needs observation.
-- [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT copies). **Unverified in running app.**
-      player rows, which are copies. The owner's "players can be injured" rule is unproven.
+- [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
+      copies). **Unverified in running app.**
+
+**Two defects fixed here, and the second is the one worth keeping:**
+
+1. **A dead branch.** The final was drawn by an `if (round == ROUND_FINAL)` inside the feed-forward loop,
+   and `ROUND_FINAL` is not in that list — so it could never execute and every tournament stopped at two
+   finalists while logging *"tournament complete"*. The same list change that fixed the third place
+   deleted the only path to the final.
+2. **One round per call was not actually enforced.** With the draw moved out of the loop, the method became
+   non-idempotent: every call after the semi-finals redrew the final. **Measured with the guard removed —
+   three finals, and nothing complained.** "One round per call" is a property of the code, not a statement
+   about the caller; it is only true once *already drawn* is asked about **the round being drawn**.
+
+**Both guards re-proven by breaking them:** removing the final's idempotency guard reproduces
+`a tournament has one final — expected: <1> but was: <3>`.
 
 ### P2-12 — U-21 as its own competitions — **DONE: separate competitions and football UI**
 

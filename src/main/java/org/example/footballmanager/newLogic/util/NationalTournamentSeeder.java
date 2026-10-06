@@ -330,13 +330,6 @@ public class NationalTournamentSeeder {
                     made += drawRoundOfSixteen(competition, seasonYear, qualifiers);
                     return new DrawResult(0, qualifiers.size(), 0, made, "round of 16 drawn");
                 }
-                if (round == NationalTournamentSchedule.ROUND_FINAL) {
-                    if (alive.size() == 2) {
-                        made += drawFinalAndThirdPlace(competition, seasonYear, alive, all);
-                        return new DrawResult(0, 0, 0, made, "final and third place drawn");
-                    }
-                    return DrawResult.nothing(alive.size() + " side(s) alive before the final.");
-                }
                 if (alive.size() < 2) {
                     return DrawResult.nothing(alive.size() + " side(s) alive; the bracket stops.");
                 }
@@ -367,7 +360,39 @@ public class NationalTournamentSeeder {
             }
             alive = winners;
         }
-        return new DrawResult(0, 0, 0, made, "tournament complete");
+
+        // Past the semi-finals the two survivors are the finalists, and this draw has to be **here**
+        // rather than inside the loop. The loop walks only the rounds whose winners feed forward, so it
+        // exits with two teams alive — and the final used to be an `if (round == ROUND_FINAL)` branch
+        // inside it, which could never execute: no round 5 is ever iterated. Every tournament therefore
+        // stopped at two finalists, and the log cheerfully said "tournament complete".
+        //
+        // That is the same class of bug as the one this method was rewritten to fix — a branch that was
+        // written and never reached — one level up, which is why it is worth stating rather than just
+        // moving.
+        // Guarded, and the guard is the whole reason this has to be checked at all: the loop above
+        // only ever walks the rounds that feed forward, so on *every* call made after the semi-finals
+        // are played it exits with the same two survivors and would draw the final again. Measured
+        // before the guard existed: three finals and no complaint, because nothing was counting.
+        //
+        // One round per call is only safe if "already drawn" is asked about the round being drawn.
+        boolean finalDrawn = all.stream()
+                .anyMatch(f -> f.getRoundNumber() != null
+                        && f.getRoundNumber() == NationalTournamentSchedule.ROUND_FINAL);
+        if (finalDrawn) {
+            return new DrawResult(0, 0, 0, made, "the final is already drawn.");
+        }
+
+        if (alive.size() == 2) {
+            made += drawFinalAndThirdPlace(competition, seasonYear, alive, all);
+            return new DrawResult(0, 0, 0, made, "final and third place drawn");
+        }
+        if (alive.size() > 2) {
+            log.warn("{}: {} side(s) survived the semi-finals, which is not a bracket; nothing drawn.",
+                    competition.getName(), alive.size());
+        }
+        return new DrawResult(0, 0, 0, made, alive.isEmpty()
+                ? "tournament complete" : alive.size() + " side(s) alive before the final.");
     }
 
     /**

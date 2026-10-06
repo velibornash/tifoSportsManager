@@ -41,12 +41,26 @@ public final class NationalTournamentSchedule {
     /**
      * The rounds whose winners go into the next round.
      *
-     * <p>Round of 16, quarter-finals, semi-finals - and nothing else. The third place is played between
-     * the two who <i>lost</i> the semi-finals and has no winner that matters, so including it here
-     * would carry a team that had just been knocked out into the final.
+     * <p>Round of 16, quarter-finals, semi-finals - and nothing else.
+     *
+     * <p><b>Two rounds are deliberately absent, and both were added here by mistake at some point.</b>
+     *
+     * <ul>
+     *   <li><b>The third place</b> is played between the two who <i>lost</i> the semi-finals and has no
+     *       winner that matters. In this list it would be drawn like any other round and its winner
+     *       carried into the final, so a side that had just been knocked out reached the final.</li>
+     *   <li><b>The final</b> does not feed forward either - its winner is the champion, not a feeder.
+     *       Putting it here made the loop draw it with {@code drawOneRound} and return, which meant the
+     *       post-loop draw that also creates the <b>third-place play-off</b> was never reached: the owner
+     *       specifies "the final and the third place are played on day 6", and the final appeared
+     *       without the third place.</li>
+     * </ul>
+     *
+     * <p>The final and the third place are created together, after this list has been walked, because
+     * neither exists until the semi-finals have decided who the four contenders were.
      */
     public static final List<Integer> FEED_FORWARD_ROUNDS = List.of(
-            ROUND_LAST_SIXTEEN, ROUND_QUARTER_FINAL, ROUND_SEMI_FINAL, ROUND_FINAL);
+            ROUND_LAST_SIXTEEN, ROUND_QUARTER_FINAL, ROUND_SEMI_FINAL);
 
     public static int qualifyingDay(int matchday) {
         if (matchday < 1 || matchday > QUALIFYING_DAYS.length) {

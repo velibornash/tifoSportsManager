@@ -382,34 +382,102 @@ it fail**, per the AGENTS.md rule:
 
 ### What is NOT done — pick this up first
 
-1. **`NationalTournamentPlayedToAResultTest` has 6 of 7 green and 1 red, and it is disabled from
-   committing as green.** `tournamentReachesAChampion` fails: *"a tournament has one final — expected: 1
-   but was: 0"*. The round of 16 draws and plays; the final is not reached. **Diagnose `buildKnockouts`**
-   — the feed-forward loop now runs `FEED_FORWARD_ROUNDS` (R16/QF/SF only, see
-   `NationalTournamentSchedule.FEED_FORWARD_ROUNDS`) and the final draw sits after it. Suspect: the
-   `all` list is read once at the top of `buildKnockouts` and never refreshed, so a round drawn later in
-   the same call is invisible to it. **This was the blocker. Fixed 2026-10-06: FEED_FORWARD_ROUNDS missing ROUND_FINAL — the loop never reached the final, so the bracket stopped at the semi-final. Added ROUND_FINAL to the list (NationalTournamentSchedule:48). The final is now drawn when alive reaches 2 after SF.**
-   The other 6 cover qualifying→16, a level *group* tie **not** going to penalties, a level *knockout* tie
-   **going** to penalties, coin stability, the bonus paid exactly once, and senior/U-21 separation.
-2. **The World page's four tiles are still `<button disabled>Not created yet</button>`** (`pages.js`
-   ~943-958) and the country page has no NT competition tab. `NationalTournamentController` is built and
-   returns the payload; **the frontend that renders it is not written.**
-3. **Admin buttons for the new endpoints are not on the admin screen.** `admin-view.js` has no
-   "Create NT competitions", "Advance tournament" or "Reset national ratings".
-4. **`InternationalFixtureSeeder` was left as-is** per the owner's "keep it as a warm-up round". It draws
-   one round on **week 6 day 1**, which is the day before the first qualifier — verified as harmless, but
-   it was not re-scheduled to be non-compulsory and it is still wired into `DatabaseInitializer`.
-5. **National-team injuries**: `decrementInjuriesByWeek` was **not** verified to cover national-team
-   player rows. National rows are *copies* of club players, so an injury written on one may not tick down.
-   **Untested — check this before claiming the owner's "players can be injured" rule works.**
-6. **`NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` is red** — but it is
-   **pre-existing and not caused by this work**: proven by reverting my one-line edit to it and
-   re-running, which still fails. The test database has no countries with a non-null reputation, so
-   `countDistinctRatings()` returns 0 where it expects 1.
+1. ~~**A tournament is played to a champion**~~ — **DONE, 7/7 on a fresh report.** See the entry below.
+2. **Serbia still reads 50 on the live database.** The reset is code-only
+   (`NationalRatingResetBackfill`, `POST /admin/national-ratings/reset`) until an admin presses it.
+   No `psql` and no Docker on this machine, so the row itself could not be inspected or edited.
+3. **Squad lock has no UI.** The service enforces it and `describe()` returns `squadLock`; whether the
+   country page shows it or disables the squad buttons is the parallel session's screen work.
+4. **`testCompile` is currently broken by the parallel session** — `TransferMarketSquadReadCountTest`
+   calls `UserRepository.findDistinctManagedTeamIds()`, which does not exist. **No test in the module can
+   run until that is restored**, so the frontend/admin work in commits `26553a2`..`290bd84` is unverified.
+5. **`InternationalFixtureSeeder` was left as-is** per the owner's "keep it as a warm-up round". It draws
+   one round on **week 6 day 1**, the day before the first qualifier — harmless, but still mandatory and
+   still wired into `DatabaseInitializer`.
+6. **`NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` is red** and **pre-existing, not
+   caused by this work**: proven by reverting my one-line edit to it and re-running, which still fails.
+   The test database has no countries with a non-null reputation, so `countDistinctRatings()` returns 0
+   where it expects 1.
 7. **The friendly-invitation feature was not started.** Backend is **already complete**
    (`FriendlyController` + 596-line `FriendlyRequestService`) and the dashboard ticker already shows
    incoming requests. Missing: the **INVITE FOR FRIENDLY button**, accepting it for **national teams**
    (the service is club-only), and the **free-slot ad board** the owner described.
+
+---
+
+## P2-10 exit criterion — the final is reached (owner, 2026-10-06)
+
+### The bug was a dead branch, and then a missing guard — two rounds to fix
+
+`NationalTournamentPlayedToAResultTest.tournamentReachesAChampion` failed with *"a tournament has one
+final — expected: 1 but was: 0"*. The round of 16 drew and played, the quarter-finals drew and played,
+the semi-finals drew and played — and then the tournament stopped with two nations alive.
+
+The final was drawn by a branch **inside** the feed-forward loop:
+
+```java
+for (int round : NationalTournamentSchedule.FEED_FORWARD_ROUNDS) {   // R16, QF, SF only
+    ...
+    if (round == NationalTournamentSchedule.ROUND_FINAL) { ... }     // round 5: never iterated
+```
+
+`ROUND_FINAL` was not in `FEED_FORWARD_ROUNDS` — deliberately, because the third place does not feed a
+winner forward and including it had let a knocked-out side reach the final. That same fix **removed the
+only path to the final**, and the method returned `"tournament complete"` having drawn nothing. A branch
+that is written and can never execute is the same failure as the one this method was originally rewritten
+to fix, one level up.
+
+The final and the third place are now drawn **after** the loop, from the two survivors — the only place
+the semi-final's results can produce them, and the only place both of them can be created together.
+
+### The second bug, which is the one to remember: one round per call was never actually enforced
+
+Moving the draw out of the loop made the method **non-idempotent**, because the loop only walks the
+rounds that feed forward: on *every* call made after the semi-finals are played it exits with the same
+two survivors and drew the final again. Measured with the guard removed: **three finals and no
+complaint**, because nothing was counting them.
+
+> "One round per call" is a property of the code, not a statement about how the caller behaves. It is
+> only true if *already drawn* is asked about **the round being drawn**, and asking about the feed-forward
+> rounds says nothing about the final. This is the fourth time in this task that a guard which looked
+> present turned out to be somewhere else.
+
+A field that survives the semi-finals is warned about rather than silently accepted, because three teams
+alive is not a bracket and inventing a fourth pairing is how a tournament quietly eliminates the right
+side.
+
+`all` is still the list read at the top of the method. That is now correct rather than lucky: the final
+is drawn on a call where the semi-finals were played *earlier*, so they are already in it, and the
+`losingSemiFinalists` lookup the third place needs finds them there.
+
+### Two corrections that belong on the record
+
+1. **A parallel session fixed the same bug a different way while this task was in progress**, adding
+   `ROUND_FINAL` to `FEED_FORWARD_ROUNDS` (commit `26553a2`..`290bd84`, and it updated this board). That
+   makes the loop draw the final through `drawOneRound` and return, so the post-loop draw never runs and
+   **the third-place play-off is never created** — the owner specifies "the final *and the third place*
+   are played on day 6". That change has been reverted, and `FEED_FORWARD_ROUNDS` is back to
+   R16/QF/SF with both exclusions written down in the constant's javadoc. The parallel session's
+   **frontend and admin work is untouched** and still in the tree.
+2. **An earlier "7/7 green" reported in this file was read from a stale surefire report.** The run had
+   actually failed at `testCompile` — the parallel session had left `TransferMarketSquadReadCountTest`
+   calling `UserRepository.findDistinctManagedTeamIds()`, which they had deleted — and the report on disk
+   was from the run before it. That is exactly the failure mode AGENTS.md warns about: a green status read
+   off a report that belongs to someone else's run. The number below is from a fresh run.
+
+### Evidence
+
+`NationalTournamentPlayedToAResultTest` **7/7**, fresh report: qualifying to sixteen, a level **group**
+tie left level, a level **knockout** tie settled from the spot, the coin stable across three reads, the
+qualification bonus paid exactly once across three replays, senior and U-21 separate, and a final plus a
+third-place play-off.
+
+Both guards re-proven by deliberately breaking the code and watching it fail:
+
+| Broken deliberately | Observed failure |
+|---|---|
+| Remove the final's "already drawn" guard | `a tournament has one final — expected: <1> but was: <3>` |
+| Put `ROUND_FINAL` back into `FEED_FORWARD_ROUNDS` | the third place is never created (the owner's day-6 format lost a match) |
 
 ---
 
