@@ -2227,6 +2227,11 @@ football UI. It incorporates the current international club cup UI, the forum/pr
 replacement, the national-tournament backend state, current security/boot behaviour, and the open gaps
 recorded on this board. `archive/TECHNICAL_OVERVIEW.md` remains historical.
 
+## ✅ Documentation — graphical football user manual
+
+`userManual.md` documents the user-facing options in the graphical football UI, from login and the
+dashboard through Club, League, Country, World, Community, profiles, mobile navigation and Admin.
+
 **Exactly three commits sit on top of `7df4af2`, the run that measured 20 red.** So the 20 is stale in a
 way that is worth stating precisely, because only one of the three can move a number:
 

@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-10-06 — graphical football user manual
+
+Added `userManual.md`, a text-only guide through login, the graphical football dashboard, header options,
+club/league/country/world pages, matches, community, profiles, admin actions and mobile navigation. It
+describes what each option does and marks the national-tournament and friendly UI gaps that are visible
+in the current application.
+
 ## 2026-10-06 — current football UI technical overview
 
 Updated the root `TECHNICAL_OVERVIEW.md` from the current source, using the archived overview for
