@@ -51,6 +51,16 @@ export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
 classes otherwise hang the entire run — they wait, they do not fail. Budget for it; never start it on
 the way to something else. A full-suite run only counts if it was allowed to finish.
 
+### PostgreSQL client tools are versioned against the server (found 2026-10-06)
+
+`pg_dump` **refuses** to touch a newer server, and on this machine the two do not match: the server is
+**Postgres.app 18.4** and the `pg_dump` first on `PATH` is **Homebrew 16.15**. Anything that shells out
+to `pg_dump` therefore fails every time with *"aborting because of server version mismatch"* — a message
+about versions, not about the thing that was being attempted. `DatabaseBackupService` reads the server's
+major version over JDBC and picks a client that matches, checking Postgres.app's own bundled tools;
+`app.backup.pg-tools` overrides the search. Anything new that shells out to the PostgreSQL tools needs the
+same treatment.
+
 ## Working rules
 
 - **Answer in English.** The owner writes in Serbian; every reply, message, commit and code comment is in
@@ -2052,6 +2062,25 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 
 **Both guards re-proven by breaking them:** removing the final's idempotency guard reproduces
 `a tournament has one final — expected: <1> but was: <3>`.
+
+### National-team naming: a senior side is its country (owner, 2026-10-06)
+
+*"Kod imena NT npr Germany National Team stoji samo Germany bez National Team za svaku zemlju, u-21 su
+ok."* The manager is on Germany's page, in the national-team section, under a tab already labelled
+**National Team** — the name said it three times.
+
+- [x] **A senior side is named after its country and nothing else.** U-21 keeps its suffix, because
+      "Germany" alone would leave two German teams with one name.
+      `NationalTeamSeniorNameTest` 3/3, including that a side somebody renamed by hand is left alone —
+      only the suffix this codebase used is stripped, so a re-seed brings the world forward without
+      overwriting a name a person chose.
+- [x] **The senior/U-21 split stopped being a name guess.** `InternationalFixtureSeeder` identified the
+      senior international field with `getName().endsWith("National Team")` — which, after the rename,
+      would have failed for **every** side and silently left the senior internationals undrawn, forever,
+      with a log line saying there were not two sides with squads. It asks the **country** which of its
+      two sides this is.
+      `InternationalFixtureSeederRetryTest` rebuilt to the real world shape (the country points at its
+      senior side), because that helper only ever set a name and the old check never needed more.
 
 ### The national-team draw: season start, and a Re-draw that re-draws (owner, 2026-10-06)
 

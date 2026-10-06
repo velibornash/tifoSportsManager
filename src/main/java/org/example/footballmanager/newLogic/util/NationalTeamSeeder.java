@@ -108,10 +108,11 @@ public class NationalTeamSeeder {
             // the squad logic below was never reached for them, and the internationals still had
             // nothing to draw against. An existing side is topped up, not skipped.
             squadsFor(country.getSeniorNationalTeam(), country, false);
+            renameSenior(country);
             return false;
         }
         Team nt = new Team();
-        nt.setName(country.getName() + " National Team");
+        nt.setName(seniorName(country));
         nt.setType(CompetitionTeamType.NATIONAL_TEAM);
         nt.setCountry(country);
         // No club, no competition, no budget: a national team is not a club and must not be given a
@@ -119,6 +120,41 @@ public class NationalTeamSeeder {
         Team saved = teams.save(nt);
         country.setSeniorNationalTeam(saved);
         squadsFor(saved, country, false);
+        return true;
+    }
+
+    /** The old suffix on a senior side, from before the owner asked for the plain country name. */
+    private static final String SENIOR_SUFFIX = " National Team";
+
+    /**
+     * A senior side is called after its country and nothing else (owner, 2026-10-06).
+     *
+     * <p>"Germany National Team" said the same thing twice: the manager is on Germany's page, in the
+     * national-team section, and the tab is already labelled. The U-21 side keeps its suffix, because
+     * "Germany" alone would be ambiguous there - two German teams, one name.
+     */
+    private String seniorName(Country country) {
+        return country.getName();
+    }
+
+    /**
+     * Brings an existing senior side onto the current naming, and returns whether it changed.
+     *
+     * <p>Only strips the old suffix from a name built as the country name plus that suffix, so a side
+     * somebody renamed by hand is left alone. Safe to repeat, which is what a re-seed needs to be.
+     */
+    private boolean renameSenior(Country country) {
+        Team senior = country.getSeniorNationalTeam();
+        String wanted = seniorName(country);
+        if (wanted.equals(senior.getName())) {
+            return false;
+        }
+        if (!(country.getName() + SENIOR_SUFFIX).equals(senior.getName())) {
+            return false;
+        }
+        log.info("{}: senior side renamed '{}' -> '{}'.", country.getName(), senior.getName(), wanted);
+        senior.setName(wanted);
+        teams.save(senior);
         return true;
     }
 

@@ -142,10 +142,14 @@ class InternationalFixtureSeederRetryTest extends BaseTest {
 
     private void seniorSideWithSquad(Country country) {
         Team side = new Team();
-        side.setName(country.getName() + " National Team");
+        // A senior side is called after its country alone, and the country points at it. The seeder
+        // recognises a senior side by that reference, not by the name it used to end with.
+        side.setName(country.getName());
         side.setCountry(country);
         side.setType(CompetitionTeamType.NATIONAL_TEAM);
         side = teams.save(side);
+        country.setSeniorNationalTeam(side);
+        countries.save(country);
 
         Player player = new Player();
         player.setName("ZZ International " + UUID.randomUUID());

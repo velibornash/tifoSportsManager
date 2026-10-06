@@ -1,5 +1,43 @@
 # kanbanProgress.md — the append-only log
 
+## A senior national side is called Germany, not "Germany National Team" (owner, 2026-10-06)
+
+### What was asked for
+
+> *"Kod imena NT npr Germany National Team stoji samo Germany bez National Team za svaku zemlju, u-21 su
+> ok."* — a senior side is called Germany, and nothing else.
+
+### The rename, and the thing it nearly broke
+
+`NationalTeamSeeder.ensureSenior` built `country.getName() + " National Team"`. It now builds
+`country.getName()`, and an **existing** side carrying the old suffix is renamed, because a re-seed is
+how the current world would ever reach the new name — boot writes nothing, so nothing else will.
+
+The dangerous half was not the rename. `InternationalFixtureSeeder` decided what the senior
+international field was by **spelling**:
+
+```java
+if (!team.getName().endsWith("National Team")) { continue; }
+```
+
+After the rename that test fails for **every** side, the entrant list is empty, and the seeder takes its
+"fewer than two sides with squads, so nothing was created" branch — which logs a warning and returns.
+The senior internationals would simply never be drawn again, with nothing on screen to say why. It now
+asks the country which of its two sides this is
+(`team.getCountry().getSeniorNationalTeam().getId()`), which is the fact that was always meant.
+
+`InternationalFixtureSeederRetryTest` had to change too: its `seniorSideWithSquad` helper set a name and
+**never wired `country.setSeniorNationalTeam(side)`**, because the old check did not need it. Rebuilt to
+the real world shape.
+
+### Tests
+
+`NationalTeamSeniorNameTest` — **3/3**: a new senior side is the bare country name and U-21 keeps its
+suffix; a side still carrying the old suffix is renamed on re-seed; a side renamed by hand ("Die
+Mannschaft") is left alone.
+
+---
+
 ## The national-team draw is at season start, and Re-draw re-draws (owner, 2026-10-06)
 
 ### What was asked for

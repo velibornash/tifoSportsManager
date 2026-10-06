@@ -131,8 +131,12 @@ public class InternationalFixtureSeeder {
             if (team.getId() == null || team.getCountry() == null) {
                 continue;
             }
-            // U-21 sides are national teams too, but the senior internationals are a senior competition.
-            if (!team.getName().endsWith("National Team")) {
+            // Senior or U-21 is the country's own reference, never the name. The name used to be the
+            // test - "does it end in 'National Team'?" - and a senior side is now called after its
+            // country alone (owner, 2026-10-06), so that test would have silently emptied the senior
+            // internationals: every side would fail it and nothing would ever be drawn.
+            if (team.getCountry().getSeniorNationalTeam() == null
+                    || !team.getId().equals(team.getCountry().getSeniorNationalTeam().getId())) {
                 continue;
             }
             if (players.findByTeamId(team.getId()).isEmpty()) {
