@@ -5040,3 +5040,9 @@ Everything before 2026-10-03 is in **`archive/kanbanProgress.md`**, including:
 
 That file is the most valuable document in the repository for anyone about to change scheduling, seeding or
 the match engine.
+
+=== 2026-10-06 — finishing session (International + NT, both md updated after each commit) ===
+
+Done: P0-7 (fixed); P1-2 (friendly=0 training); P2-10 blocker (FEED_FORWARD_ROUNDS + ROUND_FINAL, 7/7 green); NT tiles (wired); admin buttons (added); P1-3 endpoint (GET /qualifying).
+Open architecture: P0-6 Option A (draw per country, 48 draws); P1-3 honest job; P2-12 screen; P2-10 remaining concrete (frontend/admin verified in file, injuries query verified).
+Both md files: kanban.md + kanbanProgress.md — updated precisely after every commit (5 commits: 2188258, fafbe09, 9953eec, 11480f2, 2917276, 1aa76ee, a5de67e). Clean tree. 16 commits ahead.
