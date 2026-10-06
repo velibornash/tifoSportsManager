@@ -7,6 +7,9 @@ registered and online values under Users and removes Starting rating. Season 1 n
 its own finished qualifying season, and World club-cup badges show a field only when the complete 48/96/48
 field exists; partial fields remain Not drawn yet.
 
+All four national competition rows are now navigable from World even before their fixtures are drawn; the
+shared view displays the undrawn state and becomes a groups/results/bracket page once the competition exists.
+
 ## 2026-10-06 — documentation reconciliation after international cup repair
 
 ## 2026-10-06 — P1-CUPS-1 four-slot calendar

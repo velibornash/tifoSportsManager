@@ -980,10 +980,11 @@ function buildPageNavState(page, options = {}) {
                                     ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
                                     ${NATIONAL_COMPETITIONS.map(definition => {
                                         const item = nationalRows.find(row => row.level === definition.level && row.stage === definition.stage) || {};
-                                        const status = item.exists ? `${item.fixtures || 0} fixtures · week ${item.week}` : 'Not drawn yet';
+                                        const status = item.exists && Number(item.fixtures || 0) > 0
+                                            ? `${item.fixtures} fixtures · week ${item.week}` : 'Not drawn yet';
                                         return `<tr class="fm-world-competition-row ${item.exists ? 'is-real' : 'is-disabled'}"
                                             data-national-level="${definition.level}" data-national-stage="${definition.stage}"
-                                            ${item.exists ? 'tabindex="0" role="link"' : ''}>
+                                            tabindex="0" role="link">
                                             <td class="sq-name"><strong>${definition.label}</strong></td>
                                             <td>National teams</td><td><span class="fm-badge">${status}</span></td>
                                             <td>${item.exists ? 'Open →' : ''}</td></tr>`;
