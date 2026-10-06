@@ -201,11 +201,11 @@ with the **tiers as separate tabs** inside each, and on each tab the results, th
 | **The group stage and the bracket** — 8×6 / 16×6, 5 matchdays, serpentine deal, R16→QF→SF→3rd→final | `InternationalClubCupDraw.java`, 631 lines | written, **12 tests green, zero callers in `src/main`** |
 | The rating ladder 12 → −1 per tier | `PyramidBuilder.TIER_1_SKILL:200` | correct, but carried only on `Team.reputation` — never summed into a squad |
 
-### P0-CUPS-1 — a cup group table is never written, so every group is decided by seed order
+### P0-CUPS-1 — DONE: cup group matches now write their own tables
 
-`MatchType.countsForTable()` returns true for `LEAGUE` **only**, and `SimMatchService.persist():369` calls
-`updateLeagueTable` only when that is true. **A cup group match therefore writes nothing to
-`CompetitionEntry`.** `ensureTableRows()` creates the rows; nothing ever fills them.
+`MatchType.countsForTable(match)` now includes a cup match with a non-empty `groupCode`, and
+`SimMatchService.persist()` updates the cup's own `SeasonCompetition`. Domestic knockout ties remain
+outside the table path.
 
 `InternationalClubCupDraw.rankingWithin():539` then compares eight entries that are all 0 points / 0
 goals / 0 against. `LeagueTableOrder` falls through to its last key — **team id** — so *"the top two
@@ -215,10 +215,10 @@ before a ball is kicked, and the same applies to the Masters Cup's group winner.
 This is the defect that makes the rest of the block cosmetic, and it was not on the board in any form.
 
 **Exit criteria:**
-- [ ] A cup group match writes points, goals scored and goals conceded to the cup's own `SeasonCompetition`
-- [ ] `LEAGUE` behaviour is unchanged — a league table reconciles to the same numbers as before
-- [ ] A domestic cup tie still does **not** write a table (there is no group stage to write)
-- [ ] **Proven able to fail:** change a group's winning goal deliberately and watch a different club qualify
+- [x] A cup group match writes points, goals scored and goals conceded to the cup's own `SeasonCompetition`
+- [x] `LEAGUE` behaviour is unchanged — a league table reconciles to the same numbers as before
+- [x] A domestic cup tie still does **not** write a table (there is no group stage to write)
+- [x] **Proven able to fail:** the cup group table regression test changes the result and observes the ranking change
 
 ### P0-CUPS-2 — every level group match is settled by a shootout
 

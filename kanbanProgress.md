@@ -41,6 +41,12 @@ week and a clear unavailable state.
 
 Remaining work is now national-team injury live verification and the pre-existing national-rating test.
 
+## 2026-10-06 — P0-CUPS-1 documentation reconciliation
+
+The source and existing regression coverage already close P0-CUPS-1: cup group matches with a non-empty
+`groupCode` update their own `SeasonCompetition`, while league and domestic knockout behaviour remains
+unchanged. The board was stale and has been marked complete.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
