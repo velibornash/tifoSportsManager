@@ -2,6 +2,16 @@
 
 ## 2026-10-06 — documentation reconciliation after international cup repair
 
+## 2026-10-06 — P1-CUPS-1 four-slot calendar
+
+`SeasonCalendar` now exposes four weekly slots on days 1, 3, 5 and 7. League rounds still resolve to
+days 3 and 7 through `LeagueSlotSchedule`, while `FriendlyRequestService` checks fixtures by their actual
+slot so days 1 and 5 remain available when a club has no fixture there. Week 11 keeps the playoff slot
+available only to clubs outside the playoff. Source compilation and diff checks remain the validation;
+runtime friendly booking evidence is still pending.
+
+Remaining work is now P1-CUPS-2: finish the zero-cost friendly training contract.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup

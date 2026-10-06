@@ -40,8 +40,8 @@ public final class LeagueSlotSchedule {
     public static Map<Integer, Placement> byRound() {
         Map<Integer, Placement> placements = new HashMap<>();
         for (int week = 1; week <= SeasonCalendar.WEEKS_PER_SEASON; week++) {
-            // roundsIn returns the week's league rounds in slot order, so the first is day 3 at 19:00
-            // and the second is day 7 at 16:00 - the owner's schedule. Reading slot order from the
+            // roundsIn returns the week's league rounds in slot order, so the league entries are day 3
+            // and day 7 even though friendly slots now surround them. Reading slot order from the
             // calendar rather than from a week number is the whole point: the calendar is the
             // authority on what happens where, and it changes.
             List<Integer> rounds = SeasonCalendar.roundsIn(week);
@@ -50,8 +50,15 @@ public final class LeagueSlotSchedule {
                 if (round == null) {
                     continue;
                 }
-                int day = index == 0 ? GameDay.LEAGUE_FIRST_DAY : GameDay.LEAGUE_SECOND_DAY;
-                placements.putIfAbsent(round, new Placement(round, week, day));
+                int slotNumber = SeasonCalendar.slots(week).stream()
+                        .filter(slot -> slot.leagueRound() == round)
+                        .map(SeasonCalendar.WeekSlot::slot)
+                        .findFirst()
+                        .orElse(-1);
+                if (slotNumber > 0) {
+                    placements.putIfAbsent(round, new Placement(round, week,
+                            SeasonCalendar.dayForSlot(slotNumber)));
+                }
             }
         }
         return placements;

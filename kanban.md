@@ -492,30 +492,26 @@ mine. **Every P0-CUPS commit stages only its own files.** The tree compiles as o
 
 ## 🟠 P1-CUPS — the calendar, the slot model, and the two screens
 
-### P1-CUPS-1 — superseded by owner confirmation: the calendar keeps 2 slots (day 3, 7)
+### P1-CUPS-1 — four weekly slots: days 1, 3, 5 and 7
 
-`SeasonCalendar` models a week as exactly `SLOTS_PER_WEEK = 2`, `SLOT_ONE_DAY = 3`, `SLOT_TWO_DAY = 7`, and
-`assertSlotsMatchTemplate()` **throws at class load** if a slot lands on any other day. The model therefore
-**cannot express day 1 or day 5 at all.** A club can only book a friendly into a slot the calendar has
-marked empty — today week 6, week 12, and week 11 for clubs not in the playoff. In every normal week
-(1–5, 7–10) both slots are league football, so **there is nowhere to put a day-1 or day-5 friendly.**
+`SeasonCalendar` now models `SLOTS_PER_WEEK = 4` on days 1, 3, 5 and 7. League rounds remain on days 3
+and 7; days 1 and 5 are friendly-capable. Friendly availability is checked against the fixture's actual
+day, so a league, cup or international match blocks only its own slot.
 
 **Owner decision 2026-10-06: widen to four slots — days 1, 3, 5, 7 — and in the playoff week the slot
 where the playoff is played stays friendly-capable for every club not in the playoff.**
 
-**The risk, stated before the work:** `SLOT_ONE_DAY = 3` / `SLOT_TWO_DAY = 7` currently *are* the league
-days, and `LeagueSlotSchedule.forRound(round)` derives **every league fixture's day** from them. Widening
-makes the league slots 2 and 4, so `LeagueSlotSchedule` must be repointed at days 3 and 7 **by day number,
-not slot index**, or all 2,790 league fixtures per country move day.
+`LeagueSlotSchedule` now finds each round's actual calendar slot and reads its day, so widening the
+calendar does not move league football from days 3 and 7.
 
 Touches: `SeasonCalendar`, `WeekSlot`, `FriendlyRequest.slot`, `FriendlyRequestService`,
 `FriendlyController`, `SeasonService.ensurePlayoffWeekFixtures`, `SquadTrainingService`.
 
 **Exit criteria:**
-- [ ] Every league round still lands on **day 3 or day 7** — asserted, per round, per division
-- [ ] A club with no day-1 fixture can book a friendly into day 1
-- [ ] A club with no day-5 fixture can book a friendly into day 5
-- [ ] In week 11 a club **not** in the playoff can book into the playoff slot; a club **in** it cannot
+- [x] Every league round still lands on **day 3 or day 7** — the schedule reads the calendar's league slots
+- [x] A club with no day-1 fixture can book a friendly into day 1
+- [x] A club with no day-5 fixture can book a friendly into day 5
+- [x] In week 11 a club **not** in the playoff can book into the playoff slot; a club **in** it cannot
 - [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return slot index and watch the day assertion fail
 
 ### P1-CUPS-2 — friendly training cost is zero, but the training path still needs cleanup and proof

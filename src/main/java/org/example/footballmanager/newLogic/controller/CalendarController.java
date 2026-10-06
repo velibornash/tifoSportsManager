@@ -77,10 +77,12 @@ public class CalendarController {
             row.put("week", week);
             row.put("current", week == current);
             row.put("note", noteForWeek(week));
-            // What is on each of the two league days, so the season reads as a shape rather than
+            // What is on each weekly slot, so the season reads as a shape rather than
             // twelve identical rows. "Rounds 3-4" is more use than "League".
-            row.put("dayThree", roundsFor(week, 0));
-            row.put("daySeven", roundsFor(week, 1));
+            row.put("dayOne", roundsFor(week, 0));
+            row.put("dayThree", roundsFor(week, 1));
+            row.put("dayFive", roundsFor(week, 2));
+            row.put("daySeven", roundsFor(week, 3));
             weeks.add(row);
         }
         Map<String, Object> body = new LinkedHashMap<>();
@@ -90,7 +92,7 @@ public class CalendarController {
         return body;
     }
 
-    /** The league rounds in one of a week's two slots, as a short label. */
+    /** The contents of one of a week's four slots, as a short label. */
     private String roundsFor(int week, int slotIndex) {
         var slot = SeasonCalendar.slot(week, slotIndex + 1);
         if (slot == null) {

@@ -31,11 +31,11 @@ import java.util.Set;
  *
  * <p>This replaced a generator that quietly created a full round of friendlies in weeks 5, 6, 11 and
  * 12, which was wrong twice over: a manager was handed matches they had not asked for, and a club
- * had no way to trade a friendly for training time. Now a week simply has two slots, an empty one
+ * had no way to trade a friendly for training time. Now a week simply has four slots, an empty one
  * is an opportunity, and a club asks.
  *
  * <p>The decision the owner actually wants to make is therefore real: a club with an open slot can
- * take the friendly and give up a training session, or leave it and train. That is why
+ * take the friendly without losing a training session, or leave it and train. That is why
  * {@link #trainingSessionsLostToFriendlies} exists even though there is no training system yet — the
  * cost is <i>derived</i> from the agreed friendlies rather than stored, so it cannot drift away from
  * the fixtures and Sprint 4 can read it rather than reinvent it.
@@ -48,8 +48,8 @@ public class FriendlyRequestService {
     /**
      * How many training sessions a club gets in a week with no football commitments.
      *
-     * <p>Deliberately small and explicit: one friendly costs one session, so a club playing both
-     * friendly slots in the week-12 break trains once less than one playing none.
+     * <p>Kept as the baseline used by the training service. Friendlies do not reduce this budget;
+     * {@link #TRAINING_SESSIONS_PER_FRIENDLY} is explicitly zero.
      */
     public static final int BASE_TRAINING_SESSIONS_PER_WEEK = 3;
 
@@ -251,8 +251,8 @@ public class FriendlyRequestService {
     /**
      * How many training sessions a club loses to friendlies in a week.
      *
-     * <p>One friendly costs one session. This is the reason to decline: a club that plays both
-     * friendly slots in the break trains once less than one that plays none.
+     * <p>Friendlies have no training-session cost. The decision to decline is therefore about
+     * availability and match load, not a reduction in the weekly training budget.
      */
     @Transactional(readOnly = true)
     public int trainingSessionsLostToFriendlies(Long teamId, Integer season, Integer week) {
@@ -302,7 +302,7 @@ public class FriendlyRequestService {
         // The fixture walk and the agreed-friendly walk were two halves of this answer, and
         // `hasPendingOrAccepted` asked the second half again per candidate pair. All three are one
         // question now: is this club already committed in this slot?
-        return snapshot.hasFixture(teamId) || snapshot.busyIn(teamId, slot);
+        return snapshot.hasFixtureInSlot(teamId, slot) || snapshot.busyIn(teamId, slot);
     }
 
     /** Whether a club is in that week's playoff, which costs it the Thursday slot. */
@@ -418,6 +418,8 @@ public class FriendlyRequestService {
      */
     private final class WeekSnapshot {
         private final Set<Long> withFixture = new HashSet<>();
+        /** slot -> clubs with a scheduled fixture on that slot's day. */
+        private final Map<Integer, Set<Long>> fixtureInSlot = new HashMap<>();
         /** slot -> clubs with an AGREED friendly in it. This is what makes a club busy. */
         private final Map<Integer, Set<Long>> agreedInSlot = new HashMap<>();
         /** slot -> clubs with a request still waiting for an answer. Stops a club asking twice. */
@@ -425,8 +427,21 @@ public class FriendlyRequestService {
 
         WeekSnapshot(Integer season, Integer week) {
             for (MatchFixture f : fixtures.findBySeasonYearAndWeekNumber(season, week)) {
-                if (f.getHomeTeam() != null) withFixture.add(f.getHomeTeam().getId());
-                if (f.getAwayTeam() != null) withFixture.add(f.getAwayTeam().getId());
+                int slot = SeasonCalendar.slots(week).stream()
+                        .filter(candidate -> candidate.day() == f.getDayNumber())
+                        .map(SeasonCalendar.WeekSlot::slot)
+                        .findFirst()
+                        .orElse(-1);
+                if (f.getHomeTeam() != null) {
+                    withFixture.add(f.getHomeTeam().getId());
+                    if (slot > 0) fixtureInSlot.computeIfAbsent(slot, ignored -> new HashSet<>())
+                            .add(f.getHomeTeam().getId());
+                }
+                if (f.getAwayTeam() != null) {
+                    withFixture.add(f.getAwayTeam().getId());
+                    if (slot > 0) fixtureInSlot.computeIfAbsent(slot, ignored -> new HashSet<>())
+                            .add(f.getAwayTeam().getId());
+                }
             }
             for (FriendlyRequest r : requests.findBySeasonAndWeek(season, week)) {
                 if (r.getStatus() == FriendlyStatus.ACCEPTED) {
@@ -440,6 +455,10 @@ public class FriendlyRequestService {
         /** A club with a real fixture that week is busy in every slot, which is what the old walk meant. */
         boolean hasFixture(Long teamId) {
             return teamId != null && withFixture.contains(teamId);
+        }
+
+        boolean hasFixtureInSlot(Long teamId, Integer slot) {
+            return teamId != null && contains(fixtureInSlot, teamId, slot);
         }
 
         /** An agreed friendly in this slot. A request still waiting does not count — see {@link #liveIn}. */
