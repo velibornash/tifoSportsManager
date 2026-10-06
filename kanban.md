@@ -1981,7 +1981,7 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 - [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
       competition tab. The endpoint is built; the frontend that renders it is not.
 - [ ] **Admin buttons** for the new endpoints are not on the admin screen.
-- [ ] **National-team injuries unverified** — `decrementInjuriesByWeek` may not cover the national-team
+- [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT copies). **Unverified in running app.**
       player rows, which are copies. The owner's "players can be injured" rule is unproven.
 
 ### P2-12 — U-21 as its own competitions — **structure done, nothing on screen**

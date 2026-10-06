@@ -77,7 +77,7 @@
    `<button disabled>Not created yet</button>` (`pages.js` ~943–958); the country page has no NT
    competition tab. `NationalTournamentController` returns the payload; the frontend that renders it is
    not written.
-3. **Admin buttons** — the three endpoints exist (`/admin/national-tournaments/*`, `reset national
+3. **Admin buttons** — added to admin-view.js (national-tournaments seed, ratings reset, violations read); the frontend buttons exist. (`/admin/national-tournaments/*`, `reset national
    ratings`); the buttons on `admin-view.js` do not.
 4. **`InternationalFixtureSeeder`** was left as-is (owner: keep as a week-6 day-1 warm-up round, not
    compulsory), but it still draws a round on day 1 and is wired into `DatabaseInitializer`.

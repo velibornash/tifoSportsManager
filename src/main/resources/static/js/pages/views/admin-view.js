@@ -149,6 +149,29 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+                if (action === 'national-tournaments') {
+            await runRepair(button, {
+                confirmText: 'Draw the national tournament fixtures?',
+                path: '/admin/national-tournaments/seed',
+                successNote: 'National tournament fixtures drawn'
+            });
+            return;
+        }
+        if (action === 'national-ratings-reset') {
+            await runRepair(button, {
+                confirmText: 'Reset all national ratings to 1500?',
+                path: '/admin/national-ratings/reset',
+                successNote: 'National ratings reset to 1500'
+            });
+            return;
+        }
+        if (action === 'national-ratings-violations') {
+            await authFetch('/admin/national-ratings/violations').then(async res => {
+                if (!res.ok) alert('Could not read violations');
+                else { const v = await res.json(); alert('National rating violations: ' + (v.violations || v.length || 'none')); }
+            });
+            return;
+        }
         if (action === 'seed-other-nations') {
             // A job, not a repair: this one takes minutes, so it goes through the polling job path the
             // reset and initialise buttons use rather than runRepair(), which expects a reply now.
