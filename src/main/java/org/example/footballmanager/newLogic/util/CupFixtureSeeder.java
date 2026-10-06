@@ -126,25 +126,32 @@ public class CupFixtureSeeder {
 
     @Transactional
     public void seedIfMissing() {
-        // **Left as findAll() on purpose, and the reason is worth more than the optimisation.**
+        // **primaryCup(), not a stream over findAll() — P0-CUPS-6.**
         //
-        // This looks like a free D1 win — the competition table is every league division in the world,
-        // 1,457 of them, read to find the few dozen cups. Narrowing it to findByType(CUP) was tried and
-        // broke CupFixtureSeederCountryTest in five places, because `findFirst()` over an unordered
-        // result is a silent coupling to whatever order the rows come back in: findAll() and
-        // findByType() do not return the same order, so the seeder picked a *different cup*.
+        // This used to be `findAll().stream().filter(type == CUP).findFirst()`, and the comment above it
+        // explained that findAll() was kept on purpose because "findFirst() over an unordered result is a
+        // silent coupling to whatever order the rows come back in". That was true and it did not apply:
+        // findAll() *is* the unordered result, findByType() was never what made the choice
+        // deterministic, and the one thing missing from the filter was **scope**.
         //
-        // Which cup this should draw is already a parked owner decision — one job drawing 48 national
-        // cups, or one draw per country. Making the selection deterministic is the fix for that, and it
-        // belongs with the decision rather than inside a performance change. primaryCup() is narrowed
-        // below because *its* rule is already deterministic (lowest id), so the query returns exactly
-        // what the stream selected.
-        Competition cup = competitions.findAll().stream()
-                .filter(c -> c.getType() == CompetitionType.CUP)
-                .findFirst()
-                .orElse(null);
+        // The filter said CUP and nothing else, so it took the lowest-id CUP row in the world whichever
+        // kind it was. InternationalClubCups creates fifteen continental cups with country == null, and a
+        // continental cup is a perfectly good answer to "the first CUP row". So the domestic cup seed
+        // took one, rankedClubs() hit `cup.getCountry() == null`, logged "has no country; nothing to
+        // rank", returned an empty list — and the national cup was never drawn.
+        //
+        // The class already had the right answer one method down. primaryCup() is the same "one cup"
+        // question answered with findFirstNationalScoped, and drawRoundForWeek() — the day-2 job — has
+        // always used it. Two methods in one class asking the same question and getting different answers
+        // is what made the national cup depend on the id ordering of fifteen rows it has no relationship
+        // to.
+        //
+        // The parked decision this comment used to defer to — one job drawing 48 national cups, or one
+        // draw per country — is untouched by this. primaryCup() picks one domestic cup, deterministically,
+        // exactly as it did for the matchday job. What changed is that boot and the job now agree.
+        Competition cup = primaryCup();
         if (cup == null) {
-            log.info("No CUP competition found; nothing to draw.");
+            log.info("No domestic CUP competition found; nothing to draw.");
             return;
         }
 

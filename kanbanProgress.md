@@ -80,25 +80,58 @@ So the discriminator has to be per match, and P0-CUPS-1 had already put it there
 question, so "wire it" was never reachable. Deleting it is on the list below rather than done here,
 because three documents cite it as the fix and that is the owner's call.
 
-### A pre-existing red, measured rather than assumed
+### P0-CUPS-6 — the domestic cup seed, and a diagnosis I got wrong
 
-`CupFixtureSeederCountryTest` went **5 red** in the regression batch. Before blaming or reverting
-anything I ran the identical batch in a worktree at `95151e6` — the commit before any P0-CUPS code.
+`CupFixtureSeeder.seedIfMissing():142` selected its target with `findAll().stream().filter(type == CUP)
+.findFirst()` — **no scope filter**. So it takes the lowest-id CUP row in the world whichever kind it is.
+`InternationalClubCups` creates fifteen continental cups with `country == null`, and a continental cup is
+a perfectly good answer to *"the first CUP row"*. `rankedClubs():210` then hit `cup.getCountry() == null`,
+logged *"has no country; nothing to rank"*, and **the domestic cup was never drawn.**
 
-**Same five failures.** So it is not mine, and it is not hypothetical: `seedIfMissing():142` filters on
-`type == CUP` **with no scope filter**, so it takes the lowest-id CUP row of any scope — which, once
-`InternationalClubCups` has created the 15 continental cups, is one of those. They have `country == null`,
-`rankedClubs():210` logs *"has no country; nothing to rank"*, and **the domestic cup is not drawn at all.**
+The class already had the right answer one method down: `primaryCup()`, which is the same question via
+`findFirstNationalScoped`. `drawRoundForWeek()` — the day-2 job — has always used it. **Two methods in one
+class asking the same question and getting different answers** is what left the national cup depending on
+the id ordering of fifteen rows it has no relationship to. `seedIfMissing` now calls `primaryCup()`.
 
-It also corrects a comment that has been wrong since it was written: `seedIfMissing` says `findAll()` was
-kept *"on purpose"* because `findFirst()` over an unordered result is a silent coupling. But `findAll()`
-**is** the unordered result — `findByType()` was never what made the choice deterministic, and dropping the
-scope filter is precisely what reintroduced the coupling. `primaryCup()` in the same class already does it
-correctly.
+#### 🔴 I diagnosed the wrong cause first, and the board recorded it before I checked
 
-**This is P0-CUPS-6, and it is not a test-isolation footnote.** P0-CUPS-4 makes those 15 rows exist in the
-running app. Left alone, the national cup — something the owner has played since before this board existed
-— goes quietly empty on the next boot.
+The `CupFixtureSeederCountryTest` regression went 5 red, and I wrote on the board that P0-CUPS-6 was
+*"the reason `CupFixtureSeederCountryTest` goes red the moment `InternationalClubCupDrawTest` runs first"*,
+and left the fix in with a test asserting exactly that.
+
+**That was a guess wearing the clothes of a finding.** The measured answer is different:
+
+| Batch | Result |
+|---|---|
+| `CupFixtureSeederCountryTest` alone | **6 green** |
+| `CupFixtureSeederCountryTest` + `CupDrawSeedingTest` | **5 red** — reproduces |
+| same batch in a worktree at `95151e6`, before any P0-CUPS code | **5 red**, identical |
+
+The polluter is **`CupDrawSeedingTest`**, which creates a country `"ZZ Cup …"` and an **8-club** cup
+`"ZZ National Cup …"`. `CupFixtureSeederCountryTest` creates its own national cup with **260** clubs. Both
+resolve "the one cup" as *the lowest-id national cup in the database*, so whichever class ran first owns
+the answer, and the loser draws into the other's competition. The failure message — *"the cup drew nothing
+at all"* — is an 8-club cup failing the 256-club threshold, not a scope-filter bug.
+
+**The root cause in both places is `primaryCup()` itself.** *"One cup, chosen by lowest id"* is not a rule
+a competition table can satisfy; it is a rule about insertion order in a shared database. It makes
+production depend on which row got its id first, and it makes both test classes depend on which class ran
+first.
+
+#### The fix is landed and **not guarded**, on purpose
+
+A test for the `seedIfMissing` change has to make a continental cup the lowest-id CUP of any scope. Whether
+an earlier test already created a national cup *below* it decides whether the old code would have passed.
+So the test is green for the wrong reason under some orderings and red under others — and a test like that
+is worse than none, by this repository's own rule 3. **None was written, and that is the honest state.**
+
+What unblocks it is an owner decision the old comment deferred and never got: one job drawing 48 national
+cups, or one draw per country. It is on the board as **P0-CUPS-6** with the three options and a
+recommendation.
+
+The other half of this — two pre-existing test classes that poison each other in one JVM — means the
+~2 h 52 m full suite has an unknown number of order-dependent reds, which is its own problem and its own
+entry.
 
 ### Not verified, and worth saying plainly
 
@@ -106,6 +139,9 @@ running app. Left alone, the national cup — something the owner has played sin
 the group tables were read back out of `CompetitionEntry` after `persist()`. But AGENTS.md rule 2 asks for
 a job to be seen changing data, and that becomes answerable at **P0-CUPS-4**, when there is a job and a
 season to run. Until then "the group table is written" is a tested statement, not an observed one.
+
+**P0-CUPS-6 is fixed but unguarded.** Stated above and on the board; repeated here so it is not read as a
+completed task.
 
 ---
 

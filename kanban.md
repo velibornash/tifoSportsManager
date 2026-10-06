@@ -299,12 +299,10 @@ than returning an empty `DrawResult`
 
 ---
 
-### P0-CUPS-6 — the domestic cup seed can pick a continental cup and then draw nothing
+### P0-CUPS-6 — the domestic cup seed can pick a continental cup, and nothing guards the fix
 
-**Found 2026-10-06, while running the P0-CUPS-1 and P0-CUPS-2 regressions.** Not hypothetical: it is the
-reason `CupFixtureSeederCountryTest` goes red the moment `InternationalClubCupDrawTest` runs first in the
-same JVM, and that pollution was measured to **predate P0-CUPS-1** (identical five failures at `95151e6`),
-so it is reported rather than introduced.
+**Found 2026-10-06 while running the P0-CUPS-1/2 regressions. Fix landed. The fix is NOT yet guarded, and
+the reason it cannot be is a second, older defect — see the correction below.**
 
 `CupFixtureSeeder` picks its target two different ways, and they disagree:
 
@@ -313,28 +311,62 @@ so it is reported rather than introduced.
 | `primaryCup():293` — used by `drawRoundForWeek`, i.e. by the day-2 `CupDrawJob` | `findFirstNationalScoped(CUP, INTERNATIONAL, Limit.of(1))` | **yes** |
 | `seedIfMissing():142` — used by **boot** and by `WorldRepairService.repair("cup")` | `findAll().stream().filter(type == CUP).findFirst()` | **no** |
 
-So `seedIfMissing()` will take the **lowest-id CUP row of any scope**. The 15 continental cups are exactly
+So `seedIfMissing()` takes the **lowest-id CUP row of any scope**. The 15 continental cups are exactly
 that: `country == null`. `rankedClubs():210` then hits `cup.getCountry() == null`, logs *"Cup Champions Cup
-has no country; nothing to rank"*, and returns an empty list — and **the domestic cup is never drawn.**
+has no country; nothing to rank"*, returns an empty list — and **the domestic cup is not drawn at all.**
+`seedIfMissing()` now calls `primaryCup()`, so boot and the day-2 job finally agree.
 
-**Why this is P0 and not a test-isolation footnote:** P0-CUPS-4 makes those 15 rows exist in the running
-app. The day-2 job would then draw into the right competition while boot had already seeded the wrong one,
-and the national cup — a competition the owner has played since before this board existed — would go
-quietly empty. `seedIfMissing`'s own comment says the selection is *"already a parked owner decision"* and
-that making it deterministic *"belongs with the decision rather than inside a performance change"*. The
-performance change is long since made; the correctness half was left behind.
+**Why this is P0 and not a footnote:** P0-CUPS-4 makes those 15 rows exist in the running app. Left alone,
+the national cup — which the owner has played since before this board existed — would go quietly empty on
+the next boot.
 
-The comment also records a false belief worth correcting: it says `findAll()` was kept *"on purpose"* so
-that `findFirst()` over an unordered result does not silently change which cup is picked. But
-`findAll()` **is** an unordered result — `findByType()` was not what made the choice deterministic, and
-removing the scope filter is what reintroduced the silent coupling. The fix is to select the same
-`primaryCup()` the rest of the class uses.
+#### 🔴 Correction — my first diagnosis of the 5 red `CupFixtureSeederCountryTest` was wrong
+
+I wrote on this board that this defect was *"the reason `CupFixtureSeederCountryTest` goes red the moment
+`InternationalClubCupDrawTest` runs first"*, and that the pollution was measured to predate P0-CUPS-1. The
+second half was measured and is true. **The first half was a guess dressed as a finding, and it is false.**
+Measured, in this order:
+
+| Batch | Result |
+|---|---|
+| `CupFixtureSeederCountryTest` alone | **6 green** |
+| `CupFixtureSeederCountryTest` + `CupDrawSeedingTest` | **5 red** — reproduces |
+| the same batch at `95151e6`, before any P0-CUPS code | **5 red**, identical |
+
+So the polluter is **`CupDrawSeedingTest`**, not `InternationalClubCupDrawTest`. `CupDrawSeedingTest`
+creates a country `"ZZ Cup …"` and a cup `"ZZ National Cup …"` with only 8 clubs;
+`CupFixtureSeederCountryTest` creates its own national cup with 260. Both then call code that resolves
+"the one cup" as **the lowest-id national cup in the database** — so whichever class ran first owns the
+answer, and the loser draws into the other's competition. `CupFixtureSeederCountryTest` fails with *"the
+cup drew nothing at all"* because it is drawing into an 8-club cup that fails the 256-club threshold.
+
+**The root cause is the same in both places, and it is `primaryCup()` itself.** "One cup, chosen by
+lowest id" is not a rule a competition table can satisfy — it is a rule about insertion order in a shared
+database. It makes production depend on which row got its id first, and it makes both tests depend on
+which class ran first.
+
+#### ❓ Owner decision needed: what is "the" domestic cup?
+
+`seedIfMissing`'s comment records this as a parked decision — *"one job drawing 48 national cups, or one
+draw per country"* — and deferred it to that decision. **The performance change it deferred to has long
+since been made; the correctness half was left behind, and it has now cost one unguarded fix and two
+order-dependent test classes.** Three options, and this is the owner's:
+
+| | Option | Consequence |
+|---|---|---|
+| **A** | **One cup per country.** `CupDrawJob` and `seedIfMissing` take a country and draw that country's cup. | Removes the ambiguity entirely. 48 draws per season instead of 1 — the scale question P1 exists for. **Recommended.** |
+| **B** | **Name the cup explicitly** — e.g. the lowest-id national cup per country, or a `primary` flag on `Competition`. | Smallest change that removes the shared-database coupling. Still "one cup per country" in effect. |
+| **C** | Leave it. | Keeps an order-dependent production rule and two order-dependent test classes. |
+
+**Until this is answered, P0-CUPS-6 has no test.** A guard for the `seedIfMissing` fix has to make the
+continental cup the lowest-id CUP of any scope — and whether an earlier test has already created a
+national cup below it decides whether the old code would pass. A test that is green for the wrong reason is
+worse than no test, so none was written.
 
 **Exit criteria:**
-- [ ] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does
-- [ ] A boot with all 15 continental cups present still draws the domestic cup
-- [ ] **`CupFixtureSeederCountryTest` is green after `InternationalClubCupDrawTest` in one JVM** — the
-      regression that exposed this, written as a guard so it cannot come back
+- [ ] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does — **done**, `seedIfMissing` now calls `primaryCup()`
+- [ ] A boot with all 15 continental cups present still draws the domestic cup — **needs a test; blocked on the decision above**
+- [ ] `CupFixtureSeederCountryTest` and `CupDrawSeedingTest` are green in **one JVM** — **blocked on the decision above**
 
 ---
 
