@@ -275,10 +275,10 @@ simulated state. A country row opens the country page. Active countries show the
 simulated countries show the national-team record because their static clubs may have no players or
 fixtures.
 
-The World page now links the three international club cups. Each cup opens `club-cup-view.js`, which
-has tier tabs, group tables, results and knockout bracket data. The four national-team competition tiles
-are currently disabled in the World page even though their backend controller exists; the frontend
-national-tournament screen is unfinished.
+The World page now shows the three international club cups as rows in one competition table. Each row
+shows the expected field size (Champions 48, Masters 96, Challenge 48) and opens `club-cup-view.js`,
+which has tier tabs, group tables, results and knockout bracket data. The four national-team competitions
+are listed as unavailable rows because the national-tournament screen is unfinished.
 
 ## 6. What the manager can do
 
@@ -395,7 +395,7 @@ Current operations include:
 | Repair world | Repairs the country catalogue and national-team baseline |
 | Re-seed national teams | Tops up missing national-team squads |
 | Re-draw the cup | Draws missing domestic cup rounds |
-| Seed international cups | Ensures/draws international club cup state through the job path |
+| Repair international cups | Creates the 15 international club cup rows and fills missing simulated-country structures |
 | Seed national tournaments | Creates and draws national qualifying/tournament structures |
 | Reset national ratings | Explicit admin correction/backfill for the rating columns |
 
@@ -443,8 +443,10 @@ GET /club-cups
 GET /club-cups/{key}?tier=N
 ```
 
-The World page links into `club-cup-view.js`, which renders each tier's groups, results and bracket.
-Small fields of 2–7 entrants now use a knockout path. The remaining open issue is the owner's Option A:
+The World page links into `club-cup-view.js`, which renders each tier's groups, results and bracket. The
+three World rows report 48, 96 and 48 expected entrants. Small fields of 2–7 entrants now use a knockout
+path. The repair action creates missing international rows and static simulated-country tables, and the
+week-1 job repeats that repair boundary before drawing. The remaining open issue is the owner's Option A:
 the domestic cup draw should be explicitly run once per country rather than selecting one primary cup
 globally.
 
@@ -463,8 +465,8 @@ week-12 knockouts. Pots of eight, worse-rated hosts and stored group tie-break v
 in `NationalTournamentSeeder`. `NationalMatchdayJob`, `NationalTournamentDrawJob`, ratings and the
 controller are present.
 
-The backend is not fully finished: the tournament champion path still has a failing final-draw case in
-the recorded verification, and the frontend World tiles remain disabled. `NationalTournamentController`
+The tournament champion path now includes the final feed-forward round. The frontend World rows remain
+unavailable, and the country page has no national-tournament competition tab. `NationalTournamentController`
 is an API capability, not proof that a manager can currently reach the tournament from the graphical
 football UI.
 
@@ -596,7 +598,6 @@ These are current source/board findings, not historical audit claims.
 
 - Away teams still use home tactics during simulation (P0-3).
 - Several controller/service paths still interpret a `CTeam` id as a football `Team` id (P0-20).
-- The national tournament backend does not yet reach a confirmed final/champion in the recorded test.
 - A two-to-seven entrant international cup path is implemented, but the two-club owner decision remains.
 - Domestic cup drawing is still globally selected in one path instead of being explicitly one cup per country.
 - The calendar still has two league slots per week; the owner wants four slots including days 1, 3, 5
@@ -606,7 +607,7 @@ These are current source/board findings, not historical audit claims.
 
 ### 12.2 UI gaps
 
-- National tournament tiles on the World page are disabled and the country page has no complete national
+- National tournament rows on the World page are unavailable and the country page has no complete national
   tournament tab.
 - Some legacy page names remain in the router for compatibility or partial functionality.
 - `playerStats` and `teamStats` routing and aggregate loaders need continued verification against the

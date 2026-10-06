@@ -149,9 +149,10 @@ Ordered by leverage. **P0-1 and P0-2 are the two tasks that make everything else
 
 ---
 
-## 🌍 P0-CUPS — the international club cups are specified, half-written, and never run
+## 🌍 P0-CUPS — international club cups and the remaining domestic draw decision
 
-**Owner spec 2026-10-06. Analysis and plan 2026-10-06. Nothing in this block has been implemented yet.**
+**Owner spec 2026-10-06. The international cup path is now wired; live database observation and the
+domestic cup ownership decision remain open.**
 
 Replaces the old **P2-11** entry, which said *"three tiers exist with data but the calendar is thin"* and
 asked for *"every tier plays a full season"*. That description was too kind and, in one respect, wrong:
@@ -426,9 +427,10 @@ worse than no test, so none was written.
       instead of one global draw. This is the remaining piece of P0-CUPS-6; until it lands, `seedIfMissing`
       still picks "one cup" by lowest id.
 
-**Owner decision 2026-10-06: option A — one cup per country.** `CupDrawJob` and `seedIfMissing()` take a
-country and draw that country's cup, so there is no "lowest id" left to depend on and neither test class can
-be poisoned by the other. 48 draws per season instead of 1.
+**Owner decision 2026-10-06: option A — one cup per country.** The decision is recorded, but the source
+still has the old global `CupDrawJob` and `CupFixtureSeeder.primaryCup()` path. Implementing the decision
+requires passing a country through the draw job and repair/bootstrap callers, then observing all 48
+domestic cups being drawn. Until that lands, the lowest-id domestic cup remains the production selector.
 
 ---
 
@@ -514,24 +516,25 @@ Touches: `SeasonCalendar`, `WeekSlot`, `FriendlyRequest.slot`, `FriendlyRequestS
 - [ ] In week 11 a club **not** in the playoff can book into the playoff slot; a club **in** it cannot
 - [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return slot index and watch the day assertion fail
 
-### P1-CUPS-2 — a friendly costs a club a third of its training, which is not a rule
+### P1-CUPS-2 — friendly training cost is zero, but the training path still needs cleanup and proof
 
 **Owner decision 2026-10-06: a friendly costs no training session. Day 4 is a training *update*** — driven
 by minutes played, coach, talent, height and skill — **and that is not a training session.**
 
-The code disagrees. `SquadTrainingService.trainPlayer():129` computes
-`share = percent/100 × (sessions / 3.0)`, so `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 1`
-means one friendly drops `sessions` from 3 to 2 and costs the club **a third of its weekly development**. A
-friendly should *add* development, because it adds minutes — and `TrainingPercent.percentFor(player,
-coach, primary, minutes)` already takes minutes.
+The constant is now `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 0`, so an agreed friendly
+does not consume a training session. `SquadTrainingService` still calls the shared training-session helper,
+and the owner’s stronger rule — development must respond to match minutes without a friendly reducing the
+weekly training budget — still needs focused verification and cleanup.
 
-So the `sessions / 3.0` divisor goes, and with it `TRAINING_SESSIONS_PER_FRIENDLY` and
-`trainingSessionsAvailable()`. **No cap on friendlies per week** — a club may book any free slot.
+The remaining work is to remove or deliberately retain the shared session helper after the final
+training contract is verified. **No cap on friendlies per week** — a club may book any free slot.
 
 **Exit criteria:**
+- [x] A friendly contributes zero training-session cost
 - [ ] A club playing a friendly in a week develops **more**, not less, than one that does not
 - [ ] `BASE_TRAINING_SESSIONS_PER_WEEK`, `TRAINING_SESSIONS_PER_FRIENDLY` and
-      `trainingSessionsAvailable` are gone rather than left at a value nobody believes
+      `trainingSessionsAvailable` are removed or their final contract is recorded rather than left as
+      an accidental shared helper
 - [ ] Growth still responds to coach, age and minutes played — the parts the owner kept
 
 ### P1-CUPS-3 — the country side: the qualifying race, and a job to keep it honest
@@ -1962,7 +1965,7 @@ Three to four days. The six slider fields have **zero readers** today — they a
 
 **Exit criteria:** the sliders change something observable in a match, or they are removed.
 
-### P2-10 — National team qualifiers and the senior World Cup — **DRAW BUILT, NOT YET PLAYED TO A RESULT**
+### P2-10 — National team qualifiers and the senior World Cup — **BACKEND BUILT, UI OPEN**
 
 The mechanism exists; the competitions and formats did not. **Work landed 2026-10-06 — see
 [`kanbanProgress.md`](kanbanProgress.md) for the full inventory and the two bugs the tests caught.**
@@ -1980,10 +1983,10 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       the loop never reached the final, so the bracket stopped at the semi-final. Fixed 2026-10-06:
       added `ROUND_FINAL` to the feed-forward list (`NationalTournamentSchedule:48`). The final
       and third-place fixtures are now drawn when `alive` reaches 2 after SF.
-- [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
-- [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
-      competition tab. The endpoint is built; the frontend that renders it is not.
-- [ ] **Admin buttons** for the new endpoints are not on the admin screen.
+- [ ] **The World page lists the four national competitions as unavailable rows** and the country page has
+      no NT competition tab. The endpoint is built; the frontend that renders it is not.
+- [x] **Admin controls** for seeding national tournaments, resetting ratings and reading rating violations
+      are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT copies). **Unverified in running app.**
       player rows, which are copies. The owner's "players can be injured" rule is unproven.
 
@@ -1994,8 +1997,8 @@ competition, its own tournament, its own 8 groups, its own 120 qualifying fixtur
 (`Country.youthRating`), its own matchday jobs. Confirmed by test: 120 senior fixtures and 120 U-21
 fixtures, in two different competitions.
 
-**Still open:** the U-21 tournament is reachable only by URL — the World page's "U-21 World Cup" tile is
-still a disabled button.
+**Still open:** the U-21 tournament is reachable only by URL — the World page lists the U-21 competitions
+as unavailable rows until a national tournament view is implemented.
 
 ### P2-14 — Prize money: `awardPrizeMoney` has no caller — DONE ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
 

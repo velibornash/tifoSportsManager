@@ -1,5 +1,36 @@
 # kanbanProgress.md — the append-only log
 
+## 2026-10-06 — documentation reconciliation after international cup repair
+
+Reconciled the root documentation with the current source and the latest football UI changes. The
+international cup read path now has a repair action, creates all 15 competition rows, prepares simulated
+country tables and reports the expected World-page fields of Champions 48, Masters 96 and Challenge 48.
+The World page uses one table with clickable club-cup rows and unavailable national-competition rows.
+
+Corrected stale progress and board claims: the small-field knockout path is implemented; the friendly
+training cost is zero in the current constant; the national tournament final feed-forward round is fixed;
+and national tournament admin controls are present. The root technical overview and user manual now match
+these behaviours.
+
+Remaining work recorded from the source:
+
+- P0-CUPS-6: implement the owner’s decision to draw the domestic cup once per country. The current
+  `CupDrawJob` still calls the global `primaryCup()` selector.
+- P0-CUPS-7: decide whether a two-club international cup should exist and finish the draw log assertion.
+- P0-CUPS-4: observe a real repaired world and cup page against the running database.
+- P1-CUPS-1: widen the calendar to four slots on days 1, 3, 5 and 7 while keeping league fixtures on days
+  3 and 7.
+- P1-CUPS-2: verify and simplify the training contract after the zero-cost friendly change.
+- P1-CUPS-3: expose country-level international qualifying tables and decide whether they are derived or
+  persisted and refreshed by a job.
+- P2-10/P2-12: build the national tournament view and country competition tab. The World rows are currently
+  unavailable; the backend endpoint and admin controls exist.
+- National-team injuries still need live verification, and the pre-existing national-rating test remains
+  red.
+- Friendly UI still lacks an invite action, national-team acceptance and the free-slot board.
+
+No tests were run for this documentation pass. `git diff --check` is the validation used.
+
 ---
 
 ## 2026-10-06 — international club cup repair and World page correction

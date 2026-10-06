@@ -254,8 +254,9 @@ Opens the international club Challenge Cup with its tier, group, result and brac
 
 ### National competitions
 
-The World page lists national qualifying and World Cup competitions. The backend structure exists, but
-these links are currently disabled in the graphical UI until the national tournament screen is finished.
+The World page lists national qualifying and World Cup competitions as unavailable rows. The backend
+structure exists, but these competitions cannot yet be opened from the graphical UI until the national
+tournament screen is finished.
 
 ## 8. Match pages
 
@@ -348,7 +349,8 @@ apply or lift forum bans.
 - **Repair world** — repairs the country catalogue and national-team baseline.
 - **Re-seed national teams** — fills missing national-team squads.
 - **Re-draw the cup** — draws missing domestic cup rounds.
-- **Seed international cups** — creates or draws international club cup state.
+- **Repair international cups** — creates the 15 international club cup rows and fills missing simulated-
+  country club structures. Existing data is kept.
 - **Seed national tournaments** — creates or draws national qualifying and tournament state.
 - **Reset national ratings** — applies the explicit national-rating correction operation.
 
@@ -386,4 +388,3 @@ The live game clock is also shown in the mobile menu.
 - **Simulated country** — a country represented in the world with limited or lazy-built football data.
 - **Club reputation** — the club's economy/strength scale from 0 to 100.
 - **Club Elo** — the separate rating used for club ranking updates.
-
