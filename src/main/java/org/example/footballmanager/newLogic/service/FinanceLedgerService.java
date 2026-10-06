@@ -10,8 +10,8 @@ import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Year;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,8 +56,14 @@ public class FinanceLedgerService {
     @Transactional(readOnly = true)
     public Map<String, Object> summarise(Team team, Integer season) {
         if (season == null) season = activeSeason(team);
-        List<FinanceLedgerEntry> entries = ledger.findByTeamIdAndSeasonYearOrderByWeekNumberAsc(
-                team.getId(), season);
+        // No clock means no season, and a season that does not exist has nothing settled in it. This
+        // used to fall back to Year.now().getValue() -- season 2026 -- so a clockless world read its
+        // ledger for a year that was never played, income that had really been earned came back zero,
+        // and TransferBudgetService refused the club for having no income. There is no calendar year
+        // anywhere in this game: seasons are counted from 1. No clock is not season 2026; it is no
+        // season at all, and the honest answer is a refusal.
+        List<FinanceLedgerEntry> entries = season == null ? List.of()
+                : ledger.findByTeamIdAndSeasonYearOrderByWeekNumberAsc(team.getId(), season);
 
         double income = 0;
         double wages = 0;
@@ -163,12 +169,18 @@ public class FinanceLedgerService {
      * weekly settlement that writes these lines - the same cycle the window and contract services hit.
      */
     private Integer activeSeason(Team team) {
-        org.example.footballmanager.newLogic.model.GameClock clock =
-                clocks.findAll().stream().findFirst().orElse(null);
-        if (clock != null && clock.getCurrentSeason() != null) {
-            return clock.getCurrentSeason();
-        }
-        return Year.now().getValue();
+        return clocks.findAll().stream()
+                .filter(c -> c.getCurrentSeason() != null)
+                // The furthest-advanced clock, and the lowest id between equals. findFirst() over an
+                // unordered table returned an arbitrary season, so two runs against the same data could
+                // disagree about which season the game was in -- and every figure below is a read of
+                // that season.
+                .max(Comparator.<org.example.footballmanager.newLogic.model.GameClock, Integer>comparing(
+                        org.example.footballmanager.newLogic.model.GameClock::getCurrentSeason)
+                        .thenComparing(org.example.footballmanager.newLogic.model.GameClock::getId,
+                                Comparator.reverseOrder()))
+                .map(org.example.footballmanager.newLogic.model.GameClock::getCurrentSeason)
+                .orElse(null);
     }
 
     private double round2(double v) {

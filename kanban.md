@@ -624,7 +624,7 @@ buttons; the missing piece is a guard, not a code change.
 
 ---
 
-### P0-9b — FOUND IN PRODUCT CODE: `FinanceLedgerService.activeSeason` falls back to `Year.now()`
+### P0-9b — DONE: `activeSeason` no longer answers `2026`, and no longer picks a coin
 
 **Seasons start at 1 and there is no calendar year anywhere.** This is the one place the product itself
 breaks that rule:
@@ -647,9 +647,26 @@ an owner decision: with no clock there is no season, so arguably nothing has bee
 answer is a refusal — which matches `TransferBudgetService`'s own existing reasoning ("a club in its first
 week has not been given anything yet"). Changing it alters affordability for every clockless club.
 
-- [ ] Owner decides the fallback: **`null` → no season, no settled income** (recommended), or a fixed `1`
-- [ ] Whichever is chosen, `PlayerContractServiceTest.signingMovesThePlayerToTheClub` and the negotiation
-      affordability path become satisfiable, and both are asserted with the reason attached
+**A second defect was in the same three lines.** `clocks.findAll().stream().findFirst()` has **no `ORDER
+BY`**, so when more than one clock exists the season the game is "in" was whichever row the database
+happened to return. Every ledger figure is a read of that season.
+
+**Decided and done:** the fallback is `null` — with no clock there is no season, which is exactly what
+`TransferBudgetService` already says ("a club in its first week has not been given anything yet") — and the
+clock is chosen deterministically as the furthest-advanced one, ties broken by the lowest id.
+
+- [x] No calendar year anywhere in `activeSeason`
+- [x] `summarise` survives a null season instead of querying with it
+- [x] The clock is chosen deterministically, not arbitrarily
+- [x] `PlayerContractServiceTest` **18/18** — `signingMovesThePlayerToTheClub` was the last hold-out and is
+      green, because the fixture now has a league and a settled week in the season being played
+- [x] 39 green across the four affected classes
+
+**What is not proven, and should not be claimed:** `FinanceLedgerSeasonTest.theFurthestAdvancedClockWins`
+passes under the old unordered `findFirst()` too, because `findAll()` returned the season-3 row in this
+database. A test cannot reliably distinguish "unspecified order that happened to be right" from "specified
+order" — the mutation proves the calendar-year half, not the determinism half. The determinism fix is
+correct and free, but **its guard is the code, not a test.**
 
 ---
 
