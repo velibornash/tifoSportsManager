@@ -347,13 +347,15 @@ When `entrants.size() < MIN_FIELD_FOR_GROUPS` (8), `buildGroupStage()` creates t
 The fix (2026-10-06): when fixtures are empty but `tableEntries` exist (the small-field case),
 `buildKnockouts()` reads the entrants from those entries, sorts them by the ranking comparator,
 filters to `qualifyPerGroup * 8`, and proceeds through the knockout loop (`ROUND_LAST_SIXTEEN`
-to `ROUND_SEMI_FINAL`). If only two clubs remain, the final + third-place match is drawn; if fewer
-than two, nothing is drawn; otherwise each knockout round is drawn one per call, as the original
-method designed.
+to `ROUND_SEMI_FINAL`). Two clubs play a direct final; odd fields carry an unpaired club as a bye into
+the next round; otherwise each knockout round is drawn one per call, as the original method designed.
 
-**Exit criteria:** [x] a cup with 2–7 entrants produces a knockout bracket · [ ] the log agrees with
-what was drawn · [ ] decided with the owner, since a two-club "Champions Cup" may deserve to be no
-competition at all
+**Exit criteria:** [x] a cup with 2–7 entrants produces a knockout bracket · [x] the draw result and log
+report the fixtures created · [x] two entrants play a direct final; odd fields carry one club byes into
+the next round
+
+**Owner decision:** a two-club international cup is still a competition and plays one final. This keeps
+the qualifying field honest when a tier has only two divisions and avoids inventing a group stage.
 ---
 
 ### P0-CUPS-6 — the domestic cup seed can pick a continental cup, and nothing guards the fix

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -386,8 +387,8 @@ public class InternationalClubCupDraw {
                         cup.getName(), fromTable.size());
                 List<Team> qualifiers = fromTable.subList(0,
                         Math.min(qualifyPerGroup * 8, fromTable.size()));
-                // The knockout for a small field: start from R16 (6) or adjust. For simplicity,
-                // draw the final directly if only 2 clubs remain after filtering, else start at R16.
+                // The knockout for a small field starts at the stored R16 round. Two clubs go directly
+                // to the final; odd fields keep the unpaired club as a bye for the next round.
                 if (qualifiers.size() < 2) {
                     return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, 0);
                 }
@@ -406,22 +407,20 @@ public class InternationalClubCupDraw {
                     if (thisRound.isEmpty()) {
                         if (aliveHere.size() == 2) {
                             made += drawFinalAndThirdPlace(cup, sc, aliveHere, seasonYear);
+                            log.info("{}: small field of {} reached the final directly; {} fixture(s) drawn.",
+                                    cup.getName(), qualifiers.size(), made);
                             return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
                         }
                         if (aliveHere.size() < 2) {
                             return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
                         }
-                        made += drawOneKnockoutRound(cup, sc, aliveHere, stage, seasonYear);
+                        made += drawSmallKnockoutRound(cup, sc, aliveHere, stage, seasonYear);
                         // The fixtures were just drawn but not played; winners will be read on the
                         // next call when the fixtures have results. The return stops here by design.
                         return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
                     }
-                    // Round finished: carry winners forward
-                    List<Team> winners = new ArrayList<>();
-                    for (MatchFixture tie : thisRound) {
-                        Team w = winnerOf(tie);
-                        if (w != null) winners.add(w);
-                    }
+                    // Round finished: carry winners and any club that received a bye forward.
+                    List<Team> winners = survivorsAfterSmallRound(aliveHere, thisRound);
                     if (winners.isEmpty()) {
                         return new DrawResult(cup.getName(), 0, qualifiers.size(), 0, made);
                     }
@@ -591,6 +590,46 @@ public class InternationalClubCupDraw {
             made++;
         }
         return made;
+    }
+
+    /** Draws a small-field round and leaves one club as a bye when the field is odd. */
+    private int drawSmallKnockoutRound(Competition cup, SeasonCompetition sc, List<Team> ranked,
+                                       int round, int seasonYear) {
+        List<List<Team>> halves = splitInHalf(ranked);
+        List<Team> upper = new ArrayList<>(halves.get(0));
+        List<Team> lower = new ArrayList<>(halves.get(1));
+        java.util.Collections.shuffle(upper, new Random(cup.getId() * 31L + round));
+        java.util.Collections.shuffle(lower, new Random(cup.getId() * 31L + round + 1));
+
+        int made = 0;
+        for (int i = 0; i < Math.min(upper.size(), lower.size()); i++) {
+            fixtures.save(fixture(cup, sc, lower.get(i), upper.get(i), round,
+                    weekFor(round), null, seasonYear));
+            made++;
+        }
+        if (ranked.size() % 2 != 0) {
+            log.info("{}: round {} has {} club(s); one club receives a bye.", cup.getName(), round, ranked.size());
+        }
+        return made;
+    }
+
+    private List<Team> survivorsAfterSmallRound(List<Team> aliveBefore, List<MatchFixture> playedRound) {
+        Set<Team> played = new HashSet<>();
+        List<Team> winners = new ArrayList<>();
+        for (MatchFixture tie : playedRound) {
+            played.add(tie.getHomeTeam());
+            played.add(tie.getAwayTeam());
+            Team winner = winnerOf(tie);
+            if (winner != null) {
+                winners.add(winner);
+            }
+        }
+        for (Team team : aliveBefore) {
+            if (!played.contains(team)) {
+                winners.add(team);
+            }
+        }
+        return winners;
     }
 
     /**

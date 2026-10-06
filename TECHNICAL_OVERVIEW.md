@@ -445,10 +445,10 @@ GET /club-cups/{key}?tier=N
 
 The World page links into `club-cup-view.js`, which renders each tier's groups, results and bracket. The
 three World rows report 48, 96 and 48 expected entrants. Small fields of 2–7 entrants now use a knockout
-path. The repair action creates missing international rows and static simulated-country tables, and the
-week-1 job repeats that repair boundary before drawing. The remaining open issue is the owner's Option A:
-the domestic cup draw should be explicitly run once per country rather than selecting one primary cup
-globally.
+path; two entrants play a direct final and odd fields carry a bye. The repair action creates missing
+international rows and static simulated-country tables, and the
+week-1 job repeats that repair boundary before drawing. The domestic cup draw is separately country-scoped
+and no longer selects one primary cup globally.
 
 ### 8.5 National teams and tournaments
 
@@ -598,7 +598,7 @@ These are current source/board findings, not historical audit claims.
 
 - Away teams still use home tactics during simulation (P0-3).
 - Several controller/service paths still interpret a `CTeam` id as a football `Team` id (P0-20).
-- A two-to-seven entrant international cup path is implemented, but the two-club owner decision remains.
+- Small international fields use direct knockouts, including a one-final two-club competition.
 - Domestic cup drawing is still globally selected in one path instead of being explicitly one cup per country.
 - The calendar still has two league slots per week; the owner wants four slots including days 1, 3, 5
   and 7.
