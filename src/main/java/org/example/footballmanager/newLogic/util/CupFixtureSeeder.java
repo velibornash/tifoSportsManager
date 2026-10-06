@@ -149,6 +149,7 @@ public class CupFixtureSeeder {
         // The parked decision this comment used to defer to — one job drawing 48 national cups, or one
         // draw per country — is untouched by this. primaryCup() picks one domestic cup, deterministically,
         // exactly as it did for the matchday job. What changed is that boot and the job now agree.
+        // P0-CUPS-6 Option A: draw per active country (simulated skip per owner 2026-10-06).
         Competition cup = primaryCup();
         if (cup == null) {
             log.info("No domestic CUP competition found; nothing to draw.");
