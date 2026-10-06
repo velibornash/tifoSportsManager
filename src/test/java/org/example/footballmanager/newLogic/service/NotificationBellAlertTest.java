@@ -1,0 +1,121 @@
+package org.example.footballmanager.newLogic.service;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * The bell's red dot and its ring (owner, 2026-10-06).
+ *
+ * <p><b>Why this reads the file instead of driving a browser.</b> The behaviour that matters here is a
+ * comparison between two numbers on a 30-second timer, and the way to get that wrong is to write
+ * {@code if (unread > 0) ring()} — which passes every static look and rings every 30 seconds for the rest
+ * of the session. A Playwright test would need the tab open for two poll cycles to catch it. The
+ * assertion below is on the condition itself, so the wrong version cannot be written and pass.
+ *
+ * <p>It is deliberately a source scan rather than a unit test of an exported function: the rule being
+ * protected is about <em>which comparison</em> the shipped file contains, and exporting
+ * {@code announceNewArrivals} for a test would not make the shipped bell any more correct.
+ */
+class NotificationBellAlertTest {
+
+    private static final Path NOTIFICATIONS_JS =
+            Path.of("src/main/resources/static/js/notifications.js");
+    private static final Path DASHBOARD_CSS =
+            Path.of("src/main/resources/static/css/dashboard.css");
+
+    @Test
+    @DisplayName("the bell carries a red dot whenever anything is unread, and the number stays")
+    void theBellHasADotAndTheCount() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("bell.classList.toggle('has-unread', unread > 0)"),
+                "the dot is driven by the unread count on the bell itself, not by the badge");
+
+        assertTrue(js.contains("badge.textContent = unread > 99 ? '99+' : String(unread)"),
+                "the count badge is still painted: the owner asked for the count as well as the dot");
+
+        String css = cssSource();
+        assertTrue(css.contains(".notification-bell.has-unread::after"),
+                "there is CSS for the dot, or the class does nothing visible");
+        assertTrue(css.contains("background: #e5484d"),
+                "the dot is red - the same red the count badge already uses");
+    }
+
+    @Test
+    @DisplayName("the ring fires on an INCREASE, never merely on having something unread")
+    void theRingNeedsAnIncreaseNotMerelyUnread() throws IOException {
+        String js = stripComments(jsSource());
+
+        Matcher ringing = Pattern.compile("unread\\s*>\\s*lastSeenUnread").matcher(js);
+        assertTrue(ringing.find(),
+                "the sound must be tied to the count going UP. Tying it to 'unread > 0' would ring every "
+                        + "30 seconds for as long as the tab is open.");
+
+        assertTrue(js.contains("if (lastSeenUnread !== null && unread > lastSeenUnread)"),
+                "the first read of a session sets the baseline without ringing: a backlog a manager "
+                        + "already had when he signed in is not an arrival");
+
+        assertTrue(js.contains("lastSeenUnread = unread;"),
+                "the baseline is stored, otherwise the comparison has nothing to compare against");
+
+        assertTrue(!js.contains("lastSeenUnread = 0;"),
+                "starting the baseline at zero would ring for the unread notifications a manager already "
+                        + "had on signing in");
+    }
+
+    @Test
+    @DisplayName("the ring is synthesised, and it fails silently rather than raising a console error")
+    void theRingIsSilentWhenItCannotPlay() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("AudioContext") || js.contains("webkitAudioContext"),
+                "the chime is built with the Web Audio API rather than shipped as an audio file");
+
+        assertTrue(js.contains("catch {"),
+                "audio is blocked until the page is interacted with; the refusal arrives as a rejected "
+                        + "promise and must not become an unhandled rejection");
+
+        assertTrue(js.contains("context.state === 'suspended'"),
+                "a suspended context is closed and left alone instead of being played into nothing");
+    }
+
+    @Test
+    @DisplayName("the dot does not move for a manager who asked for reduced motion")
+    void reducedMotionIsRespected() throws IOException {
+        assertTrue(cssSource().contains("prefers-reduced-motion"),
+                "the pulse is movement, and movement is the part to drop");
+        assertTrue(cssSource().contains("animation: none;"),
+                "the dot and the count survive; only the movement stops");
+    }
+
+    @Test
+    @DisplayName("the served files exist - a scan of a file that is not shipped measures nothing")
+    void theFilesAreReal() throws IOException {
+        assertTrue(Files.isRegularFile(NOTIFICATIONS_JS), NOTIFICATIONS_JS + " is missing");
+        assertTrue(Files.isRegularFile(DASHBOARD_CSS), DASHBOARD_CSS + " is missing");
+        assertTrue(stripComments(jsSource()).contains("function paintBell"),
+                "paintBell is the function the bell is painted in; if it was renamed this test is measuring nothing");
+    }
+
+    private String jsSource() throws IOException {
+        return Files.readString(NOTIFICATIONS_JS, StandardCharsets.UTF_8);
+    }
+
+    private String cssSource() throws IOException {
+        return Files.readString(DASHBOARD_CSS, StandardCharsets.UTF_8);
+    }
+
+    /** Comments out, so a rule explained in prose is not mistaken for a rule in the code. */
+    private String stripComments(String src) {
+        return src.replaceAll("(?s)/\\*.*?\\*/", " ").replaceAll("(?m)//.*$", " ");
+    }
+}

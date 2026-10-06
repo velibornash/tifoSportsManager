@@ -4966,6 +4966,62 @@ body {
     position: relative;
 }
 
+/**
+ * The red dot (owner, 2026-10-06).
+ *
+ * <p>Drawn as a pseudo-element rather than as a child of the button: the button's markup is in
+ * dashboard.html and shared with the count badge, and a dot that needs an element to exist is a dot that
+ * can be left off by a template edit nobody notices.
+ *
+ * <p>Placed on the top-left of the glyph because the count badge owns the top-right. When both are
+ * showing they must not overlap, and the top-left corner is the one corner of a bell icon that no other
+ * mark on this button claims.
+ *
+ * <p>The ring is a box-shadow in the surface colour rather than a border, so the dot reads as a separate
+ * shape sitting on the top bar instead of a notch cut out of the bell.
+ */
+.notification-bell.has-unread::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #e5484d;
+    box-shadow: 0 0 0 2px #16202e;
+    pointer-events: none;
+}
+
+/* The bell itself leans towards the dot while there is something unread, then settles. */
+.notification-bell.has-unread {
+    animation: notification-bell-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes notification-bell-pulse {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-1.5px);
+    }
+}
+
+/**
+ * Respect a manager who has asked for less motion.
+ *
+ * <p>The dot and the count both survive this; only the movement stops. The notification is still marked,
+ * it just stops moving to say so.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .notification-bell.has-unread {
+        animation: none;
+    }
+}
+
 .notification-badge {
     position: absolute;
     top: 2px;

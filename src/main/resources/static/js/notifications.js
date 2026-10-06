@@ -93,12 +93,94 @@ function paintBell(payload) {
         badge.textContent = unread > 99 ? '99+' : String(unread);
         badge.hidden = unread === 0;
     }
+
+    // The red dot is a *separate* mark from the count, on purpose (owner, 2026-10-06). The count already
+    // says whether anything is unread, but a number is read rather than noticed: at 40px of top bar, in
+    // peripheral vision, a manager sees the bell change colour and then decides to look. The dot is
+    // what makes it noticeable; the number is what tells him how bad it is once he has looked.
+    bell.classList.toggle('has-unread', unread > 0);
+
     bell.setAttribute('aria-label',
         unread > 0 ? `Notifications, ${unread} unread` : 'Notifications, none unread');
+
+    announceNewArrivals(unread);
 
     if (dropdown && !dropdown.hidden) {
         dropdown.innerHTML = buildDropdownHtml(payload);
         bindDropdown(dropdown);
+    }
+}
+
+/**
+ * The count this session has already seen, or null before the first read.
+ *
+ * <p>Null rather than zero on purpose. Starting at zero would ring the bell for a manager who already had
+ * four unread when he signed in, which is the wrong event entirely: the sound is for *something arriving
+ * while he is watching*, not for a backlog he already owns.
+ */
+let lastSeenUnread = null;
+
+/**
+ * Rings when the unread count goes up, and says so through the dot.
+ *
+ * <p><b>Only on an increase.</b> The poll runs every 30 seconds for as long as the tab is open, so a
+ * sound tied to "there is something unread" would ring every 30 seconds for the rest of the session — the
+ * fastest possible way to make a manager mute a tab. It is tied to the count rising instead, which is
+ * the actual event.
+ *
+ * <p>A drop never rings, so reading the dropdown on the phone and then the laptop does not set off an
+ * alarm on the laptop.
+ */
+function announceNewArrivals(unread) {
+    if (lastSeenUnread !== null && unread > lastSeenUnread) {
+        playNotificationChime();
+    }
+    lastSeenUnread = unread;
+}
+
+/**
+ * The ring itself.
+ *
+ * <p><b>Synthesised, not a file.</b> A two-note chime built with the Web Audio API costs nothing to
+ * download and nothing to maintain, and it dodges the question a shipped {@code .mp3} would raise
+ * anyway: whether a notification should be a 40 KB asset in the repository forever.
+ *
+ * <p><b>It fails silently, on purpose.</b> Browsers block audio until the page has been interacted with,
+ * and the error arrives as a promise rejection rather than a throw. A manager who has not clicked
+ * anything simply gets no sound, which is the correct outcome — he is not looking at the tab. An
+ * unhandled rejection here would surface as a console error on the dashboard, and
+ * {@code CountryPageRendersTest} treats a console error as a failure, so "no sound until you click"
+ * would have broken a test that has nothing to do with notifications.
+ */
+function playNotificationChime() {
+    try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = new AudioContextClass();
+        if (context.state === 'suspended') {
+            context.close().catch(() => {});
+            return;
+        }
+
+        // Two notes a fifth apart, the second quieter and later: a "ting-ting" rather than an alarm,
+        // because most of these are somebody replying in a forum.
+        [[880, 0], [1174.66, 0.12]].forEach(([frequency, at]) => {
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            gain.gain.setValueAtTime(0.0001, context.currentTime + at);
+            gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + at + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.28);
+            oscillator.connect(gain).connect(context.destination);
+            oscillator.start(context.currentTime + at);
+            oscillator.stop(context.currentTime + at + 0.3);
+        });
+
+        // Closed after it has rung, so a long session does not accumulate one AudioContext per arrival.
+        window.setTimeout(() => context.close().catch(() => {}), 800);
+    } catch {
+        // No audio, no complaint. A notification that cannot make a noise is still on the screen.
     }
 }
 
