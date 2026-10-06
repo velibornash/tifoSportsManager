@@ -1,5 +1,80 @@
 # kanbanProgress.md — the append-only log
 
+## The national-team draw is at season start, and Re-draw re-draws (owner, 2026-10-06)
+
+### What was asked for
+
+Two things, in the same breath, and the second was a symptom of the first.
+
+> **Draw the groups at the start of the season** — the ties are week 6, but the field should be known
+> from week 1.
+
+and the Re-draw button on the admin panel did nothing.
+
+### What was actually wrong
+
+**The draw job fired on the wrong day.** `NationalTournamentDrawJob` drew the group stage when
+`week == 6 && day == GROUP_DRAW_DAY`, i.e. the morning of the week-6 window, the day before the first
+qualifying tie. Moved to `week == 1 && day == 1`.
+
+**The admin route then broke by consequence.** `AdminController.redrawNationalTournaments()` did not
+call a re-draw at all — it called the job by hand with a week number of its own choosing:
+
+```java
+nationalTournamentDrawJob.run(new JobContext(season, 6, NationalTournamentDrawJob.GROUP_DRAW_DAY, ...));
+nationalTournamentDrawJob.run(new JobContext(season, 12, 1, 0));
+```
+
+Once the group draw moved to week 1, that call became a no-op for groups and only ever nudged the
+knockout advance. So the button was wrong **before** the schedule change too: it was a way to run the
+scheduler on demand, sold as a re-draw. Replaced by `NationalTournamentWorldService.forceRedraw()`,
+which clears the current season's unplayed qualifying and tournament fixtures and draws both levels
+again. `NationalTournamentDrawJob` is no longer a dependency of `AdminController`.
+
+### The defect the tests found: the "already drawn" guard counted played ties
+
+`buildGroupStage` decided whether a draw existed by counting **every** group fixture in the competition:
+
+```java
+long existing = fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(...)
+        .stream().filter(f -> f.getGroupCode() != null).count();
+if (existing > 0) { return new DrawResult(..., "already drawn"); }
+```
+
+A re-draw is defined as *keep the played ties, rebuild the rest* — so after it there is exactly **one**
+group fixture, the played one, and the next call reads that as a completed draw and refuses. The
+qualifying phase is then permanently stuck at one tie. It counts the **unplayed** fixtures now.
+
+**Re-proven by breaking it.** With the old query restored,
+`NationalTournamentDrawTimingTest#redrawKeepsPlayedFixtures` fails with
+`the 120 minus the one played tie ==> expected: <119> but was: <1>` — the unplayed ties cleared, the
+redraw refused, and the phase left holding one orphan.
+
+### What a Re-draw does and does not change
+
+The deal is **derived**: `dealIntoGroups` seeds `Random` from
+`deriveSeed(competitionId, seasonYear, "POT" + n)`, and the tie-break coin is stored per group. That was
+a deliberate earlier decision in this task — reproducibility makes a draw a fact that can be re-derived
+from a restored backup rather than an anecdote. So `forceRedraw` **rebuilds** the 120 fixtures per level
+and **deals the same groups**. The test asserts that equality on purpose, and says so in its display
+name. If the owner wants a genuinely new deal on re-draw, the seed needs a draw generation — that is
+his decision and it is not a default to be slipped in.
+
+### Tests
+
+`NationalTournamentDrawTimingTest` — **6/6**:
+
+| Test | Pins |
+|---|---|
+| `weekOneDayOneDrawsTheGroups` | 120 ties per level, drawn week 1, played week 6 |
+| `weekSixDayOneDrawsNothing` | the old trigger creates nothing at all |
+| `weekOneDayTwoDrawsNothing` | one day, not the whole week |
+| `redrawDrawsFromAnEmptyWorld` | the button works on a world with no competitions |
+| `redrawReplacesAnExistingDraw` | 120 not 240 — the old draw is gone, and the deal reproduces |
+| `redrawKeepsPlayedFixtures` | a played tie survives; 119 rebuilt (the guard above) |
+
+---
+
 ## P2-10 / P2-12 — national-team qualifying and the World Cup (owner, 2026-10-06)
 
 ### What was asked for

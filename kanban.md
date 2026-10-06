@@ -48,8 +48,8 @@ export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
 | Browser launch | `./run-app.sh` pops open a browser on every start. `--app.open-browser=false` opts out; **every shell start must use it** |
 
 **A full `mvn test` takes ~2 h 52 m and needs the application running on `:8080`.** Three Playwright
-classes otherwise hang the entire run — they wait, they do not fail. Budget for it; never start it on the
-way to something else. A full-suite run only counts if it was allowed to finish.
+classes otherwise hang the entire run — they wait, they do not fail. Budget for it; never start it on
+the way to something else. A full-suite run only counts if it was allowed to finish.
 
 ## Working rules
 
@@ -2052,6 +2052,34 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 
 **Both guards re-proven by breaking them:** removing the final's idempotency guard reproduces
 `a tournament has one final — expected: <1> but was: <3>`.
+
+### The national-team draw: season start, and a Re-draw that re-draws (owner, 2026-10-06)
+
+The owner: **draw the groups at the start of the season**, because the ties are played in week 6 and a
+manager who learns his group on the day of the first match cannot plan around it. And the admin
+**Re-draw** button did nothing at all — it was calling the draw job with week 6 by hand, which by then
+meant it ran a job whose own condition had moved to week 1.
+
+- [x] **The group draw runs on week 1 day 1**, for senior and U-21, and the ties it creates are still
+      week 6 days 2–6. `NationalTournamentDrawTimingTest` pins all three cases: week 1 day 1 draws 120 ties
+      per level, **week 6 day 1 draws nothing**, and week 1 day 2 draws nothing either.
+- [x] **`NationalTournamentWorldService.forceRedraw()`** clears the unplayed qualifying and tournament
+      fixtures of the current season, then draws both levels again. The admin route calls it and reports
+      the draw through the existing `toMap`, so the screen shows groups and fixture counts instead of a
+      job name. `NationalTournamentDrawJob` is no longer injected into `AdminController` — the button and
+      the job were two ways to do one thing, and only one of them was correct.
+- [x] **The seeder's "already drawn" guard was counting played ties.** It asked for *every* group fixture
+      in the competition, so a re-draw that deliberately spared the played ties could never finish: one
+      survivor was enough to make the phase read as drawn for the rest of the season. It asks for the
+      **unplayed** ones now.
+      **Re-proven by breaking it** — with the old query, `redrawKeepsPlayedFixtures` leaves
+      `expected: <119> but was: <1>`: the tie cleared, the draw refused, and the qualifying phase stuck.
+
+**The deal is derived, so a re-draw reproduces the groups.** The seed comes from the competition, the
+season and the pot, and that was a deliberate decision earlier in this task — a reproducible draw is a
+draw that can be audited and re-derived from a restored backup. It does mean the button rebuilds the
+fixtures rather than shuffling them; if the owner wants a genuinely new deal, the seed needs a draw
+generation and that is his call, not a quiet default.
 
 ### P2-12 — U-21 as its own competitions — **DONE: separate competitions and football UI**
 

@@ -2,10 +2,10 @@ package org.example.commonmanager.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.example.commonmanager.service.AdminDatabaseAsyncService;
+import org.example.commonmanager.service.DatabaseBackupService;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.jobs.JobContext;
 import org.example.footballmanager.newLogic.jobs.impl.InternationalClubCupJob;
-import org.example.footballmanager.newLogic.jobs.impl.NationalTournamentDrawJob;
 import org.example.footballmanager.newLogic.service.CountryActivationService;
 import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.TransferService;
@@ -32,6 +32,7 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
+    private final DatabaseBackupService databaseBackupService;
     private final org.example.footballmanager.newLogic.service.CountryActivationService countryActivationService;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrityService;
     private final org.example.footballmanager.newLogic.service.WorldRepairService worldRepairService;
@@ -42,7 +43,6 @@ public class AdminController {
     private final org.example.footballmanager.newLogic.util.NationalRatingResetBackfill nationalRatingResetBackfill;
     private final SeasonService seasonService;
     private final InternationalClubCupJob internationalClubCupJob;
-    private final NationalTournamentDrawJob nationalTournamentDrawJob;
 
     /**
      * The pending registration requests, for the admin queue.
@@ -184,20 +184,16 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("season", season, "week", week, "job", InternationalClubCupJob.KEY));
     }
 
-    /**
-     * Runs the national-tournament draw job for both scheduled draw phases.
+/**
+     * Re-draws the national-team qualifying groups for the current season.
      *
-     * <p>The qualifying phase is scheduled for week 6 day 1 and the knockout phase for week 12. Both
-     * calls use the production job, so this admin action can fill a missed draw without introducing a
-     * separate set of tournament rules.
+     * <p>This action deletes all unplayed qualifying and tournament fixtures for the current season,
+     * re-creates any missing competitions, and draws fresh qualifying groups for both the senior and
+     * U-21 levels. It is the proper "Re-draw" action: a clean slate for the qualifying phase.
      */
     @PostMapping("/national-tournaments/redraw")
     public ResponseEntity<Map<String, Object>> redrawNationalTournaments() {
-        int season = seasonService.getActiveSeasonYear();
-        nationalTournamentDrawJob.run(new JobContext(season, 6, NationalTournamentDrawJob.GROUP_DRAW_DAY,
-                NationalTournamentDrawJob.GROUP_DRAW_HOUR));
-        nationalTournamentDrawJob.run(new JobContext(season, 12, 1, 0));
-        return ResponseEntity.ok(Map.of("season", season, "job", NationalTournamentDrawJob.KEY));
+        return ResponseEntity.ok(toMap(nationalTournamentWorldService.forceRedraw()));
     }
 
     /**
@@ -304,6 +300,39 @@ public class AdminController {
     @GetMapping("/database-job/status")
     public ResponseEntity<Map<String, Object>> getDatabaseJobStatus() {
         return ResponseEntity.ok(toDatabaseJobResponse(adminDatabaseAsyncService.getJobSnapshot()));
+    }
+
+    /**
+     * Every database dump on the server, newest first.
+     *
+     * <p>The list is what makes a backup worth taking: a dump nobody can find again is not a backup.
+     */
+    @GetMapping("/backups")
+    public ResponseEntity<Map<String, Object>> listBackups() {
+        return ResponseEntity.ok(Map.of("backups", databaseBackupService.list()));
+    }
+
+    /**
+     * Dumps the whole database to a timestamped file (owner, 2026-10-06).
+     *
+     * <p>For taking a world away with you: a clean season 1 week 1 day 1 with every team seeded and
+     * every cup drawn, kept so it can be put back exactly. Safe to press at any time - it only reads.
+     */
+    @PostMapping("/backups")
+    public ResponseEntity<Map<String, Object>> createBackup() {
+        return ResponseEntity.ok(Map.of("backup", databaseBackupService.create()));
+    }
+
+    /**
+     * Replaces the database with the contents of one dump.
+     *
+     * <p>Destroys the current world, which is what restoring means, so it is a separate route with a
+     * name in it rather than an option on the dump route: the admin screen confirms by showing which
+     * file was picked.
+     */
+    @PostMapping("/backups/{name}/restore")
+    public ResponseEntity<Map<String, Object>> restoreBackup(@PathVariable String name) {
+        return ResponseEntity.ok(Map.of("restore", databaseBackupService.restore(name)));
     }
 
     /**

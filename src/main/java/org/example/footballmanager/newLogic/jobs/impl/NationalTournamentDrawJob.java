@@ -78,7 +78,11 @@ public class NationalTournamentDrawJob implements DayJob {
         int seasonYear = context.seasonYear();
         int week = context.weekNumber();
 
-        if (week == NationalTournamentSchedule.QUALIFYING_WEEK && context.dayNumber() == GROUP_DRAW_DAY) {
+        // **The qualifying draw is at the start of the season.** The owner: the group matches are played
+        // in week 6, but the *draw* is at season start, so the fixtures and the groups are known from week
+        // 1 and the manager can plan around them rather than learning his opponents the day before. It
+        // used to fire on week 6 day 1, which is after the fact for anyone watching the calendar.
+        if (week == 1 && context.dayNumber() == GROUP_DRAW_DAY) {
             for (NationalTeamLevel level : NationalTeamLevel.values()) {
                 NationalTournamentSeeder.DrawResult result = seeder.ensureGroupStage(level, seasonYear);
                 log.info("{} qualifying draw (season {}): {}", level, seasonYear, result.note());

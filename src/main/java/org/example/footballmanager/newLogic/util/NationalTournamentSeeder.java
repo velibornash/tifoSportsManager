@@ -194,6 +194,11 @@ public class NationalTournamentSeeder {
      */
     @Transactional
     public DrawResult ensureGroupStage(NationalTeamLevel level, int seasonYear) {
+        // **Create the competition first.** This used to return "no competition has been created", which
+        // is exactly why the admin re-draw was a no-op: the seeder could not draw into a competition that
+        // did not exist, and nothing else made it exist. The four are created on demand here, so any draw
+        // - the week-1 job, the admin re-draw, or seeding - leaves a drawable world behind it.
+        catalogue.ensureAll();
         Competition competition = catalogue.qualifiers(level).orElse(null);
         if (competition == null) {
             return DrawResult.nothing("No qualifying competition has been created for " + level + ".");
@@ -208,8 +213,11 @@ public class NationalTournamentSeeder {
                     + competition.getName() + "; a group needs one per pot in eight groups.");
         }
 
+        // The guard counts **unplayed** ties only. Counting played ones too - which it used to do -
+        // meant a re-draw that deliberately spared the played ties could never finish: one survivor
+        // was enough to make the phase read as drawn for the rest of the season.
         long existing = fixtures
-                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(competition.getId(), seasonYear)
+                .findByCompetitionIdAndSeasonYearAndPlayedFalse(competition.getId(), seasonYear)
                 .stream()
                 .filter(f -> f.getGroupCode() != null)
                 .count();
@@ -285,6 +293,7 @@ public class NationalTournamentSeeder {
      */
     @Transactional
     public DrawResult ensureKnockouts(NationalTeamLevel level, int seasonYear) {
+        catalogue.ensureAll();
         Competition competition = catalogue.tournament(level).orElse(null);
         if (competition == null) {
             return DrawResult.nothing("No tournament competition has been created for " + level + ".");
