@@ -2255,6 +2255,27 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ A represented country now says something — owner, 2026-10-07
+
+> **za simulate zemlje trenutno stoji za npr Rumuniju ... da stoji ranking poeni i pozicija na ranking listi,
+> da stoji grupa u kojoj je NT tim, da ako su seedovai international predstavnici stoji to**
+
+- [x] **The old page said only "ROU is represented, not played"** and pointed at Admin. True and useless:
+      **24 of the 48 countries on the World page are exactly this**, and their national sides play
+      qualifying groups and a World Cup like any other.
+- [x] **Ranking points and position**, on the senior Elo the matches produced. A position is a statement
+      about every country, so it is computed server-side in `GET /countries/ranking` — the World page and
+      a country page cannot disagree about who is 12th.
+- [x] **Equal ratings share a position.** A table numbering two identical countries 7 and 8 claims a
+      difference it cannot support. **Re-proven by breaking it** (`expected: <1> but was: <2>`).
+- [x] **Which group each of its two national sides is in**, with the whole group's table.
+- [x] **Whether it has played anything** — an unrated country says so instead of showing its seed rating
+      as a result.
+- [x] Senior and U-21 read from **two different columns** (`reputation` / `youthRating`).
+- [x] `CountryRankingTest` **5/5**.
+
+---
+
 ## ✅ The qualifying schedule existed and was never sent — owner, 2026-10-07
 
 > **gde su mecevi kad izadje draw? ... svaka grupa, ime grupe klikabilno ... svaka reprezentacija treba

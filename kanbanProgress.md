@@ -1,5 +1,66 @@
 # kanbanProgress.md — the append-only log
 
+## A represented country had nothing on its page (owner, 2026-10-07)
+
+### What was asked for
+
+> **za simulate zemlje trenutno stoji za npr Rumuniju ... mislim da je mnogo bolje da stoji ranking poeni i
+> pozicija na ranking listi, da stoji grupa u kojoj je NT tim, da ako su seedovai international predstavnici
+> stoji to, lepse je i svrsishodnije**
+
+The old page said, in full:
+
+> **ROU is represented, not played** — *"It has national sides, and no club divisions. A country is given
+> its own five-tier pyramid from Admin → Activate a country."*
+
+True, and useless. **Twenty-four of the forty-eight countries on the World page are exactly this**, so
+the page a manager lands on from the third row down tells him nothing at all. And in this world a
+represented country's national team is not a footnote — it plays qualifying groups and a World Cup like
+any other. That is the whole of what such a country *is*, and the page showed none of it.
+
+### What it shows now
+
+- **Ranking points and position**, on the senior Elo the matches actually produced.
+- **Which qualifying group each of its two national sides is in**, with the whole group's table so
+  "who are we drawn with" is answerable.
+- **Whether it has played anything yet** — and an unrated country says so rather than showing its seed
+  rating as though it were a result.
+
+The Admin line stays. A represented country still has no pyramid to manage, and saying otherwise would
+be the other half of the same lie.
+
+### The ranking had to be computed, not looked up
+
+A position is a statement about **every other country**, so it cannot come out of one country's row.
+`GET /countries/ranking?level=senior` computes it where the ratings live, in the two columns
+`NationalRatingService` already writes: **`Country.reputation` for senior and `Country.youthRating` for
+U-21**. In the backend rather than the browser so the World page and a country page cannot disagree about
+who is 12th.
+
+**Equal ratings share a position.** Two countries that have earned the same number are the same distance
+from the top, and a table numbering them 7 and 8 claims a difference it cannot support. The position is
+the count of countries *strictly* above.
+
+**A country with no national side is not ranked.** It could never play, so a position for it is a
+statement about nothing.
+
+### Tests
+
+`CountryRankingTest` **5/5**:
+
+| Test | Pins |
+|---|---|
+| `theRankingIsOrderedAndComplete` | positions never go backwards; points and `rated` on every row |
+| `equalRatingsShareAPosition` | three on 1500 share first, the one on 1400 is fourth |
+| `anUnplayedCountrySaysItIsUnrated` | a seed rating is not a result |
+| `theTwoLevelsAreRankedSeparately` | U-21 reads `youthRating`, not the senior reputation |
+| `aCountryWithNoSideIsNotRanked` | no side, no position |
+
+**Re-proven by breaking it:** breaking ties alphabetically and numbering them separately — the natural
+"sort and number" implementation — fails with `expected: <1> but was: <2>`.
+
+---
+
 ## Where were the matches? They had never been sent (owner, 2026-10-07)
 
 ### What was asked for

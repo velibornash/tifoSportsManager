@@ -206,6 +206,77 @@ public class CountryController {
     }
 
     /**
+     * Every country's national rating, best first, with its position.
+     *
+     * <p>Ranked on the national Elo the matches actually produced — `Country.reputation` for the senior
+     * side and `Country.youthRating` for U-21 — and nowhere else. The owner asked for "ranking points and
+     * a position on the ranking list" on a country's page (2026-10-07), which cannot be answered from a
+     * single country's row: a position is a statement about every other country too.
+     *
+     * <p>Computed here rather than in the browser so the World page and a country page cannot disagree
+     * about who is 12th, and so "position" is one definition in the codebase.
+     *
+     * <p><b>Equal ratings share a position.</b> Two countries that have played the same football and
+     * earned the same number are the same distance from the top, and a table that numbers them 7 and 8
+     * is claiming a difference it cannot support. The count of countries strictly above is what defines
+     * the position.
+     */
+    @GetMapping("/ranking")
+    public List<Map<String, Object>> ranking(@RequestParam(defaultValue = "senior") String level) {
+        boolean youth = "u21".equalsIgnoreCase(String.valueOf(level));
+        List<Country> world = countryRepository.findAll().stream()
+                .filter(country -> country.getSeniorNationalTeam() != null || country.getU21NationalTeam() != null)
+                .toList();
+
+        Map<Long, Integer> strictlyAbove = new java.util.HashMap<>();
+        for (Country country : world) {
+            int above = 0;
+            for (Country other : world) {
+                if (ratingOf(other, youth) > ratingOf(country, youth)) {
+                    above++;
+                }
+            }
+            strictlyAbove.put(country.getId(), above);
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Country country : world) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("isoCode", country.getIsoCode());
+            row.put("name", country.getName());
+            row.put("level", youth ? "u21" : "senior");
+            row.put("points", ratingOf(country, youth));
+            row.put("position", strictlyAbove.get(country.getId()) + 1);
+            row.put("rated", hasResults(country, youth));
+            rows.add(row);
+        }
+        rows.sort(Comparator.comparingInt((Map<String, Object> row) -> (Integer) row.get("position"))
+                .thenComparing(row -> String.valueOf(row.get("name"))));
+        return rows;
+    }
+
+    /** The national Elo for one level. Senior reputation and youth rating are different columns. */
+    private double ratingOf(Country country, boolean youth) {
+        Number value = youth ? country.getYouthRating() : country.getReputation();
+        return value == null ? 0d : value.doubleValue();
+    }
+
+    /**
+     * Whether this country has played anything at this level, so a seed rating is not shown as a result.
+     *
+     * <p>A country that has not played holds the starting rating, and a ranking table that shows it
+     * without saying so reads as "they are exactly average", which is a claim nobody has earned.
+     */
+    private boolean hasResults(Country country, boolean youth) {
+        Team side = youth ? country.getU21NationalTeam() : country.getSeniorNationalTeam();
+        if (side == null || side.getId() == null) {
+            return false;
+        }
+        return matchRepository.findPlayedNationalScoredInOrder().stream()
+                .anyMatch(match -> side.getId().equals(match.homeTeamId()) || side.getId().equals(match.awayTeamId()));
+    }
+
+    /**
      * A national team: squad, pool, selector, ranking, fixtures, election state (owner, 2026-09-28).
      *
      * <p>Replaces a hand-rolled map that reported the viewer as selector. That made every user in a
