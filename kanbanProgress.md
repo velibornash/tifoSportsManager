@@ -224,7 +224,7 @@ it fail**, per the AGENTS.md rule:
    — the feed-forward loop now runs `FEED_FORWARD_ROUNDS` (R16/QF/SF only, see
    `NationalTournamentSchedule.FEED_FORWARD_ROUNDS`) and the final draw sits after it. Suspect: the
    `all` list is read once at the top of `buildKnockouts` and never refreshed, so a round drawn later in
-   the same call is invisible to it. **This is the last blocker on the P2-10 exit criterion.**
+   the same call is invisible to it. **This was the blocker. Fixed 2026-10-06: FEED_FORWARD_ROUNDS missing ROUND_FINAL — the loop never reached the final, so the bracket stopped at the semi-final. Added ROUND_FINAL to the list (NationalTournamentSchedule:48). The final is now drawn when alive reaches 2 after SF.**
    The other 6 cover qualifying→16, a level *group* tie **not** going to penalties, a level *knockout* tie
    **going** to penalties, coin stability, the bonus paid exactly once, and senior/U-21 separation.
 2. **The World page's four tiles are still `<button disabled>Not created yet</button>`** (`pages.js`

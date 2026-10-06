@@ -1973,10 +1973,11 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
 `/api/national-tournaments` endpoint returning groups, standings and results.
 
 **Exit criteria still open:**
-- [ ] **A tournament is played to a champion.** The round of 16 draws and plays; the final is not
-      reached. `NationalTournamentPlayedToAResultTest.tournamentReachesAChampion` is red
-      (*"a tournament has one final — expected: 1 but was: 0"*). Suspect the `all` fixture list in
-      `NationalTournamentSeeder.buildKnockouts` is read once and never refreshed.
+- [x] **A tournament is played to a champion.** `FEED_FORWARD_ROUNDS` was missing `ROUND_FINAL` (5);
+      the loop never reached the final, so the bracket stopped at the semi-final. Fixed 2026-10-06:
+      added `ROUND_FINAL` to the feed-forward list (`NationalTournamentSchedule:48`). The final
+      and third-place fixtures are now drawn when `alive` reaches 2 after SF.
+- [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
 - [ ] **The World page's four tiles are still disabled buttons** and the country page has no NT
       competition tab. The endpoint is built; the frontend that renders it is not.
 - [ ] **Admin buttons** for the new endpoints are not on the admin screen.

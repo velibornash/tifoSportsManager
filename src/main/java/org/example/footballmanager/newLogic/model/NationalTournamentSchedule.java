@@ -46,7 +46,7 @@ public final class NationalTournamentSchedule {
      * would carry a team that had just been knocked out into the final.
      */
     public static final List<Integer> FEED_FORWARD_ROUNDS = List.of(
-            ROUND_LAST_SIXTEEN, ROUND_QUARTER_FINAL, ROUND_SEMI_FINAL);
+            ROUND_LAST_SIXTEEN, ROUND_QUARTER_FINAL, ROUND_SEMI_FINAL, ROUND_FINAL);
 
     public static int qualifyingDay(int matchday) {
         if (matchday < 1 || matchday > QUALIFYING_DAYS.length) {
