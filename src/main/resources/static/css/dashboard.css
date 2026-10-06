@@ -928,30 +928,28 @@ button.training-week-item {
 
 .community-compose-textarea {
     /*
-     * box-sizing was missing here, and it is the whole bug the owner reported: the class sets
-     * width: 100% AND padding: 14px 16px under the default content-box, so the rendered box is
-     * 100% plus 32px. Measured in a browser at 1400px wide: the compose wrapper's right edge sat at
-     * 1303 while the panel it belongs to ended at 1290 - the field's background ran past the panel
-     * it was drawn on, to the right, exactly as described.
+     * A LAYOUT box only. It used to carry a border, a background, a radius and padding, and the input
+     * or textarea inside it carried its own - so every field was drawn as a box inside a box. That is
+     * how it looked on a desktop and it was clearly wrong on a phone, where the gap between the two
+     * borders read as a separate empty panel.
+     *
+     * <p>The wrapper still needs a width. It needs box-sizing for the reason below, and it still needs
+     * the inset from the panel. What it does not need is any chrome of its own.
+     *
+     * <p><b>box-sizing is not optional here.</b> With width:100% and padding: 14px 16px under the
+     * default content-box the rendered box is 100% + 32px. Measured at 1400px: the wrapper's right edge
+     * sat at 1303 while the panel it belongs to ended at 1290 - the field's background ran past the
+     * panel, to the right, exactly as reported.
      */
     box-sizing: border-box;
     width: 100%;
     /*
-     * Inset from the panel rather than flush with it: the owner asked for a couple of centimetres
-     * back from the right edge. Capped in pixels rather than a percentage so the gap is the same
-     * visual size on a phone and on a desktop, and so it does not shrink to nothing on a narrow
-     * screen where 4% is four pixels.
+     * Inset from the panel rather than flush with it: a couple of centimetres back from the right edge.
+     * Capped in pixels rather than a percentage so the gap is the same visual size on a phone and on a
+     * desktop, and so it does not shrink to nothing where 4% of the width is four pixels.
      */
     max-width: min(100%, 1040px);
     min-height: 110px;
-    resize: vertical;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.05);
-    color: #eef4ff;
-    padding: 14px 16px;
-    font: inherit;
-    line-height: 1.5;
 }
 
 /*

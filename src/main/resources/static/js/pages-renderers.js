@@ -951,7 +951,11 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         if (!items.length) {
             return '<div class="fm-empty">No data available yet.</div>';
         }
+        // Wrapped for the phone. Measured on an iPhone 14 Pro Max (430 CSS px): the table's natural
+        // width is wider than the viewport, and with no scroll container the right-hand columns were
+        // simply unreachable. The squad table already had this wrapper; these two did not.
         return `
+            <div class="fm-squad-wrap">
             <table class="fm-player-stats">
                 <thead>
                     <tr>
@@ -973,7 +977,8 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                             <td class="ps-val">${type === 'goals' ? (item.goals ?? 0) : (item.assists ?? 0)}</td>
                         </tr>`).join('')}
                 </tbody>
-            </table>`;
+            </table>
+            </div>`;
     }
 
     function formatAttendance(value) {
@@ -1133,6 +1138,13 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     <h3>League Table</h3>
                     <span class="fm-panel-action">Clubs clickable</span>
                 </div>
+                <!--
+                    Scrollable on a phone. Measured at 430 CSS px: the table rendered 510px wide, the
+                    panel ended at 408px, and there was no scroller - so the Elo and rating-delta
+                    columns ran under the panel's rounded edge and out of reach. Same wrapper the squad
+                    table uses, for the same reason.
+                -->
+                <div class="fm-squad-wrap">
                 <table class="fm-standings">
                     <thead>
                         <tr>
@@ -1152,6 +1164,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     </thead>
                     <tbody>${standingsRowsHtml()}</tbody>
                 </table>
+                </div>
                 <div class="fm-legend">
                     <span><i class="legend-dot ucl"></i> Title pace</span>
                     <span><i class="legend-dot uel"></i> Top places</span>

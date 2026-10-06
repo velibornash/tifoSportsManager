@@ -2,6 +2,64 @@
 
 ---
 
+## Mobile, at the reference device — and one defect that was not mine
+
+**iPhone 14 Pro Max, portrait: 430 × 932 CSS px, DPR 3.** Every page loaded and measured in Chromium at
+that viewport.
+
+### What the measurement said
+
+No page overflows. `documentElement.scrollWidth == innerWidth` on all twelve pages, which is what
+`MobilePanelOverflowTest` checks and why it has been green throughout.
+
+**The panels were fine and the tables inside them were not.**
+
+```
+firstTeam   TABLE.fm-squad        902px   inside fm-squad-wrap  -> scrolls
+leagueTable TABLE.fm-standings    510px   scroller: null        -> CLIPPED
+leagueTable TABLE.fm-player-stats  384px   scroller: null        -> at the limit
+```
+
+On a desktop, a clipped column is something you notice because the columns stop lining up with the ones
+above. **At 430px the Elo and rating-delta columns were simply not there**, running under the panel's
+rounded edge with no scrollbar and nothing to suggest they existed. A manager on a phone was looking at a
+league table that did not show the rating.
+
+This is the owner's area and it is the more serious of the two findings.
+
+### The fix is the pattern already in the file
+
+`fm-squad-wrap` is `width: 100%; overflow-x: auto` and the squad table has always used it. The standings
+and player-stats tables did not — one wrapper around each, same class, no new CSS.
+
+**Why the existing test missed it:** `MobilePanelOverflowTest` measures `.fm-panel` boxes, and the panel
+did not overflow — the table inside it did. A panel is not a table, and "the panel fits" and "you can
+read the last column" are different questions.
+
+### The other one, mine
+
+`.community-compose-textarea` carried a border, a background, a radius **and** 14px of padding, and the
+`input`/`textarea` inside it carried its own. Every field was drawn as a box inside a box. It was true on
+a desktop too and I had not looked at it; on a phone, where the fields stack and are the only thing on
+the screen, the gap between the two borders read as a separate empty panel.
+
+The wrapper is now a layout box: width, inset, and `box-sizing` — which is load-bearing and has its own
+test in `CommunityInterfaceTest`. The field supplies all the chrome.
+
+### Not verified, and I want to be plain about it
+
+The application **would not build** after these changes. The owner's national-tournament work was
+mid-flight — `NationalTeamService.java:225` and `CalendarController.java:191` did not compile — so no
+test could run, mine or anyone else's, and the browser could not be started.
+
+What I could check: the CSS braces balance, `pages-renderers.js` parses, three `<div class="fm-squad-wrap">`
+against three `<table>` and three `</table>`, and the wrapper is the same mechanism already working on the
+squad table.
+
+**The measurement above is the state BEFORE the fix.** Re-running it is the next thing to do once the
+project compiles, and it should show the standings table reporting a scroller.
+
+
 ## P0-CUPS-3 — the ladder was never missing, it was never being applied to anybody
 
 The diagnosis said 960 clubs would enter a cup with no players and be decided by

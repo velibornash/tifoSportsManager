@@ -1995,6 +1995,32 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## 🔧 P2-21 — mobile: the iPhone 14 Pro Max pass, 2026-10-06
+
+**Reference device: iPhone 14 Pro Max, portrait — 430 × 932 CSS px at DPR 3.** Measured in Chromium at
+that viewport, not reasoned about. Every page in the application was loaded and measured.
+
+No page overflows the viewport horizontally (`scrollWidth == innerWidth` on all twelve). Two things are
+wrong inside that, and one of them was not mine.
+
+| Found | Where | Verdict |
+|---|---|---|
+| **The league standings table was clipped.** 510px of table in a panel ending at 408px, **no scroll container** — the Elo and rating-delta columns ran under the panel's rounded edge and could not be reached | Owner's | **Fixed.** Given the same `fm-squad-wrap` scroll container the squad table already had |
+| **The top-scorers and top-assists tables** measured 384px, inside the viewport, but were at the limit | Owner's | **Fixed** with the same wrapper, so a longer club name cannot push them out |
+| **Every compose field was a box inside a box** — the wrapper carried a border, background, radius and padding, and the input inside carried its own | Mine | **Fixed.** The wrapper is now a layout box only; the field provides the chrome |
+| The squad table is 902px wide and scrolls horizontally | Owner's | Left as is — it already scrolls, and a squad list is the right thing to scroll |
+
+**The phone render of a table is the finding.** On a desktop a clipped column is invisible; at 430px the
+Elo column is simply gone with no scrollbar and no hint it existed. `MobilePanelOverflowTest` did not
+catch it because it asks whether a **panel** overflows, and the panel did not — the table inside it did.
+
+**Not verified:** the fixes were measured *before* and the application **would not build** afterwards,
+because the owner's national-tournament refactor was mid-flight and `NationalTeamService.java:225` does
+not compile. CSS braces balance, the module parses, and the wrappers are the same mechanism already
+proven by `fm-squad-wrap` on the squad table. **It has not been re-measured in a browser.**
+
+---
+
 ## 🔧 P2-20 polish — the owner's interface corrections, 2026-10-06
 
 Six changes asked for after looking at the running application. Each is pinned by a measurement in
