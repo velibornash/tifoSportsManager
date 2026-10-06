@@ -197,6 +197,14 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+        if (action === 'repair-international-cups') {
+            await runRepair(button, {
+                confirmText: 'Repair the international club cups?\n\nThis creates the 15 cup rows and fills any missing simulated-country club structures. Existing data is kept.',
+                path: '/admin/world-reseed?what=international-cups',
+                successNote: 'International club cups repaired'
+            });
+            return;
+        }
         if (action === 'repair-club-links') {
             // Not runRepair(): that ends by re-reading world integrity, which is the wrong thing to
             // refresh after touching accounts. The count comes back in the response instead.
@@ -664,6 +672,13 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             body: 'Draws any cup round that never got drawn. Rounds that already have ties are left alone.',
                             action: 'redraw-cup',
                             label: 'Re-draw the cup',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Repair international cups',
+                            body: 'Creates all 15 international club cup rows and fills missing simulated-country club structures. Existing data is kept.',
+                            action: 'repair-international-cups',
+                            label: 'Repair international cups',
                             variant: ''
                         })}
                     </div>

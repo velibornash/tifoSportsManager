@@ -860,18 +860,22 @@ function buildPageNavState(page, options = {}) {
         const known = tiers.length > 0;
         const qualified = tiers.reduce((total, cup) => total + Number(cup.qualified || 0), 0);
         const tiersWithClubs = tiers.filter(cup => Number(cup.qualified || 0) > 0).length;
+        const expected = name === 'Masters Cup' ? 96 : 48;
 
         const badge = !known
             ? '<span class="fm-badge">Unavailable</span>'
             : qualified > 0
-                ? `<span class="fm-badge fm-badge--ok">${qualified} qualified${
-                    tiersWithClubs > 1 ? ` across ${tiersWithClubs} tiers` : ''}</span>`
-                : '<span class="fm-badge">No club has finished a season</span>';
+                ? `<span class="fm-badge fm-badge--ok">${qualified} / ${expected} qualified${
+                    tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
+                : `<span class="fm-badge">0 / ${expected} qualified</span>`;
 
-        return `<button type="button" class="fm-competition is-real" data-club-cup="${escapeHtml(key)}">
-                    <span class="fm-competition-name">${escapeHtml(name)}</span>
-                    ${badge}
-                </button>`;
+        return `<tr class="fm-world-competition-row is-real" data-club-cup="${escapeHtml(key)}"
+                    tabindex="0" role="link">
+                    <td class="sq-name"><strong>${escapeHtml(name)}</strong></td>
+                    <td>Club competition</td>
+                    <td>${badge}</td>
+                    <td class="fm-world-competition-action">Open →</td>
+                </tr>`;
     }
 
     async function loadWorldPage() {
@@ -958,26 +962,33 @@ function buildPageNavState(page, options = {}) {
                         <div class="fm-panel-head">
                             <h3>International competitions</h3>
                         </div>
-                        <div class="fm-world-competitions">
-                            ${clubCupRow('Champions Cup', 'champions', world.clubCups)}
-                            ${clubCupRow('Masters Cup', 'masters', world.clubCups)}
-                            ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">NT Qualifiers</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">World Cup</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">U-21 Qualifiers</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
-                            <button type="button" class="fm-competition" disabled>
-                                <span class="fm-competition-name">U-21 World Cup</span>
-                                <span class="fm-badge">Not created yet</span>
-                            </button>
+                        <div class="fm-squad-wrap fm-world-competitions-table-wrap">
+                            <table class="fm-squad fm-world-competitions-table">
+                                <thead>
+                                    <tr><th>Competition</th><th>Type</th><th>Field</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    ${clubCupRow('Champions Cup', 'champions', world.clubCups)}
+                                    ${clubCupRow('Masters Cup', 'masters', world.clubCups)}
+                                    ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
+                                    <tr class="fm-world-competition-row is-disabled">
+                                        <td class="sq-name"><strong>NT Qualifiers</strong></td>
+                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
+                                    </tr>
+                                    <tr class="fm-world-competition-row is-disabled">
+                                        <td class="sq-name"><strong>World Cup</strong></td>
+                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
+                                    </tr>
+                                    <tr class="fm-world-competition-row is-disabled">
+                                        <td class="sq-name"><strong>U-21 Qualifiers</strong></td>
+                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
+                                    </tr>
+                                    <tr class="fm-world-competition-row is-disabled">
+                                        <td class="sq-name"><strong>U-21 World Cup</strong></td>
+                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                         <p class="fm-hint">The three club cups are open: pick one to see its groups,
                             its results and its bracket, tier by tier. The national-team competitions are
@@ -1022,6 +1033,12 @@ function buildPageNavState(page, options = {}) {
             mainContent.querySelectorAll('[data-club-cup]').forEach(button => {
                 button.addEventListener('click', () => {
                     loadPage('clubCup', { cupKey: button.dataset.clubCup, tier: 1 });
+                });
+                button.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        loadPage('clubCup', { cupKey: button.dataset.clubCup, tier: 1 });
+                    }
                 });
             });
 

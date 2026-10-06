@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-10-06 — international club cup repair and World page correction
+
+Fixed the live failure where `/club-cups/{key}?tier=1` returned “has no competition row”. The explicit
+admin repair now creates all 15 international club competition rows and fills missing simulated-country
+static pyramids and season tables. The cup job also self-heals missing rows and prepares both the
+qualifying and active season before drawing.
+
+Replaced the World page's separate competition cards with one accessible table. Champions, Masters and
+Challenge show `qualified / expected` fields of `48`, `96` and `48`; their rows open the tiered cup page.
+National-team rows remain visibly unavailable because the national-tournament frontend is still open
+work, as recorded in the NT section above.
+
+No tests were run in this repair pass. `git diff --check` was used.
+
 ## 2026-10-06 — graphical football user manual
 
 Added `userManual.md`, a text-only guide through login, the graphical football dashboard, header options,

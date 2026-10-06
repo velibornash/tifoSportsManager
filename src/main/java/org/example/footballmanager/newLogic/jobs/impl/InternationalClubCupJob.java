@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.util.InternationalClubCupDraw;
 import org.example.footballmanager.newLogic.util.InternationalClubCups;
+import org.example.footballmanager.newLogic.util.SimulatedWorldSeeder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -69,13 +70,16 @@ public class InternationalClubCupJob implements DayJob {
     private static final int DRAW_HOUR = 8;
 
     private final InternationalClubCups cups;
+    private final SimulatedWorldSeeder simulatedWorldSeeder;
     private final InternationalClubCupDraw draw;
     private final CompetitionRepository competitions;
 
     public InternationalClubCupJob(InternationalClubCups cups,
+                                   SimulatedWorldSeeder simulatedWorldSeeder,
                                    InternationalClubCupDraw draw,
                                    CompetitionRepository competitions) {
         this.cups = cups;
+        this.simulatedWorldSeeder = simulatedWorldSeeder;
         this.draw = draw;
         this.competitions = competitions;
     }
@@ -115,7 +119,18 @@ public class InternationalClubCupJob implements DayJob {
         int season = context.seasonYear();
         int week = context.weekNumber();
 
+        // The rows are a durable world object, not a prerequisite that may be missing forever because
+        // an older database was created before this competition family existed. The job is the first
+        // live writer that needs them, so make that boundary idempotent and self-healing. This remains
+        // explicit world work; boot still does not seed anything.
+        cups.ensureCompetitions();
+
         if (week == 1) {
+            // Simulated clubs are deliberately playerless until a competition needs them. Qualification
+            // needs their static tables first, so finish that world step before reading the field. Both
+            // seasons matter: entry comes from last season, while the active season owns the fixtures.
+            simulatedWorldSeeder.seedAllSimulated(Math.max(1, season - 1));
+            simulatedWorldSeeder.seedAllSimulated(season);
             drawEveryGroupStage(season);
         } else if (isKnockoutWeek(week)) {
             walkEveryBracket(season, week);

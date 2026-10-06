@@ -558,11 +558,14 @@ because it was requested.
 
 ### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets — **DONE ✅**
 
-The World page renders three rows from `pages.js` `clubCupRow()`, which returns a `<button data-club-cup>`
-(not a `<div>`) and groups all 15 cups under three names (Champions/Masters/Challenge). Each cup page is
+The World page renders three rows in one competition table from `pages.js` `clubCupRow()`. Each cup page is
 `club-cup-view.js`, wired as `createClubCupView({ authFetch, escapeHtml, loadPage })` with a `clubCup`
 route in the page router. Tiers 1–5 are tabs inside each cup; each tab shows the group tables (P W D L GF
 GA GD Pts), the results and the knockout bracket — all from `ClubCupController`'s grouped payload.
+
+The table shows the expected fields: Champions `48`, Masters `96`, Challenge `48`. The separate admin
+repair action creates missing international competition rows and fills simulated-country static tables;
+the week-1 cup job repeats that repair boundary before drawing.
 
 **Exit criteria:**
 - [x] Three links from the World page, one per cup · [x] tier 1–5 are tabs inside each

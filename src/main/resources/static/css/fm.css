@@ -72,6 +72,20 @@
     gap: 10px;
     padding: 12px 0;
 }
+.fm-world-competitions-table-wrap { margin-top: 12px; }
+.fm-world-competitions-table { width: 100%; }
+.fm-world-competition-row[data-club-cup] { cursor: pointer; }
+.fm-world-competition-row[data-club-cup]:hover,
+.fm-world-competition-row[data-club-cup]:focus-visible {
+    background: rgba(77, 163, 255, 0.09);
+    outline: none;
+}
+.fm-world-competition-row.is-disabled { opacity: 0.65; }
+.fm-world-competition-action {
+    color: var(--fm-accent, #4da3ff);
+    text-align: right;
+    white-space: nowrap;
+}
 .fm-competition {
     display: flex;
     align-items: center;

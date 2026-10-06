@@ -2,7 +2,9 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.util.CupFixtureSeeder;
+import org.example.footballmanager.newLogic.util.InternationalClubCups;
 import org.example.footballmanager.newLogic.util.NationalTeamSeeder;
+import org.example.footballmanager.newLogic.util.SimulatedWorldSeeder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,12 +26,21 @@ public class WorldRepairService {
 
     private final NationalTeamSeeder nationalTeamSeeder;
     private final CupFixtureSeeder cupFixtureSeeder;
+    private final InternationalClubCups internationalClubCups;
+    private final SimulatedWorldSeeder simulatedWorldSeeder;
+    private final SeasonService seasons;
     private final CountryRepository countries;
 
     public WorldRepairService(NationalTeamSeeder nationalTeamSeeder, CupFixtureSeeder cupFixtureSeeder,
+                              InternationalClubCups internationalClubCups,
+                              SimulatedWorldSeeder simulatedWorldSeeder,
+                              SeasonService seasons,
                               CountryRepository countries) {
         this.nationalTeamSeeder = nationalTeamSeeder;
         this.cupFixtureSeeder = cupFixtureSeeder;
+        this.internationalClubCups = internationalClubCups;
+        this.simulatedWorldSeeder = simulatedWorldSeeder;
+        this.seasons = seasons;
         this.countries = countries;
     }
 
@@ -48,6 +59,19 @@ public class WorldRepairService {
                 out.put("action", "Re-drew the cup");
                 out.put("note", "Rounds that already had ties were left alone.");
             }
+            case "international-cups", "club-cups" -> {
+                int season = seasons.getActiveSeasonYear();
+                int qualifyingSeason = Math.max(1, season - 1);
+                SimulatedWorldSeeder.Summary qualifyingWorld = simulatedWorldSeeder.seedAllSimulated(qualifyingSeason);
+                SimulatedWorldSeeder.Summary currentWorld = simulatedWorldSeeder.seedAllSimulated(season);
+                int competitions = internationalClubCups.ensureCompetitions().size();
+                out.put("action", "International club cups repaired");
+                out.put("competitionRows", competitions);
+                out.put("simulatedCountries", Math.max(qualifyingWorld.countries(), currentWorld.countries()));
+                out.put("simulatedClubs", Math.max(qualifyingWorld.clubs(), currentWorld.clubs()));
+                out.put("qualifyingSeason", qualifyingSeason);
+                out.put("note", "Run the club-cup draw job in week 1 to create this season's fixtures.");
+            }
             case "all" -> {
                 nationalTeamSeeder.seedIfMissing(countries.findAll());
                 cupFixtureSeeder.seedIfMissing();
@@ -56,7 +80,7 @@ public class WorldRepairService {
             }
             default -> {
                 out.put("action", "Nothing done");
-                out.put("error", "Unknown action '" + what + "'. Use national-teams, cup or all.");
+                out.put("error", "Unknown action '" + what + "'. Use national-teams, cup, international-cups or all.");
             }
         }
         return out;

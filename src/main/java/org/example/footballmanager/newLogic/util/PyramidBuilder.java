@@ -103,6 +103,13 @@ public class PyramidBuilder {
         if (!existing.isEmpty()) {
             log.info("{} already has {} league division(s); not building a second pyramid.",
                     country.getName(), existing.size());
+            // The pyramid is durable, but its static standing table is season-scoped. A country may
+            // have been seeded after the season that is now being used for international qualification,
+            // or it may already have the pyramid from an older season. Re-assert the table rows for the
+            // requested season without creating players, fixtures or a second pyramid.
+            for (Competition league : existing) {
+                fillStaticDivision(league, country, seasonYear, league.getTier());
+            }
             return new Result(existing.size(), 0, 0, true);
         }
 
