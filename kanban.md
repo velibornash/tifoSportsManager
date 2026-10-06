@@ -1186,14 +1186,17 @@ failure (`expected: <ACCEPTED> but was: <OPEN>`) looked like a season mismatch �
 
 ---
 
-### P0-10 — Delete the dead tactics plumbing
+### P0-10 — Re-scoped: remove only the proven dead legacy tactics chain
 
-Verified **zero callers** across `src/main` and `src/test`: `TacticsBridge`, `NewLogicTacticsService`,
-`newLogic.model.TacticRules`, the `Formation` / `Tactics` / `MatchContext` chain, and
-`tactcal_editor_positions.json` (the filename's typo is the original's). Roughly 400 lines.
+The original scope was too broad. A fresh caller scan confirms `TacticsBridge`, `NewLogicTacticsService`,
+`newLogic.model.TacticRules`, `util.match.MatchContext` and `util.players.PlayerActionProbabilityModel` have
+no production callers, but `TeamTacticsProfile`, `FormationSlotCatalog`, `TacticsRules` and the simulation
+tactics package are live through `TeamTacticsService`, `RealSquadFactory`, `SimMatchService` and the replay
+path. The task is narrowed to the proven dead legacy classes; the live tactical profile and simulation
+engine stay in place.
 
 **Exit criteria:**
-- [ ] Caller count re-verified immediately before deleting, not copied from this board
+- [x] Caller count re-verified immediately before deleting; live tactical classes were excluded
 - [ ] `mvn clean package` succeeds
 - [ ] The relevant test suite still passes
 

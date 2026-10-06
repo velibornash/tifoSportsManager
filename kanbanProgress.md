@@ -67,6 +67,14 @@ Replaced the remaining `CTeam`-id comparisons with `User.footballTeam` ids in `A
 unused `findDistinctManagedTeamIds` repository query and corrected its model documentation. The main
 source compiles; a dedicated regression test is still pending.
 
+## 2026-10-06 — P0-10 caller re-audit
+
+The old P0-10 scope overstated the dead tactics chain. `TacticsBridge`, `NewLogicTacticsService`, the
+legacy `newLogic.model.TacticRules`, `util.match.MatchContext` and `PlayerActionProbabilityModel` have no
+production callers. `TeamTacticsProfile`, `TeamTacticsService`, the simulation tactics package and replay
+classes do have callers and remain load-bearing. The task is narrowed before deletion; no files were
+removed in this audit.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
