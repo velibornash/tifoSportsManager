@@ -552,9 +552,10 @@ persisted copy is a cache with an invalidation problem. The owner asked for a jo
 because it was requested.
 
 **Exit criteria:**
-- [ ] A country page shows, per cup and per tier, the country's own qualifying race
-- [ ] It reflects the latest played round without a manual refresh of the world
-- [ ] Whether it is derived or persisted is **recorded on this board with the reason**
+- [x] The country general tab shows the country's league positions and qualifying destination by tier
+- [x] It reads the current reconciled league tables when the country page loads, without a world-page refresh
+- [x] The data is deliberately derived on read; the existing league reconciliation jobs update the source
+      tables, while a persisted copy would add cache invalidation without reducing the three-query tier read
 
 ### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets — **DONE ✅**
 

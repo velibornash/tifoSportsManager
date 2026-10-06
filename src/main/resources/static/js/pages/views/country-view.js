@@ -100,8 +100,57 @@ export function createCountryView(deps) {
 
     // --------------------------------------------------------------- general
 
+    function buildQualifyingSummary(data) {
+        if (!data || data.failed) {
+            return `
+                <section class="fm-panel">
+                    <div class="fm-panel-head"><div>
+                        <h3>International qualifying</h3>
+                        <p class="fm-subtle">The qualifying table could not be loaded.</p>
+                    </div></div>
+                </section>`;
+        }
+        const divisions = Array.isArray(data.divisions) ? data.divisions : [];
+        const byTier = new Map();
+        divisions.forEach(division => {
+            const tier = Number(division?.tier || 0);
+            if (!byTier.has(tier)) byTier.set(tier, []);
+            byTier.get(tier).push(division);
+        });
+        const tiers = [...byTier.entries()].sort((a, b) => a[0] - b[0]);
+        const body = tiers.length === 0
+            ? '<p class="fm-subtle">No league standings are available for the qualifying race yet.</p>'
+            : tiers.map(([tier, tierDivisions]) => `
+                <div class="fm-qualifying-tier">
+                    <h4>Tier ${tier}</h4>
+                    ${tierDivisions.map(division => `
+                        <div class="fm-qualifying-division">
+                            <div class="fm-subtle">${htmlEscape(division.division || 'League')}</div>
+                            <table class="fm-table fm-qualifying-table">
+                                <thead><tr><th>Pos</th><th>Club</th><th>Pts</th><th>GD</th><th>Race</th></tr></thead>
+                                <tbody>${(Array.isArray(division.standings) ? division.standings : []).map(row => `
+                                    <tr>
+                                        <td>${htmlEscape(String(row.position ?? '—'))}</td>
+                                        <td>${htmlEscape(row.teamName || 'Unknown club')}</td>
+                                        <td>${htmlEscape(String(row.points ?? 0))}</td>
+                                        <td>${htmlEscape(String(row.goalDifference ?? 0))}</td>
+                                        <td>${htmlEscape(row.qualifiesFor || '—')}</td>
+                                    </tr>`).join('')}</tbody>
+                            </table>
+                        </div>`).join('')}
+                </div>`).join('');
+        return `
+            <section class="fm-panel">
+                <div class="fm-panel-head"><div>
+                    <h3>International qualifying</h3>
+                    <p class="fm-subtle">Current league positions decide the Champions, Masters and Challenge Cup places.</p>
+                </div></div>
+                ${body}
+            </section>`;
+    }
+
     function buildGeneralTab(ctx) {
-        const { sortedLeagues, weekDays, calendarWeek, calendarNote, seasonWeeks, senior, u21 } = ctx;
+        const { sortedLeagues, senior, u21 } = ctx;
         return `
             <div class="fm-country-stack">
                 <section class="fm-panel">
@@ -135,6 +184,8 @@ export function createCountryView(deps) {
                         <button type="button" id="country-open-selected-league" class="fm-action-btn">Open league</button>
                     </div>
                 </section>
+
+                ${buildQualifyingSummary(ctx.qualifying)}
 
                 ${buildNationalTeamSummary('Senior national team', 'senior', senior)}
                 ${buildNationalTeamSummary('Under-21', 'u21', u21)}
@@ -559,7 +610,8 @@ export function createCountryView(deps) {
         }
 
         try {
-            const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs] =
+            const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs,
+                qualifying] =
                 await Promise.all([
                     readJson('/countries'),
                     readJson(`/countries/${encodeURIComponent(countryIso)}/leagues`),
@@ -568,7 +620,8 @@ export function createCountryView(deps) {
                     readNationalTeam(countryIso, 'senior'),
                     readNationalTeam(countryIso, 'u21'),
                     readJson(`/countries/${encodeURIComponent(countryIso)}/cup`),
-                    readJson(`/countries/${encodeURIComponent(countryIso)}/playoffs`)
+                    readJson(`/countries/${encodeURIComponent(countryIso)}/playoffs`),
+                    readJson(`/countries/${encodeURIComponent(countryIso)}/qualifying`)
                 ]);
 
             if (leaguesResponse.failed) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
@@ -608,7 +661,7 @@ export function createCountryView(deps) {
             if (resolvedTab === 'general') {
                 body = buildGeneralTab({
                     sortedLeagues, senior: seniorNt, u21: u21Nt,
-                    cup: cup || { exists: false }, playoffs: playoffs || { note: 'Unavailable' }
+                    cup: cup || { exists: false }, playoffs: playoffs || { note: 'Unavailable' }, qualifying
                 });
             } else if (resolvedTab === 'calendar') {
                 body = buildCalendarTab(schedule);

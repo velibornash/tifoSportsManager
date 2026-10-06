@@ -22,6 +22,15 @@ now reports calendar day numbers for all four slots.
 
 Remaining work is now P1-CUPS-3: country-side qualifying tables and their refresh decision.
 
+## 2026-10-06 — P1-CUPS-3 country qualifying race
+
+The country general tab now loads `/countries/{isoCode}/qualifying` and renders the league standings by
+tier, including the current Champions, Masters and Challenge Cup destination. The endpoint derives this
+from the reconciled league tables on each read. This keeps the country view current after the existing
+league-table jobs run and avoids a second persisted cache with its own invalidation problem.
+
+Remaining work is now P2-10/P2-12: national tournament and country competition UI completion.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
