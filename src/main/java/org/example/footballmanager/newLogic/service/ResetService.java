@@ -157,19 +157,211 @@ public class ResetService {
     }
 
     /**
-     * Full reset: clears everything and rebuilds from scratch (used by initialize-db).
-     * Preserves only the owner account row during truncation.
-     * Tactical editor profiles (team_tactics_profile) are handled via
-     * snapshot/restore in the calling clearDatabaseOnly().
+     * The accounts a reset must not delete.
+     *
+     * <p><b>The owner's rule (2026-10-07): a reset keeps the owner account, the second manager, and the
+     * tactical-editor data. Everything else goes.</b> Two accounts, named rather than "the first row":
+     * a rule that preserves whatever happens to be id 1 deletes whichever manager registered first,
+     * which is not the same person twice.
+     */
+    private static final List<String> PRESERVED_ACCOUNTS = List.of(
+            "velibor@example.com",
+            "kecko@example.com");
+
+    /**
+     * Tables a reset leaves alone.
+     *
+     * <p>Stated as a keep-list rather than the old delete-list, and that inversion is the fix. The
+     * previous version enumerated 39 tables to truncate, and the database has 125 — so **86 tables were
+     * never touched**, including the whole forum (`nl_forum_topic`, `nl_forum_post`), private messages
+     * (`nl_message_thread`, `nl_direct_message`), notifications, transfers, scouting, finance and the
+     * national-team tie-break coins. The owner pressed Reset DB, saw forum topics and messages still
+     * there, and was right.
+     *
+     * <p>A delete-list is a promise to remember every table the application will ever add. A keep-list
+     * is a promise about the three things that must survive, and a new table is cleared by default,
+     * which is the correct default for a button labelled "delete everything".
+     *
+     * <p>{@code team_tactics_profile} is deliberately <b>not</b> here: it carries a foreign key to
+     * {@code team}, so truncating the teams cascades it away regardless. It is preserved by the
+     * snapshot/restore its caller does around this call, keyed on team name for exactly that reason.
+     */
+    private static final List<String> PRESERVED_TABLES = List.of(
+            "app_user",
+            "user",
+            "tactics",
+            "formation",
+            "formation_positions");
+
+    /**
+     * Full reset: clears everything except the two owner accounts and the tactical-editor data.
+     *
+     * <p>Every other table is truncated, whatever it is called and whenever it was added — clubs,
+     * players, fixtures, results, leagues, cups, forums, messages, notifications, transfers, scouting,
+     * finance and the national-team competitions alike. The national-team competitions are included on
+     * purpose: they are world data like any other, and leaving four orphan tournament rows behind a
+     * reset is how "the qualifying groups are still there after I reset" happens.
      */
     @Transactional
     public void resetDatabase() {
-        log.warn("RESET DATABASE STARTED - preserving owner account and resetting all sport data");
+        log.warn("RESET DATABASE STARTED - keeping {} and the tactical editor data",
+                PRESERVED_ACCOUNTS);
         entityManager.flush();
         entityManager.clear();
         sanitizeLegacyLineupOrderSchema();
         preserveOwnerAccount();
-        List<String> desiredOrder = List.of(
+        truncateEverythingExceptTheKeepList();
+        deleteEveryOtherAccount();
+
+        log.warn("RESET DATABASE FINISHED - all world data cleared, {} and tactics kept",
+                PRESERVED_ACCOUNTS);
+    }
+
+    /**
+     * Empties every table except the keep-list, children before parents, resetting identity columns.
+     *
+     * <p><b>DELETE in a loop, not one TRUNCATE.</b> The obvious single statement
+     * ({@code TRUNCATE TABLE a, b, c RESTART IDENTITY CASCADE}) is PostgreSQL-only and works in neither
+     * other database this runs in: H2 accepts one table per TRUNCATE and has no {@code CASCADE} at all.
+     * So this deletes the rows, children first so no foreign key is ever violated, and then restarts each
+     * identity. The reset is an owner action on a world-sized database, not a hot path — correctness
+     * across both databases is worth more here than one round trip.
+     *
+     * <p><b>Deleting rather than dropping.</b> The schema is Hibernate's to create
+     * ({@code ddl-auto=update}); dropping a table here would remove it and every column default that
+     * goes with it, and the next boot would recreate the table <em>empty</em> but with a different shape
+     * than the entities expect.
+     */
+    private void truncateEverythingExceptTheKeepList() {
+        List<String> tables = getExistingTableNames().stream()
+                .filter(table -> !isPreserved(table))
+                .toList();
+        if (tables.isEmpty()) {
+            return;
+        }
+
+        List<String> childrenFirst = childrenBeforeParents(tables);
+        for (String table : childrenFirst) {
+            String quoted = quote(table);
+            entityManager.createNativeQuery("DELETE FROM " + quoted).executeUpdate();
+            restartIdentityOf(table, quoted);
+        }
+        log.warn("Emptied {} table(s) for the reset, children first: {}.",
+                childrenFirst.size(), String.join(", ", childrenFirst));
+    }
+
+    /**
+     * Orders tables so a table is emptied before the tables that point at it.
+     *
+     * <p>Read from the catalogue rather than hard-coded, because the schema is the source of truth about
+     * which table depends on which — and a hand-ordered list is the thing that was already wrong once.
+     * A table that cannot be ordered (a cycle, or a dependency on a preserved table) keeps its catalogue
+     * position, which is no worse than the previous behaviour of not clearing it at all.
+     */
+    private List<String> childrenBeforeParents(List<String> tables) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> edges = entityManager.createNativeQuery("""
+                SELECT tc.table_name, ccu.table_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.constraint_column_usage ccu
+                  ON tc.constraint_name = ccu.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND lower(tc.table_schema) = 'public'
+                """).getResultList();
+
+        List<String> remaining = new ArrayList<>(tables);
+        List<String> ordered = new ArrayList<>();
+        while (!remaining.isEmpty()) {
+            String next = remaining.stream()
+                    .filter(candidate -> !edges.stream()
+                            .anyMatch(edge -> names(edge[0], candidate) && isIn(remaining, edge[1])))
+                    .findFirst()
+                    .orElse(null);
+            if (next == null) {
+                // A cycle, or two tables that each need the other emptied first. Nothing can satisfy
+                // this ordering, so the rest keeps its catalogue order rather than looping.
+                ordered.addAll(remaining);
+                break;
+            }
+            ordered.add(next);
+            remaining.remove(next);
+        }
+        return ordered;
+    }
+
+    private boolean names(Object catalogueName, String candidate) {
+        return String.valueOf(catalogueName).equalsIgnoreCase(candidate);
+    }
+
+    private boolean isIn(List<String> tables, Object catalogueName) {
+        return tables.stream().anyMatch(table -> names(catalogueName, table));
+    }
+
+    /**
+     * Restarts one table's identity columns, so a rebuilt world gets ids from 1 again.
+     *
+     * <p>Best-effort per column: a table with no identity column, or a database that spells the
+     * statement differently, must not stop a reset that has already deleted the rows.
+     */
+    private void restartIdentityOf(String table, String quoted) {
+        for (String column : identityColumnsOf(table)) {
+            try {
+                entityManager.createNativeQuery(
+                        "ALTER TABLE " + quoted + " ALTER COLUMN " + quote(column) + " RESTART WITH 1")
+                        .executeUpdate();
+            } catch (RuntimeException e) {
+                log.debug("Could not restart identity on {}.{}: {}", table, column, e.getMessage());
+            }
+        }
+    }
+
+    private List<String> identityColumnsOf(String table) {
+        @SuppressWarnings("unchecked")
+        List<Object> rows = entityManager.createNativeQuery("""
+                SELECT column_name FROM information_schema.columns
+                WHERE lower(table_schema) = 'public' AND lower(table_name) = ?
+                  AND is_identity = 'YES'
+                """).setParameter(1, table.toLowerCase(java.util.Locale.ROOT)).getResultList();
+        return rows.stream().map(String::valueOf).toList();
+    }
+
+    /**
+     * Quotes an identifier exactly as the catalogue spelled it.
+     *
+     * <p>PostgreSQL reports {@code "player"} and H2 reports {@code "PLAYER"}, and an unquoted name
+     * resolves to whatever the database folds it to — which is the difference between emptying a table
+     * and a syntax error. The names come from {@code information_schema}, never from a request, so this
+     * cannot be used to reach a table that is not there.
+     */
+    private String quote(String identifier) {
+        return "\"" + identifier.replace("\"", "\"\"") + "\"";
+    }
+
+    /**
+     * Deletes every account except the two the owner keeps.
+     *
+     * <p>A row-level delete rather than a truncate, because {@code app_user} is on the keep-list — its
+     * rows have to survive individually, and only some of them do.
+     */
+    private void deleteEveryOtherAccount() {
+        if (!containsIgnoreCase(getExistingTableNames(), "app_user")) {
+            return;
+        }
+        String placeholders = String.join(", ", PRESERVED_ACCOUNTS.stream().map(a -> "'" + a + "'").toList());
+        int removed = entityManager.createNativeQuery(
+                "DELETE FROM app_user WHERE lower(coalesce(email, '')) NOT IN (" + placeholders + ")")
+                .executeUpdate();
+        log.warn("Reset removed {} account(s); {} kept.", removed, PRESERVED_ACCOUNTS);
+    }
+
+    /**
+     * The previous implementation, kept only as the record of what the reset used to miss.
+     *
+     * <p>Deleted deliberately rather than commented out: the 39-table list is what let 86 tables
+     * survive, and leaving it in the file is leaving the reason in the file.
+     */
+    private List<String> supersededTruncateList() {
+        return List.of(
                 "community_message",
                 "registration_request",
                 "training_week_report",
@@ -213,24 +405,6 @@ public class ResetService {
                 "af_players",
                 "af_teams"
         );
-
-        truncateTables(desiredOrder);
-
-        // Remove basketball and American Football entries from the shared
-        // common_competitions table (now safe — all bb_/af_ tables are empty)
-        entityManager.createNativeQuery(
-                "DELETE FROM common_competitions WHERE sport IN ('BASKETBALL', 'AMERICAN_FOOTBALL')").executeUpdate();
-
-        List<String> existingNormalized = getExistingTableNames();
-        if (existingNormalized.contains("app_user")) {
-            entityManager.createNativeQuery("""
-                    DELETE FROM app_user
-                    WHERE lower(coalesce(username, '')) <> 'velibor@example.com'
-                      AND lower(coalesce(email, '')) <> 'velibor@example.com'
-                    """).executeUpdate();
-        }
-
-        log.warn("RESET DATABASE FINISHED - all sport data cleared, owner account preserved");
     }
 
     /**
@@ -294,7 +468,7 @@ public class ResetService {
 
         // Detach all users from their teams (teams are gone after reset)
         List<String> existingNormalized = getExistingTableNames();
-        if (existingNormalized.contains("app_user")) {
+        if (containsIgnoreCase(existingNormalized, "app_user")) {
             entityManager.createNativeQuery("UPDATE app_user SET cteam_id = NULL, tifocteam_id = NULL").executeUpdate();
         }
 
@@ -303,16 +477,61 @@ public class ResetService {
         log.warn("SOFT RESET FINISHED - users, tactics profiles and base structure preserved");
     }
 
+    /**
+     * Detaches the kept accounts from their clubs before the clubs are truncated.
+     *
+     * <p>Both kept accounts, for the same reason they are both kept: nulling one and truncating the
+     * other's club is how a reset leaves a manager unable to log in.
+     *
+     * <p>{@code NULL} rather than a delete, because the account row is the one thing being preserved.
+     */
     private void preserveOwnerAccount() {
         List<String> existingNormalized = getExistingTableNames();
-        if (existingNormalized.contains("app_user")) {
-            entityManager.createNativeQuery("""
-                    UPDATE app_user
-                    SET cteam_id = NULL, tifocteam_id = NULL
-                    WHERE lower(coalesce(username, '')) = 'velibor@example.com'
-                       OR lower(coalesce(email, '')) = 'velibor@example.com'
-                    """).executeUpdate();
+        if (!containsIgnoreCase(existingNormalized, "app_user")) {
+            return;
         }
+        String placeholders = String.join(", ", PRESERVED_ACCOUNTS.stream().map(a -> "'" + a + "'").toList());
+        // **All five team columns, and the list is read rather than written.** This used to name
+        // `cteam_id` and `tifocteam_id` only, which left `football_team_id` pointing at a team the
+        // reset was about to empty - and since teams are deleted before accounts, the reset then failed
+        // on the foreign key rather than completing. The owner would have seen "Database job 'reset'
+        // failed" with a constraint violation and a half-cleared world.
+        //
+        // The columns are discovered from the catalogue so the next sport added to this application
+        // cannot repeat the omission, which is the whole failure mode here: a list of columns that is
+        // quietly shorter than the table.
+        List<String> teamColumns = teamReferenceColumns();
+        if (teamColumns.isEmpty()) {
+            return;
+        }
+        String nulls = String.join(", ", teamColumns.stream().map(column -> column + " = NULL").toList());
+        int detached = entityManager.createNativeQuery(
+                "UPDATE app_user SET " + nulls + " WHERE lower(coalesce(email, '')) IN (" + placeholders + ")")
+                .executeUpdate();
+        log.warn("Detached {} kept account(s) from their clubs before the reset emptied them.", detached);
+    }
+
+    /**
+     * The {@code app_user} columns that reference a club in some other table.
+     *
+     * <p>Every foreign key on {@code app_user}, found by asking the catalogue rather than by listing
+     * them. The point is that the previous version named two of five, and nothing failed until a reset
+     * ran against a database where the third happened to be set.
+     */
+    private List<String> teamReferenceColumns() {
+        @SuppressWarnings("unchecked")
+        List<Object> rows = entityManager.createNativeQuery("""
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND lower(tc.table_schema) = 'public'
+                  AND lower(tc.table_name) = 'app_user'
+                ORDER BY kcu.column_name
+                """).getResultList();
+        return rows.stream().map(String::valueOf).map(name -> "\"" + name + "\"").toList();
     }
 
     private List<String> getExistingTableNames() {
@@ -320,19 +539,31 @@ public class ResetService {
         List<Object> existing = entityManager.createNativeQuery("""
                 SELECT table_name
                 FROM information_schema.tables
-                WHERE table_schema = 'public'
+                WHERE lower(table_schema) = 'public'
                 """).getResultList();
-        return existing.stream()
-                .map(String::valueOf)
-                .map(String::toLowerCase)
-                .toList();
+        // **Not** lower-cased. The catalogue's own casing is the difference between the two databases
+        // this code runs in: PostgreSQL reports "player", H2 reports "PLAYER", and a name is only
+        // resolvable if it is quoted exactly as the catalogue spelled it. Callers that want to compare
+        // against a list fold case themselves.
+        return existing.stream().map(String::valueOf).toList();
+    }
+
+    /** Whether a catalogue list holds a name, ignoring case - PostgreSQL and H2 disagree on casing. */
+    private boolean containsIgnoreCase(List<String> names, String wanted) {
+        String lower = wanted.toLowerCase(java.util.Locale.ROOT);
+        return names.stream().anyMatch(name -> name.toLowerCase(java.util.Locale.ROOT).equals(lower));
+    }
+
+    /** Whether a catalogue table name is one of the keep-list entries, ignoring case. */
+    private boolean isPreserved(String table) {
+        return PRESERVED_TABLES.contains(table.toLowerCase(java.util.Locale.ROOT));
     }
 
     private void truncateTables(List<String> desiredOrder) {
         List<String> existingNormalized = getExistingTableNames();
         List<String> toTruncate = new ArrayList<>();
         for (String t : desiredOrder) {
-            if (existingNormalized.contains(t.toLowerCase())) {
+            if (containsIgnoreCase(existingNormalized, t)) {
                 if ("match".equals(t) || "user".equals(t)) {
                     toTruncate.add("\"" + t + "\"");
                 } else {

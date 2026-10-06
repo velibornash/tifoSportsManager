@@ -1149,8 +1149,16 @@ public class DatabaseInitializer {
 
         // Ostale lige popuni random timovima. The Šid league gets its real clubs first and one random
         // club to make ten, which is what the rest of the pyramid does for the remainder.
+        //
+        // **The null check is load-bearing.** This used to be `c.getCountry().getIsoCode()`, which threw
+        // on any competition with no country - and the four national-team competitions
+        // (`NationalTeamCompetitions`) are exactly that: an international tournament has no country
+        // behind it. So once the NT competitions existed, Initialize DB died here with an NPE, halfway
+        // through building a pyramid, and the admin panel reported "Database job 'initialize' failed".
+        // Twelve lines below, the same file already asks `c.getCountry() != null` for the same reason.
         competitionRepository.findAll().stream()
-                .filter(c -> c.getCountry().getIsoCode().equals("SRB") && c.getTier() > 1)
+                .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
+                .filter(c -> c.getTier() != null && c.getTier() > 1)
                 .forEach(league -> populateLeagueWithTeams(league, 10, false, currentSeason,
                         MUNICIPAL_SID_LEAGUE.equals(league.getName())
                                 ? MUNICIPAL_SID_CLUBS : null));

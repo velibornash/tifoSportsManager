@@ -1,5 +1,120 @@
 # kanbanProgress.md — the append-only log
 
+## Reset DB kept 86 tables, and Initialize DB crashed on the ones it kept (owner, 2026-10-07)
+
+### What was asked for
+
+Two reports and a rule.
+
+**The crash, with its stack trace.** Initialize DB, from the admin panel:
+
+> `Database job 'initialize' failed: Cannot invoke "Country.getIsoCode()" because the return value of
+> "Competition.getCountry()" is null`
+
+**The rule, verbatim.**
+
+> *"treba da prezive samo podaci u owner useru i o useru Kecko i tactical editor podaci - sve ostalo -
+> brisi, timove, forume, poruke, sve"*
+
+And the question that prompted it: *"after Reset DB, do NT competitions survive? Apparently yes -
+clearDatabaseOnly preserves some things."*
+
+### The crash: an international tournament has no country
+
+`initSerbianFootballStructure` walks every competition to find the Serbian leagues:
+
+```java
+.filter(c -> c.getCountry().getIsoCode().equals("SRB") && c.getTier() > 1)
+```
+
+**The four national-team competitions have no country**, because an international tournament is not any
+one nation's — that is what `NationalTeamCompetitions` deliberately leaves null, and it is the right
+design. So the walk dereferenced null and Initialize DB died part-built.
+
+Twelve lines below, the same file already wrote `c.getCountry() != null` for the same question. The
+defect is a missing guard, not a missing idea.
+
+**Order-dependent is why it lived so long.** It needs an NT competition to exist first. On a cold
+database there is none, so the sequence a fresh install performs never trips it — and Reset DB used to
+leave those four competitions behind, which is what made the crash reproducible in ordinary use.
+
+### The reset: a delete-list of 39 tables, in a database of 125
+
+Measured against the live schema, **86 tables were never truncated**:
+
+```
+nl_forum_topic  nl_forum_post  nl_message_thread  nl_direct_message  nl_notification
+transfer  transfer_offer  friendly_request  friendly_offer  loan  scout_assignment
+finance_ledger_entry  fee_structure  national_group_tie_break  job_run  sponsor  referee
+crowd  stadium  player_contract  player_zone_load  player_training_focus ...
+```
+
+**86 tables the owner never named, surviving a button labelled "delete everything".** A delete-list is a
+promise to remember every table the application will ever have; a new table is silently exempt until
+someone notices. Inverted to a **keep-list** — `app_user`, `user`, `tactics`, `formation`,
+`formation_positions` — so a table added next month is cleared by default, which is the correct default
+for that button.
+
+Both accounts are now named (`velibor@example.com`, `kecko@example.com`) rather than "row 1": a rule
+preserving whatever happens to be id 1 deletes whichever manager registered first, which is not the same
+person twice.
+
+**The national-team competitions are cleared too.** They are world data like any other, and four orphan
+tournament rows behind a reset is precisely how "the qualifying groups are still there after I reset"
+happens.
+
+### The bug the new test found in the new fix
+
+Worth recording on its own, because it is the *same mistake one level down*.
+
+`preserveOwnerAccount` nulled `cteam_id` and `tifocteam_id` — and **not `football_team_id`**. Teams are
+deleted before accounts, so the reset would fail on the foreign key: *"Database job 'reset' failed"* and
+a half-cleared world. There are **five** club columns on `app_user`:
+
+```
+american_football_team_id  basketball_team_id  cteam_id  football_team_id  tifocteam_id
+```
+
+The columns are now **read from `information_schema`** rather than listed, so the next sport added to
+this application cannot repeat the omission.
+
+### Two databases, one statement
+
+The test profile is **H2**; the owner's database is **PostgreSQL**. The obvious
+
+```sql
+TRUNCATE TABLE a, b, c RESTART IDENTITY CASCADE
+```
+
+is valid in **neither other case**: H2 takes one table per `TRUNCATE` and has no `CASCADE` at all
+(probed directly: `truncate table "PLAYER" cascade` → syntax error). The reset therefore deletes rows
+**children first** — ordering read from the catalogue's foreign keys, not hand-written — and restarts each
+identity separately.
+
+**Catalogue casing differs as well.** PostgreSQL reports `"player"`, H2 reports `"PLAYER"`. An earlier
+version lower-cased the names for comparison and then quoted them, which worked on PostgreSQL and threw
+`Table "af_season_competitions" not found (candidates are: "AF_SEASON_COMPETITIONS")` on H2 — that is, a
+code path validated **only** against the database that does not matter.
+
+**And the test itself was wrong first.** It built `INSERT` statements by reading `information_schema` and
+guessing a literal per column name, which spent five iterations on `SUPPORTER_MOOD` being an integer and
+`HUMAN_CONTROLLED` a boolean. **A name is not a type.** Rows now go in through the entities.
+
+### Tests
+
+`ResetServiceKeepsOnlyAccountsAndTacticsTest` **3/3**, whose central assertion is **"no table outside the
+keep-list holds a row"** — the owner's own words. A test that enumerated the 86 tables would be the same
+mistake in test form.
+
+**The detachment guard is re-proven by breaking it:** naming only two of the five club columns reproduces
+`Column "cteam_id" not found` / the foreign-key failure.
+
+`DatabaseInitializerNationalCompetitionsTest` **1/1** — builds the four country-less competitions and
+calls the method the button calls. It takes ~3 minutes because it builds a real pyramid, which is the
+price of testing the thing rather than a copy of it.
+
+---
+
 ## The whole database, dumped and put back (owner, 2026-10-06)
 
 ### What was asked for

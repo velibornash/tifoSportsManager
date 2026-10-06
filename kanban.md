@@ -2255,6 +2255,71 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ P0 — Reset DB kept 86 tables, and Initialize DB crashed on the ones it kept — owner, 2026-10-07
+
+Two defects, both reported from the same session, both caused by the same thing: code that enumerated
+instead of deriving.
+
+### 1. Initialize DB died halfway through the pyramid
+
+> `Cannot invoke "Country.getIsoCode()" because the return value of "Competition.getCountry()" is null`
+> — `DatabaseInitializer.initSerbianFootballStructure`, at the filter that finds the Serbian leagues.
+
+The four national-team competitions **have no country** — an international tournament is not any one
+nation's — and the walk asked `c.getCountry().getIsoCode()` without asking whether there was a country.
+Twelve lines below the same file already had the null check. So once the NT competitions existed,
+Initialize DB always died, half-built, and the panel reported *"Database job 'initialize' failed"*.
+
+**Order-dependent, which is why it survived:** it needs an NT competition to already exist, and a cold
+database has none.
+`DatabaseInitializerNationalCompetitionsTest` builds that exact world and calls the method the button
+calls — 1 test, and it takes ~3 minutes because it builds a real pyramid.
+
+### 2. Reset DB kept 86 of the 125 tables
+
+> *"treba da prezive samo podaci u owner useru i o useru Kecko i tactical editor podaci - sve ostalo -
+> brisi, timove, forume, poruke, sve"*
+
+The reset was a **delete-list of 39 tables**. The database has 125. So **86 tables were never
+touched** — `nl_forum_topic`, `nl_forum_post`, `nl_message_thread`, `nl_direct_message`,
+`nl_notification`, the transfers, the scouting, the finance ledger, and the tie-break coins. The owner
+pressed Reset DB and found forum topics still in place, and he was right.
+
+- [x] **The reset is a keep-list now.** `app_user` (the two named accounts), `user`, `tactics`,
+      `formation`, `formation_positions`. Everything else is cleared **whatever it is called and whenever
+      it was added** — a delete-list is a promise to remember every table the application will ever have,
+      and a keep-list is a promise about the three things that must survive.
+- [x] **Both accounts are named, and both are detached.** `velibor@example.com` and `kecko@example.com`.
+      A rule preserving "row 1" deletes whichever manager registered first.
+- [x] **The national-team competitions are cleared too.** They are world data like any other; leaving four
+      orphan tournament rows behind a reset is how "the qualifying groups are still there after I reset"
+      happens.
+
+**The bug the new test found in the new fix — kept, because the shape of it is the point:**
+
+`preserveOwnerAccount` nulled `cteam_id` and `tifocteam_id` but **not `football_team_id`**. Teams are
+deleted before accounts, so the reset would fail on the foreign key — *"Database job 'reset' failed"* and
+a half-cleared world. **The columns are now read from `information_schema`**, so the next sport added to
+this application cannot repeat the omission. That is the same mistake as the delete-list, one level down:
+a list of columns quietly shorter than the table.
+
+`ResetServiceKeepsOnlyAccountsAndTacticsTest` 3/3. Its central assertion is **"no table outside the
+keep-list holds a row"** — the owner's actual words — because a test naming the 86 tables would be the
+same mistake in test form. **The detachment guard is re-proven by breaking it:** naming only two of the
+five club columns reproduces the failure.
+
+**Rows in that test are written through the entities, not through hand-built SQL.** An earlier version
+assembled `INSERT`s from `information_schema` and guessed a literal per column, and burned five
+iterations on `SUPPORTER_MOOD` being an integer and `HUMAN_CONTROLLED` a boolean. A name is not a type.
+
+**Also learned, and it cost real time:** the test profile is **H2** and the owner's database is
+**PostgreSQL**, and the obvious `TRUNCATE TABLE a, b, c RESTART IDENTITY CASCADE` is valid in neither
+other case — H2 takes one table per `TRUNCATE` and has no `CASCADE`. The reset deletes rows children-first
+(order read from the catalogue, not hand-written) and restarts each identity. **Catalogue casing differs
+too**: PostgreSQL reports `"player"`, H2 reports `"PLAYER"`, and lower-casing the names broke the H2 run.
+
+---
+
 ## ✅ Admin database backup and restore — owner, 2026-10-06
 
 > *"teba dodati dve funkcionalnosti u Admin deo - jedna je da celu bazu (npr kad postavim cistu bazu na
