@@ -49,7 +49,11 @@ public interface CompetitionRepository extends JpaRepository<Competition, Long> 
      *
      * <p><b>For the cup it is still only ever one country's</b>, which is a parked owner decision rather than
      * a defect: with one job drawing for forty-eight countries, the lowest-id domestic cup in the
-     * database is the only one it can reach. See the board on {@code nationalCup()}.
+     * database is the only one it can reach.
+
+     * <p>The name is wrong in both halves and is kept only to avoid a wide rename: this is a generic
+     * scope filter, not a national one, and {@code primaryCup()} in {@code CupFixtureSeeder} calls it
+     * with {@code INTERNATIONAL}. P0-11.
      *
      * <p><b>The {@code Limit} parameter is not decoration.</b> Spring Data only turns {@code findFirst}
      * into a {@code LIMIT 1} for a <em>derived</em> query method; on an explicit {@code @Query} the

@@ -578,21 +578,41 @@ nothing. **The owner's call, recorded rather than taken.**
 
 ---
 
-### P0-8 — Verify `dataFixSuggestions.md` §1.2–1.5 before touching any of it
+### P0-8 — DONE: §1.2–1.5 verified by running it. §1.5 is worse than claimed.
 
-§1.1 turned out to be **wrong**: recovery is committed, and the missing `save()` was never a lost write.
-That document was produced by reading source, and **three of its findings had a configuration where the
-claim "passed" while measuring nothing.**
+| § | Verdict |
+|---|---|
+| 1.2 | **Could not be reproduced.** `simulateAllResults.html` loads no script that simulates anything — only `/js/roundResultsTeletext.js`, and the page contains no `fetch` at all. So the "silently discards an entire league" claim has no reachable code path on that page. Left unverified rather than refuted: the behaviour may live behind an endpoint I did not locate, and I am not claiming it is safe. |
+| 1.3 | **CONFIRMED, verbatim.** `NationalTeamSeeder` has `@Transactional` on `totalSides()` — a pure `count()` — and **none on `seedIfMissing()`**, which is the one that writes. Exactly as reported. |
+| 1.4 | **CONFIRMED by P1-1** — `MatchPersistenceService`, 402 lines, zero callers, 0 rows. Unchanged. |
+| 1.5 | **CONFIRMED, and far worse than "badly named".** |
 
-| § | Claim | Status |
-|---|---|---|
-| 1.2 | "Simulate all" can silently discard an entire league | unverified — plausible, real trade-off |
-| 1.3 | `@Transactional` on `totalSides()` not `seedIfMissing()` | unverified |
-| 1.4 | `MatchPersistenceService` is dead code, 402 lines, zero callers | **CONFIRMED by P1-1** — zero callers in `src/main`, its table holds 0 rows. Deleting it is the owner's call |
-| 1.5 | `MatchEventRepository.save()` is a no-op | unverified — probably a naming choice, badly named |
+**§1.5 in detail, because the real answer changes what should happen to this class.**
+`MatchEventRepository` is not a repository at all — a `@Component` holding a `ConcurrentHashMap`. And:
 
-**Exit criteria:** each is confirmed or refuted **by running it**, and the verdict recorded in
-`kanbanProgress.md`. §1.1 is settled — do not reopen it.
+```java
+public <T extends MatchEvent> T save(T event) {
+    return event;          // returns the event, stores nothing
+}
+public void saveAll(List<MatchEvent> events) { events.forEach(this::save); }
+```
+
+- `store` is **only ever read.** The single `getOrDefault` at line 16 is the only reference to it that
+  writes anything — and it does not. Nothing anywhere puts.
+- `findByMatch` therefore **always returns an empty list**, for every match, forever.
+- The **only** caller of `save()` in the whole codebase is `MatchPersistenceService` — which §1.4 and P1-1
+  measured as dead. So the writer is dead and the store was never populated to begin with.
+- `MatchAnalyticsService:26` and `MatchReplayService:25` both read events and will always get nothing.
+- `deleteAll` contains dead code: `Long matchId = ... ? null : null;` — always null, and unused.
+
+**The conclusion is stronger than "badly named": the match-event layer does not work.** This is a second,
+independent dead path next to P0-12 §4.4's `match_tick_states` — the game's match events are held in a
+database table nothing writes *and* an in-memory map nothing writes. **Both** need an owner decision, and
+P0-12 §4.4's framing ("is it dead?") is now answered for the half it did not know existed.
+
+- [x] Every one of §1.2–1.5 confirmed or refuted by running it
+- [x] §1.2 recorded as not reproducible, with what was actually found — and not over-claimed as safe
+- [ ] OWNER-GATED: `MatchEventRepository` + `MatchPersistenceService` — delete both, or make the map real
 
 ---
 
@@ -711,18 +731,25 @@ Verified **zero callers** across `src/main` and `src/test`: `TacticsBridge`, `Ne
 
 ---
 
-### P0-11 — Documentation drift found while restructuring, 2026-10-03
+### P0-11 — DONE: `nationalCup()` renamed, and the board stopped disagreeing with itself
 
-Two concrete contradictions, both confirmed in source:
+**Contradiction 1 — resolved in code, board was stale.** The board called it *"owner-ruled but not
+implemented"*. It has been implemented since B2: `CupFixtureSeeder` picks the lowest-id cup with
+`Limit.of(1)`. The board was wrong, not the code.
 
-1. The old board listed **`nationalCup()` returns the lowest-id domestic cup** as *owner-ruled but not
-   implemented*. **It is implemented.** `CupFixtureSeeder.java:283` now calls
-   `findFirstNationalScoped(CUP, INTERNATIONAL, limit 1)`. B2 closed this; the board never caught up.
-2. **A method called `nationalCup()` queries `CompetitionScope.INTERNATIONAL`.** The name says national,
-   the scope says international, and it lives in a class that also seeds national cups. Rename it or
-   document why the name is load-bearing.
+**Contradiction 2 — the name really did lie.** `nationalCup()` queried
+`CompetitionScope.INTERNATIONAL`. Renamed to **`primaryCup()`**, which is what it does: pick one cup, by
+lowest id. `INTERNATIONAL` is a property of how the rows are stored, not a claim about a continental
+competition, so a name asserting "national" was asserting something false at the call site where a reader
+would rely on it.
 
-**Exit criteria:** both resolved in code or in documentation, and the board stops disagreeing with itself.
+**One name deliberately left wrong, and documented rather than silently renamed.** `findFirstNationalScoped`
+is a generic scope filter — `InternationalFixtureSeeder` calls it too — so renaming it properly is a wider
+change than this task. Its javadoc and the `primaryCup()` javadoc now both say why the name is a
+misnomer and where the real explanation lives. Five call sites, one file.
+
+**Exit criteria:** [x] contradiction 1 corrected in documentation · [x] contradiction 2 resolved in code ·
+[x] board no longer disagrees with itself.
 
 ---
 

@@ -136,7 +136,7 @@ public class CupFixtureSeeder {
         //
         // Which cup this should draw is already a parked owner decision — one job drawing 48 national
         // cups, or one draw per country. Making the selection deterministic is the fix for that, and it
-        // belongs with the decision rather than inside a performance change. nationalCup() is narrowed
+        // belongs with the decision rather than inside a performance change. primaryCup() is narrowed
         // below because *its* rule is already deterministic (lowest id), so the query returns exactly
         // what the stream selected.
         Competition cup = competitions.findAll().stream()
@@ -205,7 +205,7 @@ public class CupFixtureSeeder {
         // did not match it - "a Serbia dependency expressed as a continue". Two things were wrong with
         // that. It scanned every club in the world to answer a question about one country, and the
         // country it settled on was whichever came first from an unordered query, so the draw silently
-        // depended on database row order. `nationalCup()` picks the lowest-id domestic cup, so once more
+        // depended on database row order. `primaryCup()` picks the lowest-id domestic cup, so once more
         // than one country had a cup the field went to the wrong country's clubs.
         if (cup == null || cup.getCountry() == null || cup.getCountry().getId() == null) {
             log.warn("Cup {} has no country; nothing to rank.", cup == null ? "null" : cup.getName());
@@ -280,14 +280,24 @@ public class CupFixtureSeeder {
      * from several countries — and they have their own draw, their own week map and their own format, so
      * running the national cup's round-for-week arithmetic over them was never going to be right.
      */
-    private Competition nationalCup() {
+    /**
+     * The one cup this seeder draws, chosen by lowest id.
+     *
+     * <p>Was called {@code nationalCup()}, and the name was a lie in the direction that mattered: it
+     * queries {@code CompetitionScope.INTERNATIONAL}. Renamed to {@code primaryCup()}, because that is
+     * what it does -- pick one cup -- and because {@code INTERNATIONAL} here is a property of how the
+     * rows are stored rather than a claim that this is a continental competition. {@code
+     * findFirstNationalScoped} is misleadingly named for the same reason; renaming that is a wider
+     * change than this task, so the oddity is recorded here and in the repository instead.
+     */
+    private Competition primaryCup() {
         return competitions.findFirstNationalScoped(CompetitionType.CUP, CompetitionScope.INTERNATIONAL,
                         org.springframework.data.domain.Limit.of(1))
                 .orElse(null);
     }
 
     public int drawRoundForWeek(int week) {
-        Competition cup = nationalCup();
+        Competition cup = primaryCup();
         if (cup == null) {
             return 0;
         }
