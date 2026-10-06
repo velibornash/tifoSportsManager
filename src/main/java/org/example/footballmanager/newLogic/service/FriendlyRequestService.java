@@ -376,64 +376,6 @@ public class FriendlyRequestService {
     // ------------------------------------------------------------------ the AI
 
     /**
-     * How likely a club is to accept a friendly, given what it would cost it.
-     *
-     * <p>Not one number for everyone. A club in the playoff has one slot left and would rather keep
-     * the training session; a club with nothing else to do, or one carrying an injury backlog, is
-     * more willing. The point of the mechanic is that playing and not playing are both defensible,
-     * so the AI has to disagree with itself sometimes or the owner never sees the choice.
-     */
-    private static final double BASE_ACCEPT_CHANCE = 0.55;
-
-    /** Extra willingness when the club has an open slot and nothing else that week. */
-    private static final double IDLE_CLUB_BONUS = 0.25;
-
-    /** A club in the playoff guards its remaining training session. */
-    private static final double PLAYOFF_CAUTION = 0.30;
-
-    /** A club with a squad in good health gets less out of a friendly and says no more. */
-    private static final double INJURED_CLUB_BONUS = 0.20;
-
-    private final java.util.Random random = new java.util.Random();
-
-    /**
-     * Asks for and answers friendlies on behalf of every club that is not the player's.
-     *
-     * <p>Run once a week. Each AI club with an open slot looks for an opponent that is also free and
-     * asks; the club asked then decides, with the same weighting above. Nothing is arranged behind
-     * closed doors — every friendly that gets played went through a request and an answer, so a
-     * manager looking at the schedule sees the same negotiation anyone else would.
-     */
-    @Transactional
-    public int runAiFriendlyWeek(Integer season, Integer week, Long humanTeamId) {
-        if (season == null || week == null) return 0;
-        int friendlySlots = SeasonCalendar.friendlySlots(week);
-        if (friendlySlots == 0) return 0;
-
-        List<Team> clubs = teams.findAll();
-        // **One week, read once.**
-        //
-        // `isBusy`, `isInPlayoff` and `hasFixtureThatWeek` each walked
-        // `fixtures.findBySeasonYearAndWeekNumber(season, week)` — the same list, three times over — and
-        // `isBusy` also asked for the club's agreed friendlies. They were called per club *and* per
-        // candidate opponent inside a nested loop, so a week cost a query per club per slot before any
-        // match was arranged, and three more for every decision after one was. At 48 countries that is
-        // 14,880 clubs in the first loop alone.
-        //
-        // The snapshot is **updated as friendlies are agreed**, not just read once: a club that accepts a
-        // Thursday friendly is busy for that slot, and the next club's turn has to see that or the pass
-        // double-books it. That is why one snapshot per pass is correct rather than merely cheaper — the
-        // same reasoning as the transfer market's bulk read.
-        WeekSnapshot snapshot = new WeekSnapshot(season, week);
-        int arranged = 0;
-        for (int slot = 1; slot <= SeasonCalendar.SLOTS_PER_WEEK && arranged < friendlySlots * 4; slot++) {
-            if (!SeasonCalendar.slot(week, slot).friendlyCapable()) continue;
-            arranged += pairUpAiClubs(season, week, slot, clubs, humanTeamId, snapshot);
-        }
-        return arranged;
-    }
-
-    /**
      * One week of fixtures and agreed friendlies, held for the length of an AI pass.
      *
      * <p>Two queries to build. {@link #hasFixture} answers all three of {@code isBusy}'s fixture walk,
@@ -496,8 +438,8 @@ public class FriendlyRequestService {
          * <p>Kept apart from {@link #busyIn} on purpose, and getting this wrong is not subtle: the
          * original code answered a friendly by re-reading the week, where its own request was PENDING and
          * therefore did <i>not</i> make either club busy. Hold a pending request in the busy set and every
-         * acceptance expires itself — which is exactly what the first version of this snapshot did, and
-         * what {@code AiFriendlyWeekQueryCountTest} caught.
+         * acceptance expires itself — which is exactly what the first version of this snapshot did, and why the invariant
+         * belongs here rather than at each call site.
          */
         boolean liveIn(Long teamId, Integer slot) {
             return busyIn(teamId, slot) || contains(pendingInSlot, teamId, slot);
@@ -516,12 +458,9 @@ public class FriendlyRequestService {
          * A refusal stops holding both clubs for that slot.
          *
          * <p><b>Correct, and deliberately not claimed as a fix.</b> A pending request left in the set
-         * after a refusal keeps both clubs out of that slot for the rest of the pass. Whether that
-         * arranges fewer friendlies than before is <i>not</i> established: the loop asks one requester at
-         * a time and each tries opponents in turn, so the attempt count barely moves — removing this call
-         * changed no count in {@code AiFriendlyWeekQueryCountTest}. It is here because the old code
-         * re-read the requests and so did not hold a refusal, and matching that is the point of a
-         * snapshot. The test's uniqueness assertion passes with or without it.
+         * after a refusal keeps both clubs out of that slot for the rest of the week. It is here because
+         * the old code re-read the requests and so did not hold a refusal, and matching that is the point
+         * of a snapshot.
          */
         void refused(Long requesterId, Long opponentId, Integer slot) {
             free(pendingInSlot, requesterId, opponentId, slot);
@@ -544,84 +483,6 @@ public class FriendlyRequestService {
             ids.remove(a);
             ids.remove(b);
         }
-    }
-
-    /** One pass of asking and answering for a single slot. */
-    private int pairUpAiClubs(Integer season, Integer week, int slot, List<Team> clubs, Long humanTeamId,
-                              WeekSnapshot snapshot) {
-        List<Long> free = new ArrayList<>();
-        for (Team club : clubs) {
-            // The human's club is left alone: whether to ask is the manager's decision, not ours.
-            if (humanTeamId != null && Objects.equals(club.getId(), humanTeamId)) continue;
-            if (!isBusy(club.getId(), slot, snapshot)) free.add(club.getId());
-        }
-        java.util.Collections.shuffle(free, random);
-
-        int arranged = 0;
-        for (Long requesterId : free) {
-            if (isBusy(requesterId, slot, snapshot)) continue;
-            for (Long opponentId : free) {
-                if (Objects.equals(requesterId, opponentId)) continue;
-                if (isBusy(opponentId, slot, snapshot)) continue;
-                Optional<FriendlyRequest> request = requestFriendly(requesterId, opponentId, week, slot, snapshot);
-                if (request.isEmpty()) continue;
-                FriendlyRequest saved = request.get();
-                // The pass must see its own request, or the next club asks a club that is already
-                // committed. The old code got this for free by re-reading the requests inside isBusy.
-                snapshot.asked(requesterId, opponentId, slot);
-                if (acceptChance(saved, clubs, snapshot)) {
-                    FriendlyRequest answered = respond(saved.getId(), opponentId, true, null, snapshot);
-                    // `respond` re-checks the slot and can expire the request; only an agreement occupies
-                    // the slot, so only an agreement is recorded and counted.
-                    if (answered != null && answered.getStatus() == FriendlyStatus.ACCEPTED) {
-                        snapshot.agreed(requesterId, opponentId, slot);
-                        arranged++;
-                    } else {
-                        snapshot.refused(requesterId, opponentId, slot);
-                    }
-                } else {
-                    respond(saved.getId(), opponentId, false, "We would rather train this week", snapshot);
-                    // A refusal frees both clubs again, exactly as it did when the answer came from a
-                    // fresh query. Holding them would quietly arrange fewer friendlies than before.
-                    snapshot.refused(requesterId, opponentId, slot);
-                }
-                break;      // one request per club per slot, as the rules require
-            }
-        }
-        return arranged;
-    }
-
-    /** The acceptance weighting described on the constants above. */
-    private boolean acceptChance(FriendlyRequest request, List<Team> clubs, WeekSnapshot snapshot) {
-        double chance = BASE_ACCEPT_CHANCE;
-
-        // `isInPlayoff` and `hasFixtureThatWeek` were the same walk over the same week, asked twice per
-        // decision; the snapshot answers both, and answers them identically because they are identical.
-        boolean inPlayoff = snapshot.hasFixture(request.getOpponentTeamId());
-        if (inPlayoff) {
-            chance -= PLAYOFF_CAUTION;
-        } else {
-            // An open slot in a week with no fixtures is a real opportunity to train instead.
-            chance += IDLE_CLUB_BONUS;
-        }
-        if (hasInjuries(request.getOpponentTeamId())) chance += INJURED_CLUB_BONUS;
-
-        if (chance <= 0) return false;
-        if (chance >= 1) return true;
-        return random.nextDouble() < chance;
-    }
-
-    /** Whether the club has a real fixture that week, as opposed to an empty slot. */
-    private boolean hasFixtureThatWeek(Long teamId, Integer season, Integer week) {
-        for (MatchFixture f : fixtures.findBySeasonYearAndWeekNumber(season, week)) {
-            if (involves(f, teamId)) return true;
-        }
-        return false;
-    }
-
-    /** A club short of players is more willing to get minutes into them. */
-    private boolean hasInjuries(Long teamId) {
-        return players.countByTeamIdAndInjuredTrue(teamId) > 0;
     }
 
     /** Every open slot a club has this week, for the UI to offer. */

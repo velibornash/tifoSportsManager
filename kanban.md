@@ -2008,8 +2008,9 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       `FriendlyOfferServiceTest` 8/8, checking every week and all four slots against the calendar.
       **This found two bugs in the previous commit:** `aafb7ae` widened the week to four slots, so
       `dayOf(slot)` was putting slot-3/4 friendlies on the league's day 3, and the friendly matchday was
-      not registered for day 5 at all. **Open:** endpoints and the page, and the conflict with
-      `runAiFriendlyWeek` (AI clubs pairing with each other), which needs an explicit answer.
+      not registered for day 5 at all. Endpoints and the page are done. The AI-pairing conflict that used
+      to sit here is resolved: the owner said "AI ne igraju prijateljske", and
+      `runAiFriendlyWeek` together with its test was deleted.
 - [x] **Friendlies are playable.** They were not, and never had been: every matchday selects by
       **competition type**, a friendly belongs to no competition, and the written fixture carried no
       `matchType` and no `dayNumber`. A friendly could be agreed, written and shown and **never played**.

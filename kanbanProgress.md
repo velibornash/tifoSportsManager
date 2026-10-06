@@ -503,15 +503,28 @@ test now asks the calendar for every week and slot and compares.
 slots**: whether a slot can be advertised is asked of `SeasonCalendar`, not restated. And the per-day expiry
 asserted by moving the clock past the first slot and showing the last one is still claimable.
 
-### One conflict recorded, not resolved
+### Resolved: the AI pass is deleted
 
-**"Only human teams play friendlies" also contradicts `runAiFriendlyWeek`**, which pairs AI clubs with each
-other weekly and is wired into `SeasonService:485`, with its own
-`AiFriendlyWeekQueryCountTest`. Two bots playing a friendly are two teams that are not human teams.
+The owner's answer: *"AI NE IGRAJU PRIJATELJSKE. Niti NT niti klubovi. Prijateljske NISU OBAVEZNE nego ih u
+slotu za to mogu zakazivati human igraci."* So no bots play friendlies - not the sides and not the clubs -
+and friendlies happen because a human arranged one in the slot, not because a background pass created one.
 
-It is **left in place and flagged in the code**, not deleted: removing it also removes a performance test
-and the training-session accounting it feeds, and that is a larger decision than a feature. **This needs an
-explicit answer rather than an omission.**
+**Removed:**
+- `FriendlyRequestService.runAiFriendlyWeek` and its three support methods (`pairUpAiClubs`,
+  `acceptChance`, `hasFixtureThatWeek`, `hasInjuries`) plus the four acceptance-weighting constants.
+- The weekly call in `SeasonService`.
+- `AiFriendlyWeekQueryCountTest`, which tested the deleted pass.
+
+**The accepted friendly still costs one training session up front**, because that counter reads the
+requests table rather than the deleted pass. What changed is that only a human can create the request now:
+the invite button and the free-slot board, both of which already refused a bot on the human check.
+
+**Two notes.**
+- *No new "humans only" guard was added.* The request service was already human-shaped elsewhere - one
+  club asks, another answers - and a pass that no longer exists cannot be made more humans-only.
+- *`WeekSnapshot` stays.* Its only remaining user is the single-club path, and its invariants (pending
+  requests hold both sides, a refusal frees them) are the same ones the human path's correctness depends
+  on.
 
 ### The board over HTTP (owner, 2026-10-06)
 

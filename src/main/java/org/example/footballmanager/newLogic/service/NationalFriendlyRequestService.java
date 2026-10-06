@@ -38,9 +38,8 @@ import java.util.Optional;
  *
  * <h2>What it does not do</h2>
  *
- * <p>It does not pair bots. {@code FriendlyRequestService.runAiFriendlyWeek} pairs AI clubs on their own,
- * and the equivalent for national sides is the warm-up round the seeder draws; a national side answering a
- * posted ad is an owner decision recorded on the board, not something invented here.
+ * <p>It does not pair bots, and there is nothing to pair: AI clubs do not play friendlies at all
+ * (owner decision, 2026-10-06), so no national side answers a request on a bot's behalf either.
  */
 @Service
 public class NationalFriendlyRequestService {

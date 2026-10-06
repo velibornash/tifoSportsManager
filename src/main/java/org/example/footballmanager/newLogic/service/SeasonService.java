@@ -480,20 +480,12 @@ public class SeasonService {
             if (lapsed > 0) {
                 log.info("Week {}: {} friendly requests lapsed unanswered", newWeek, lapsed);
             }
-            // The rest of the league negotiates its own friendlies for the coming week. The
-            // manager's club is left out, so whether to take a friendly - and so whether to trade
-            // a training session for ninety minutes - stays their decision.
-            //
-            // **Owner, 2026-10-06: only human teams play friendlies.** This call is the AI half of that
-            // and it is now the one thing in this block the owner has overruled without saying so
-            // explicitly - a bot club pairing with another bot club is two teams that are not human teams
-            // playing a friendly. It is left in place rather than deleted, because removing it also removes
-            // `AiFriendlyWeekQueryCountTest` and the training-session accounting it feeds, and that is a
-            // larger decision than a bug fix. **Recorded, not silently kept and not silently removed.**
-            int arranged = friendlyRequests.runAiFriendlyWeek(seasonNumber, newWeek, humanTeamId);
-            if (arranged > 0) {
-                log.info("Week {}: {} AI friendlies arranged", newWeek, arranged);
-            }
+            // **No AI friendlies.** The owner's rule is "AI do not play friendlies" - not NT sides and
+            // not clubs, and not as a background pass either. `runAiFriendlyWeek`, which paired bot clubs
+            // with each other every week, is removed from `FriendlyRequestService` for exactly this
+            // reason, so there is nothing left to call here. Friendlies are arranged by human managers
+            // through the invite button and the free-slot board, and cost a slot rather than happening to
+            // whoever is free.
             // A posting dies when its own slot passes, which is earlier than the end of the week for the
             // earlier of the two. The ad board is worthless if a manager can accept an advertisement for a
             // day that has already gone.
