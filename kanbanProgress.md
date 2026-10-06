@@ -386,8 +386,7 @@ it fail**, per the AGENTS.md rule:
 2. **Serbia still reads 50 on the live database.** The reset is code-only
    (`NationalRatingResetBackfill`, `POST /admin/national-ratings/reset`) until an admin presses it.
    No `psql` and no Docker on this machine, so the row itself could not be inspected or edited.
-3. **Squad lock has no UI.** The service enforces it and `describe()` returns `squadLock`; whether the
-   country page shows it or disables the squad buttons is the parallel session's screen work.
+3. ~~**Squad lock has no UI**~~ — **DONE 2026-10-06**, see the entry below.
 4. ~~**`testCompile` broken by the parallel session**~~ — **FIXED 2026-10-06.** `TransferMarketSquadReadCountTest`
    mocked `UserRepository.findDistinctManagedTeamIds()`, which has never existed on the repository;
    `TransferService:631` calls `findAllByFootballTeamIdIn(clubIds)`. One line corrected, the class is
@@ -433,6 +432,44 @@ test that could never have run.
 It went unnoticed because the failure surfaced as `testCompile` errors pointing at somebody else's file,
 and the natural reading is "someone else is mid-refactor". Two sessions ran into it independently before
 anyone looked at what the method was for.
+
+---
+
+## The tournament squad is now visible on the country page (owner, 2026-10-06)
+
+The lock was enforced on the server and invisible on the screen: a selector managing the squad during the
+World Cup was offered add and remove buttons that both answered with an error. **A control that cannot
+work should not be offered**, and a manager who cannot change the list should be told why rather than
+finding out by failing.
+
+### What changed
+
+- `buildSelectorTab` reads `nt.squadLock` and, when locked, shows the owner's reason, drops the
+  "Release a player to make room" wording, and passes `removable: false` / `addable: false` so no
+  release or call-up control is rendered.
+- `buildNationalTeamSummary` shows a **Squad fixed** badge, on the level panels rather than only inside
+  the selector's tab — `squadLock` is sent to everyone, and a spectator should see that the list is closed
+  too.
+
+Both reuse `fm-badge` and `fm-callout--warn`, which already exist in `dashboard.css`; no new CSS.
+
+### `NationalSquadLockTest` — 5 tests, and the boundary is the point
+
+The predicate was `isSquadLocked(week, day, hour)` with **no test at all**, which for an hour-bounded
+rule is how you get an off-by-one nobody notices until a selector is refused at 09:55 and allowed at
+10:05. It is now asserted across **every hour of weeks 1–11** (all open), the 09:00 / 10:00 / 11:00
+boundary on week 12 day 1, every later day, weeks past twelve, and an unreadable clock.
+
+**Proven by breaking it:** `LOCK_HOUR` 10 → 9 gives
+`09:00 is before the owner's hour — expected: <false> but was: <true>`.
+
+### One decision worth recording
+
+The lock **has no expiry** and stays on for week 13 onwards. A manager cannot unfreeze a squad by rolling
+the clock back to 00:00 on day 2. The alternative — reopening in week 13 for the next season's
+qualifying — is a question about season rollover that nothing has answered, so the safe reading is that
+the tournament squad stays as it was. **If that is wrong it is one `if`**, and it belongs with whoever
+decides what happens to squads at the end of a season.
 
 ---
 

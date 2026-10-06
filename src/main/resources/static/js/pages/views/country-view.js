@@ -237,6 +237,9 @@ export function createCountryView(deps) {
                     </div>
                     <div class="fm-panel-head-actions">
                         <span class="fm-nt-squad-count">${nt.squadSize} squad</span>
+                        ${nt.squadLock && nt.squadLock.locked
+                            ? '<span class="fm-badge">Squad fixed</span>'
+                            : ''}
                         ${nt.isSelector ? `<button type="button" class="fm-action-btn secondary" data-country-tab-jump="${level}">Manage</button>` : ''}
                     </div>
                 </div>
@@ -391,6 +394,22 @@ export function createCountryView(deps) {
         const pool = nt.pool || [];
         const full = squad.length >= 25;
 
+        // The tournament squad is fixed from week 12 day 1, 10:00 (owner). The server refuses the write,
+        // so this is not a permission - it is so a selector is not offered a button that answers with an
+        // error, and so a manager who cannot change the list is told why instead of discovering it by
+        // failing. `squadLock` is sent to everyone, not only the selector, for the same reason.
+        const lock = nt.squadLock || {};
+        const locked = lock.locked === true;
+        const lockNote = locked
+            ? `<div class="fm-callout fm-callout--warn">
+                   <strong>The squad is fixed.</strong> ${htmlEscape(lock.reason || '')}
+                   ${lock.fromWeek ? ` (Week ${lock.fromWeek}, day ${lock.fromDay}, ${String(lock.fromHour).padStart(2, '0')}:00.)` : ''}
+               </div>`
+            : '';
+        const lockedNote = locked
+            ? ' The squad is fixed for the tournament.'
+            : '';
+
         return `
             <div class="fm-country-stack">
                 <section class="fm-panel">
@@ -398,11 +417,12 @@ export function createCountryView(deps) {
                         <div>
                             <div class="fm-eyebrow">Squad</div>
                             <h3>${htmlEscape(nt.teamName || 'National Team')}</h3>
-                            <p class="fm-subtle">${squad.length} of 25 selected. Release a player to make room.</p>
+                            <p class="fm-subtle">${squad.length} of 25 selected.${lockedNote}${locked ? '' : ' Release a player to make room.'}</p>
                         </div>
                     </div>
+                    ${lockNote}
                     ${squad.length
-                        ? `<div class="fm-squad">${buildSquadRows(squad, { showClub: true, removable: true })}</div>`
+                        ? `<div class="fm-squad">${buildSquadRows(squad, { showClub: true, removable: !locked })}</div>`
                         : '<div class="fm-empty">Squad is empty. Call players up from the pool below.</div>'}
                 </section>
 
@@ -411,11 +431,11 @@ export function createCountryView(deps) {
                         <div>
                             <div class="fm-eyebrow">National pool</div>
                             <h3>Available players</h3>
-                            <p class="fm-subtle">${nt.poolSize} players in the country, best first. ${full ? 'The squad is full - release someone first.' : 'Calling a player up copies them onto the national roster; they keep playing for their club.'}</p>
+                            <p class="fm-subtle">${nt.poolSize} players in the country, best first. ${locked ? 'The squad is fixed for the tournament.' : full ? 'The squad is full - release someone first.' : 'Calling a player up copies them onto the national roster; they keep playing for their club.'}</p>
                         </div>
                     </div>
                     ${pool.length
-                        ? `<div class="fm-squad">${buildSquadRows(pool, { showClub: true, addable: !full })}</div>`
+                        ? `<div class="fm-squad">${buildSquadRows(pool, { showClub: true, addable: !full && !locked })}</div>`
                         : '<div class="fm-empty">No players available.</div>'}
                 </section>
             </div>`;
