@@ -220,19 +220,20 @@ This is the defect that makes the rest of the block cosmetic, and it was not on 
 - [x] A domestic cup tie still does **not** write a table (there is no group stage to write)
 - [x] **Proven able to fail:** the cup group table regression test changes the result and observes the ranking change
 
-### P0-CUPS-2 — every level group match is settled by a shootout
+### P0-CUPS-2 — DONE: only knockout ties go to penalties
 
-`SimMatchService.isKnockoutTie():559` is `type == CUP`, unconditionally. Its own comment names the hazard
-exactly: *"the day `ensureGroupStage` is wired, every level group match is settled by a shootout."*
+`SimMatchService.isKnockoutTie()` now checks the per-match group marker. Cup and national-tournament group
+matches may finish level; knockout ties still go to penalties. This works for both cup groups and national
+qualifying groups without adding a competition-wide format field.
 
 `MatchFormat` already carries `goesToPenalties()` and has **zero callers anywhere in the application**,
 because neither `Match` nor `Competition` has a format column. Three separate comments in this repository
 state the ordering constraint as **wire `MatchFormat` before wiring a group stage**, and this is that.
 
 **Exit criteria:**
-- [ ] A 0-0 **group** match finishes level with no penalty columns written
-- [ ] A 0-0 **knockout** match goes to penalties exactly as it does today
-- [ ] `MatchFormat` has a caller, so it is no longer dead code
+- [x] A 0-0 **group** match finishes level with no penalty columns written
+- [x] A 0-0 **knockout** match goes to penalties exactly as it does today
+- [x] The per-match group marker is the caller-level discriminator; `MatchFormat` was deleted by owner decision
 
 ### P0-CUPS-3 — 960 entrants have no squads, and would be decided by placeholder players
 

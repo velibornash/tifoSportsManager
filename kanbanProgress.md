@@ -47,6 +47,13 @@ The source and existing regression coverage already close P0-CUPS-1: cup group m
 `groupCode` update their own `SeasonCompetition`, while league and domestic knockout behaviour remains
 unchanged. The board was stale and has been marked complete.
 
+## 2026-10-06 — P0-CUPS-2 documentation reconciliation
+
+The source and existing penalty regression coverage already close P0-CUPS-2. `SimMatchService` uses the
+fixture match's group marker, so cup and national qualifying groups can draw while knockout ties use the
+penalty path. `MatchFormat` was removed by the owner because its competition-wide shape could not express
+the two formats inside one competition.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
