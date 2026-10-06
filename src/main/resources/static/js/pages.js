@@ -28,6 +28,7 @@ import { createLeagueView } from './pages/views/league-view.js';
 import { createFixtureView } from './pages/views/fixture-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createClubCupView } from './pages/views/club-cup-view.js';
+import { createNationalTournamentView, NATIONAL_COMPETITIONS } from './pages/views/national-tournament-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createClubView } from './pages/views/club-view.js';
 import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
@@ -445,6 +446,7 @@ function buildPageNavState(page, options = {}) {
         escapeHtml,
         loadPage: (...args) => loadPage(...args)
     });
+    const nationalTournamentView = createNationalTournamentView({ authFetch, escapeHtml });
     const statsView = createStatsView({
         authFetch, getTeamId: () => currentUserTeamId,
         ensureCurrentLeagueId,
@@ -591,6 +593,10 @@ function buildPageNavState(page, options = {}) {
 	                    // Options: { cupKey, tier }. The World page's three rows link here and the
 	                    // tier tabs link here too, so this is one route rather than one per tier.
 	                    await clubCupView.loadClubCup(options.cupKey || 'champions', options.tier || 1);
+	                    break;
+
+	                case "nationalTournament":
+	                    await nationalTournamentView.load(options.level, options.stage);
 	                    break;
 
 	                case "countryCup":
@@ -881,9 +887,13 @@ function buildPageNavState(page, options = {}) {
     async function loadWorldPage() {
         const mainContent = document.getElementById('main-content');
         try {
-            const res = await authFetch('/countries/world');
-            if (!res.ok) throw new Error('World unavailable');
+            const [res, nationalRes] = await Promise.all([
+                authFetch('/countries/world'), authFetch('/api/national-tournaments')
+            ]);
+            if (!res.ok || !nationalRes.ok) throw new Error('World unavailable');
             const world = await res.json();
+            const national = await nationalRes.json();
+            const nationalRows = Array.isArray(national.competitions) ? national.competitions : [];
             const countries = Array.isArray(world.countries) ? world.countries : [];
 
             // Ranked by rating, because the column beside the name is a rating and a ranking table with no
@@ -971,29 +981,22 @@ function buildPageNavState(page, options = {}) {
                                     ${clubCupRow('Champions Cup', 'champions', world.clubCups)}
                                     ${clubCupRow('Masters Cup', 'masters', world.clubCups)}
                                     ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
-                                    <tr class="fm-world-competition-row is-disabled">
-                                        <td class="sq-name"><strong>NT Qualifiers</strong></td>
-                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
-                                    </tr>
-                                    <tr class="fm-world-competition-row is-disabled">
-                                        <td class="sq-name"><strong>World Cup</strong></td>
-                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
-                                    </tr>
-                                    <tr class="fm-world-competition-row is-disabled">
-                                        <td class="sq-name"><strong>U-21 Qualifiers</strong></td>
-                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
-                                    </tr>
-                                    <tr class="fm-world-competition-row is-disabled">
-                                        <td class="sq-name"><strong>U-21 World Cup</strong></td>
-                                        <td>National teams</td><td><span class="fm-badge">Not available yet</span></td><td></td>
-                                    </tr>
+                                    ${NATIONAL_COMPETITIONS.map(definition => {
+                                        const item = nationalRows.find(row => row.level === definition.level && row.stage === definition.stage) || {};
+                                        const status = item.exists ? `${item.fixtures || 0} fixtures · week ${item.week}` : 'Not drawn yet';
+                                        return `<tr class="fm-world-competition-row ${item.exists ? 'is-real' : 'is-disabled'}"
+                                            data-national-level="${definition.level}" data-national-stage="${definition.stage}"
+                                            ${item.exists ? 'tabindex="0" role="link"' : ''}>
+                                            <td class="sq-name"><strong>${definition.label}</strong></td>
+                                            <td>National teams</td><td><span class="fm-badge">${status}</span></td>
+                                            <td>${item.exists ? 'Open →' : ''}</td></tr>`;
+                                    }).join('')}
                                 </tbody>
                             </table>
                         </div>
-                        <p class="fm-hint">The three club cups are open: pick one to see its groups,
-                            its results and its bracket, tier by tier. The national-team competitions are
-                            listed so the shape of the world is visible, and each one turns into a link
-                            when it is played.</p>
+                        <p class="fm-hint">Club cups and drawn national-team competitions open into their
+                            groups, results and bracket. Undrawn competitions remain visible with their
+                            planned week.</p>
                     </section>
 
                     <section class="fm-panel">
@@ -1039,6 +1042,16 @@ function buildPageNavState(page, options = {}) {
                         event.preventDefault();
                         loadPage('clubCup', { cupKey: button.dataset.clubCup, tier: 1 });
                     }
+                });
+            });
+
+            mainContent.querySelectorAll('[data-national-level][tabindex]').forEach(row => {
+                const open = () => loadPage('nationalTournament', {
+                    level: row.dataset.nationalLevel, stage: row.dataset.nationalStage
+                });
+                row.addEventListener('click', open);
+                row.addEventListener('keydown', event => {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
                 });
             });
 

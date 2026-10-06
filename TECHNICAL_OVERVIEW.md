@@ -470,10 +470,12 @@ week-12 knockouts. Pots of eight, worse-rated hosts and stored group tie-break v
 in `NationalTournamentSeeder`. `NationalMatchdayJob`, `NationalTournamentDrawJob`, ratings and the
 controller are present.
 
-The tournament champion path now includes the final feed-forward round. The frontend World rows remain
-unavailable, and the country page has no national-tournament competition tab. `NationalTournamentController`
-is an API capability, not proof that a manager can currently reach the tournament from the graphical
-football UI.
+The tournament champion path now includes the final feed-forward round. The frontend World rows now
+link drawn senior and U-21 national competitions to their groups, standings, results and bracket; undrawn
+rows remain visible with their planned week.
+Undrawn competitions remain unavailable by design, while drawn competitions are reachable from the World
+page. `NationalTournamentController` backs the shared national-tournament view for both senior and U-21
+groups, standings, results and knockout rounds.
 
 ### 8.6 Country/world integrity
 

@@ -266,6 +266,18 @@ export function createCountryView(deps) {
                         <span class="fm-nt-summary-note">${nt.nextMatch ? `Week ${nt.nextMatch.week}` : 'No fixture yet'}</span>
                     </div>
                 </div>
+                <div class="fm-country-links">
+                    <button type="button" class="fm-country-link-row" data-national-competition-level="${level}" data-national-competition-stage="QUALIFYING">
+                        <span class="fm-country-link-label">Qualifiers</span>
+                        <span class="fm-country-link-sub">Group tables and matchdays</span>
+                        <span class="fm-country-link-go">Open &rsaquo;</span>
+                    </button>
+                    <button type="button" class="fm-country-link-row" data-national-competition-level="${level}" data-national-competition-stage="WORLD_CUP">
+                        <span class="fm-country-link-label">World Cup</span>
+                        <span class="fm-country-link-sub">Knockout results and bracket</span>
+                        <span class="fm-country-link-go">Open &rsaquo;</span>
+                    </button>
+                </div>
                 ${buildElectionBlock(level, election, nt)}
             </section>`;
     }
@@ -703,6 +715,12 @@ export function createCountryView(deps) {
                 // selector / election have no screen yet; the panel stays visible and disabled.
                 window.alert('Not built yet.');
             });
+        });
+        root.querySelectorAll('[data-national-competition-level]').forEach(button => {
+            button.addEventListener('click', () => loadPage('nationalTournament', {
+                level: button.dataset.nationalCompetitionLevel,
+                stage: button.dataset.nationalCompetitionStage
+            }));
         });
         root.querySelectorAll('[data-country-tab]').forEach(button => {
             button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTab }));

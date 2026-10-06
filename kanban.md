@@ -1987,8 +1987,9 @@ at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
       the loop never reached the final, so the bracket stopped at the semi-final. Fixed 2026-10-06:
       added `ROUND_FINAL` to the feed-forward list (`NationalTournamentSchedule:48`). The final
       and third-place fixtures are now drawn when `alive` reaches 2 after SF.
-- [ ] **The World page lists the four national competitions as unavailable rows** and the country page has
-      no NT competition tab. The endpoint is built; the frontend that renders it is not.
+- [x] **The World page lists the four national competitions** and links each drawn competition to its
+      groups, results and bracket; undrawn rows remain visible with their planned week. Country national
+      team summaries expose the same two competition links for senior and U-21.
 - [x] **Admin controls** for seeding national tournaments, resetting ratings and reading rating violations
       are present in `admin-view.js`; live operation still needs observation.
 - [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT copies). **Unverified in running app.**
@@ -2001,8 +2002,8 @@ competition, its own tournament, its own 8 groups, its own 120 qualifying fixtur
 (`Country.youthRating`), its own matchday jobs. Confirmed by test: 120 senior fixtures and 120 U-21
 fixtures, in two different competitions.
 
-**Still open:** the U-21 tournament is reachable only by URL — the World page lists the U-21 competitions
-as unavailable rows until a national tournament view is implemented.
+**Done:** the shared national-tournament view is linked from the World page for both senior and U-21
+competitions as soon as their rows exist.
 
 ### P2-14 — Prize money: `awardPrizeMoney` has no caller — DONE ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
 

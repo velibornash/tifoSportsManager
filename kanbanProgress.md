@@ -31,6 +31,16 @@ league-table jobs run and avoids a second persisted cache with its own invalidat
 
 Remaining work is now P2-10/P2-12: national tournament and country competition UI completion.
 
+## 2026-10-06 — P2-10/P2-12 national competition UI
+
+The World page now reads `/api/national-tournaments`, lists all four senior and U-21 competitions, and
+opens every drawn row in a shared national-tournament view. Country national-team summaries expose the
+same links. The view shows qualifying groups and tables,
+or tournament rounds, results and bracket ties. Undrawn competitions remain visible with their planned
+week and a clear unavailable state.
+
+Remaining work is now national-team injury live verification and the pre-existing national-rating test.
+
 ## 2026-10-06 — live international cup repair verification
 
 After a clean app restart with the durable-row fix, PostgreSQL contained all 15 international club cup
