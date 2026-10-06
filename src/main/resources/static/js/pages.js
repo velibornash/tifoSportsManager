@@ -945,7 +945,7 @@ function buildPageNavState(page, options = {}) {
                         <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
                         <dl class="fm-country-facts">
                             <div class="fm-country-fact fm-world-fact"><dt>Countries:</dt><dd><span class="fm-world-fact-number">${world.totalCountries}</span></dd></div>
-                            <div class="fm-country-fact fm-world-fact"><dt>Registered users:</dt><dd><span class="fm-world-fact-number">${world.registeredPlayers ?? '-'}</span> · Online now: <span class="fm-world-fact-number">${world.onlinePlayers ?? '-'}</span></dd></div>
+                            <div class="fm-country-fact fm-world-fact"><dt>Registered user:</dt><dd><span class="fm-world-fact-number">${world.registeredPlayers ?? '-'}</span> · Online now: <span class="fm-world-fact-number">${world.onlinePlayers ?? '-'}</span></dd></div>
                         </dl>
                     </header>
 
