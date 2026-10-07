@@ -1,5 +1,62 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-4 — the points path has no head-to-head term, and that is now guarded (owner, 2026-10-07)
+
+The card said *"remove `RatingEngine.clubK(value, own, opp)`'s gap term"* — and while checking, it turned
+out the requirement was **already true**, and the obvious way to "finish" it would have caused damage.
+
+### What already held
+
+`RankingPointsEngine` never referenced the old rating, and neither did either replay or the preview. The
+gap weighting lives only in `clubK`, called from exactly one place: `ClubRatingService`, which writes the
+**rating** the league table shows as its Elo column.
+
+### Why I did not delete it
+
+`ClubRatingService`'s own comment cites an **earlier** owner decision pointing the other way:
+
+> *"a fifth-tier club beating a first-tier one is an enormous gain precisely because it exceeded a very
+> low expectation, and that is what the owner meant by 'neverovatan rating boost'"*
+
+Deleting that would satisfy the letter of the card by removing a feature somebody asked for. So the card
+was rewritten to what its **exit criterion** actually says — *the gap no longer exists anywhere in the
+points path* — and that is now guaranteed structurally instead of by memory.
+
+### The guard, and why it reads the source
+
+Asserted by reading the four services that decide points and rejecting any reference to `RatingEngine` or
+`eloRating`. An arithmetic test **cannot** do this: a gap term added inside `RankingPointsEngine` would
+change some numbers and the existing 25 tests would simply record the new numbers as correct. Only a
+structural check says the term is not there.
+
+**Mutation-checked with a mutation that compiles** — the first attempt invented a method name and did not
+compile, which is the same lesson as the ladder's threshold. Smuggling the real three-argument `clubK` into
+the club replay as a multiplier is caught:
+
+```
+ClubRankingPointsService references RatingEngine. The old rating is head-to-head - it weights a result
+by the gap - so reaching for it from the points path is exactly how opponent strength gets back in:
+        double smuggle = RatingEngine.clubK(MatchValue.LEAGUE, ...
+```
+
+### And the guard ignores comments, after it failed on one
+
+It first failed on `RankingPointsEngine`'s **own javadoc**, which names `RatingEngine` in the sentence
+explaining that the old rating is head-to-head and this one is not. A guard that breaks when somebody
+documents *why* a term was removed is a guard that gets deleted to let the documentation land — which is
+how the term comes back a week later. Comments are stripped before the check.
+
+### An open question for the owner, written onto the board
+
+Should the **rating** also stop rewarding an upset? The points must not reward one; the rating currently
+does, and it is visible in the league table. Keeping both is defensible — the rating measures merit, the
+points measure achievement — and it is the current state. Removing it from both is the other answer, and
+it is a different change with a different cost. **Not decided unilaterally.**
+
+### 53 tests green
+
+---
+
 ## P0-RANK-3 — national matches are replayed into ranking points (owner, 2026-10-07)
 
 The national counterpart of P0-RANK-2, with the difference that is the reason they are separate classes:

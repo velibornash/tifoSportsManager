@@ -2270,7 +2270,7 @@ entry in `kanbanProgress.md`, so a half-built card is always visible rather than
 | **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per subject per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | ✅ Two tables round-trip decimals, the window reads off them, and senior/U-21 cannot pool. **The writers land in -2 and -3** — nothing writes these rows yet. |
 | **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | ✅ `ClubRankingPointsService` rewrites the ledger from match history, idempotently, per season, tier-weighted. |
 | **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | ✅ Same property for a country; a level guard refuses to score a side into the wrong level. |
-| **P0-RANK-4** | **Remove `RatingEngine.clubK(value, own, opp)`'s gap term** — the one the owner rejected by name. | The gap no longer exists anywhere in the points path. |
+| **P0-RANK-4** | **No head-to-head term in the points path** — the gap weighting the owner rejected by name. | ✅ **Already true; now guarded.** The guard is mutation-checked. **See the open question below** — the *rating* keeps its gap weighting deliberately. |
 | **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | A trophy changes a team's total by exactly the documented amount, in the database. |
 | **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | `/countries/ranking` orders by points; a test proves the two orderings can differ and points wins. |
 
@@ -2310,6 +2310,27 @@ somebody else's played match"*. Each card passes an explicit kind, never a guess
 | **P0-ELEC-1** | **Registration opens week 12 day 1 of the previous season**, not one day before week 1. Measured: 7 days, because week 12 is the last week and runs into the next season. | Season 1 stays usable; season 2 opens in the previous season's week 12. |
 | **P0-ELEC-2** | **`describe()` stops reporting a hardcoded stub.** It returns `stage: NONE` with no `acceptingCandidates`, so the button reads **"Registration closed"** whatever the clock says. | The panel reflects the real election. |
 | **P0-ELEC-3** | **`describeElection` creates the election on demand**, so a reset is not a dead end. Today a reset leaves **0 rows** and the panel can only ever say "no election running". | After a reset, registration is open without pressing Initialise. |
+
+### ❓ OPEN — does the *rating* keep rewarding an upset? (asked 2026-10-07, P0-RANK-4)
+
+The owner rejected the gap weighting for **points**: *"snaga tima moze da utice na projekciju rezultata
+ali ne i na rejting poene."* An **earlier** decision in this project asked for the opposite **for the
+rating** — `ClubRatingService` cites it directly: *"a fifth-tier club beating a first-tier one is an
+enormous gain precisely because it exceeded a very low expectation, and that is what the owner meant by
+'neverovatan rating boost'"* — and the league table displays that rating as its Elo column.
+
+Deleting `clubK`'s gap weighting would satisfy the letter of this card by removing a feature that was
+explicitly asked for. So it was **not** deleted; instead the points path is now structurally guaranteed
+not to reach for it, which is what the card's own exit criterion asks for.
+
+**The question for the owner:** should a club's *rating* also stop rewarding an upset? The rating is
+visible in the league table; the points are the ranking. Two reasonable answers, and they are not the
+same change:
+
+1. **Keep both** — the rating rewards upsets (it measures merit), the points do not (they measure
+   achievement). Costs nothing; this is the current state.
+2. **Remove it from both** — one consistent rule. The league table's Elo column and the underdog boost go
+   together, and the rating becomes a pure function of competition value and result.
 
 ---
 
