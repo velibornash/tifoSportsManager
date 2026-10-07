@@ -133,10 +133,13 @@ public class NationalTeamElectionService {
                     election.setLevel(level);
                     election.setSeasonYear(seasonYear);
                     election.setStatus(NationalTeamElection.Status.REGISTRATION);
-                    // Registration opened at week 12 day 1 of the previous season. Back-dating the
-                    // window to the start of this season keeps a first-run install usable instead of
-                    // locking the owner out until week 12.
-                    election.setRegistrationOpensAt(weekOneDayOne.minus(Duration.ofDays(1)));
+                    // Registration opens at week 12 day 1 of the previous season (P0-ELEC-1). A season
+                    // is twelve seven-day weeks, so that instant is exactly one week before this week 1 -
+                    // the previous season's week 12 and this season's week 1 are back to back. In season
+                    // 1 there is no previous week 12, so the window starts before the world began and
+                    // registration is open from the first instant - the property the one-day offset was
+                    // trying and failing to say.
+                    election.setRegistrationOpensAt(weekOneDayOne.minus(Duration.ofDays(7)));
                     election.setVotingOpensAt(weekOneDayOne);
                     election.setVotingClosesAt(votingClosesAt(weekOneDayOne));
                     return elections.save(election);

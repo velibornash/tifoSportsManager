@@ -1,5 +1,21 @@
 # kanbanProgress.md — the append-only log
 
+## P0-ELEC-1 — registration opens in week 12 of the previous season (owner, 2026-10-07)
+
+> **prijave su moguce od pocetka week 12 iz prolse sezone pa do proglasenja u week 1**
+
+Previously `registrationOpensAt = weekOneDayOne.minus(Duration.ofDays(1))` — the day before week 1. Now
+`weekOneDayOne.minus(Duration.ofDays(7))`: a season is twelve seven-day weeks, so the previous season's
+week-12 day-1 and this season's week-1 day-1 are back to back, and the owner's rule names week 12
+explicitly.
+
+Season 1 has no previous week 12, so the window starts before the world began and registration is open
+from the very first instant — which is the only thing the one-day offset was approximating.
+
+3 tests green.
+
+---
+
 ## P0-ELEC-3 — an election is created when asked for (owner, 2026-10-07)
 
 The owner reported the selector panel always reading "Registration closed", and the database explained it:

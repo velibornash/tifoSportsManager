@@ -82,4 +82,26 @@ class ElectionCreatedOnDemandTest extends BaseTest {
                 country.getId(), NationalTeamLevel.U21, 1).isEmpty(),
                 "asking for the senior election must not create a U-21 one");
     }
+
+    @Test
+    @Transactional
+    @DisplayName("registration opens in the previous season's week 12, not the day before week 1")
+    void registrationOpensInPreviousSeasonWeek12() {
+        Country country = new Country();
+        country.setName("Week12 " + UUID.randomUUID());
+        country.setIsoCode("W" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setState(CountryState.SIMULATED);
+        country = countries.save(country);
+
+        java.time.Instant weekOne = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        elections.ensureElection(country, NationalTeamLevel.SENIOR, 1, weekOne);
+
+        NationalTeamElection election = ledger.findByCountryIdAndLevelAndSeasonYear(
+                country.getId(), NationalTeamLevel.SENIOR, 1).stream().findFirst().orElseThrow();
+
+        // One seven-day week before week 1, not one day: with seasons of twelve weeks, week 12 of the
+        // previous season and week 1 of this one are back to back, and the owner's rule names week 12.
+        assertEquals(weekOne.minus(java.time.Duration.ofDays(7)), election.getRegistrationOpensAt(),
+                "registration must open one whole week before week 1");
+    }
 }

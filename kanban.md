@@ -2307,7 +2307,7 @@ somebody else's played match"*. Each card passes an explicit kind, never a guess
 
 | Card | What it is | Done when |
 |---|---|---|
-| **P0-ELEC-1** | **Registration opens week 12 day 1 of the previous season**, not one day before week 1. Measured: 7 days, because week 12 is the last week and runs into the next season. | Season 1 stays usable; season 2 opens in the previous season's week 12. |
+| **P0-ELEC-1** | **Registration opens week 12 day 1 of the previous season**, not one day before week 1. Measured: 7 days, because week 12 is the last week and runs into the next season. | ✅ `registrationOpensAt = weekOneDayOne − 7d`. Asserted. |
 | **P0-ELEC-2** | **`describe()` stops reporting a hardcoded stub.** | ✅ **Already satisfied on the live path** — `describe()` delegates to `describeElection` via `electionState`. The hardcoded `stage: NONE` sits only in the "this team was never created" branch, where `NONE` is honest. The closed button came from ELEC-3. |
 | **P0-ELEC-3** | **`describeElection` creates the election on demand**, so a reset is not a dead end. Today a reset leaves **0 rows** and the panel can only ever say "no election running". | ✅ Zero-row reset no longer strands the panel — asking creates the election and opens registration. |
 
