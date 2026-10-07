@@ -780,6 +780,38 @@ shelling out to these tools needs the same treatment — read the server's major
 driver is already there) and take the first client new enough to read it. `app.backup.pg-tools` overrides
 the search.
 
+### 8.9 Ranking points — one number, specified and tested, not yet wired
+
+`RankingPointsEngine` (`service/RankingPointsEngine.java`) is the owner's ranking system. It is **pure
+arithmetic** — no Spring, no repository, no clock — which is what makes it testable row by row.
+
+**It is not the Elo that already exists, and the difference is the whole point.** `RatingEngine`
+weights a result by the rating gap, so beating a strong side moves a club more than beating a weak one.
+The owner rejected that in one line: *"snaga tima moze da utice na projekciju rezultata ali ne i na
+rejting poene"* — a team's strength may move the forecast, never the points. `RankingPointsEngine`
+therefore has **no gap term**, and a test asserts that the ladder is a function of exactly two numbers.
+When this is wired in, `RatingEngine.clubK(value, own, opp)` goes.
+
+```
+displayed = 1500 + Σ ( seasonPoints × windowWeight )      window 1.00 / 0.75 / 0.50 / 0.25
+expectedMargin = expectedGoals(own) − expectedGoals(them)  expected to win at ≥ 2, draw inside 1
+```
+
+The rule in one sentence: **staying inside the outcome you were expected to achieve is worth nothing,
+crossing it is worth a lot, and the size of the crossing is graded** — ±20 / ±30 / ±40 / ±50, capped.
+Winning short of the forecast margin and losing short of it are both worth **0**, not a penalty, because
+"a win is still a win" and "a loss is still a loss".
+
+Per-match value: league 1.00 · national cup 1.25 · international club cup 1.50 · qualifying 1.20 ·
+World Cup 2.00 · friendly 0.30. Division weight: tier 1–5 at 1.00 / 0.85 / 0.70 / 0.55 / 0.40, and a
+national team has no tier. **This is why the totals are decimals** — `40 × 0.70 = 28.0`.
+
+`CompetitionType` and `CompetitionScope` alone cannot tell a continental club cup from a World Cup
+qualifier; `teamType` can, and a test pins that.
+
+**State: arithmetic only.** No team's points are computed, there is no ledger, the ranking list still
+orders by Elo, and the old gap-weighted deltas are still being written.
+
 ## 9. Match simulation and persistence
 
 ### 9.1 One live fixture path

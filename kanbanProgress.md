@@ -1,5 +1,111 @@
 # kanbanProgress.md — the append-only log
 
+## The ranking-points system: one number, many ways to earn it (owner, 2026-10-07)
+
+> **zelim da osmislis kako se dobijaju i gube ranking poeni za ranking listu, i za NT i za klubove**
+> ...svaka pobeda koja je manja od ocekivane niti donosi niti odnosi poene, svaki remi ili poraz donosi
+> minus poene... **snaga tima moze da utice na projekciju rezultata ali ne i na rejting poene**
+
+### I read this wrong twice before getting it right
+
+I proposed "Elo for strength, ranking points for achievement" as two systems and asked him to pick.
+He said it was "ista stvar". I then explained Elo in detail as if it were a different thing, and he
+corrected me again: **one number, starting at 1500**, moved by every match according to how the result
+compared with what was expected, with achievement bonuses added to it, and **no head-to-head component
+anywhere**.
+
+The distinction that finally made it click is not "Elo versus ranking points" but **who you played**:
+
+| Same club, same 1-0 | Head-to-head (what the old rating did) | This system |
+|---|---|---|
+| against a tier-31 champion | small gain | **identical points** |
+| against a tier-1 champion | large gain | **identical points** |
+
+So `RatingEngine.clubK(value, own, opp)` — which weights by the rating gap — is exactly the term the
+owner rejected, and it has to go when this is wired in.
+
+### The formula
+
+`displayed = 1500 + Σ ( seasonPoints × windowWeight )` over four seasons at **1.00 / 0.75 / 0.50 /
+0.25**. Chosen over resetting each season (which throws away the difference between a side that has been
+good for years and one that had one good year) and over accumulating forever (a World Cup won eight
+seasons ago should count for something, not everything).
+
+`expectedMargin = expectedGoals(own) − expectedGoals(them)`, from the forecast's own xG. A side
+forecast to win by **2 or more** is expected to win; inside one goal either way is a coin-flip fixture.
+
+**One sentence: staying inside the outcome you were expected to achieve is worth nothing, crossing it
+is worth a lot, and the size of the crossing is graded.**
+
+| Forecast | Actual | Points |
+|---|---|---|
+| win | win by ≥ margin+3 | **+30 / +40 / +50**, capped |
+| win | win, but by less than the margin | **0** |
+| win | draw / lose by 1 / 2 / ≥3 | **−20 / −30 / −40 / −50** |
+| draw | win by 1 / 2 / ≥3 | **+30 / +40 / +50** |
+| draw | draw | **0** |
+| draw | lose by 1 / 2 / ≥3 | **−30 / −40 / −50** |
+| lose | win by 1 / 2 / ≥3 | **+30 / +40 / +50** |
+| lose | draw | **+20** |
+| lose | lose by ≤ the forecast | **0** |
+| lose | lose by > the forecast | **−30 / −40 / −50** |
+
+The two zeros are the owner's own words and the reason the table is not a simple monotonic curve:
+**"ako tim POBEDI manje od margine ne dobija ali ni ne gubi poene (pobeda je ipak pobeda)"** and
+**"kad tim izgubi MANJOM marginom od ocekivane ne dobija poene jer je poraz ipak poraz ali ni ne gubi"**.
+Points are only ever won or lost by *crossing* the forecast line, never by falling short inside it.
+
+### What a match is worth, and what a division is worth
+
+| Competition | ×  |  | Division | × |
+|---|---|---|---|---|
+| Club league | 1.00 | | tier 1 | 1.00 |
+| National cup | 1.25 | | tier 2 | 0.85 |
+| International club cup | 1.50 | | tier 3 | 0.70 |
+| NT qualifying | 1.20 | | tier 4 | 0.55 |
+| NT World Cup | 2.00 | | tier 5 | 0.40 |
+| Friendly | 0.30 | | national team | 1.00 |
+
+Friendlies count, at the smallest amount there is — his choice over excluding them. **This is why the
+totals are decimals:** a tier-3 win crossing by two goals is `40 × 0.70 = 28.0`.
+
+### 25 tests, and three real bugs they caught
+
+The ladder is a pure function of two numbers, so every row is a fact about the specification rather
+than about a database or a clock. Three bugs in my own first version:
+
+- **The ladder never handled "won by more than forecast".** It only detected crossing the outcome line,
+  so a favourite winning 5-0 when forecast 3-1 scored **0** — the single most important row in the
+  table. Only `ForecastWin.crossingIsGraded` found it.
+- **A continental club cup and a World Cup qualifier share both `CompetitionType` and
+  `CompetitionScope`,** so the first version scored every Champions Cup tie at the qualifying rate.
+  `teamType` is the only thing that separates a club from a country.
+- **`tierWeight` clamped an unknown tier to tier 5** while its own javadoc said tier 1 — silently
+  under-rating any competition with no recorded division.
+
+**Mutation-checked:** moving `CROSSING_THRESHOLD` from 3.0 to 2.0 — a change that compiles, unlike the
+first attempt — broke **8 tests** with messages naming the exact rule, e.g.
+
+```
+ForecastWin.twoOverTheMarginIsStillFree  expected: <0.0> but was: <30.0>
+Symmetry.bothSidesAreMirrored            expected: <30.0> but was: <40.0>
+```
+
+The first mutation attempt reintroduced the head-to-head term the owner rejected, did not compile, and
+**broke the owner's running application** — `ClassNotFoundException: TrainingFacilityService$Facility`,
+because `run-app.sh` compiled a half-written `target/`. Restored, `mvn clean compile` green, the
+nested class present, boot verified. Mutation checks now happen only on a committed tree, and never
+while the owner may be starting the app.
+
+### What this task deliberately did NOT do
+
+`RankingPointsEngine` is the arithmetic only. **No team's points have been computed yet** — there is no
+storage, no replay, and the ranking list still orders by the old Elo. The next pieces are a per-season
+ledger so the rolling window can be computed, the club and national replays writing points instead of
+gap-weighted deltas, and the ranking endpoint ordering by the new total.
+
+---
+
 ## The two patterns that would turn a bigger world into a cliff (owner, 2026-10-07)
 
 > **kad zavrsis trenutni posao uradi pod b)** — fix `findAll()` and the per-club loop as a precondition

@@ -2255,6 +2255,31 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## 🔶 Ranking points: the formula is specified and tested, not yet wired — owner, 2026-10-07
+
+> **zelim da osmislis kako se dobijaju i gube ranking poeni za ranking listu, i za NT i za klubove**
+
+- [x] **One number, not two.** Every team starts on **1500**; every match moves it by how the result
+      compared with what was expected; achievement bonuses add to it. **No head-to-head term anywhere** —
+      the same result against a tier-1 and a tier-31 champion scores identically.
+- [x] **Rolling window** of four seasons at **100 / 75 / 50 / 25**, his choice.
+- [x] **The ladder:** staying inside the expected outcome is worth **0**; crossing it is worth
+      **±20 / ±30 / ±40 / ±50**, graded and capped.
+- [x] **Both zeros are his own words** — a win short of the margin and a loss short of the margin are
+      each worth nothing rather than a penalty. Points are only won or lost by *crossing* the line.
+- [x] **Competition values** 1.00 league / 1.25 national cup / 1.50 international club cup /
+      1.20 qualifying / 2.00 World Cup / **0.30 friendly**, his choice to count them.
+- [x] **Division weights** 1.00 / 0.85 / 0.70 / 0.55 / 0.40 — which is **why the totals are decimals**.
+- [x] **25 tests, mutation-checked:** moving the crossing threshold 3→2 breaks 8 of them.
+- [x] **Three bugs the table caught in my own code:** the ladder ignored "won by more than forecast";
+      a club cup and a WC qualifier were indistinguishable without `teamType`; `tierWeight` contradicted
+      its own javadoc.
+- [ ] **Storage and replay** — a per-season ledger so the window can be computed; nothing is computed yet.
+- [ ] **Ranking list ordered by points** — it still orders by the old Elo.
+- [ ] **`RatingEngine.clubK`'s gap weighting removed**, which is the term the owner rejected.
+
+---
+
 ## ✅ The two patterns that would turn a bigger world into a cliff — owner, 2026-10-07
 
 > **fix the findAll() and per-club-loop patterns now as a precondition** for a full pyramid later
