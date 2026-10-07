@@ -2290,7 +2290,7 @@ ties as plain `<div>`s. Doing them together would hide which one actually broke.
 | **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | ✅ Group ties and knockout ties both open. 18 tests green. |
 | **P0-PREV-4** | **NT U-21** fixtures open. | ✅ **Already delivered by P0-PREV-3** — one renderer and one payload builder serve all four competitions. Evidenced by a U-21 test rather than assumed. |
 | **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | ✅ Proven across league, cup, club cup and international. **One real defect fixed:** the report matched players to sides by team *name*. |
-| **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | A human's own cup tie can be watched and replayed. |
+| **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | ✅ Already competition-agnostic (no type filter in the selection). **Four name round-trips replaced with the `footballTeam` foreign key**, including the one deciding what "play my match" may act on. |
 
 **The boundary that must not be crossed again:** a fixture id and a match id are both small integers over
 separate tables. `ZoxApiController` already carries the scar — *"the guess resolved a dashboard link to

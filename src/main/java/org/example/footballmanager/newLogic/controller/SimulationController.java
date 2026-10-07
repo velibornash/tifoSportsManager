@@ -128,9 +128,8 @@ public class SimulationController {
      * exhibition on somebody else's behalf.
      */
     private Long resolveUserTeamId(User user) {
-        String name = resolveUserTeamName(user);
-        if (name == null) return null;
-        Team team = teamRepository.findByName(name).orElse(null);
+        // Was a name lookup and a lookup by that name, to arrive back at the team the user already holds.
+        Team team = resolveUserTeam(user);
         return team == null ? null : team.getId();
     }
 
@@ -166,13 +165,11 @@ public class SimulationController {
         }
 
         // Podeli na korisnikovu ligu i ostale
-        String userTeamName = resolveUserTeamName(user);
+        // The user's own team entity, not a name resolved back to one - see resolveUserTeam.
+        Team userTeam = resolveUserTeam(user);
         String userLeagueName = null;
-        if (userTeamName != null) {
-            Team userTeam = teamRepository.findByName(userTeamName).orElse(null);
-            if (userTeam != null && userTeam.getCompetition() != null) {
-                userLeagueName = userTeam.getCompetition().getName();
-            }
+        if (userTeam != null && userTeam.getCompetition() != null) {
+            userLeagueName = userTeam.getCompetition().getName();
         }
         List<MatchFixture> userLeagueFixtures = new ArrayList<>();
         List<MatchFixture> otherLeagueFixtures = new ArrayList<>();
@@ -287,13 +284,11 @@ public class SimulationController {
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         // Only check user's league fixtures — other leagues can continue in background
-        String userTeamName = resolveUserTeamName(user);
+        // The user's own team entity, not a name resolved back to one - see resolveUserTeam.
+        Team userTeam = resolveUserTeam(user);
         String userLeagueName = null;
-        if (userTeamName != null) {
-            Team userTeam = teamRepository.findByName(userTeamName).orElse(null);
-            if (userTeam != null && userTeam.getCompetition() != null) {
-                userLeagueName = userTeam.getCompetition().getName();
-            }
+        if (userTeam != null && userTeam.getCompetition() != null) {
+            userLeagueName = userTeam.getCompetition().getName();
         }
         List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay);
         String finalUserLeagueName = userLeagueName;
@@ -319,12 +314,9 @@ public class SimulationController {
         }
 
         try {
-            String teamName = resolveUserTeamName(user);
-            if (teamName != null) {
-                Team team = teamRepository.findByName(teamName).orElse(null);
-                if (team != null) {
-                    trainingProgressionService.runWeeklyTrainingIfDue(team.getId());
-                }
+            Team team = resolveUserTeam(user);
+            if (team != null) {
+                trainingProgressionService.runWeeklyTrainingIfDue(team.getId());
             }
 
             // The week is now seven day advances, nothing more. This used to call
@@ -401,13 +393,17 @@ public class SimulationController {
     }
 
     private PreparedMatchContext resolvePreparedMatch(@AuthenticationPrincipal User user) {
-        String teamName = resolveUserTeamName(user);
-        if (teamName == null) {
-            return null;
-        }
-
-        Team team = teamRepository.findByName(teamName).orElse(null);
-        if (team == null) {
+        // By IDENTITY, not by name (owner, 2026-10-07, P0-PREV-6).
+        //
+        // This read the user's team as a NAME, threw the entity away, and looked the team back up with
+        // `findByName`. Two teams sharing a name - ordinary in this game, and exactly what the national
+        // team and cup renames produced - and a manager's own club would be resolved to somebody else's,
+        // so "play my match" would play a match belonging to another club, with no error anywhere.
+        //
+        // `user.getTifoCTeam()` IS the team, with its id. There was never a reason to round-trip it
+        // through a string. The same lesson as `ZoxApiController.teamIdOf` in P0-PREV-5.
+        Team team = resolveUserTeam(user);
+        if (team == null || team.getId() == null) {
             return null;
         }
 
@@ -438,13 +434,43 @@ public class SimulationController {
         return new PreparedMatchContext(homeTeam.getName(), awayTeam.getName(), fixture);
     }
 
-    private String resolveUserTeamName(@AuthenticationPrincipal User user) {
-        if (user == null) return null;
-        if (user.getTifoCTeam() != null && user.getTifoCTeam().getName() != null) {
-            return user.getTifoCTeam().getName();
+    /**
+     * The team a manager controls, by identity.
+     *
+     * <p>Was {@code resolveUserTeamName}, which returned a {@code String} and was then resolved back with
+     * {@code findByName}. Nothing but the lookup stood between a manager and their own club, and a
+     * duplicate name broke it silently.
+     */
+    /**
+     * The football club this account manages, by identity.
+     *
+     * <p>This read the manager's club as a <b>name</b> and looked it back up with
+     * {@code teamRepository.findByName(...)} — at four call sites, including
+     * {@link #isUserMatch}, which decides what "play my match" and the reveal button may act on. Two
+     * clubs sharing a name meant a fixture belonging to somebody else reading as yours.
+     *
+     * <p>{@code User.footballTeam} is a <b>real foreign key to {@code Team}</b>, and its own javadoc
+     * records that this exact name-join "produced four separate defects, all the same mistake in a
+     * different costume". This controller was one of the readers still doing it.
+     *
+     * <p>The legacy {@code CTeam} name-join remains only as a fallback, because a legacy account row
+     * predates the foreign key and reporting "no club" for an account that plainly has one would be worse
+     * than a name lookup. That is the exception the field's own documentation asks for, and it is
+     * labelled as one.
+     */
+    // Package-private, not private: the identity resolution is the thing P0-PREV-6 changed, and a test
+    // that cannot call it can only assert on its own fixtures - which passes against broken code.
+    Team resolveUserTeam(@AuthenticationPrincipal User user) {
+        if (user == null) {
+            return null;
         }
+        if (user.getFootballTeam() != null && user.getFootballTeam().getId() != null) {
+            return user.getFootballTeam();
+        }
+        // Legacy fallback only. `getCTeam()` is a footballtextmanager CTeam, a different model entirely,
+        // so its id is not a football Team id and must never be compared with one.
         if (user.getCTeam() != null && user.getCTeam().getName() != null) {
-            return user.getCTeam().getName();
+            return teamRepository.findByName(user.getCTeam().getName()).orElse(null);
         }
         return null;
     }
@@ -537,29 +563,37 @@ public class SimulationController {
     }
 
     private String resolveUserLeagueName(User user, List<Map<String, Object>> leagues) {
-        String teamName = resolveUserTeamName(user);
-        if (teamName == null) return "League";
-        Team team = teamRepository.findByName(teamName).orElse(null);
-        if (team != null && team.getCompetition() != null && team.getCompetition().getName() != null) {
+        Team team = resolveUserTeam(user);
+        if (team == null) return "League";
+        if (team.getCompetition() != null && team.getCompetition().getName() != null) {
             return team.getCompetition().getName();
         }
         return leagues.isEmpty() ? "League" : String.valueOf(leagues.get(0).get("leagueName"));
     }
 
     private boolean isUserLeague(User user, String leagueName) {
-        String teamName = resolveUserTeamName(user);
-        if (teamName == null) return false;
-        Team team = teamRepository.findByName(teamName).orElse(null);
+        Team team = resolveUserTeam(user);
         return team != null && team.getCompetition() != null && Objects.equals(team.getCompetition().getName(), leagueName);
     }
 
+    /**
+     * Is this one of the manager's own fixtures?
+     *
+     * <p>Was {@code fixture.homeTeam.name.equals(userTeamName)} — the user's team as a name, compared
+     * against both sides' names. This is the worst of them, because it decides what "play my match" and
+     * the reveal button are allowed to act on: two clubs sharing a name meant a fixture belonging to
+     * somebody else reading as yours.
+     *
+     * <p>By <b>id</b>, on both sides.
+     */
     private boolean isUserMatch(User user, MatchFixture fixture) {
-        String teamName = resolveUserTeamName(user);
-        if (teamName == null || fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
+        Team team = resolveUserTeam(user);
+        if (team == null || team.getId() == null
+                || fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
             return false;
         }
-        return Objects.equals(fixture.getHomeTeam().getName(), teamName)
-                || Objects.equals(fixture.getAwayTeam().getName(), teamName);
+        return Objects.equals(fixture.getHomeTeam().getId(), team.getId())
+                || Objects.equals(fixture.getAwayTeam().getId(), team.getId());
     }
 
     private record PreparedMatchContext(String homeName, String awayName, MatchFixture fixture) {}

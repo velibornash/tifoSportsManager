@@ -1,5 +1,61 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-6 — a manager's own fixtures, by identity (owner, 2026-10-07)
+
+> **Human mecevi imaju mogucnost da se gleda live ili replay kao liga mec**
+
+**Live and replay were already competition-agnostic.** The selection in
+`SimulationController.resolvePreparedMatch` filters fixtures by season, week, day and *"one of these two
+teams"* — with **no `CompetitionType` or `MatchType` test at all**. A manager with a cup or club-cup tie on
+the current day gets that tie prepared, not a league one, which is the behaviour the card wanted. Proving
+that by reading it is what P0-PREV-4 and P0-PREV-5 warned against, so it is recorded here as the finding
+rather than as a claim of work done.
+
+### Four name round-trips, and the one that mattered
+
+It was not the competition that was the problem. It was **how the manager's own club was found**:
+
+| Call site | What it did |
+|---|---|
+| `resolvePreparedMatch` | name -> `findByName` -> team |
+| `resolveUserTeamId` | a method whose entire body was a name lookup and a lookup by that name |
+| `resolveUserLeagueName` / `isUserLeague` | name -> `findByName` -> competition |
+| **`isUserMatch`** | **compared both sides' team NAMES to the manager's team name** |
+
+`isUserMatch` is the worst of them: it decides **what "play my match" and the reveal button are allowed to
+act on**. Two clubs sharing a name — ordinary in this game, and exactly what the national-team and cup
+renames produced — and a fixture belonging to somebody else reads as yours.
+
+### `User.footballTeam` already existed, and its javadoc says why
+
+The field is a **real foreign key to `Team`**, and its own documentation records that this name-join
+*"produced four separate defects, all the same mistake in a different costume — assuming two IDENTITY
+sequences share a number space"*. `SimulationController` was one of the readers still doing it.
+
+Now it reads the foreign key. The legacy `CTeam` name-join remains **only** as a labelled fallback, because
+a legacy account row predates the foreign key and reporting "no club" for an account that plainly has one
+would be worse — which is precisely the exception that field's own documentation asks for.
+
+### A test that calls the resolver, because the first one did not
+
+The first version of `ManagerResolvedByIdentityTest` asserted only that **two clubs can share a name** —
+which passes whether or not the code works, and is exactly the kind of test this repository keeps finding.
+It was rewritten to **call `resolveUserTeam`**, which is now package-private for that reason.
+
+**Mutation-checked.** Putting the name join back fails:
+
+```
+aManagerResolvesToTheirOwnClubWhenTwoShareAName:
+  IncorrectResultSizeDataAccess Query did not return a unique result: 2 results were returned
+```
+
+which is the failure mode in its most honest form: the name lookup **succeeds** and hands back the wrong
+club, and only the duplicate-row case happens to make it throw instead.
+
+13 simulation tests green, plus the 2 new ones.
+
+---
+
 ## P0-PREV-5 — the post-match report, proven for every competition, and a real defect (owner, 2026-10-07)
 
 The card's exit criterion was deliberately about **proof, not change**: the match view and the ZOX
