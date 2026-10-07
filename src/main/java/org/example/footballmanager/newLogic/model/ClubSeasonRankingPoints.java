@@ -56,6 +56,18 @@ public class ClubSeasonRankingPoints {
     @Column(name = "points", nullable = false)
     private double points;
 
+    /**
+     * The season's one-off achievement bonuses, kept <b>apart from the match points</b>.
+     *
+     * <p>Separate so the bonus pass can be <b>set</b> rather than added. It was originally added into the
+     * same column, and pressing the button twice paid the trophy twice — 210.0 then 420.0 — because
+     * there was no way to tell a season's match points from a bonus that had already been paid. One
+     * column for each kind of points makes both re-runnable: the replay overwrites match points, the
+     * bonus pass overwrites bonuses, and neither disturbs the other.
+     */
+    @Column(name = "bonus_points", nullable = false)
+    private double bonusPoints = 0.0;
+
     protected ClubSeasonRankingPoints() {
     }
 
@@ -83,5 +95,18 @@ public class ClubSeasonRankingPoints {
 
     public void setPoints(double points) {
         this.points = points;
+    }
+
+    public double getBonusPoints() {
+        return bonusPoints;
+    }
+
+    public void setBonusPoints(double bonusPoints) {
+        this.bonusPoints = bonusPoints;
+    }
+
+    /** Match points plus achievements: what the season is worth. */
+    public double total() {
+        return points + bonusPoints;
     }
 }

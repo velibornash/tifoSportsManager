@@ -1,5 +1,59 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-5 — the one-off achievement bonuses (owner, 2026-10-07)
+
+> **plasman na WC donosi svim NT ekipama odredjen broj bonus poena... svaka naredna faza donosi odredjen
+> broj poena. Svaki trofej ukljucujuci i nacionalni kup donosi odredjen broj poena.**
+> **napomena: pobednici polufinala igraju finale a porazeni 3rd place mec za bronzu**
+
+A flat bonus for reaching the tournament, more for every further phase, and a bonus for every trophy
+including the national cup. Tier-weighted for clubs: **35 × 0.70 = 24.5** for a third-division title.
+
+**Read from the fixtures, never the draw's own record** — a team is in the round of sixteen if it appears
+in one, and that cannot disagree with the draw that made it. The same reasoning
+`NationalRatingService.tournamentQualifiers` already uses.
+
+### Three defects the tests caught, all in code I had just written
+
+**1. Pressing the button twice paid the trophy twice — 210.0 then 420.0.** The bonus was *added* into the
+same column as the season's match points, so there was no way to tell a season's football from a trophy
+that had already been paid. Both ledger tables now carry **`bonus_points` separately from `points`**, and
+`total()` is what the window reads. That makes **both** passes re-runnable: the replay overwrites match
+points, the bonus pass overwrites bonuses, and neither disturbs the other. My javadoc had claimed this was
+idempotent before it was.
+
+**2. A finalist who LOST the final was paid as champion — 210 instead of 165.** `winnersOf` collected the
+winner of *every round* into one set, so a side that won the round of sixteen, the quarter and the semi
+and then lost the final was treated as champion. Winning a round is not winning a tournament, and the two
+were the same variable. Now `tournamentChampion` returns the winner of the **last round only**.
+
+**That only works because of the owner's note.** Semi-final winners play the final
+(`ROUND_SEMI_FINAL = 3`), and the semi-final losers play each other for third place
+(`ROUND_THIRD_PLACE = 4`) **before** it (`ROUND_FINAL = 5`) — so "highest round number" is the final and
+the bronze match can never hand the trophy to a side that lost the semi. Recorded on the method, because it
+is a property of the tournament rather than of the code and would be easy to break.
+
+**3. `note()` merged a constant `1` with `Math::max`,** so every team came out as "reached the first
+round" regardless of how far it actually went, and every bonus above that was dead code.
+
+### Two test fixtures that were not what they claimed
+
+The tier-weighted cup test ran **two independent round-one ties in one cup** and called both clubs winners.
+That is not a knockout — and it exposed the rule working: there is exactly one champion per competition, so
+one club was correctly paid nothing and the test read that as a missing row instead of the answer. Rebuilt
+as two coherent knockouts, with a second test for a finalist who loses.
+
+The "losing finalist" test then wrote `1, 2` where it meant the champion to win — home goals come first, so
+`1-2` is the **away** side winning, and the "loser" won the final and was correctly paid the trophy.
+
+### 42 tests green across this card, the ledger and the engine
+
+**Not verified against real PostgreSQL for this card** — the bonus pass needs a played tournament, and the
+owner's world is still at week 1 day 1 with nothing played. The schema for the new `bonus_points` columns
+has not been created on the real database yet; that happens the next time the application starts.
+
+---
+
 ## P0-RANK-4 and P0-RANK-6 — ONE SINGLE RATING SYSTEM (owner, 2026-10-07)
 
 > **KOLIKO PUTA DA PONOVIM?! JEDAN JEDINI REJTING SISTEM!!!**

@@ -2271,7 +2271,7 @@ entry in `kanbanProgress.md`, so a half-built card is always visible rather than
 | **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | ✅ `ClubRankingPointsService` rewrites the ledger from match history, idempotently, per season, tier-weighted. |
 | **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | ✅ Same property for a country; a level guard refuses to score a side into the wrong level. |
 | **P0-RANK-4** | **One single rating system.** The head-to-head gap weighting goes from the rating as well as the points. | ✅ `clubK` no longer reads either rating. Swept 0–800 of gap. Mutation-checked. |
-| **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | A trophy changes a team's total by exactly the documented amount, in the database. |
+| **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | ✅ Bonuses read from the fixtures, not the draw. Stored in their own column so the pass is re-runnable. |
 | **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | ✅ `GET /countries/ranking` orders by points. The test builds a world where the two orderings **differ** and requires points to win. |
 
 ### P0 — Every generated match opens to a preview, one competition per card

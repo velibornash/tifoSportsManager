@@ -41,7 +41,8 @@ public class RankingPointsReader {
     public double totalForClub(Long clubId, int currentSeason) {
         Map<Integer, Double> bySeason = new LinkedHashMap<>();
         for (var row : clubs.findByTeamId(clubId)) {
-            bySeason.put(row.getSeasonYear(), row.getPoints());
+            // points + bonusPoints: the season is worth both.
+            bySeason.put(row.getSeasonYear(), row.total());
         }
         return RankingPointsEngine.windowedTotal(currentSeason, bySeason);
     }
@@ -56,7 +57,7 @@ public class RankingPointsReader {
     public double totalForCountry(Long countryId, NationalTeamLevel level, int currentSeason) {
         Map<Integer, Double> bySeason = new LinkedHashMap<>();
         for (var row : countries.findByCountryIdAndLevel(countryId, level)) {
-            bySeason.put(row.getSeasonYear(), row.getPoints());
+            bySeason.put(row.getSeasonYear(), row.total());
         }
         return RankingPointsEngine.windowedTotal(currentSeason, bySeason);
     }
@@ -79,7 +80,7 @@ public class RankingPointsReader {
         Map<Long, Map<Integer, Double>> bySeason = new LinkedHashMap<>();
         for (var row : rows) {
             bySeason.computeIfAbsent(row.getCountry().getId(), key -> new LinkedHashMap<>())
-                    .put(row.getSeasonYear(), row.getPoints());
+                    .put(row.getSeasonYear(), row.total());
         }
         for (Map.Entry<Long, Map<Integer, Double>> entry : bySeason.entrySet()) {
             totals.put(entry.getKey(), RankingPointsEngine.windowedTotal(currentSeason, entry.getValue()));

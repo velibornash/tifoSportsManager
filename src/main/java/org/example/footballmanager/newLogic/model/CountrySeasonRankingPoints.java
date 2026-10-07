@@ -50,6 +50,15 @@ public class CountrySeasonRankingPoints {
     @Column(name = "points", nullable = false)
     private double points;
 
+    /**
+     * The season's one-off achievement bonuses, apart from the match points.
+     *
+     * <p>Separate for the same reason as the club ledger's: so the bonus pass can set rather than add,
+     * and pressing it twice does not pay two trophies.
+     */
+    @Column(name = "bonus_points", nullable = false)
+    private double bonusPoints = 0.0;
+
     protected CountrySeasonRankingPoints() {
     }
 
@@ -82,5 +91,18 @@ public class CountrySeasonRankingPoints {
 
     public void setPoints(double points) {
         this.points = points;
+    }
+
+    public double getBonusPoints() {
+        return bonusPoints;
+    }
+
+    public void setBonusPoints(double bonusPoints) {
+        this.bonusPoints = bonusPoints;
+    }
+
+    /** Match points plus achievements: what the season is worth. */
+    public double total() {
+        return points + bonusPoints;
     }
 }

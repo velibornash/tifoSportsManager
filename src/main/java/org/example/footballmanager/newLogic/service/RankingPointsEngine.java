@@ -158,6 +158,97 @@ public final class RankingPointsEngine {
     /** Points for the milder crossing: reaching exactly a draw when one side was not expected to get it. */
     private static final double DRAW_CROSSING = 20.0;
 
+    // ── Achievement bonuses ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * One-off bonuses for what a side achieved, as opposed to how it played (owner, 2026-10-07).
+     *
+     * <p>The owner's words: *"plasman na WC donosi svim NT ekipama odredjen broj bonus poena. Plasman
+     * timova u neki od medjunarodnih turnira donosi odredjen broj poena. Svaka naredna faza donosi
+     * odredjen broj poena. Svaki trofej ukljucujuci i nacionalni kup donosi odredjen broj poena."* — a
+     * flat bonus for reaching the tournament, more for every further phase, and a bonus for every
+     * trophy including the national cup.
+     *
+     * <p>Applied once, for the season they were earned in, on top of that season's per-match points. So
+     * they enter the ledger as part of a season's subtotal and decay with the window like anything else —
+     * a World Cup won four seasons ago is worth a quarter of what it was.
+     *
+     * <p>A national side that reaches the finals and loses the final has still done something, which is
+     * the whole reason a flat qualification bonus exists separately from the phase bonuses.
+     */
+    public static final double WC_QUALIFIED = 40.0;
+    public static final double WC_GROUP_STAGE = 15.0;
+    public static final double WC_ROUND_OF_SIXTEEN = 20.0;
+    public static final double WC_QUARTER_FINAL = 25.0;
+    public static final double WC_SEMI_FINAL = 30.0;
+    public static final double WC_FINAL = 35.0;
+    public static final double WC_WINNER = 45.0;
+
+    /** A club that reached an international club cup at all. */
+    public static final double CLUB_CUP_QUALIFIED = 25.0;
+    public static final double CLUB_CUP_GROUP_STAGE = 20.0;
+    public static final double CLUB_CUP_ROUND_OF_SIXTEEN = 20.0;
+    public static final double CLUB_CUP_QUARTER_FINAL = 25.0;
+    public static final double CLUB_CUP_SEMI_FINAL = 30.0;
+    public static final double CLUB_CUP_FINAL = 35.0;
+    public static final double CLUB_CUP_WINNER = 45.0;
+
+    /** Domestic trophies. The national cup is worth more than the league, as the owner listed it. */
+    public static final double LEAGUE_TITLE = 30.0;
+    public static final double NATIONAL_CUP_WINNER = 35.0;
+
+    /**
+     * Scales a club bonus by the division it was won in.
+     *
+     * <p>The owner's choice, asked for explicitly: a bottom-division title is not the same achievement as
+     * a top-flight one. A tier-3 club winning its national cup earns {@code 35 × 0.70 = 24.5}.
+     *
+     * <p>A national side has no division and passes {@code 1}, so it is never discounted.
+     */
+    public static double clubBonus(double bonus, int tier) {
+        return bonus * tierWeight(tier);
+    }
+
+    /**
+     * The bonus for how far a side went in a knockout tournament, by the round it last appeared in.
+     *
+     * <p>Read from the <b>fixtures</b>, not from the draw's own record, for the reason
+     * {@code NationalRatingService.tournamentQualifiers} gives: the fixtures are what happened, and a
+     * team's presence in a round cannot disagree with the draw that made it.
+     *
+     * @param lastRoundReached the furthest round the side appears in, or 0 for one that never got out of
+     *                         the group stage
+     * @param winnerBonus      the bonus for winning outright, for a tournament whose winner is decided
+     *                         by a final
+     */
+    public static double tournamentPhaseBonus(int lastRoundReached, boolean wonIt,
+                                              double qualifiedBonus, double groupStageBonus,
+                                              double roundOfSixteenBonus, double quarterFinalBonus,
+                                              double semiFinalBonus, double finalBonus,
+                                              double winnerBonus) {
+        double bonus = 0.0;
+        if (lastRoundReached >= 1) {
+            bonus += qualifiedBonus + groupStageBonus + roundOfSixteenBonus;
+        } else if (lastRoundReached == 0 && qualifiedBonus > 0) {
+            // In the tournament but out in the group stage: the qualification bonus alone, plus the
+            // group stage itself, which is what reaching it at all is worth.
+            bonus += qualifiedBonus + groupStageBonus;
+        }
+        if (lastRoundReached >= 2) {
+            bonus += quarterFinalBonus;
+        }
+        if (lastRoundReached >= 3) {
+            bonus += semiFinalBonus;
+        }
+        if (lastRoundReached >= 5) {
+            bonus += finalBonus;
+        }
+        if (wonIt) {
+            bonus += winnerBonus;
+        }
+        return bonus;
+    }
+
     // ── Competition value ───────────────────────────────────────────────────────────────────────────
 
     /** An ordinary league match: the reference everything else is measured against. */
