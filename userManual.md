@@ -25,8 +25,6 @@ The dashboard is the starting screen for your club. It shows:
 
 Clicking the league summary opens the league table. Clicking the next match opens the match preview.
 
-Administrators also see controls for advancing the game clock and running database operations.
-
 ## 3. Header options
 
 ### Sports Lobby
@@ -287,9 +285,9 @@ Shows the generated post-match report and summary.
 
 Opens the match replay viewer when replay data is available.
 
-### ZOX preview and report
+### Preview and report
 
-Shows the pre-match and post-match analytical views provided by the ZOX feature.
+Shows the pre-match and post-match analytical views.
 
 ## 9. Community options
 

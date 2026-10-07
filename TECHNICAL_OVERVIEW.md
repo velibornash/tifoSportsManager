@@ -445,20 +445,8 @@ There are three named international club cups across five tiers: Champions, Mast
 The backend creates 15 competition rows, qualifies clubs from finished domestic tables, gives simulated
 entrants lazy squads, draws group stages, records group tables and advances knockout rounds.
 
-`InternationalClubCupJob` (`club-cup-draw`) is a live job at **day 1, 08:00, order 30**, before the
-20:00 matchday job and the 20:45 international kickoff. Its behavior differs by phase:
-
-- **Week 1:** creates the group stage for all 15 cups from the finished domestic tables. Champions Cup
-  and Challenge Cup use 48 entrants per tier (8 groups of 6); Masters Cup uses 96 (16 groups of 6).
-- **Weeks 2–5:** no draw; these are the five group matchdays, one in each week.
-- **Weeks 7–10:** advances one knockout stage when the previous results make the entrants known. The
-  stages are last 16 in week 7, quarter-finals in week 8, semi-finals in week 9, and the third-place
-  match plus final in week 10.
-- **Weeks 6, 11 and 12:** no club-cup draw; these are reserved for other competitions.
-
-The job first ensures that the 15 competition rows exist, then skips rows or rounds already drawn. The
-admin redraw action calls this same job body with the active season and week, so it cannot create a
-second set of fixtures or use a different qualification rule. `ClubCupController` exposes:
+`InternationalClubCupJob` is now a live job at week/day/hour order 30. The previous unreachable-only
+draw path was replaced. `ClubCupController` exposes:
 
 ```text
 GET /club-cups
@@ -495,22 +483,6 @@ controller are present.
 The tournament champion path now includes the final feed-forward round. The frontend World rows now
 link drawn senior and U-21 national competitions to their groups, standings, results and bracket; undrawn
 rows remain visible with their planned week.
-
-#### National-team draw jobs
-
-`NationalTournamentDrawJob` (`national-tournament-draw`) is checked at **midnight, order 20**, before
-national matchday jobs. It has two distinct draw phases:
-
-- **Week 6, day 1, midnight:** creates qualifying groups for both the senior and U-21
-  competitions. Qualifying matches then run on days 2, 3, 4, 5 and 6.
-- **Week 12:** attempts the next knockout round for both levels. It is called before the tournament
-  matchdays on days 1, 2, 4 and 6 and draws only the round whose previous results are complete. The
-  tournament final and any remaining bracket stage therefore follow the same idempotent, round-by-round
-  rule rather than being drawn in advance.
-
-The admin redraw action invokes this same job for both scheduled phases, so it can recover a missed
-qualifying or knockout draw without a separate tournament implementation. `NationalMatchdayJob` only
-plays fixtures; it never creates them.
 Undrawn competitions remain unavailable by design, while drawn competitions are reachable from the World
 page. `NationalTournamentController` backs the shared national-tournament view for both senior and U-21
 groups, standings, results and knockout rounds.
