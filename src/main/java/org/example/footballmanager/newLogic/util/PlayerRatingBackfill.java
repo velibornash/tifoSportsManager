@@ -4,6 +4,9 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -46,35 +49,73 @@ public class PlayerRatingBackfill {
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    /** @return how many rows moved, and the spread of old values it found, for the boot log. */
+    /**
+     * How many players one pass holds in memory.
+     *
+     * <p>Deliberately a constant and not a percentage: the point is that peak memory is bounded by
+     * something a human chose, and does not move when the world does.
+     */
+    private static final int BATCH = 500;
+
+    /**
+     * Recomputes every player's rating from their own skills.
+     *
+     * <p><b>Read in batches, not with {@code findAll()}.</b> This used to load the entire player table
+     * into one {@code List<Player>}, then build a second list of the stale ones on top of it. The owner
+     * asked what a full pyramid for all 48 countries would cost, and this was the answer that mattered:
+     * 10,130 players today and roughly 373,000 at that scale, every one of them resident at once.
+     *
+     * <p>A loaded entity runs about three times its 287-byte stored tuple, so the whole table in one
+     * pass is a few hundred megabytes of heap in a single method, and a second list of references on
+     * top. Nothing about the answer changes when the table grows - only the memory needed to reach it.
+     *
+     * <p>Each batch is written in its own transaction ({@code requiresNew}), so a failure part way
+     * through keeps the batches already committed rather than rolling back the world's ratings, and no
+     * transaction is held open across the table.
+     *
+     * <p>Sorted by id and paged by offset: only ratings change here, never the number of rows or their
+     * ids, so the page boundaries stay put while the pass runs.
+     */
     public Map<String, Object> backfill() {
-        List<Player> all = players.findAll();
-        List<Player> stale = new ArrayList<>();
-        for (Player player : all) {
-            int derived = player.careerRating();
-            if (player.getRating() != derived) {
-                stale.add(player);
-            }
-        }
-
-        if (stale.isEmpty()) {
-            return Map.of("changed", 0, "total", all.size());
-        }
-
         Map<Integer, Integer> beforeSpread = new LinkedHashMap<>();
-        int[] changed = {0};
-        requiresNew.executeWithoutResult(status -> {
-            for (Player player : stale) {
-                int old = player.getRating();
-                beforeSpread.merge(old, 1, Integer::sum);
-                player.setRating(player.careerRating());
-                players.save(player);
-                changed[0]++;
+        int total = 0;
+        int changed = 0;
+
+        for (int page = 0; ; page++) {
+            Page<Player> batch = players.findAll(PageRequest.of(page, BATCH, Sort.by("id")));
+            List<Player> content = batch.getContent();
+            if (content.isEmpty()) {
+                break;
             }
-        });
+            total += content.size();
+
+            List<Player> stale = new ArrayList<>();
+            for (Player player : content) {
+                if (player.getRating() != player.careerRating()) {
+                    stale.add(player);
+                }
+            }
+
+            if (!stale.isEmpty()) {
+                Map<Integer, Integer> batchSpread = new LinkedHashMap<>();
+                requiresNew.executeWithoutResult(status -> {
+                    for (Player player : stale) {
+                        batchSpread.merge(player.getRating(), 1, Integer::sum);
+                        player.setRating(player.careerRating());
+                        players.save(player);
+                    }
+                });
+                beforeSpread.putAll(batchSpread);
+                changed += stale.size();
+            }
+
+            if (!batch.hasNext()) {
+                break;
+            }
+        }
 
         log.info("Player ratings: recomputed {} of {} player(s) from their skills. The values that were "
-                + "there before were {}", changed[0], all.size(), beforeSpread);
-        return Map.of("changed", changed[0], "total", all.size(), "beforeSpread", beforeSpread);
+                + "there before were {}", changed, total, beforeSpread);
+        return Map.of("changed", changed, "total", total, "beforeSpread", beforeSpread);
     }
 }

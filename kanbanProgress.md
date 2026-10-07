@@ -1,5 +1,78 @@
 # kanbanProgress.md — the append-only log
 
+## The two patterns that would turn a bigger world into a cliff (owner, 2026-10-07)
+
+> **kad zavrsis trenutni posao uradi pod b)** — fix `findAll()` and the per-club loop as a precondition
+
+Asked after the squad fix: what would a full pyramid for all 48 countries cost, and how much would
+**everyday use** drop. Measured rather than guessed:
+
+| Measurement | Value |
+|---|---|
+| Bytes per player tuple | **287** (`avg(pg_column_size(p))`) |
+| Index bytes per player | **215** (2,128 kB / 10,130) |
+| `player` + indexes at ~373,000 players | **~190 MB**, up to ~300 MB with bloat |
+| `shared_buffers` | 128 MB |
+| Host RAM -> JVM default heap | 32 GB -> **8 GB** |
+| `@Scheduled` jobs | **2** |
+
+Serbia runs 24.9 players/club, so 47 more countries is ~363,000 extra rows. The honest answer was that
+daily use **barely moves**, because every hot path is country-scoped and both indexes already exist
+(`ix_player_team`, `ix_team_country`) — plus the expensive multiplier was already avoided, since
+simulated leagues do not simulate.
+
+### 1. `PlayerRatingBackfill` held the whole player table in one list
+
+```java
+List<Player> all = players.findAll();      // every player, at once, forever
+List<Player> stale = new ArrayList<>();    // and a second list of the ones that moved
+```
+
+A loaded entity runs ~3x its 287-byte tuple, so this was a few hundred MB of heap in a single method,
+and it grows with the table while the answer does not. Now read in **batches of 500**, each written in
+its own `requiresNew` transaction: bounded peak memory, no transaction held open across the table, and a
+partial failure keeps the batches already committed. Paged by `Sort.by("id")` — only ratings change, never
+the row count or the ids, so the page boundaries stay put. Measured: **10.2 ms** for the whole country's
+players in one query.
+
+### 2. The national pool read every club in the world, then queried each of the country's clubs
+
+```java
+for (Team club : teams.findClubTeamsForOperations()) {   // every club on Earth
+    if (!country.getId().equals(club.getCountry().getId())) continue;   // filtered in Java
+    all.addAll(players.findByTeamId(club.getId()));      // one query per club
+}
+```
+
+**And `poolRows` and `countPool` each ran it**, so one country page load did two full club reads and
+**~620 player queries** with 7,730 players in the country. Now one indexed join:
+
+```java
+List<Player> findByTeamCountryId(Long countryId);   // 10.2 ms
+```
+
+`availablePlayers` computes the pool once and `poolRows` takes the first 80 of it, so the **count and the
+rows come from the same list** and cannot disagree.
+
+### The guard, and why it is not `never()`
+
+`theNationalPoolDoesNotQueryPerClub` is driven through the **selector** path on purpose: a non-selector
+gets `pool: []`, the expensive code never runs, and a guard written against that path passes against the
+old code for the wrong reason.
+
+It first failed with an empty pool and then `NotAMock`, and the fix was to give the test country a senior
+side — without one `describe` returns the "not created yet" payload, which carries an empty pool. **A guard
+that measures nothing is exactly what this repository has been undoing all week.**
+
+The assertion is `atMostOnce()`, not `never()`: `describe` legitimately loads the side's own 25 players
+with one `findByTeamId`, and forbidding that would forbid the fix rather than the bug. What must not
+happen is the fan-out — this country has ~75 clubs, so the old loop shows up as 75 calls and fails loudly.
+It also asserts positively that `findByTeamCountryId` is the query being used.
+
+4/4 in `CountryCatalogQueryCountTest`; 15 green across the seeder, club-scan and senior-name classes.
+
+---
+
 ## Active national sides were fielding 25 simulated players (owner, 2026-10-07)
 
 > **zasto su u u-21 i prvom timu u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih

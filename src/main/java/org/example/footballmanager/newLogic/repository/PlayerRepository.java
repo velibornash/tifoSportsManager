@@ -53,6 +53,20 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
      */
     List<Player> findBySkillsFatigueGreaterThan(int fatigue);
 
+    /**
+     * Every club player in one country, in a single query.
+     *
+     * <p>This replaces a loop that loaded <b>every club in the world</b> and filtered in Java, then
+     * issued one query per club. On the country page that was two full club reads and ~620 player
+     * queries per load, because {@code poolRows} and {@code countPool} each did it separately. It is one
+     * indexed join on {@code team.country_id} here.
+     *
+     * <p>Unsorted on purpose: the caller sorts by rating and then name, and that comparator is the
+     * definition of "best first" for the pool. Ordering here would be a second, silently different one.
+     */
+    @Query("select p from Player p where p.team.country.id = :countryId")
+    List<Player> findByTeamCountryId(@Param("countryId") Long countryId);
+
     List<Player> findByTeamId(Long teamId);
     List<Player> findByTeamIdAndPosition(Long teamId, Position position);
     Optional<Player> findByIdAndTeamId(Long id, Long teamId);

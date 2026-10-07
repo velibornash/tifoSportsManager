@@ -2255,6 +2255,27 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ The two patterns that would turn a bigger world into a cliff — owner, 2026-10-07
+
+> **fix the findAll() and per-club-loop patterns now as a precondition** for a full pyramid later
+
+- [x] **Measured, not guessed:** 287 bytes/player tuple, 215 bytes/player of index, `shared_buffers` 128 MB,
+      heap 8 GB, 2 `@Scheduled` jobs. Full pyramid ≈ 373,000 players ≈ **190–300 MB**.
+- [x] **Daily use barely moves**, because every hot path is country-scoped and `ix_player_team` /
+      `ix_team_country` already exist — and the expensive multiplier (simulated leagues simulating) is
+      already avoided by design.
+- [x] **`PlayerRatingBackfill` no longer calls `findAll()`.** Batches of 500, each in its own
+      `requiresNew` transaction, so peak memory is bounded by a constant and a partial failure keeps what
+      already committed. Paged by id — only ratings change, so page boundaries are stable.
+- [x] **The national pool is one query, not one per club.** It loaded every club in the world, filtered in
+      Java, then queried each of the country's clubs — and ran **twice** per page load. Now one indexed
+      join, **10.2 ms**.
+- [x] **`poolSize` and the pool rows come from the same list**, so the count cannot disagree with the rows.
+- [x] **Guard driven through the selector path** (a non-selector never runs the code) and asserting
+      `atMostOnce()`, not `never()` — `describe` legitimately loads the side's own 25 players.
+
+---
+
 ## ✅ Active national sides field real players — owner, 2026-10-07
 
 > **zasto su u u-21 i prvom timu u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih?

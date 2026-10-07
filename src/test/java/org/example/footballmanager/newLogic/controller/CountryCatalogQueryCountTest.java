@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import jakarta.persistence.EntityManager;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +14,7 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
@@ -79,6 +81,13 @@ class CountryCatalogQueryCountTest extends BaseTest {
     @Autowired private org.example.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
     @Autowired private org.example.footballmanager.newLogic.service.NationalTeamElectionService electionService;
     @Autowired private org.example.commonmanager.repository.UserRepository humanUserRepository;
+
+    /**
+     * Spies, not the autowired repositories: {@code verify} needs a mock, and a Spring Data repository
+     * is a JDK proxy, not one. The spies delegate, so the test still reads and writes the real database.
+     */
+    @SpyBean private org.example.footballmanager.newLogic.repository.TeamRepository teamRepositorySpy;
+    @SpyBean private org.example.footballmanager.newLogic.repository.PlayerRepository playerRepositorySpy;
     @Autowired private org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     @Autowired private org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
 
@@ -260,6 +269,91 @@ class CountryCatalogQueryCountTest extends BaseTest {
                 .toList();
         assertEquals(2, withClubs.size(),
                 "the catalog should have marked exactly the two codes the projection returned");
+    }
+
+    /**
+     * The national pool is one query, not one per club and not a read of the whole club table.
+     *
+     * <p>Driven through the <b>selector</b> path on purpose. A non-selector gets {@code pool: []} and the
+     * expensive code never runs, so a guard written against that path would pass against the old
+     * implementation for the wrong reason - it would be measuring a branch that does not exist.
+     *
+     * <p>The old implementation loaded every club in the world with {@code findClubTeamsForOperations()},
+     * filtered to one country in Java, and then queried each of that country's clubs - and
+     * {@code poolRows} and {@code countPool} each did it, so ~620 player queries and two full club reads
+     * per page load with 7,730 players in the country. Both are asserted absent below, and reintroducing
+     * either fails here.
+     */
+    @Test
+    @Transactional
+    @DisplayName("the national pool costs one query, not one per club")
+    void theNationalPoolDoesNotQueryPerClub() {
+        fillAWorld();
+
+        org.example.footballmanager.newLogic.model.Country country =
+                countryRepository.findByIsoCode("SRB").orElseThrow();
+        // Players, so the pool has something to return and the per-club loop would have had work to do.
+        for (org.example.footballmanager.newLogic.model.Team club
+                : teamRepository.findClubTeamsForCountry(country.getId())) {
+            for (int i = 0; i < 5; i++) {
+                org.example.footballmanager.newLogic.model.Player p =
+                        new org.example.footballmanager.newLogic.model.Player();
+                p.setName("Pool player " + club.getName() + " " + i);
+                p.setTeam(club);
+                p.setRating(50 + i);
+                playerRepository.save(p);
+            }
+        }
+
+        // The side has to exist: `describe` returns the "not created yet" payload without one, and that
+        // payload carries an empty pool - so without it this guard would pass while measuring nothing.
+        org.example.footballmanager.newLogic.model.Team senior =
+                new org.example.footballmanager.newLogic.model.Team();
+        senior.setName("Pool query senior " + java.util.UUID.randomUUID());
+        senior.setCountry(country);
+        senior.setType(org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM);
+        senior = teamRepository.save(senior);
+        country.setSeniorNationalTeam(senior);
+        country = countryRepository.save(country);
+
+        org.example.commonmanager.model.User selector = new org.example.commonmanager.model.User();
+        selector.setEmail("pool-selector-" + java.util.UUID.randomUUID() + "@example.com");
+        selector.setPassword("x");
+        selector = humanUserRepository.save(selector);
+        nationalTeamService.appoint(country,
+                org.example.footballmanager.newLogic.model.NationalTeamLevel.SENIOR, selector, true);
+
+        org.mockito.Mockito.clearInvocations(playerRepositorySpy, teamRepositorySpy);
+
+        java.util.Map<String, Object> described = nationalTeamService.describe(country,
+                org.example.footballmanager.newLogic.model.NationalTeamLevel.SENIOR, selector);
+        assertEquals(Boolean.TRUE, described.get("exists"), "the side must exist or the pool is not computed");
+        assertEquals(Boolean.TRUE, described.get("isSelector"),
+                "this viewer must be the selector, or describe skips the pool and the guard is theatre");
+
+        // The whole club table must not be read at all - the old code loaded every club in the world
+        // and filtered to one country in Java.
+        verify(teamRepositorySpy, never()).findClubTeamsForOperations();
+
+        // `atMostOnce`, not `never`: describe() legitimately loads the side's own 25 players with one
+        // findByTeamId, and forbidding that would be forbidding the fix rather than the bug. What must
+        // not happen is the fan-out - this country has ~75 clubs, so the old per-club loop would show up
+        // as 75 calls here and fail loudly.
+        verify(playerRepositorySpy, org.mockito.Mockito.atMostOnce())
+                .findByTeamId(org.mockito.ArgumentMatchers.anyLong());
+
+        // And positively: the one query that replaced it is the one being used.
+        verify(playerRepositorySpy, org.mockito.Mockito.atLeastOnce())
+                .findByTeamCountryId(org.mockito.ArgumentMatchers.anyLong());
+
+        @SuppressWarnings("unchecked")
+        java.util.List<java.util.Map<String, Object>> pool =
+                (java.util.List<java.util.Map<String, Object>>) described.get("pool");
+        assertTrue(described.containsKey("pool"));
+        assertFalse(pool.isEmpty(), "the selector must get a pool, or this guard measures nothing");
+        assertTrue((Integer) described.get("poolSize") >= pool.size(),
+                "poolSize " + described.get("poolSize") + " cannot be smaller than the " + pool.size()
+                        + " rows sent; the count and the rows are now computed from the same list");
     }
 
     /**

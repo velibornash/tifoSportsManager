@@ -38,6 +38,14 @@ public class NationalTeamService {
     /** Owner: the squad is 25. */
     public static final int SQUAD_SIZE = 25;
 
+    /**
+     * How many pool rows the page is sent.
+     *
+     * <p>The pool itself is now computed whole - the count has to agree with the rows the owner can
+     * scroll - and this is where the page stops. 80 rows is what the screen has always shown.
+     */
+    private static final int POOL_ROWS = 80;
+
     private static final Logger log = LoggerFactory.getLogger(NationalTeamService.class);
 
     private final TeamRepository teams;
@@ -147,8 +155,11 @@ public class NationalTeamService {
         out.put("squadSize", squad.size());
 
         // The pool is every player in the country's clubs who is not already on the national roster.
-        out.put("pool", viewerIsSelector ? poolRows(country, squad) : List.of());
-        out.put("poolSize", viewerIsSelector ? countPool(country, squad) : 0);
+        // Read once: `poolRows` and `countPool` both need the country's players, and each running its
+        // own pass meant the same query twice and a count that could disagree with the rows above it.
+        List<Player> countrySquad = viewerIsSelector ? availablePlayers(country, squad) : List.of();
+        out.put("pool", viewerIsSelector ? poolRows(countrySquad) : List.of());
+        out.put("poolSize", countrySquad.size());
 
         out.put("lastMatch", lastMatch(team.getId()));
         out.put("nextMatch", nextMatch(team.getId()));
@@ -164,44 +175,43 @@ public class NationalTeamService {
         return level == NationalTeamLevel.U21 ? country.getU21NationalTeam() : country.getSeniorNationalTeam();
     }
 
+    /**
+     * One indexed query, where this used to load every club in the world and query each of the
+     * country's clubs in turn.
+     *
+     * <p>Called twice per country page - once for the pool rows, once for its count - so the old
+     * version read the whole club table twice and issued roughly 620 player queries per load. At
+     * 7,730 players in one country that is the difference between a screen that opens and one that
+     * makes the owner think the application has hung.
+     */
     private List<Player> countryPlayers(Country country) {
-        List<Player> all = new ArrayList<>();
-        for (Team club : teams.findClubTeamsForOperations()) {
-            if (club.getId() == null || club.getCountry() == null
-                    || !country.getId().equals(club.getCountry().getId())) {
-                continue;
-            }
-            all.addAll(players.findByTeamId(club.getId()));
-        }
-        return all;
+        return players.findByTeamCountryId(country.getId());
     }
 
-    private List<Map<String, Object>> poolRows(Country country, List<Player> squad) {
-        // Compared by source id: a national row carries the id of the club player it was copied
-        // from, and the pool rows are the club players themselves. Matching on id is what keeps a
-        // called-up player from also appearing in the pool they were just taken from.
+    /**
+     * The country's club players that are not already on the national roster, best first.
+     *
+     * <p>Compared by source id: a national row carries the id of the club player it was copied from, and
+     * the pool rows are the club players themselves. Matching on id is what keeps a called-up player
+     * from also appearing in the pool they were just taken from.
+     */
+    private List<Player> availablePlayers(Country country, List<Player> squad) {
         java.util.Set<Long> calledUp = squad.stream()
                 .map(Player::getSourcePlayerId)
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
-        List<Player> pool = countryPlayers(country).stream()
+        return countryPlayers(country).stream()
                 .filter(p -> !calledUp.contains(p.getId()))
                 .sorted(Comparator.comparingInt(Player::getRating).reversed()
                         .thenComparing(p -> p.getName() == null ? "" : p.getName()))
-                .limit(80)
                 .toList();
-        return pool.stream().map(p -> playerRow(p, null)).toList();
     }
 
-    private int countPool(Country country, List<Player> squad) {
-        java.util.Set<Long> calledUp = squad.stream()
-                .map(Player::getSourcePlayerId)
-                .filter(java.util.Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
-        return (int) countryPlayers(country).stream()
-                .filter(p -> !calledUp.contains(p.getId()))
-                .count();
+    /** The first {@value #POOL_ROWS} of the available players - the page sends a page, not a country. */
+    private List<Map<String, Object>> poolRows(List<Player> available) {
+        return available.stream().limit(POOL_ROWS).map(p -> playerRow(p, null)).toList();
     }
+
 
     private Map<String, Object> playerRow(Player player, Long nationalTeamId) {
         Map<String, Object> row = new LinkedHashMap<>();
