@@ -348,6 +348,25 @@ calls it.
 
 ---
 
+## P2-TRAIN-1 — the answer: no repair system, only upgrades (owner, 2026-10-07)
+
+> **da li se mogu popravljati training facilities i da li i kako uticu na trening?**
+
+Since the queue was supposed to end with all cards answered, this is that answer.
+
+**Can they be repaired? No.** There is no damage or decay model anywhere in the world. `TrainingFacilityService` exposes one action per facility: **upgrade**. Each of the three facility types (strength & conditioning / injury facility; the other two) costs `upgradeCost` per level plus a small weekly upkeep, and `upgrade(teamId, facility)` buys one level if the club can afford it.
+
+**How does it affect training? Directly.** Weekly progression multiplies base growth by
+`facilityFactor(player, skill)`, which reads `Stadium.trainingFactorFor(skill)`. So a higher-level facility
+makes every player in that squad grow faster at the skills it covers, one multiplicative factor on top of
+age, level-resistance and randomness — not a flat bonus, and not a per-player flag.
+
+So the honest card, if the owner ever wants one, is not "add repair" but "add a damage model", because
+right now a facility is a level that only goes up. Until then: facilities are investable, and the
+investment shows up in training.
+
+---
+
 ## P0-RANK-5 — the one-off achievement bonuses (owner, 2026-10-07)
 
 > **plasman na WC donosi svim NT ekipama odredjen broj bonus poena... svaka naredna faza donosi odredjen
