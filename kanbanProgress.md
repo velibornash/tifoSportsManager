@@ -1,5 +1,43 @@
 # kanbanProgress.md — the append-only log
 
+## Opening a notification's target now reads it (owner, 2026-10-07)
+
+> **notifications - kad se klikne na open conversation ili open forum iz notificationsa odmah smanji broj
+> unread-a jer je taj vec procitan (i izbaci ga i iz tickera ako je tamo)**
+
+### Two ways of reading a notification, handled differently, neither of them marking it read
+
+The row's click handler marked the notification read. The **Open the topic / Open the conversation** link
+did not — it closed the dropdown and navigated. And the row handler **deliberately skipped** those
+buttons:
+
+```js
+if (event.target.closest('.js-go')) return;
+```
+
+which is right in the sense that it avoided double-handling and wrong in the consequence: a notification
+could be opened, read and answered for ever, and still sit in the ticker with the count unchanged. The
+skip was written as "the link handles it" — and the link did not.
+
+### One path, and the screen moves first
+
+`consumeNotification(id, row)` now serves both ways of reading a notification. **The screen changes
+before the server is asked**: the row leaves the ticker and the badge decrements immediately, then the
+`POST .../read` goes out.
+
+That order is the request. *"Odmah smanji broj unread-a"* — and a badge that waits on a round trip to
+change reads as broken, which is the whole complaint. If the POST fails the next poll corrects it: the row
+is in the database's state either way, and **a count briefly one too high is better than one briefly
+wrong about something already dealt with**.
+
+`decrementUnread` also moves the red dot and `lastSeenUnread`, so **reading a notification cannot make the
+bell ring on the next poll** — the count goes down, the comparison sees no increase, and it stays quiet.
+
+`NotificationBellAlertTest` **9/9**, and the two new tests pin the order: `row.remove()` must come
+**before** the `await authFetch`.
+
+---
+
 ## The Jobs view was a table class that does not exist (owner, 2026-10-07)
 
 > **napravi lepse job pregled, bas je zbrkano, znaci dodaj novi tab gore u admin (ili klasican tab ili

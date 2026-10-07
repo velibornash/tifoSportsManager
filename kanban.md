@@ -2255,6 +2255,23 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Opening a notification's target marks it read — owner, 2026-10-07
+
+> **kad se klikne na open conversation ili open forum iz notificationsa odmah smanji broj unread-a jer je taj
+> vec procitan (i izbaci ga i iz tickera ako je tamo)**
+
+- [x] **The link never marked it read.** Clicking a notification's row did; clicking *Open the conversation*
+      did not — and the row handler deliberately skipped those buttons, so a notification could be acted on
+      for ever and still sit in the ticker with the count unchanged.
+- [x] **One path for both ways of reading it**, `consumeNotification(id, row)`.
+- [x] **The screen moves before the server is asked** — row gone, badge down, then the POST. A badge that
+      waits on a round trip to change reads as broken. If the POST fails the next poll corrects it.
+- [x] **Reading cannot make the bell ring**: the decrement also moves `lastSeenUnread`, so the next poll sees
+      no increase and stays quiet.
+- [x] `NotificationBellAlertTest` **9/9**, pinning that the row is removed **before** the `await`.
+
+---
+
 ## ✅ Jobs view: a real tab, and a table class that exists — owner, 2026-10-07
 
 > **napravi lepse job pregled, bas je zbrkano ... normalna leepa tabela ko sve druge tabele, kolone su ok,

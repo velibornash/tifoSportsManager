@@ -158,6 +158,50 @@ function announceNewArrivals(unread) {
 }
 
 /**
+ * A notification has been dealt with: take it off the screen and off the badge, at once.
+ *
+ * <p><b>The screen changes before the server is asked</b>, because the owner asked for the count to drop
+ * the moment he opens a conversation, and a badge that waits on a round trip to update is a badge that
+ * reads as broken. If the POST fails the next poll corrects it - the row is on its way back into the
+ * database's state either way, and a count that is briefly one too high is better than one that is
+ * briefly wrong about something he has already dealt with.
+ *
+ * <p>Shared by both ways of reading a notification: clicking the row, and clicking the link that opens
+ * the topic or the conversation. They are the same event and used to be handled differently.
+ */
+async function consumeNotification(id, row) {
+    if (!id) {
+        await refreshNotifications();
+        return;
+    }
+    if (row) {
+        row.remove();
+    }
+    decrementUnread();
+    try {
+        await authFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
+    } catch {
+        // Left for the next poll. A read that fails stays unread on the server, which is the honest
+        // state: better a badge one too high than one that clears a notification he never saw.
+    }
+}
+
+/** Moves the badge and the red dot down by one, without waiting for the server. */
+function decrementUnread() {
+    const badge = document.getElementById('notification-badge');
+    const bell = document.getElementById('notification-bell');
+    if (!badge || !bell) return;
+    const current = Number(badge.textContent);
+    const next = Number.isFinite(current) && current > 0 ? current - 1 : 0;
+    badge.textContent = next > 99 ? '99+' : String(next);
+    badge.hidden = next === 0;
+    bell.classList.toggle('has-unread', next > 0);
+    if (lastSeenUnread !== null) {
+        lastSeenUnread = Math.max(0, lastSeenUnread - 1);
+    }
+}
+
+/**
  * The ring itself.
  *
  * <p><b>Synthesised, not a file.</b> A two-note chime built with the Web Audio API costs nothing to
@@ -271,13 +315,16 @@ function targetActionHtml(row) {
     const page = row?.targetPage;
     const id = row?.targetId;
     if (!page || !id) return '';
+    // The notification's own id travels with the link, because opening a conversation *is* reading the
+    // notification that led to it - see consumeNotification.
+    const owner = `data-notification-id="${escapeHtml(row.id)}"`;
     if (page === 'forumTopic') {
         return `<button type="button" class="fm-link-btn js-go js-go-topic"
-            data-topic-id="${escapeHtml(id)}">Open the topic</button>`;
+            data-topic-id="${escapeHtml(id)}" ${owner}>Open the topic</button>`;
     }
     if (page === 'messageThread') {
         return `<button type="button" class="fm-link-btn js-go js-go-thread"
-            data-thread-id="${escapeHtml(id)}">Open the conversation</button>`;
+            data-thread-id="${escapeHtml(id)}" ${owner}>Open the conversation</button>`;
     }
     return '';
 }
@@ -333,6 +380,12 @@ function bindDropdown(dropdown) {
         button.addEventListener('click', () => {
             const topicId = button.dataset.topicId;
             const threadId = button.dataset.threadId;
+            // **Opening the conversation is reading the notification** (owner, 2026-10-07): "kad se klikne
+            // na open conversation ili open forum iz notifications odmah smanji broj unread-a jer je taj
+            // vec procitan". It used to navigate without touching the row, and the row's own click
+            // handler deliberately skipped these buttons - so a notification could be acted on for ever
+            // and still sit in the ticker with the count unchanged.
+            void consumeNotification(button.dataset.notificationId, button.closest('.notification-row'));
             closeDropdown();
             if (topicId && typeof window.openForumTopic === 'function') {
                 window.openForumTopic(topicId);
@@ -343,17 +396,9 @@ function bindDropdown(dropdown) {
     });
 
     dropdown.querySelectorAll('.notification-row').forEach(row => {
-        row.addEventListener('click', async (event) => {
+        row.addEventListener('click', event => {
             if (event.target.closest('.js-go')) return;
-            const id = row.dataset.notificationId;
-            if (!id) return;
-            try {
-                const response = await authFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' });
-                if (response.ok) await refreshNotifications();
-            } catch {
-                // A read that fails stays unread. Better a badge that is one too high than one that
-                // clears a notification the manager never saw.
-            }
+            void consumeNotification(row.dataset.notificationId, row);
         });
     });
 }

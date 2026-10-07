@@ -98,6 +98,40 @@ class NotificationBellAlertTest {
     }
 
     @Test
+    @DisplayName("opening a conversation or a topic marks that notification read")
+    void openingTheTargetReadsTheNotification() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("void consumeNotification(button.dataset.notificationId"),
+                "the Open-the-topic and Open-the-conversation links carry the notification's own id, "
+                        + "because opening the conversation *is* reading the notification");
+
+        assertTrue(js.contains("const owner = `data-notification-id=\"${escapeHtml(row.id)}\"`;"),
+                "the link is rendered with that id on it");
+
+        assertTrue(js.contains("if (event.target.closest('.js-go')) return;"),
+                "and the row's own handler still skips these buttons, so the link handles it once "
+                        + "rather than both handlers marking it read");
+    }
+
+    @Test
+    @DisplayName("the badge drops the moment a notification is read, before the server is asked")
+    void theBadgeDropsImmediately() throws IOException {
+        String js = stripComments(jsSource());
+
+        assertTrue(js.contains("async function consumeNotification"),
+                "one path for both ways of reading a notification - clicking the row and clicking the link");
+        assertTrue(js.contains("row.remove();"),
+                "the row leaves the ticker at once");
+        assertTrue(js.contains("decrementUnread();"),
+                "and so does the count. The owner asked for the number to drop the moment he opens a "
+                        + "conversation, not after a round trip.");
+        assertTrue(js.indexOf("row.remove();") < js.indexOf("await authFetch(`/notifications/${encodeURIComponent(id)}/read`"),
+                "**the screen changes before the server is asked** - a badge that waits on a round trip "
+                        + "reads as broken");
+    }
+
+    @Test
     @DisplayName("the dropdown lists unread only - a read item is gone, not dimmed")
     void theDropdownShowsUnreadOnly() throws IOException {
         String js = stripComments(jsSource());
