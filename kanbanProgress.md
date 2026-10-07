@@ -1,5 +1,70 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-2 — club matches are replayed into ranking points (owner, 2026-10-07)
+
+> **snaga tima moze da utice na projekciju rezultata ali ne i na rejting poene**
+
+A replay, not an accumulator, because `ClubRatingService` already rebuilds ratings by walking every
+played match in order. The ledger is **rewritten** from match history on every run, so a wrong row is a
+bug in this class rather than a permanent scar.
+
+### The projection had to grow
+
+`ScoredMatch` carries neither **the season** nor **the division tier**, and the system needs both:
+
+- without the season a replay cannot fill a **per-season** ledger at all;
+- without the tier the division weight is unreachable — and reading the tier off a club's *rating* would
+  be circular, while reading it off the club *at replay time* would score a season in the division the
+  club was promoted **into** rather than the season the match was **played in**.
+
+So `findPlayedClubRankedInOrder` is a new projection carrying `seasonYear` and **both clubs' tiers**.
+A JPQL query with two implicit joins that compiles proves nothing about whether it parses, so there is a
+test that runs it.
+
+### Three tests that were wrong before they were right
+
+**The first test asserted something false, and vacuously.** It claimed "the same 1-0 is worth the same
+against a giant and against a nobody". Two problems: every subtotal came out at exactly `0.0`, so it
+compared zero with zero and **would have passed against the old gap-weighted Elo too**; and the claim
+itself is not true, because a 1-0 against an overwhelming favourite and a 1-0 against a nobody have
+*different forecasts* and so legitimately score differently.
+
+Replaced with what **is** true and is the actual requirement: the ledger holds **exactly**
+`pointsFor(forecast margin, actual margin, competition, tier)` per match and nothing else. Any surviving
+term in the opponent's own strength shows up as a difference from that number. Opponent strength reaches
+the points only *through the forecast*.
+
+**Zero rows were being skipped** by an `== 0.0` on a double. That skip bought nothing — the window treats
+a missing season as zero anyway — and it was what made the first test vacuous. A club that played a
+season and earned nothing now has a row saying so.
+
+**Equal sides are not a stable fixture**, which cost two more rounds. The forecast moves with recent
+results, correctly:
+
+| State | Forecast for two equal 80-rated sides |
+|---|---|
+| before any match | **+0.49** — a coin flip, under the 1.0 threshold |
+| after the away side lost one badly | **+1.17** — a forecast **win** |
+
+Same two teams, same ratings. So a test using equal sides passed or failed depending on which tests had
+run before it. It now uses a clear strength gap, and the instability is itself a test
+(`theForecastMovesWithRecentResults`) so the number is on the record rather than in a comment nobody runs.
+
+### A consequence worth the owner's eye
+
+Because home advantage pushes two equal sides to **+0.49** but a recent defeat tips them past **1.0**,
+**an expected draw is a narrower band in practice than the specification suggests.** Worth revisiting if
+the ranking feels trigger-happy; the threshold is one constant.
+
+### 47 tests green
+
+Across the replay (7), the ledger (4), the engine (29) and the preview (7).
+
+**Not verified against real PostgreSQL** — that needs the application, which is only started through
+`run-app.sh`, and the owner is not to start it until the queue is clear.
+
+---
+
 ## P0-RANK-1 — the per-season ledger the rolling window reads (owner, 2026-10-07)
 
 > **razdvoji po taskovima ... i uzimaj jedan po jedan**

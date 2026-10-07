@@ -64,6 +64,36 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      * types and a national side plays in nothing else, so the type test separates the pools with no
      * extra query.
      */
+    /**
+     * Every played match between clubs, in the order it was played, with the season and both divisions.
+     *
+     * <p>Built for the ranking-points replay ({@code P0-RANK-2}), which needs two things
+     * {@link ScoredMatch} deliberately does not carry:
+     *
+     * <ul>
+     *   <li><b>the season</b>, because the displayed total is a rolling window over per-season subtotals
+     *       and a replay that cannot say which season a match belonged to cannot fill the ledger;</li>
+     *   <li><b>each club's division tier</b>, because the points scale by tier, and reading the tier off
+     *       a club's rating would be circular while reading it off the club at replay time would give
+     *       the season a club was promoted into rather than the season the match was played in.</li>
+     * </ul>
+     *
+     * <p>Clubs only, on {@code teamType = CLUB}: national sides belong to
+     * {@code NationalRatingService} and must never be added into a club's ledger.
+     *
+     * <p>Date order with the id tiebreak, so a replay is deterministic and can safely be run twice.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.RankedMatch("
+            + "m.id, home.id, away.id, m.homeGoals, m.awayGoals, m.seasonYear, "
+            + "c.scope, c.type, c.teamType, c.nationalStage, homeComp.tier, awayComp.tier) "
+            + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away "
+            + "LEFT JOIN m.competition c "
+            + "LEFT JOIN home.competition homeComp LEFT JOIN away.competition awayComp "
+            + "WHERE m.played = true AND c.teamType = "
+            + "org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB "
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<RankedMatch> findPlayedClubRankedInOrder();
+
     @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
             + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
