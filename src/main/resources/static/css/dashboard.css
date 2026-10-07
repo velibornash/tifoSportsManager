@@ -5671,3 +5671,16 @@ body {
 .fm-admin-tabpanel[hidden] {
     display: none;
 }
+
+/* The last thing said in a conversation, under the subject in the messages list (owner, 2026-10-07). */
+.message-thread-preview {
+    margin: 2px 0 4px;
+    color: #b9c6da;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.forum-topic-row:has(.message-thread-preview) .forum-topic-title {
+    margin-bottom: 2px;
+}

@@ -213,6 +213,15 @@ export function createMessagesView(deps) {
 
     // ── Rendering ───────────────────────────────────────────────────────────────────────────────────
 
+    /** One line of a message for the list, on its own line, without cutting a word in half. */
+    function truncate(text, limit) {
+        const clean = String(text || '').replace(/\s+/g, ' ').trim();
+        if (clean.length <= limit) return clean;
+        const cut = clean.slice(0, limit);
+        const lastSpace = cut.lastIndexOf(' ');
+        return (lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut) + '…';
+    }
+
     function threadListHtml(threads) {
         return `<div class="forum-topic-list">${threads.map(threadRowHtml).join('')}</div>`;
     }
@@ -223,6 +232,9 @@ export function createMessagesView(deps) {
                 <div class="forum-topic-main">
                     <button type="button" class="forum-topic-title js-open-thread"
                             data-thread-id="${escapeHtml(thread.id)}">${escapeHtml(thread.subject || '(no subject)')}</button>
+                    <!-- The last thing said, which is what the list is read for (owner, 2026-10-07):
+                         "u listi poruka se samo vidi subject i poslednja poruka". -->
+                    ${thread.lastMessage ? `<div class="message-thread-preview">${escapeHtml(truncate(thread.lastMessage, 140))}</div>` : ''}
                     <div class="forum-topic-meta">
                         with <button type="button" class="fm-link-btn js-open-manager"
                                       data-manager-id="${escapeHtml(thread.otherUserId)}">${escapeHtml(thread.otherName || 'a manager')}</button>

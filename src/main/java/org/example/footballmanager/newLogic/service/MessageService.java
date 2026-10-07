@@ -8,6 +8,8 @@ import org.example.footballmanager.newLogic.model.NotificationKind;
 import org.example.footballmanager.newLogic.repository.DirectMessageRepository;
 import org.example.footballmanager.newLogic.repository.MessageThreadRepository;
 import org.springframework.data.domain.PageRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +46,8 @@ import java.util.Set;
  */
 @Service
 public class MessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(MessageService.class);
 
     private static final int MAX_SUBJECT = 150;
     private static final int MAX_BODY = 4000;
@@ -238,11 +242,15 @@ public class MessageService {
             }
         }
 
+        // One query for every preview on the page, not one per row (owner, 2026-10-07): "u listi poruka
+        // se samo vidi subject i poslednja poruka". Thirty threads is thirty queries otherwise.
+        Map<Long, String> previews = newestBodies(merged);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("page", safePage);
         result.put("size", safeSize);
         result.put("unreadThreads", unread);
-        result.put("threads", merged.stream().map(t -> threadSummary(t, viewer)).toList());
+        result.put("threads", merged.stream().map(t -> threadSummary(t, viewer, previews)).toList());
         return result;
     }
 
@@ -340,11 +348,43 @@ public class MessageService {
 
     // ── Rendering ───────────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * The newest message body per thread, in one query.
+     *
+     * <p>An empty map rather than an exception where the database cannot serve the {@code DISTINCT ON}
+     * query — H2 in the test profile, or any future one. The list then shows subject and counts with no
+     * preview, which is exactly the screen this had a week ago, and a missing preview is a far better
+     * failure than a broken list.
+     */
+    private Map<Long, String> newestBodies(List<MessageThread> threads) {
+        List<Long> ids = threads.stream().map(MessageThread::getId).filter(java.util.Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        try {
+            Map<Long, String> previews = new LinkedHashMap<>();
+            for (DirectMessage message : messages.findNewestPerThread(ids)) {
+                previews.put(message.getThread().getId(), message.getBody());
+            }
+            return previews;
+        } catch (RuntimeException e) {
+            log.debug("No message previews for this database ({}); listing without them.", e.getMessage());
+            return Map.of();
+        }
+    }
+
     private Map<String, Object> threadSummary(MessageThread thread, User viewer) {
+        return threadSummary(thread, viewer, Map.of());
+    }
+
+    private Map<String, Object> threadSummary(MessageThread thread, User viewer,
+                                              Map<Long, String> previews) {
         User other = otherParticipant(thread, viewer);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", thread.getId());
         row.put("subject", thread.getSubject());
+        // The last thing said in the conversation, which is what the list is read for.
+        row.put("lastMessage", previews.get(thread.getId()));
         row.put("otherUserId", other == null ? null : other.getId());
         row.put("otherName", nameOf(other));
         row.put("otherHasChosenName", other != null

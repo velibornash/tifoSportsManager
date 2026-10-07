@@ -61,6 +61,75 @@ class MessageServiceTest extends BaseTest {
     @Autowired
     UserRepository users;
 
+    // ── The list shows the last message ────────────────────────────────────────────────────────────
+
+    @Test
+    @Transactional
+    @DisplayName("the list carries the newest message, not the first or an arbitrary one")
+    void theListCarriesTheNewestMessage() {
+        User sender = aUser();
+        User recipient = aUser();
+        DirectMessage first = messages.send(sender, null, recipient.getId(), "Deadline", "The first one.");
+        messages.send(recipient, first.getThread().getId(), null, null, "The second one.");
+        messages.send(sender, first.getThread().getId(), null, null, "The third and last one.");
+
+        Map<String, Object> row = onlyThread(sender);
+
+        assertEquals("The third and last one.", row.get("lastMessage"),
+                "the owner's list is 'subject and the last message', so it has to be the NEWEST one - the "
+                        + "first message is the tempting wrong answer, and the preview exists precisely "
+                        + "because it was missing. **On H2 this passes through the fallback** (the "
+                        + "DISTINCT ON query is PostgreSQL-only), so the query itself was verified "
+                        + "against the owner's database by hand: it returns the newest row per thread.");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("each thread in the list carries its own last message, not one thread's")
+    void everyThreadCarriesItsOwnPreview() {
+        User me = aUser();
+        User first = aUser();
+        User second = aUser();
+        messages.send(first, null, me.getId(), "One", "The first conversation's last words.");
+        messages.send(second, null, me.getId(), "Two", "The second conversation's last words.");
+
+        Map<String, Object> payload = messages.inbox(me, 0, 30);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.get("threads");
+
+        assertEquals(2, rows.size());
+        assertEquals(2, rows.stream().map(row -> String.valueOf(row.get("lastMessage"))).distinct().count(),
+                "each thread shows its own text, not one thread's preview repeated: " + rows);
+        assertTrue(rows.stream().anyMatch(row -> String.valueOf(row.get("lastMessage")).contains("first conversation")),
+                "and the right one is beside the right subject: " + rows);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("a thread whose only message is deleted still lists, with no preview")
+    void aThreadWithNoMessagesStillLists() {
+        User sender = aUser();
+        User recipient = aUser();
+        DirectMessage first = messages.send(sender, null, recipient.getId(), "Subject", "Body.");
+        directMessages.delete(first);
+
+        Map<String, Object> row = onlyThread(sender);
+
+        assertEquals("Subject", row.get("subject"), "the thread is still there");
+        assertNull(row.get("lastMessage"),
+                "with no message there is nothing to preview - null rather than an empty string, so the "
+                        + "screen can leave the line out instead of showing a blank one");
+    }
+
+    /** The sender's only thread's row, for a test that is about one conversation. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> onlyThread(User viewer) {
+        Map<String, Object> payload = messages.inbox(viewer, 0, 30);
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.get("threads");
+        assertEquals(1, rows.size(), "one conversation: " + rows);
+        return rows.get(0);
+    }
+
     // ── Sending ─────────────────────────────────────────────────────────────────────────────────────
 
     @Test

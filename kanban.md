@@ -2255,6 +2255,25 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ The message list carries the last message — owner, 2026-10-07
+
+> **u listi poruka se samo vidi subject i poslednja poruka i kad se klikne onda se expanduje ceo thread**
+
+- [x] **Reply, the original subject with no subject field on a reply, and the New message button were all
+      already built and working** — behind Community, which is why they were hard to find. `MessageService.send`
+      is deliberately one route for both: `threadId` continues, `recipientUserId` opens, so the client cannot
+      fork a thread by choosing wrong.
+- [x] **The one real gap was the last message**, which is the thing the row is read for.
+- [x] **`lastMessage` on every thread row, in one query** for the page — `DISTINCT ON (thread_id)`, because
+      thirty threads is thirty queries otherwise.
+- [x] **PostgreSQL-only, and the H2 tests pass through the fallback** — so a green suite is not evidence
+      the query works. Verified against the owner's database (`PREVIEW PATH: QUERY (PostgreSQL DISTINCT ON)`)
+      and the test says in its own assertion that it checks the fallback.
+- [x] A thread with no messages lists **no** preview rather than an empty one.
+- [x] `MessageServiceTest` **27/27**: the preview is the **newest** message, each thread carries its own.
+
+---
+
 ## ✅ The notification chime resumes instead of giving up — owner, 2026-10-07
 
 > **red dot radi lepo i broj ali taj ton kad stigne ja ne cujem**

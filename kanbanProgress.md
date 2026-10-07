@@ -1,5 +1,70 @@
 # kanbanProgress.md — the append-only log
 
+## The message list was missing the one thing the list is for (owner, 2026-10-07)
+
+> **postoji jos jedna stvar, kada stigne poruka mozemo imati reply i onda te poruke treba da budu u threadu
+> sa originalnim prvim Subject i bez mogucnosti da se dodaje subjext u reply a da postoji New message button
+> koja moze zapoceti novi thread ka istom korisniku ili nekom drugom. U listi poruka se samo vidi subject i
+> poslednja poruka i kad se klikne onda se expanduje ceo thread..doable?**
+
+### Three of the four already existed
+
+Reply, the original subject with no subject field on a reply, and the New message button opening a thread
+to anyone or reopening one with the same manager — all of it is built and working:
+
+| Behaviour | Where |
+|---|---|
+| Reply box under a thread, `Send reply` | `messages-view.js:159` |
+| **A reply form with no subject field** — only a body | `messages-view.js:162` |
+| The thread heading is the original subject | `thread.subject` |
+| New message, with a recipient picker and a subject field | `messages-view.js:71` |
+| Repopening a conversation with the same manager | `MessageService.send` with `recipientUserId` and no `threadId` |
+
+`MessageService.send` is deliberately **one route for both** — `threadId` continues, `recipientUserId`
+opens — so the client cannot fork a thread by choosing wrong. Membership is checked inside the service,
+not beside it, because a thread id in a body is a thing a caller can change.
+
+**So the honest answer to "doable?" is: it was already done, and I could not find it either until I read
+the code.** It lives behind **Community**, not under a top-level nav item, and `messages-view.js` is 502
+lines whose header comment already quotes this specification.
+
+### The one real gap: the last message
+
+The list row showed the subject, who it was with, the message count and the time — and **not the last
+message**, which is the thing the row is read for.
+
+`lastMessage` is now on every thread row, **one query for the whole page**:
+
+```sql
+SELECT DISTINCT ON (m.thread_id) m.*
+FROM nl_direct_message m
+WHERE m.thread_id IN (:threadIds) AND m.deleted_at IS NULL
+ORDER BY m.thread_id, m.created_at DESC, m.id DESC
+```
+
+Thirty threads is thirty queries otherwise, and this screen shows thirty of them. `DISTINCT ON` is the
+one-query form of "newest per group" — and it is **PostgreSQL-only**, so `MessageService` falls back to
+listing without a preview where it is not available.
+
+**Which is the interesting part: the H2 tests pass through that fallback.** A green suite here is not
+evidence the query works, so it was run against the owner's database:
+
+```
+PREVIEW PATH: QUERY (PostgreSQL DISTINCT ON) -> Two.
+```
+
+and by hand against `sokker_db`, returning the newest row per thread. The test says in its own assertion
+that it verifies the fallback and not the query, because a test that implies more than it checked is the
+habit this task has been undoing all week.
+
+A thread whose only message was deleted carries **no** preview rather than an empty one, so the screen can
+leave the line out instead of showing a blank.
+
+`MessageServiceTest` **27/27**, three added: the preview is the *newest* message (the tempting wrong
+answer is the first), each thread carries its own, and a thread with no messages still lists.
+
+---
+
 ## The chime gave up on itself, silently (owner, 2026-10-07)
 
 > **notification - red dot radi lepo i broj ali taj ton kad stigne ja ne cujem.**
