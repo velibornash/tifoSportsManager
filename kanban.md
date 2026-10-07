@@ -2255,6 +2255,29 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## 🔶 The preview predicts again, and the ladder's top rung is reachable — owner, 2026-10-07
+
+> **preview vise ne daje prognoze a radile su pre** — showed `Not predicted`, `0%0%0%`, `xG 0.00 : 0.00`
+
+- [x] **Cause was the endpoint, not the arithmetic.** `previewForFixture` returned every computed field
+      null by design; the screenshot's numbers came from `ScheduleInsightService`.
+- [x] **`MatchPreviewService` computes the real prediction** and keeps fitness, absences and the lineup
+      null — the original reasoning was right, it was just applied one field too far.
+- [x] **Competition-agnostic**, so league, national cup, international club cup, senior and U-21 all get
+      a forecast from the same code.
+- [x] **Unit mismatch fixed in one place:** the renderer multiplies probabilities by 100, the service
+      returns whole percentages. Missing this renders every forecast as 0%.
+- [x] **`/match-stats/lineups/{id}` is a 404, not a 500** — an unplayed fixture has no `Match` row, and
+      that is not an error.
+- [x] **`EXPECTED_WIN_MARGIN` measured, not assumed.** Across the whole reachable strength range the
+      forecast margin spans only **−1.10 to +1.79**, so a threshold of 2.0 made *expected to win*
+      **unreachable** and the top rungs dead code. Now 1.0, chosen from the measured table.
+- [x] **32 tests green**, six of which fail against the old null stub.
+- [ ] **Not verified in a browser or against the real database** — the application is only ever started
+      through `run-app.sh`, and the owner is not to start it until the list is clear.
+
+---
+
 ## 🔶 Ranking points: the formula is specified and tested, not yet wired — owner, 2026-10-07
 
 > **zelim da osmislis kako se dobijaju i gube ranking poeni za ranking listu, i za NT i za klubove**

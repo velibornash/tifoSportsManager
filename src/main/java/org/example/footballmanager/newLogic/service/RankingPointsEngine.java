@@ -68,8 +68,25 @@ public final class RankingPointsEngine {
 
     // ── What a team was expected to do ──────────────────────────────────────────────────────────────
 
-    /** How close the forecast was to counting as a win or a loss. */
-    public static final double EXPECTED_WIN_MARGIN = 2.0;
+    /**
+     * How close the forecast has to be to counting as a win or a loss.
+     *
+     * <p><b>Chosen from measurement, and the first value was wrong in a way nothing would have
+     * revealed.</b> This was 2.0, on the reasoning that a forecast 3-1 is a margin of two. But
+     * {@link ScheduleInsightService} produces expected goals, and across the whole reachable range of
+     * squad strengths (38-92) the forecast margin only ever spans <b>-1.10 to +1.79</b>, with two
+     * exactly equal sides sitting at <b>+0.50</b> because of home advantage. A threshold of 2.0 therefore
+     * made <i>expected to win</i> unreachable: no fixture in the game could ever pay out the top rungs of
+     * the ladder, and the strongest possible favourite was scored as a coin flip.
+     *
+     * <p>1.0 puts a genuine edge over a threshold the model can actually reach: a 92-rated side against
+     * a 62-rated one forecasts +1.58 and counts as an expected win, while two sides within a few points
+     * forecast under 0.5 and do not.
+     *
+     * <p>{@code MatchPreviewPredictionTest.theTopRungIsReachable} fails if this ever drifts back out of
+     * the model's range.
+     */
+    public static final double EXPECTED_WIN_MARGIN = 1.0;
 
     /** What the forecast said a team would do. */
     public enum Expected {

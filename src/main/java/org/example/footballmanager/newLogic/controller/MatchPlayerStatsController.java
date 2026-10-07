@@ -93,8 +93,18 @@ public class MatchPlayerStatsController {
 
     @GetMapping("/lineups/{matchId}")
     public ResponseEntity<Map<String, Object>> getLineupsByMatch(@PathVariable Long matchId) {
-        Match match = matchRepository.findById(matchId)
-                .orElseThrow(() -> new RuntimeException("Match not found"));
+        // **A 404, not a 500.** The preview page fetches lineups for an *unplayed fixture* too, and a
+        // bare RuntimeException came out of the global handler as an unhandled error with a full stack
+        // trace in the log - the owner reported it as `Unhandled exception during GET
+        // /match-stats/lineups/1: Match not found` while simply browsing a league fixture. There is no
+        // Match row yet, which is not an error condition; it is an unplayed match.
+        //
+        // Also the null case the owner could reach by hand: a match whose lineups are stored as JSON and
+        // has no per-player stats rows.
+        Match match = matchRepository.findById(matchId).orElse(null);
+        if (match == null) {
+            return ResponseEntity.status(404).build();
+        }
 
         String homeTeam = match.getHomeTeam().getName();
         String awayTeam = match.getAwayTeam().getName();

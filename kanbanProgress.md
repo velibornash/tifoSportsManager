@@ -1,5 +1,70 @@
 # kanbanProgress.md — the append-only log
 
+## The preview stopped predicting, and the ladder's top rung was dead code (owner, 2026-10-07)
+
+> **preview vise ne daje prognoze a radile su pre i da ih treba prilagoditi izmenama kad zavrsis**
+
+The screen showed `Not predicted`, `0%0%0%`, `xG 0.00 : 0.00` and `Nothing known yet.`, and the log carried
+`Unhandled exception during GET /match-stats/lineups/1: Match not found` while simply opening a league
+fixture. The owner's screenshot of the working version (`manual/img/32-match-preview.jpg`) had `OVR 93.4`,
+`Prediction: Draw 51% / 25% / 24%`, `xG 1.30 : 1.20` and "Both sides are of similar quality".
+
+### The arithmetic had not moved. The endpoint had.
+
+`ZoxApiController.previewForFixture` returned **every computed field null**, and its own javadoc defended
+it: *"a screen that opens on a fixture must not show a 70% rating or a 25% draw probability as though it
+had been worked out."*
+
+That reasoning was right and is **kept**. Squad fitness, absences, position mismatches and the starting
+eleven genuinely are not knowable before a match. It was applied one field too far: **a prediction is
+exactly the thing that is knowable**, and withholding it left the tab with nothing but its own absence.
+
+`MatchPreviewService` now computes the real prediction through `ScheduleInsightService` and leaves the
+rest null. It is competition-agnostic — it works from two `Team`s and their form — so it serves a league
+fixture, a national cup tie, an international club cup tie, a senior international and a U-21
+international identically.
+
+**A unit mismatch that would have rendered every forecast as 0%:** the preview renderer does
+`Number(homeWinProbability) * 100`, so the payload needs fractions, while `ScheduleInsightService` returns
+whole percentages. The division happens in one place.
+
+`GET /match-stats/lineups/{id}` threw a bare `RuntimeException` for a match that has no row yet, which the
+global handler turned into a 500 with a full stack trace. There is no `Match` row for an unplayed
+fixture — **that is not an error condition, it is an unplayed match** — so it is a 404 now.
+
+### The measurement that matters more than the fix
+
+`EXPECTED_WIN_MARGIN` was 2.0, chosen because a forecast 3-1 is a margin of two. But the forecast
+produces *expected goals*, and across every pairing of the reachable 38-92 strength range the margin only
+ever spans:
+
+```
+home=92  →   0.50   0.80   1.06   1.29   1.46   1.58   1.69   1.79
+home=40  →  -1.10  -0.97  -0.85  -0.67  -0.40  -0.13  -0.13   0.47
+```
+
+**No fixture in this game can produce a margin of 2.0.** So *expected to win* was unreachable, the top
+rungs of the ladder could never pay out, and the strongest possible favourite — 92-rated against 38-rated
+— was scored as a coin flip. Nothing in the arithmetic would have said so; it took measuring the model.
+
+Now **1.0**, chosen from that table: a 92 against a 62 forecasts +1.58 and counts as an expected win,
+while two sides within a few points sit under 0.5 (equal sides sit at **+0.50** from home advantage) and
+do not. `MatchPreviewPredictionTest.theTopRungIsReachable` fails if it drifts back out of the model's
+range.
+
+### Verified, and not verified
+
+**32 tests green** — 25 ladder, 7 preview. Six of the seven preview tests would have failed against the
+old stub, because a stub returning nulls fails "is not null" better than any assertion about magnitude.
+
+**Not verified in a browser and not verified against the real database.** The owner is not to start the
+application until everything on the list is done, and starting it is only ever done through
+`run-app.sh` — a probe of mine had set `server.port=8098` in a test properties file, which is exactly
+what `AGENTS.md` forbids, and it has been removed along with the leftover `run-app.sh` instance that was
+still holding `:8080`.
+
+---
+
 ## The ranking-points system: one number, many ways to earn it (owner, 2026-10-07)
 
 > **zelim da osmislis kako se dobijaju i gube ranking poeni za ranking listu, i za NT i za klubove**

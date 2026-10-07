@@ -42,10 +42,13 @@ class RankingPointsEngineTest {
         @Test
         @DisplayName("a small edge is not a forecast win - the owner's 'mala razlika'")
         void aSmallEdgeIsNotAWin() {
-            assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(1.0));
+            // The threshold is 1.0, measured from the forecast's own reachable range rather than
+            // assumed; see EXPECTED_WIN_MARGIN. 0.9 is the largest margin that is still a coin flip.
+            assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(0.9));
             assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(0.0));
-            assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(-1.0));
-            assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(1.9));
+            assertEquals(RankingPointsEngine.Expected.DRAW, RankingPointsEngine.expected(-0.9));
+            assertEquals(RankingPointsEngine.Expected.WIN, RankingPointsEngine.expected(1.0),
+                    "the threshold itself is a win");
         }
     }
 
@@ -148,8 +151,13 @@ class RankingPointsEngineTest {
         @DisplayName("a draw is worth nothing either way")
         void aDrawIsFree() {
             assertEquals(0.0, RankingPointsEngine.ladder(0.0, 0.0), EPS);
-            assertEquals(0.0, RankingPointsEngine.ladder(1.0, 0.0), EPS);
-            assertEquals(0.0, RankingPointsEngine.ladder(-1.0, 0.0), EPS);
+            assertEquals(0.0, RankingPointsEngine.ladder(0.9, 0.0), EPS,
+                    "0.9 is inside the draw threshold");
+            assertEquals(0.0, RankingPointsEngine.ladder(-0.9, 0.0), EPS);
+            // And the boundary is a win, so drawing against it costs: asserted here because this row
+            // changed when EXPECTED_WIN_MARGIN moved from 2.0 to a measured 1.0.
+            assertEquals(-20.0, RankingPointsEngine.ladder(1.0, 0.0), EPS,
+                    "1.0 is the win threshold itself, so drawing against it crosses the line");
         }
 
         @Test

@@ -25,6 +25,7 @@ public class ZoxApiController {
     private final MatchFixtureRepository fixtures;
     private final MatchPlayerStatsRepository statsRepository;
     private final ObjectMapper objectMapper;
+    private final org.example.footballmanager.newLogic.service.MatchPreviewService previews;
 
     /**
      * The pre-match screen, for a fixture or for a match that has been played.
@@ -108,54 +109,20 @@ public class ZoxApiController {
     }
 
     /**
-     * The same shape as a played match's preview, filled only with what a fixture actually knows.
+     * The preview for a fixture that has not been played, with a real prediction.
      *
-     * <p>Every uncertain field is null rather than a default, because the defaults on the played-match
-     * path are placeholders for numbers nobody computed — and a screen that opens on a fixture must not
-     * show a 70% rating or a 25% draw probability as though it had been worked out.
+     * <p>This used to return every computed field null, on the reasoning — which was right — that a
+     * screen opening on a fixture must not show a 92% fitness as though it had been worked out. It was
+     * applied one field too far: <b>a prediction is exactly what is knowable before a match</b>, and
+     * withholding it left the owner with "Not predicted", 0%0%0% and an empty "Why this prediction".
+     * See {@link MatchPreviewService} for the whole of it.
+     *
+     * <p>Squad fitness, absences, position mismatches and the starting eleven are still null, because
+     * they genuinely are not knowable and inventing them is the thing to avoid.
      */
-    private Map<String, Object> previewForFixture(org.example.footballmanager.newLogic.model.MatchFixture fixture) {
-        String homeTeam = fixture.getHomeTeam() != null ? fixture.getHomeTeam().getName() : "Home";
-        String awayTeam = fixture.getAwayTeam() != null ? fixture.getAwayTeam().getName() : "Away";
-        boolean home = true;
-
-        Map<String, Object> preview = new LinkedHashMap<>();
-        preview.put("homeTeamName", homeTeam);
-        preview.put("awayTeamName", awayTeam);
-        preview.put("homeTeamRating", null);
-        preview.put("awayTeamRating", null);
-        preview.put("homeRecentForm", null);
-        preview.put("awayRecentForm", null);
-        preview.put("expectedResult", null);
-        preview.put("homeWinProbability", null);
-        preview.put("drawProbability", null);
-        preview.put("awayWinProbability", null);
-        preview.put("expectedHomeGoals", null);
-        preview.put("expectedAwayGoals", null);
-        preview.put("homeFormation", fixture.getHomeTeam() != null ? fixture.getHomeTeam().getFormation() : null);
-        preview.put("awayFormation", fixture.getAwayTeam() != null ? fixture.getAwayTeam().getFormation() : null);
-        preview.put("homeFormationFitness", null);
-        preview.put("awayFormationFitness", null);
-        preview.put("homeBenchQuality", null);
-        preview.put("awayBenchQuality", null);
-        preview.put("homeAvailabilityScore", null);
-        preview.put("awayAvailabilityScore", null);
-        preview.put("homePositionMismatches", null);
-        preview.put("awayPositionMismatches", null);
-        preview.put("homePlayStyle", null);
-        preview.put("awayPlayStyle", null);
-        preview.put("analysisText", null);
-        preview.put("predictionReasons", List.of());
-        preview.put("homeInsights", List.of());
-        preview.put("awayInsights", List.of());
-        preview.put("homeAbsentees", List.of());
-        preview.put("awayAbsentees", List.of());
-        preview.put("homeLineup", List.of());
-        preview.put("awayLineup", List.of());
-        preview.put("matchDate", fixture.getMatchDate() != null ? fixture.getMatchDate().toString() : null);
-        preview.put("played", false);
-        preview.put("fixtureId", fixture.getId());
-        return preview;
+    private Map<String, Object> previewForFixture(
+            org.example.footballmanager.newLogic.model.MatchFixture fixture) {
+        return previews.previewForFixture(fixture);
     }
 
     /**
