@@ -150,10 +150,12 @@ public class ClubRatingService {
     /**
      * Scores one match into the working ratings, recording what both sides held beforehand.
      *
-     * <p>The K weight is computed against the gap between the two clubs, which is the whole point of
-     * {@code clubK}'s third argument — a fifth-tier club beating a first-tier one is an enormous gain
-     * precisely because it exceeded a very low expectation, and that is what the owner meant by
-     * "neverovatan rating boost".
+     * <p>The K weight no longer looks at the gap. It used to — a fifth-tier club beating a first-tier
+     * one was "an enormous gain precisely because it exceeded a very low expectation", which the owner
+     * called a *neverovatan rating boost* at the time and then rejected as part of collapsing this into
+     * one system. The distinction between the two is not lost, it has moved: the forecast in
+     * {@link ScheduleInsightService} already knows a giant is a giant, so a result is rewarded for
+     * beating what was predicted rather than for beating a bigger name.
      */
     private void applyToWorkingRatings(ScoredMatch match, Map<Long, Double> current, Map<Long, Double> previous) {
         Long homeId = match.homeTeamId();

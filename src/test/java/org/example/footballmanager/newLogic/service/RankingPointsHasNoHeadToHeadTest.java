@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -54,20 +55,29 @@ class RankingPointsHasNoHeadToHeadTest {
         }
     }
 
+    /**
+     * The gap weighting is gone from the rating as well, so there is genuinely one system.
+     *
+     * <p>It was defended in this file on the grounds that a club's rating is meant to reward an underdog
+     * beating a giant, and that removing it would satisfy a card by deleting a feature somebody asked
+     * for. The owner overruled that in one line — <b>JEDAN JEDINI REJTING SISTEM</b> — and the distinction
+     * I was protecting turns out not to be lost: the forecast already knows a giant is a giant, so a
+     * result is rewarded for beating what was predicted rather than for beating a bigger name.
+     *
+     * <p>Asserted over a sweep of rating gaps rather than at one point, because a reintroduced term
+     * would be smallest at equal ratings and largest at the extremes.
+     */
     @Test
-    @DisplayName("the gap-weighted overload is still there for the rating, so its behaviour is visible")
-    void theRatingKeepsItsGapWeightingDeliberately() {
-        // Stated as a fact rather than left implicit: if this ever goes away it is a product decision
-        // about the *rating*, not a side effect of work on the points, and whoever does it should know
-        // that the league table's Elo column and the underdog-boost behaviour both go with it.
-        double upset = RatingEngine.clubK(
-                org.example.footballmanager.newLogic.model.MatchValue.LEAGUE, 1100.0, 1700.0);
-        double even = RatingEngine.clubK(
-                org.example.footballmanager.newLogic.model.MatchValue.LEAGUE, 1500.0, 1500.0);
-
-        assertTrue(upset > even,
-                "the rating is meant to reward an underdog more, which is why the gap weighting exists "
-                        + "there: " + upset + " vs " + even);
+    @DisplayName("no rating gap survives anywhere in the rating or the points")
+    void noGapTermSurvivesInEitherSystem() {
+        for (int gap = 0; gap <= 800; gap += 100) {
+            double weight = RatingEngine.clubK(
+                    org.example.footballmanager.newLogic.model.MatchValue.LEAGUE,
+                    1500.0 - gap / 2.0, 1500.0 + gap / 2.0);
+            assertEquals(RatingEngine.CLUB_BASE_K, weight, 1e-9,
+                    "a gap of " + gap + " still changes the weight (" + weight + "); the rating is "
+                            + "head-to-head again and there are two systems");
+        }
     }
 
     private static String firstHit(String source, String needle) {

@@ -108,6 +108,29 @@ class RatingEngineTest {
             assertTrue(cup > friendly, "cup must beat friendly");
         }
 
+        /**
+         * The owner's ruling, stated as an assertion:
+         * <b>JEDAN JEDINI REJTING SISTEM</b> — one single rating system, and strength moves the forecast,
+         * never the rating.
+         *
+         * <p>The weight depended on the gap between the two clubs' ratings. It no longer does, and the two
+         * arguments are kept so nobody is tempted to reintroduce a term: the extremes below are the
+         * widest gap the game can produce, and they must come out identical.
+         */
+        @Test
+        @DisplayName("the weight does not depend on either club's rating")
+        void theWeightIgnoresTheGap() {
+            double even = RatingEngine.clubK(MatchValue.LEAGUE, 1500.0, 1500.0);
+            double enormousUpset = RatingEngine.clubK(MatchValue.LEAGUE, 1100.0, 1700.0);
+            double topAgainstBottom = RatingEngine.clubK(MatchValue.LEAGUE, 1900.0, 1100.0);
+
+            assertEquals(even, enormousUpset, 1e-9,
+                    "beating a giant must not be worth more than beating an equal, or there are two "
+                            + "rating systems and the opponent is counted twice - once in the forecast "
+                            + "and again in the weight");
+            assertEquals(even, topAgainstBottom, 1e-9);
+        }
+
         @Test
         @DisplayName("a friendly still moves the rating, just less")
         void friendliesAreNotFree() {

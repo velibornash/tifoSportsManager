@@ -71,6 +71,7 @@ public class CountryController {
     private final SeasonRepository seasonRepository;
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
+    private final org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints;
     private final org.example.commonmanager.repository.UserRepository humanUserRepository;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     private final org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
@@ -82,7 +83,8 @@ public class CountryController {
             PresenceRegistry presenceRegistry,
             org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups,
             org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures,
-            org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository) {
+            org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository,
+            org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -100,6 +102,7 @@ public class CountryController {
         this.presenceRegistry = presenceRegistry;
         this.internationalClubCups = internationalClubCups;
         this.plusFeatures = plusFeatures;
+        this.rankingPoints = rankingPoints;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
     }
 
@@ -224,35 +227,59 @@ public class CountryController {
     @GetMapping("/ranking")
     public List<Map<String, Object>> ranking(@RequestParam(defaultValue = "senior") String level) {
         boolean youth = "u21".equalsIgnoreCase(String.valueOf(level));
+        org.example.footballmanager.newLogic.model.NationalTeamLevel nationalLevel = youth
+                ? org.example.footballmanager.newLogic.model.NationalTeamLevel.U21
+                : org.example.footballmanager.newLogic.model.NationalTeamLevel.SENIOR;
+        int season = seasonService.getActiveSeasonYear();
+
         List<Country> world = countryRepository.findAll().stream()
-                .filter(country -> country.getSeniorNationalTeam() != null || country.getU21NationalTeam() != null)
+                .filter(country -> country.getSeniorNationalTeam() != null
+                        || country.getU21NationalTeam() != null)
                 .toList();
 
-        Map<Long, Integer> strictlyAbove = new java.util.HashMap<>();
-        for (Country country : world) {
-            int above = 0;
-            for (Country other : world) {
-                if (ratingOf(other, youth) > ratingOf(country, youth)) {
-                    above++;
-                }
-            }
-            strictlyAbove.put(country.getId(), above);
-        }
+        // One read per level, not per country. This used to ask for every played national match once per
+        // country, purely to decide whether that country had any results: 48 full scans of the match
+        // table to answer a yes/no question about 48 countries.
+        Map<Long, Double> totals = rankingPoints.totalsForAllCountries(nationalLevel, season);
 
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Country country : world) {
+            Double total = totals.get(country.getId());
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("isoCode", country.getIsoCode());
             row.put("name", country.getName());
             row.put("level", youth ? "u21" : "senior");
-            row.put("points", ratingOf(country, youth));
-            row.put("position", strictlyAbove.get(country.getId()) + 1);
-            row.put("rated", hasResults(country, youth));
+            // Ordered by ACHIEVEMENT points, not by the head-to-head Elo this replaced. The owner
+            // collapsed the two into one system: a club or country earns points for what it achieved and
+            // for how it compared with the forecast, never for beating a bigger name.
+            row.put("points", total == null
+                    ? org.example.footballmanager.newLogic.service.RankingPointsEngine.START_POINTS
+                    : round2(total));
+            row.put("rated", total != null);
             rows.add(row);
         }
-        rows.sort(Comparator.comparingInt((Map<String, Object> row) -> (Integer) row.get("position"))
+
+        // Position computed here rather than stored, for the same reason as before: it is a statement about
+        // every other country too, so storing it lets two screens disagree. Strictly-greater, so equal
+        // totals share a position until the tie is broken for display.
+        rows.sort(Comparator.comparingDouble((Map<String, Object> row) -> (Double) row.get("points"))
+                .reversed()
                 .thenComparing(row -> String.valueOf(row.get("name"))));
+        int position = 0;
+        Double previous = null;
+        for (Map<String, Object> row : rows) {
+            Double current = (Double) row.get("points");
+            if (previous == null || current.compareTo(previous) != 0) {
+                position++;
+                previous = current;
+            }
+            row.put("position", position);
+        }
         return rows;
+    }
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     /** The national Elo for one level. Senior reputation and youth rating are different columns. */

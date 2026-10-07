@@ -87,6 +87,8 @@ class CountryCatalogQueryCountTest extends BaseTest {
      * is a JDK proxy, not one. The spies delegate, so the test still reads and writes the real database.
      */
     @SpyBean private org.example.footballmanager.newLogic.repository.TeamRepository teamRepositorySpy;
+    @Autowired private org.example.footballmanager.newLogic.repository.ClubSeasonRankingPointsRepository clubSeasonRankingPointsRepository;
+    @Autowired private org.example.footballmanager.newLogic.repository.CountrySeasonRankingPointsRepository countrySeasonRankingPointsRepository;
     @SpyBean private org.example.footballmanager.newLogic.repository.PlayerRepository playerRepositorySpy;
     @Autowired private org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     @Autowired private org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
@@ -255,7 +257,9 @@ class CountryCatalogQueryCountTest extends BaseTest {
                 playerRepository, seasonCompetitionRepository, matchRepository, matchFixtureRepository,
                 seasonRepository, scheduleInsightService, seasonService,
                 nationalTeamService, electionService, presenceRegistry, internationalClubCups,
-                plusFeatures, matchPlayerStatsRepository);
+                plusFeatures, matchPlayerStatsRepository,
+                new org.example.footballmanager.newLogic.service.RankingPointsReader(
+                        clubSeasonRankingPointsRepository, countrySeasonRankingPointsRepository));
 
         List<Map<String, Object>> catalog = counting.getCountryCatalog();
 

@@ -85,17 +85,28 @@ public final class RatingEngine {
     }
 
     /**
-     * The weight for a club match.
+     * The weight for a club match. <b>No opponent term.</b>
      *
-     * <p>Scale by {@link MatchValue}, and by how big the gap is: a mismatch should move more than a
-     * coin-flip, or a rating stops distinguishing "held on to a draw against Roma" from "beat Roma".
-     * The gap weight tops out at 1.6 so a hopeless mismatch cannot launch a club to the top of the
-     * list on one result.
+     * <p>This scaled by the rating gap, so beating a strong side moved a club further than beating a weak
+     * one, capped at 1.6 so a mismatch could not launch a club to the top on one result. That is gone,
+     * and the owner has said so more than once:
+     *
+     * <blockquote><b>JEDAN JEDINI REJTING SISTEM</b> — one single rating system — and
+     * *"snaga tima moze da utice na projekciju rezultata ali ne i na rejting poene"*: a team's strength
+     * may move the forecast, never the points.</blockquote>
+     *
+     * <p>It was defended here as making the rating distinguish "held on to a draw against Roma" from
+     * "beat Roma", and that remains true — but it is now the <b>forecast's</b> job, not the rating's.
+     * {@link ScheduleInsightService} produces the expected goals from squad strength, and
+     * {@link RankingPointsEngine} scores the result against that forecast. A team that beat Roma is
+     * rewarded because it beat what was predicted, and the prediction already knew Roma was stronger.
+     * Weighing the result by the gap as well counted the opponent twice.
+     *
+     * <p>The two rating arguments are kept so callers have no reason to reintroduce one, and
+     * {@code RatingEngineTest} asserts the weight does not depend on either rating.
      */
     public static double clubK(MatchValue value, double ownRating, double opponentRating) {
-        double gap = Math.abs(ownRating - opponentRating);
-        double gapWeight = 1.0 + Math.min(0.6, gap / 800.0);
-        return CLUB_BASE_K * value.scale() * gapWeight;
+        return CLUB_BASE_K * value.scale();
     }
 
     /** The weight for a club match, using the value alone. */

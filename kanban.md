@@ -2270,9 +2270,9 @@ entry in `kanbanProgress.md`, so a half-built card is always visible rather than
 | **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per subject per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | ✅ Two tables round-trip decimals, the window reads off them, and senior/U-21 cannot pool. **The writers land in -2 and -3** — nothing writes these rows yet. |
 | **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | ✅ `ClubRankingPointsService` rewrites the ledger from match history, idempotently, per season, tier-weighted. |
 | **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | ✅ Same property for a country; a level guard refuses to score a side into the wrong level. |
-| **P0-RANK-4** | **No head-to-head term in the points path** — the gap weighting the owner rejected by name. | ✅ **Already true; now guarded.** The guard is mutation-checked. **See the open question below** — the *rating* keeps its gap weighting deliberately. |
+| **P0-RANK-4** | **One single rating system.** The head-to-head gap weighting goes from the rating as well as the points. | ✅ `clubK` no longer reads either rating. Swept 0–800 of gap. Mutation-checked. |
 | **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | A trophy changes a team's total by exactly the documented amount, in the database. |
-| **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | `/countries/ranking` orders by points; a test proves the two orderings can differ and points wins. |
+| **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | ✅ `GET /countries/ranking` orders by points. The test builds a world where the two orderings **differ** and requires points to win. |
 
 ### P0 — Every generated match opens to a preview, one competition per card
 
@@ -2311,26 +2311,18 @@ somebody else's played match"*. Each card passes an explicit kind, never a guess
 | **P0-ELEC-2** | **`describe()` stops reporting a hardcoded stub.** It returns `stage: NONE` with no `acceptingCandidates`, so the button reads **"Registration closed"** whatever the clock says. | The panel reflects the real election. |
 | **P0-ELEC-3** | **`describeElection` creates the election on demand**, so a reset is not a dead end. Today a reset leaves **0 rows** and the panel can only ever say "no election running". | After a reset, registration is open without pressing Initialise. |
 
-### ❓ OPEN — does the *rating* keep rewarding an upset? (asked 2026-10-07, P0-RANK-4)
+### ✅ ANSWERED — one single system
 
-The owner rejected the gap weighting for **points**: *"snaga tima moze da utice na projekciju rezultata
-ali ne i na rejting poene."* An **earlier** decision in this project asked for the opposite **for the
-rating** — `ClubRatingService` cites it directly: *"a fifth-tier club beating a first-tier one is an
-enormous gain precisely because it exceeded a very low expectation, and that is what the owner meant by
-'neverovatan rating boost'"* — and the league table displays that rating as its Elo column.
+> **KOLIKO PUTA DA PONOVIM?! JEDAN JEDINI REJTING SISTEM!!!**
 
-Deleting `clubK`'s gap weighting would satisfy the letter of this card by removing a feature that was
-explicitly asked for. So it was **not** deleted; instead the points path is now structurally guaranteed
-not to reach for it, which is what the card's own exit criterion asks for.
+The rating's gap weighting is gone too. `clubK` no longer reads either rating, so beating a giant and
+beating an equal are worth the same, and there is no second system left to disagree with the points.
 
-**The question for the owner:** should a club's *rating* also stop rewarding an upset? The rating is
-visible in the league table; the points are the ranking. Two reasonable answers, and they are not the
-same change:
-
-1. **Keep both** — the rating rewards upsets (it measures merit), the points do not (they measure
-   achievement). Costs nothing; this is the current state.
-2. **Remove it from both** — one consistent rule. The league table's Elo column and the underdog boost go
-   together, and the rating becomes a pure function of competition value and result.
+**What the gap weighting was actually defending, and where it went.** It was kept here on the grounds
+that the rating should distinguish *"held on to a draw against Roma"* from *"beat Roma"*. That distinction
+is not lost — it moved. The forecast in `ScheduleInsightService` already knows Roma is stronger, so a
+result is rewarded for **beating what was predicted** rather than for beating a bigger name. Weighing the
+result by the gap as well counted the opponent **twice**.
 
 ---
 

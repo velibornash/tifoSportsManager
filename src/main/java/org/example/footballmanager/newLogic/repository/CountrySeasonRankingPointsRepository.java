@@ -18,4 +18,9 @@ public interface CountrySeasonRankingPointsRepository
             Long countryId, NationalTeamLevel level, int seasonYear);
 
     void deleteByCountryIdAndLevel(Long countryId, NationalTeamLevel level);
+
+    /** Every country's rows at one level, in one read — for ranking the whole world. */
+    List<CountrySeasonRankingPoints> findAllByLevel(NationalTeamLevel level);
+
+    boolean existsByCountryIdAndLevel(Long countryId, NationalTeamLevel level);
 }

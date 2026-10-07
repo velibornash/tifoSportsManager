@@ -1,5 +1,67 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-4 and P0-RANK-6 — ONE SINGLE RATING SYSTEM (owner, 2026-10-07)
+
+> **KOLIKO PUTA DA PONOVIM?! JEDAN JEDINI REJTING SISTEM!!!**
+
+Two cards finished together because after the ruling they are the same change. I had asked which of two
+readings was wanted; the answer was that there was never a choice to make.
+
+### The gap weighting is gone from the rating as well
+
+`RatingEngine.clubK(value, ownRating, opponentRating)` scaled by the rating gap, capped at 1.6, so
+beating a giant moved a club further than beating an equal. It now returns
+`CLUB_BASE_K * value.scale()` and reads **neither rating**. The two arguments are kept so no caller has a
+reason to reintroduce a term, and a test sweeps gaps from 0 to 800 — a reintroduced term would be smallest
+at equal ratings and largest at the extremes.
+
+**What it was defending, and where that went.** `RatingEngineTest` kept the argument that the rating
+should distinguish *"held on to a draw against Roma"* from *"beat Roma"*. That distinction is not lost,
+it **moved**: the forecast in `ScheduleInsightService` already knows Roma is stronger, so the result is
+rewarded for beating **what was predicted** rather than for beating a bigger name. Weighing it by the
+gap as well counted the opponent twice.
+
+### P0-RANK-6: the clean cut
+
+`GET /countries/ranking` no longer reads `Country.reputation`. It reads the per-season ledger through
+`RankingPointsReader` — **one place** a ranking number is produced, so the World page, a country's page
+and the league table cannot disagree — and orders by points. No transition showing both, as chosen.
+
+The card's criterion was *"the two orderings can differ, and points wins"*, so the test builds a world
+where they genuinely do: **the grinder has the better old rating (1750) and fewer points; the goliath has
+the worse old rating (1400) and more points.** The list must follow the points. A setup where the two
+orderings agree would prove nothing, and the test says so in the failure message.
+
+Also verified: positions are contiguous with no gaps, the list comes back sorted by the points it shows,
+an unplayed country reports `rated: false` rather than presenting a seeded rating as an earned result, and
+senior and U-21 cannot pool — 300 senior points and 0 U-21 must not show 1800 in both lists.
+
+### A 48-query N+1 removed on the way
+
+The old endpoint called `findPlayedNationalScoredInOrder()` **once per country** to decide whether that
+country had any results: 48 full scans of the match table to answer a yes/no question about 48 countries.
+The ledger now says which countries have rows, in one query.
+
+### Three test bugs, all mine
+
+- A country with 400 points had **no ledger row**, so it read 1500. The test asserted a number it had
+  never stored.
+- ISO codes were generated as `"R" + two hex characters` — **256 combinations** for a class that creates
+  about twenty countries. Two collided and one silently replaced the other, which is what
+  `anUnratedCountrySaysSo` was really reporting.
+- The same test then filtered on `"Never played".equals(name)` while the helper appends a UUID suffix, so
+  the filter could never match.
+
+None of these were the production code. All three were assertions that could not have caught the defect
+they were written for.
+
+### 78 tests green
+
+Across the ranking endpoint (6), `RatingEngine` (17), the no-head-to-head guards (2), both replays (11),
+the ledger (4), the engine (29), the preview (7) and the query-count class (4).
+
+---
+
 ## P0-RANK-4 — the points path has no head-to-head term, and that is now guarded (owner, 2026-10-07)
 
 The card said *"remove `RatingEngine.clubK(value, own, opp)`'s gap term"* — and while checking, it turned
