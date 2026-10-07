@@ -5456,3 +5456,68 @@ body {
     background: rgba(244, 67, 54, 0.16);
     color: #ffb3ad;
 }
+
+/* ── International qualifying (country page, owner 2026-10-07) ───────────────────────────────────
+ *
+ * The block had no styling at all: the rows were marked `is-qualified` in JavaScript and the class was
+ * defined nowhere, so "Qualifies" and "Candidate" were words in a column and nothing more. The owner
+ * asked for the qualifying rows to read at a glance.
+ *
+ * A tinted row rather than a coloured one: qualification is a fact about a whole row, and a fill that
+ * strong on five tiers of tables turns the page into stripes. The left rule carries the signal, the tint
+ * only supports it.
+ */
+
+.fm-qualifying-tier {
+    margin-bottom: 18px;
+}
+
+.fm-qualifying-tier h4 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    color: #9fb3c8;
+}
+
+.fm-qualifying-division {
+    margin-bottom: 14px;
+}
+
+.fm-qualifying-division > .fm-subtle {
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+}
+
+.fm-qualifying-table td {
+    font-size: 0.88rem;
+}
+
+/* The club that is through. Green because it is the same green the rest of the application uses for a
+ * positive outcome, and a left rule because it survives a colour-blind reader and a dark background. */
+.fm-qualifying-table tr.is-qualified {
+    background: rgba(76, 175, 128, 0.10);
+    box-shadow: inset 3px 0 0 #4caf880;
+}
+
+.fm-qualifying-table tr.is-qualified td {
+    color: #b8e6cf;
+    font-weight: 600;
+}
+
+.fm-qualifying-table tr.is-qualified td:last-child {
+    color: #7fd6a6;
+    letter-spacing: 0.02em;
+}
+
+/* A candidate is dimmed, never greyed into unreadability - it is still a real position in a real table. */
+.fm-qualifying-table tr:not(.is-qualified) td:last-child {
+    color: #7c8ea3;
+}
+
+/* The human club's own row, so a manager can find himself without reading names. */
+.fm-qualifying-table tr.is-current-club {
+    box-shadow: inset 3px 0 0 #4a9eff;
+}
+
+.fm-qualifying-table tr.is-current-club.is-qualified {
+    box-shadow: inset 3px 0 0 #4caf88, inset 6px 0 0 rgba(74, 158, 255, 0.7);
+}

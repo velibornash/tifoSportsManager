@@ -227,13 +227,17 @@ function buildPageNavState(page, options = {}) {
             }
             return;
         }
-        if (fallback === 'dashboard') {
+        // No fallback was named, which means "just go back". A caller the history stack has no entry
+        // for and a fallback the caller did not choose both land here, and loadPage(null) would render
+        // nothing at all - so a missing target goes to the dashboard rather than to a blank page.
+        const target = fallback || 'dashboard';
+        if (target === 'dashboard') {
             currentPageId = 'dashboard';
             currentNavState = { type: 'dashboard' };
             if (typeof window.loadDashboard === 'function') window.loadDashboard();
             return;
         }
-	        await loadPage(fallback, { pushHistory: false, preserveLeagueContext: isLeaguePage(fallback) });
+	        await loadPage(target, { pushHistory: false, preserveLeagueContext: isLeaguePage(target) });
         } finally {
             navBusy = false;
         }

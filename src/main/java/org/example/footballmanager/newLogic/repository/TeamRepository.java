@@ -34,6 +34,22 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findAllByNameIgnoreCase(String name);
 
     /**
+     * The names of one country's clubs, and nothing but the names.
+     *
+     * <p>Added for the seeding bottleneck (owner, 2026-10-07). The builder asked
+     * {@link #findAllByNameIgnoreCase} once per club to decide whether it already existed, which is a
+     * full scan of a 14,880-row table per club — measured at 10 ms a time, or about 149 seconds for a
+     * fresh world. Asking once per country and testing membership in memory turns 14,880 round trips
+     * into 48.
+     *
+     * <p>A projection, not {@code findByCountryId} returning entities: nothing here needs a managed
+     * {@code Team}, and loading 310 full rows to read one column from each is the same mistake in a
+     * smaller costume.
+     */
+    @Query("select t.name from Team t where t.country.id = :countryId")
+    List<String> findNamesForCountry(@Param("countryId") Long countryId);
+
+    /**
      * Every club of one country, by its ISO prefix.
      *
      * <p>Club names are {@code <ISO> <short division> FCnn}, so the ISO code is a prefix and this is

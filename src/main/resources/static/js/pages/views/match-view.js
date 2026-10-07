@@ -109,17 +109,34 @@ export function createMatchView(deps) {
                 : '';
             const seasonDayLabel = matchMeta?.seasonDayLabel || null;
 
-            let backTarget = 'results';
-            if (caller === 'match' || caller === 'results') backTarget = 'results';
-            else if (caller === 'leagueMatches') backTarget = 'leagueMatches';
-            else if (caller === 'leagueTable') backTarget = 'leagueTable';
-            else if (caller === 'leagueSchedule') backTarget = 'leagueSchedule';
-            else console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
+            // **An unrecognised caller goes back where it came from, not to the league results page.**
+            //
+            // This list is an allowlist, so every surface that is not in it fell through to 'results'
+            // - and Back on a national-team tie landed a manager on a league's match list. The owner
+            // reported it as "the back button does not work after clicking a national-cup match", which
+            // is exactly what it looked like from the outside: a Back button that is there, and does
+            // something else.
+            //
+            // `null` means "pop the history stack". That is the correct answer for a caller this build
+            // has never heard of, and it stays correct for the next surface to be added, which an
+            // allowlist cannot do. The named cases keep their explicit targets because Back from a
+            // league table is expected to land on the table, not on wherever the manager came from.
+            const KNOWN_BACK_TARGETS = {
+                match: 'results',
+                results: 'results',
+                leagueMatches: 'leagueMatches',
+                leagueTable: 'leagueTable',
+                leagueSchedule: 'leagueSchedule'
+            };
+            let backTarget = KNOWN_BACK_TARGETS[caller] ?? null;
+            if (backTarget === null) {
+                console.info(`Unknown caller "${caller}" - Back will return to the previous screen.`);
+            }
 
             mainContent.innerHTML = `
             <div class="team-card">
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
-                    <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget}')">&#8592; Back</button>
+                    <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget || ''}')">&#8592; Back</button>
                 </div>
                 <h2 style="text-align:center;">${played ? 'Match Details' : 'Match Preview'}</h2>
                 ${competitionHeading}

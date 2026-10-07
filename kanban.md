@@ -2255,6 +2255,23 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Back from an NT match went to the league; qualifying rows were unstyled; seeding scanned per club — owner, 2026-10-07
+
+- [x] **Back from a national-cup match landed on the league match list.** `match-view.js` mapped the caller
+      to a Back target through an **allowlist**, and everything outside it fell through to `'results'`. An
+      unknown caller now **returns to the previous screen** — correct for every surface, including the next
+      one, which an allowlist cannot be.
+- [x] **"Qualifies" was invisible.** The rows already carried `is-qualified`; **the class was defined
+      nowhere**, and the whole `fm-qualifying-*` block had no styling. Now a tinted row with a **green left
+      rule** — a full fill turns five tiers of tables into stripes — plus a blue rule for the manager's own
+      club.
+- [x] **Seeding was one table scan per club.** Measured at **10 ms × 14,880 = 149 s**, which is the
+      *"kako ide dalje kroz drzave tako ide sve sporije"* shape exactly. Now **one query per country**
+      (48 total) and a `Set` membership test. `PyramidBuilderQueryCountTest` 2/2 asserts the **query count**,
+      not the result — every behavioural test passed while this took minutes.
+
+---
+
 ## ✅ P0 — Reset DB died on a foreign key; the senior-side rename never ran — owner, 2026-10-07
 
 - [x] **The schema has genuine FK cycles** — `cteam ↔ cscountry`, `new_logic_lineup ↔ new_logic_match`,

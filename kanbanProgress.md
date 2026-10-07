@@ -1,5 +1,78 @@
 # kanbanProgress.md — the append-only log
 
+## Back went to the wrong place, qualifying rows were invisible, and seeding was a scan per club (owner, 2026-10-07)
+
+Three things, one of them the reason every country after the first was slower.
+
+### Back button did nothing useful after a national-cup match
+
+`match-view.js` maps the caller that opened a match to where Back should go, and the map was an
+**allowlist**:
+
+```js
+if (caller === 'match' || caller === 'results') backTarget = 'results';
+else if (caller === 'leagueMatches') ...
+else console.warn(`Unknown caller: ${caller} -> fallback to 'results'`);
+```
+
+Every surface not already in the list fell through to **the league's match list**. So Back on a
+national-team tie landed a manager in a league he was not in. From the outside it looks like a dead
+button, which is how it was reported.
+
+**An unknown caller now returns to the previous screen** — the history stack, which is the correct
+answer for a surface this build has never heard of, and stays correct for the next one, which an
+allowlist cannot. The named cases keep their explicit targets, because Back from a league table is
+expected to land on the table rather than on wherever the manager came from.
+
+`goBackSmart` also passed the empty string through to `loadPage(null)`, which renders nothing. A missing
+target now goes to the dashboard.
+
+### "Qualifies" was a word in a column
+
+The qualifying rows were **already** marked `class="is-qualified"` in JavaScript, and **the class was
+defined nowhere in the stylesheet** — so "Qualifies" and "Candidate" were indistinguishable rows of text.
+The whole `fm-qualifying-*` block had no styling at all and was running on generic table defaults.
+
+A **tinted row with a green left rule**, not a green fill: qualification is a fact about a whole row, and
+a fill that strong across five tiers of tables turns the page into stripes. The left rule also survives a
+colour-blind reader, and `is-current-club` gets a blue rule so a manager can find himself.
+
+### Seeding: one scan per club, and it got worse with every country
+
+> **kod seedovanja timova, kako ide dalje kroz drzave tako ide sve sporije do te mere za upis jedne lige
+> treba skoro 10 sekundi**
+
+That shape *is* the diagnosis. Something in the per-club path costs more the more clubs already exist, and
+that is a scan, not an insert. `PyramidBuilder` asked, per club:
+
+```java
+teams.findAllByNameIgnoreCase(name)      // LOWER(name) = LOWER(?)
+```
+
+Measured against a 14,880-club table — the scale `kanban.md` gives for 48 countries × 31 divisions × 10:
+
+| predicate | per call | 14,880 lookups |
+|---|---|---|
+| `LOWER(name) = LOWER(?)` | **10.0 ms** | **149 s** |
+| `left(name, 6) = ...` (existing index) | 1.0 ms | 15 s |
+| `name = ...` | 1.6 ms | 24 s |
+
+**A functional index cannot serve `LOWER(name) =` as written**, so the fix is not a faster query but
+**one query per country**: `findNamesForCountry(id)` returns the names, and the existence test becomes a
+`Set.contains`. **14,880 round trips become 48.** The query is still issued for a name that *is* present,
+which is the re-seed path where the entity is needed anyway — so the saving is largest exactly where it
+mattered, on a fresh world where all 14,880 old lookups returned nothing.
+
+### The test that was missing, and why
+
+**`PyramidBuilderQueryCountTest` 2/2** asserts the *query count*, not the result. Every behavioural test
+for this builder passed while it took nearly two and a half minutes, because correctness and cost are
+different properties and only one of them was being checked. The second test is the one that would have
+failed before: **seeding a second country costs one lookup, not one per club** — which is precisely the
+"gets slower with every country" shape the owner described.
+
+---
+
 ## Reset DB died on a foreign key, and the senior-side rename never reached the world (owner, 2026-10-07)
 
 Two defects in code committed earlier the same day, both found by using the buttons rather than reading
