@@ -298,6 +298,10 @@ public class NationalTournamentController {
         row.put("date", fixture.getMatchDate());
         row.put("played", fixture.isPlayed());
         var played = fixture.getPlayedMatch();
+        // The Match this fixture became, so a tie can open the shared match view (P0-PREV-3). Every
+        // post-match endpoint is keyed by match id, so a played tie opened on the fixture alone would
+        // come up with lineups, stats, goals and the report all empty.
+        row.put("matchId", played == null ? null : played.getId());
         row.put("homeGoals", played == null ? null : played.getHomeGoals());
         row.put("awayGoals", played == null ? null : played.getAwayGoals());
         // Null means "no shootout", which is different from "a shootout of 0-0". A knockout tie that

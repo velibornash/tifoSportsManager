@@ -1,5 +1,39 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-3 — a senior international opens the shared match view (owner, 2026-10-07)
+
+> **svaki generisan mec... nt ili ntu21 mec**
+
+`national-tournament-view.js` rendered every tie as a plain `<div class="fm-cup-tie">` with no clickable
+target. The only things that did anything were the group-name toggles and the country links. So a senior
+international could not be opened at all: not to see a prediction before it, and not to see lineups,
+stats, goals or a report after it.
+
+### The score is the target, not the country names
+
+Those names are **already links to the country page**. Turning them into match links would have taken away
+where they already go, so the score — the natural "open this fixture" affordance in a football game — became
+the button. A tie that reads `3 – 1` opens the match; an unplayed one shows `v` and opens the fixture.
+
+### One method shapes every tie, and it was nearly complete
+
+`NationalTournamentController.tie(MatchFixture)` builds **both** the group fixtures and the knockout ties,
+and it already sent `homeGoals` / `awayGoals` read from the played match — with a comment explaining that a
+null penalty score means "no shootout", which is a different thing from "a shootout of 0-0". It was
+missing only **`matchId`**. That is the field every post-match endpoint is keyed by, so a played tie opened
+on the fixture alone would have come up with lineups, stats, goals and the report all empty — the same trap
+P0-PREV-1 hit on the national cup and P0-PREV-2 hit on the club cups.
+
+Three cards, three times now. The pattern worth keeping: **a fixture is not a match, and only the
+`playedMatch` knows which one this is.**
+
+18 tests green across `NationalTournamentDrawTimingTest`, `NationalTournamentPlayedToAResultTest` and
+`NationalTournamentSeederTest`.
+
+**Not verified in the browser.**
+
+---
+
 ## P0-PREV-2 — an international club-cup tie opens the shared match view (owner, 2026-10-07)
 
 > **svaki generisan mec... nevezno da li je nacionalni kup, medjunarodni kup, nt ili ntu21**

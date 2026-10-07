@@ -458,7 +458,13 @@ function buildPageNavState(page, options = {}) {
         // league fixture does - prediction before, lineups, stats, goals and a report after (P0-PREV-2).
         loadMatch: (...args) => loadMatch(...args)
     });
-    const nationalTournamentView = createNationalTournamentView({ authFetch, escapeHtml });
+    const nationalTournamentView = createNationalTournamentView({
+        authFetch,
+        escapeHtml,
+        // The shared match view, so a senior international opens the same screen a league fixture does -
+        // prediction before, lineups, stats, goals and a report after (P0-PREV-3).
+        loadMatch: (...args) => loadMatch(...args)
+    });
     const statsView = createStatsView({
         authFetch, getTeamId: () => currentUserTeamId,
         ensureCurrentLeagueId,

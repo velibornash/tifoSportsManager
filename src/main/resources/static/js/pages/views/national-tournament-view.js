@@ -5,7 +5,7 @@ export const NATIONAL_COMPETITIONS = [
     { level: 'u21', stage: 'WORLD_CUP', label: 'U-21 World Cup' }
 ];
 
-export function createNationalTournamentView({ authFetch, escapeHtml }) {
+export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch }) {
     async function readJson(path) {
         const response = await authFetch(path);
         if (!response.ok) throw new Error(`The server answered ${response.status} for ${path}.`);
@@ -24,6 +24,27 @@ export function createNationalTournamentView({ authFetch, escapeHtml }) {
         const label = escapeHtml(name || 'Unknown team');
         if (!iso) return label;
         return `<button type="button" class="fm-link-btn js-country" data-country-iso="${escapeHtml(iso)}">${label}</button>`;
+    }
+
+    /**
+     * The score, as the thing that opens the tie (owner, 2026-10-07).
+     *
+     * <p>These ties used to render as plain text and nothing on them was clickable, so a senior
+     * international could not be opened at all — not to see a prediction before it, and not to see
+     * lineups, stats, goals or a report after it.
+     *
+     * <p>The score is the target rather than the country names, because those are already links to the
+     * country page and turning them into match links would take away where they already go.
+     */
+    function scoreButton(tie) {
+        const label = tie.played
+            ? `${escapeHtml(tie.homeGoals ?? '')} – ${escapeHtml(tie.awayGoals ?? '')}`
+            : 'v';
+        return `<button type="button" class="fm-cup-tie-sep js-open-tie"
+                    data-tie-fixture="${escapeHtml(tie.id ?? '')}"
+                    data-tie-played="${tie.played ? 'true' : 'false'}"
+                    data-tie-match-id="${escapeHtml(tie.matchId ?? '')}"
+                    title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">${label}</button>`;
     }
 
     function table(rows) {
@@ -49,9 +70,7 @@ export function createNationalTournamentView({ authFetch, escapeHtml }) {
             </div>
             ${(day.fixtures || []).map(tie => `<div class="fm-cup-tie">
                 <span>${teamLink(tie.homeName, tie.homeIso)}</span>
-                <span class="fm-cup-tie-sep">${tie.played
-                    ? `${escapeHtml(tie.homeGoals ?? '')} – ${escapeHtml(tie.awayGoals ?? '')}`
-                    : 'v'}</span>
+                ${scoreButton(tie)}
                 <span>${teamLink(tie.awayName, tie.awayIso)}</span>
             </div>`).join('')}
         </div>`).join('');
@@ -90,7 +109,7 @@ export function createNationalTournamentView({ authFetch, escapeHtml }) {
                 <span>${round.ties?.length || 0} ties</span></div>
                 ${(round.ties || []).map(tie => `<div class="fm-cup-tie">
                     <span>${teamLink(tie.homeName, tie.homeIso)}</span>
-                    <span class="fm-cup-tie-sep">${tie.played ? `${escapeHtml(tie.homeGoals ?? '')} – ${escapeHtml(tie.awayGoals ?? '')}` : 'v'}</span>
+                    ${scoreButton(tie)}
                     <span>${teamLink(tie.awayName, tie.awayIso)}</span>
                 </div>`).join('')}
             </div>`).join('')}
@@ -122,6 +141,26 @@ export function createNationalTournamentView({ authFetch, escapeHtml }) {
         });
         mainContent.querySelectorAll('.js-country').forEach(button => {
             button.addEventListener('click', () => openCountry(button.dataset.countryIso));
+        });
+        // A played tie opens the MATCH, because lineups, stats, goals and the report are keyed by match
+        // id. An unplayed one opens the fixture, and is told so explicitly rather than inferred —
+        // fixture ids and match ids are both small integers over separate tables.
+        mainContent.querySelectorAll('.js-open-tie').forEach(button => {
+            button.addEventListener('click', () => {
+                if (typeof loadMatch !== 'function') {
+                    return;
+                }
+                const fixtureId = Number(button.dataset.tieFixture);
+                const matchId = Number(button.dataset.tieMatchId);
+                if (!fixtureId) {
+                    return;
+                }
+                if (button.dataset.tiePlayed === 'true' && matchId) {
+                    loadMatch(matchId, 'nationalTournament', { initialTab: 'preview' });
+                } else {
+                    loadMatch(fixtureId, 'nationalTournament', { initialTab: 'preview', fixture: true });
+                }
+            });
         });
     }
 
