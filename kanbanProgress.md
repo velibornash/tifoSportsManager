@@ -1,5 +1,56 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-3 — national matches are replayed into ranking points (owner, 2026-10-07)
+
+The national counterpart of P0-RANK-2, with the difference that is the reason they are separate classes:
+**a country is two entries here, not one.** Senior and U-21 have separate points, separate seasons of
+points and a separate place on the ranking, because a country excellent at both is not one entity that
+did well twice.
+
+`findPlayedNationalRankedInOrder` carries the season, and the **level read from the competition rather
+than from either side** — inferring it from a team is circular, because a competition is what makes a
+match a World Cup match.
+
+### The level guard rejected a match on its first run
+
+The replay refuses a match whose sides are not both of the competition's level, and it did exactly that
+on the very first attempt:
+
+```
+DIAG skip: home=1 known=true lvlOfHome=SENIOR matchLvl=SENIOR season=1
+            | away=2 known=true lvlOfAway=U21
+```
+
+The **test fixture** was wrong: it registered the away side as a country's U-21 and then put it in a
+senior World Cup fixture. Scoring it would have added two countries' points into one total — the exact
+failure the separation exists to prevent. Worth stating plainly: **a guard that has never rejected
+anything is a guard nobody has tested**, and this one earned its place on day one rather than in
+production.
+
+### Verified against real PostgreSQL — the schema, not the arithmetic
+
+Both replays were run against the owner's database with the application up:
+
+```
+REAL clubs:   Result[matchesRead=0, matchesScored=0, matchesSkipped=0, rowsWritten=0]
+REAL nations: Result[matchesRead=0, matchesScored=0, matchesSkipped=0, rowsWritten=0]
+```
+
+**`matchesRead=0` is correct, not a failure.** The season is week 1 day 1 and the database holds **zero
+played matches**, so there is nothing to replay. What that run *did* prove is the part H2 could not:
+**both tables are created by `ddl-auto=update` against real PostgreSQL**, so the mappings, column names
+and types are valid there and not merely on the test profile.
+
+What it did **not** prove is the arithmetic against real data, because there is no real data to replay
+until matches are played. That will need a check after the first matchday, and it is written down here
+rather than left as an assumption.
+
+### 51 tests green
+
+Replay (4 national, 7 club), ledger (4), engine (29), preview (7).
+
+---
+
 ## P0-RANK-2 — club matches are replayed into ranking points (owner, 2026-10-07)
 
 > **snaga tima moze da utice na projekciju rezultata ali ne i na rejting poene**

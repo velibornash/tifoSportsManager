@@ -94,6 +94,27 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<RankedMatch> findPlayedClubRankedInOrder();
 
+    /**
+     * Every played match between national sides, with the season and the level.
+     *
+     * <p>For the ranking-points replay ({@code P0-RANK-3}). Carries the season, because the ledger is
+     * per season, and the <b>level</b>, because senior and U-21 are two independent totals that must
+     * never be added together.
+     *
+     * <p>The level comes from the competition rather than from either side: a competition is what makes
+     * a match a World Cup match, and inferring the level from a team would be circular.
+     *
+     * <p>{@code teamType = NATIONAL_TEAM}, so a national side can never be scored into a club's ledger.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.RankedNationalMatch("
+            + "m.id, home.id, away.id, m.homeGoals, m.awayGoals, m.seasonYear, "
+            + "c.scope, c.type, c.nationalStage, c.nationalLevel) "
+            + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
+            + "WHERE m.played = true AND c.teamType = "
+            + "org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM "
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<RankedNationalMatch> findPlayedNationalRankedInOrder();
+
     @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
             + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
