@@ -1,5 +1,45 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-1 — a national-cup tie opens the same screen a league fixture does (owner, 2026-10-07)
+
+> **svaki generisan mec iz zreba... mora da ima cim se generise mogucnost da se udje na mec i vidi
+> preview kao sto se sada vidi na liga mecevima**
+
+The country page had a **bespoke** sheet for a cup tie — its own fetch, its own markup, showing two squads
+and whether the tie had been played. It could not show a prediction, a lineup, a statistic or a report,
+because it was not the match view at all.
+
+### The kind is explicit, never inferred
+
+A tie opens the shared view with `fixture: true`, and that flag is **passed, not guessed**. Fixture ids
+and match ids are both small integers over separate tables; `ZoxApiController` already carries the scar
+from guessing between them, where *"the guess resolved a dashboard link to somebody else's played match"*.
+
+### A played tie has to open the MATCH, not the fixture
+
+The first cut always opened the fixture. Every post-match endpoint — lineups, stats, goals, report — is
+keyed by **match** id, so a tie that had already been played would have opened with all four panels empty.
+`loadMatch` is now given both: `played && matchId` opens the match, otherwise the fixture.
+
+Which needed `matchId` in the payload. `GET /countries/{iso}/cup` sent only `id`, `home`, `away`, `played`,
+so the page had no way to reach the match at all. Added from `fixture.getPlayedMatch()`.
+
+### 453 lines of bespoke sheet deleted
+
+`loadCupFixturePage` had no remaining callers. Leaving it would have been the exact dead code this
+repository keeps finding — `MatchReportService`, 250 lines, zero references, was already on the board.
+**The `GET /cup/fixture/{id}` endpoint is kept**, because it has its own scoping test
+(`CountryCupFixtureScopingTest`) and is a legitimate server-side view even though the page no longer
+calls it.
+
+### 8 tests green
+
+`CountryCupFixtureScopingTest` and `CountryCatalogQueryCountTest`.
+
+**Not verified in the browser.** The owner is not to start the application until the queue is clear.
+
+---
+
 ## P0-RANK-5 — the one-off achievement bonuses (owner, 2026-10-07)
 
 > **plasman na WC donosi svim NT ekipama odredjen broj bonus poena... svaka naredna faza donosi odredjen

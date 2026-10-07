@@ -438,6 +438,11 @@ function buildPageNavState(page, options = {}) {
     const countryView = createCountryView({
         authFetch,
         loadPage: (...args) => loadPage(...args),
+        // The shared match view, so a national-cup tie opens the same screen a league fixture does
+        // (owner, 2026-10-07: "svaki generisan mec ... mora da ima mogucnost da se udje na mec i vidi
+        // preview kao sto se sada vidi na liga mecevima"). It was missing here, which is why the cup
+        // needed a bespoke sheet of its own.
+        loadMatch: (...args) => loadMatch(...args),
         setActiveLeagueContext,
         getCurrentUserCountryIsoCode: () => resolveCountryIsoCode(),
         getActiveLeagueCountryIsoCode: () => activeLeagueCountryIsoCode,

@@ -2285,7 +2285,7 @@ ties as plain `<div>`s. Doing them together would hide which one actually broke.
 
 | Card | What it is | Done when |
 |---|---|---|
-| **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | A cup tie opens and shows the real prediction. |
+| **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | ✅ A tie opens the same screen a league fixture does. A **played** tie opens the **match**, so lineups/stats/goals/report are keyed correctly. 453 lines of bespoke sheet deleted. |
 | **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | A Champions/Masters/Challenge tie opens and shows the real prediction. |
 | **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | A senior international opens and shows the real prediction. |
 | **P0-PREV-4** | **NT U-21** fixtures open. | A U-21 international opens and shows the real prediction. |

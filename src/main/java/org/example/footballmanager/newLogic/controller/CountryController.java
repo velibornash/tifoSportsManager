@@ -409,6 +409,10 @@ public class CountryController {
             tie.put("home", fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getName());
             tie.put("away", fixture.getAwayTeam() == null ? null : fixture.getAwayTeam().getName());
             tie.put("played", fixture.isPlayed());
+            // The Match row this fixture became, for the ties that have been played. Without it the page
+            // has only the fixture id, and every post-match endpoint - lineups, stats, goals, report -
+            // needs the MATCH id, so a played tie would open with every one of those panels empty.
+            tie.put("matchId", fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getId());
             bucket.add(tie);
         }
         List<Map<String, Object>> rounds = new ArrayList<>();

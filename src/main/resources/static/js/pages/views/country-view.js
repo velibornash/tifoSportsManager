@@ -6,7 +6,7 @@ import {
 
 export function createCountryView(deps) {
     const {
-        authFetch, loadPage, setActiveLeagueContext,
+        authFetch, loadPage, loadMatch, setActiveLeagueContext,
         getCurrentUserCountryIsoCode, getActiveLeagueCountryIsoCode,
         getCurrentUserCountryName
     } = deps;
@@ -522,8 +522,13 @@ export function createCountryView(deps) {
                         </div>
                         ${round.fixtures.length
                             ? `<div class="fm-cup-ties">${round.fixtures.map(tie => `
-                                <button type="button" class="fm-cup-tie" data-cup-fixture="${tie.id}"
-                                    title="Open the pre-match state for this tie">
+                                <button type="button" class="fm-cup-tie"
+                                    data-cup-fixture="${tie.id}"
+                                    data-cup-played="${tie.played ? 'true' : 'false'}"
+                                    data-cup-match-id="${tie.matchId ?? ''}"
+                                    title="${tie.played
+                                        ? 'Open this tie'
+                                        : 'Open the pre-match state for this tie'}">
                                     <span>${htmlEscape(tie.home || 'TBC')}</span>
                                     <span class="fm-cup-tie-sep">${tie.played ? tie.score || 'v' : 'v'}</span>
                                     <span>${htmlEscape(tie.away || 'TBC')}</span>
@@ -533,459 +538,6 @@ export function createCountryView(deps) {
             </section>`;
     }
 
-    /**
-     * Pre-match state for one tie (owner, 2026-09-29).
-     *
-     * <p>The owner found the cup page was a wall of text and asked for a tie to open the way a league
-     * fixture does. A tie is a fixture until the simulator runs, so there is genuinely nothing to show
-     * for it yet - this says that plainly instead of showing a 0-0 that never happened.
-     */
-    async function loadCupFixturePage(countryIso, fixtureId) {
-        const mainContent = document.getElementById('main-content');
-        const data = await readJson(
-            `/countries/${encodeURIComponent(countryIso)}/cup/fixture/${encodeURIComponent(fixtureId)}`);
-        if (!data || data.failed) {
-            mainContent.innerHTML = '<div class="fm-empty">That tie could not be loaded.</div>';
-            return;
-        }
-
-        const played = data.played === true;
-        const side = (which) => {
-            const team = data[which] || {};
-            return `
-                <section class="fm-panel fm-cup-side">
-                    <div class="fm-cup-side-head">
-                        <h3>${htmlEscape(team.name || 'Unknown')}</h3>
-                        <span class="fm-subtle">${htmlEscape(team.country || '')}</span>
-                    </div>
-                    <div class="fm-squad">
-                        ${(team.squad || []).map(player => `
-                            <div class="fm-squad-row">
-                                <span class="fm-squad-pos">${htmlEscape(player.position || '—')}</span>
-                                <span class="fm-squad-name">${htmlEscape(player.name || '')}</span>
-                                <span class="fm-squad-meta">${player.age ?? '—'} yrs</span>
-                                <span class="fm-squad-rating">${player.rating ?? '—'}</span>
-                            </div>`).join('')}
-                    </div>
-                </section>`;
-        };
-
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--country">
-                <header class="fm-country-header">
-                    <div class="fm-country-header-main">
-                        <div>
-                            <div class="fm-eyebrow">Cup &middot; week ${htmlEscape(String(data.week ?? '—'))} &middot; day ${htmlEscape(String(data.day ?? '—'))}</div>
-                            <h2 class="fm-country-header-title">${htmlEscape((data.home || {}).name || 'Tie')} v ${htmlEscape((data.away || {}).name || 'Tie')}</h2>
-                        </div>
-                    </div>
-                    <button class="back-to-dashboard fm-country-header-back" data-country-route="cup">Back</button>
-                </header>
-                <div class="fm-country-stack">
-                    <section class="fm-panel">
-                        <div class="fm-panel-head">
-                            <div>
-                                <h3>${played ? 'Result' : 'Not played yet'}</h3>
-                                <p class="fm-subtle">${played
-                                    ? `Played on ${htmlEscape(String((data.date || '').slice(0, 10)))}.`
-                                    : 'This tie has not been played. The simulator picks it up on the cup day.'}</p>
-                            </div>
-                            ${played ? `<span class="fm-cup-final-score">${htmlEscape(String(data.homeScore ?? 0))} &ndash; ${htmlEscape(String(data.awayScore ?? 0))}</span>` : ''}
-                        </div>
-                    </section>
-                    <div class="fm-cup-sides">${side('home')}${side('away')}</div>
-                </div>
-            </div>`;
-    }
-
-    // ------------------------------------------------------------------ page
-
-    // ------------------------------------------------------- represented country
-
-    /**
-     * A country that has national sides and no club pyramid.
-     *
-     * <p>The owner replaced the old page (2026-10-07), which said only "ROU is represented, not played"
-     * and pointed at Admin. True, and useless: the twenty-four other countries on the World page are
-     * exactly this, and a manager who clicks one wants to know how its national team is doing. That is
-     * the whole of what a represented country *is* in this world.
-     *
-     * <p>So: where it stands in the ranking, on what rating; which qualifying group each of its two
-     * national sides is in; and whether it has played anything yet. The rating is the senior Elo for
-     * the senior side and the youth rating for U-21 — two different columns, and reading one for the
-     * other is the mistake this codebase has made before.
-     *
-     * <p>Every one of these is allowed to be absent. An undrawn tournament and an unplayed ranking are
-     * normal states, and they are said in words rather than shown as zero.
-     */
-    async function renderRepresentedCountry(mainContent, countryIso) {
-        const readOptional = async path => {
-            try {
-                const response = await readJson(path);
-                return response;
-            } catch {
-                return null;
-            }
-        };
-
-        const [ranking, seniorQualifying, u21Qualifying] = await Promise.all([
-            readOptional('/countries/ranking?level=senior'),
-            readOptional('/api/national-tournaments/senior/QUALIFYING'),
-            readOptional('/api/national-tournaments/u21/QUALIFYING')
-        ]);
-
-        const rows = Array.isArray(ranking) ? ranking : [];
-        const senior = rows.find(row => String(row.isoCode || '').toUpperCase() === countryIso);
-        const name = senior?.name || countryIso;
-
-        const groupOf = payload => {
-            if (!payload?.exists) return null;
-            for (const group of (Array.isArray(payload.groups) ? payload.groups : [])) {
-                const inGroup = (Array.isArray(group.table) ? group.table : [])
-                    .some(entry => String(entry.countryIso || '').toUpperCase() === countryIso);
-                if (inGroup) return { code: group.code, group };
-            }
-            return null;
-        };
-        const seniorGroup = groupOf(seniorQualifying);
-        const u21Group = groupOf(u21Qualifying);
-
-        const played = rows.filter(row => row.rated).length;
-        const positionLine = senior
-            ? (senior.rated
-                ? `${senior.position}${ordinal(senior.position)} of ${rows.length} — ${formatNumber(senior.points)} points`
-                : `Unrated, on the starting ${formatNumber(senior.points)} — no international results yet`)
-            : 'Not in the ranking.';
-
-        const sideCard = (label, group, competition, payload) => `
-            <section class="fm-panel">
-                <div class="fm-panel-head"><div>
-                    <h3>${htmlEscape(label)}</h3>
-                    <p class="fm-subtle">${group
-                        ? htmlEscape(competition) + ' — Group ' + htmlEscape(group.code)
-                        : 'Not in a qualifying group yet.'}</p>
-                </div></div>
-                ${group ? groupStandingTable(group.group, countryIso, payload?.week) : `
-                    <p class="fm-empty">The ${htmlEscape(competition)} has not been drawn, or this side is not in it.</p>`}
-            </section>`;
-
-        mainContent.innerHTML = `
-            <div class="fm-page fm-page--country">
-                <header class="fm-country-header">
-                    <div class="fm-country-header-main">
-                        <div>
-                            <div class="fm-eyebrow">Represented country</div>
-                            <h2 class="fm-country-header-title">${htmlEscape(name)}</h2>
-                        </div>
-                    </div>
-                    <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
-                </header>
-
-                <section class="fm-panel">
-                    <div class="fm-panel-head"><div>
-                        <h3>Senior ranking</h3>
-                        <p class="fm-subtle">${htmlEscape(positionLine)}</p>
-                    </div></div>
-                    <p class="fm-subtle">${played} of ${rows.length} countries have played an international
-                        match and hold a rating that means something.</p>
-                </section>
-
-                ${sideCard('Senior national team', seniorGroup, 'World Cup Qualifiers')}
-                ${sideCard('U-21 national team', u21Group, 'U-21 World Cup Qualifiers')}
-
-                <div class="fm-callout">
-                    No club pyramid, so there is nothing to manage here. A country is given its own
-                    five-tier pyramid from Admin &rarr; Activate a country.
-                </div>
-            </div>`;
-
-        mainContent.querySelectorAll('.js-country').forEach(button => {
-            button.addEventListener('click', () => {
-                loadCountryPage({ tab: 'general', simulatedCountry: button.dataset.countryIso });
-            });
-        });
-    }
-
-    /**
-     * One group's table with this country marked.
-     *
-     * <p>The whole group, not just this country: "who are we drawn with" is the question the page is
-     * answering, and a table of one row answers nothing.
-     */
-    function groupStandingTable(group, countryIso, week) {
-        const table = Array.isArray(group.table) ? group.table : [];
-        if (!table.length) return '<p class="fm-empty">No standings yet.</p>';
-        const schedule = Array.isArray(group.fixtures) ? group.fixtures : [];
-        return `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
-                <thead><tr><th>#</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
-                <tbody>${table.map(row => `<tr${String(row.countryIso || '').toUpperCase() === countryIso ? ' class="is-highlighted"' : ''}>
-                    <td>${htmlEscape(row.position)}</td>
-                    <td>${htmlEscape(row.teamName || 'Unknown team')}</td>
-                    <td>${htmlEscape(row.played)}</td><td>${htmlEscape(row.goalDifference)}</td>
-                    <td><strong>${htmlEscape(row.points)}</strong></td>
-                </tr>`).join('')}</tbody></table></div>
-            ${schedule.length ? `<p class="fm-subtle">${schedule.length} matchdays drawn${week
-                ? ', played in week ' + htmlEscape(week) : ''}.</p>` : ''}`;
-    }
-
-    function ordinal(position) {
-        const n = Number(position);
-        if (!Number.isFinite(n)) return '';
-        const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th'
-            : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
-        return suffix;
-    }
-
-    function formatNumber(value) {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return '0';
-        return Number.isInteger(n) ? String(n) : n.toFixed(1);
-    }
-
-    async function loadCountryPage(options) {
-        const { tab = 'general', level: forcedLevel, simulatedCountry = '' } = options || {};
-        const mainContent = document.getElementById('main-content');
-        // Resolved by the host, which prefers an explicit choice from the World page over the manager's
-        // own country. It used to ask for the manager's own country directly, so every country in the
-        // world showed the manager's own side.
-        const countryIsoCode = getCurrentUserCountryIsoCode();
-        if (!countryIsoCode) {
-            mainContent.innerHTML = buildEmptyState('Country data is not available for this manager yet.');
-            return;
-        }
-
-        const countryIso = String(countryIsoCode).toUpperCase();
-        if (simulatedCountry && String(simulatedCountry).toUpperCase() === countryIso) {
-            await renderRepresentedCountry(mainContent, countryIso);
-            return;
-        }
-
-        try {
-            const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs,
-                qualifying] =
-                await Promise.all([
-                    readJson('/countries'),
-                    readJson(`/countries/${encodeURIComponent(countryIso)}/leagues`),
-                    readJson('/calendar/week'),
-                    readJson('/calendar/season'),
-                    readNationalTeam(countryIso, 'senior'),
-                    readNationalTeam(countryIso, 'u21'),
-                    readJson(`/countries/${encodeURIComponent(countryIso)}/cup`),
-                    readJson(`/countries/${encodeURIComponent(countryIso)}/playoffs`),
-                    readJson(`/countries/${encodeURIComponent(countryIso)}/qualifying`)
-                ]);
-
-            if (leaguesResponse.failed) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
-            const sortedLeagues = sortCountryLeagues(leaguesResponse || []);
-            const country = (Array.isArray(countries) ? countries : [])
-                .find(item => String(item?.isoCode || '').toUpperCase() === countryIso) || {
-                    name: getCurrentUserCountryName() || countryIso,
-                    isoCode: countryIso
-                };
-
-            const weekDays = calendarResponse && !calendarResponse.failed && Array.isArray(calendarResponse.days)
-                ? calendarResponse.days : [];
-            const seasonWeeks = seasonResponse && !seasonResponse.failed && Array.isArray(seasonResponse.weeks)
-                ? seasonResponse.weeks : [];
-
-            // Only the selector gets a squad tab, and the tab they get depends on the level.
-            const level = forcedLevel || (tab === 'u21' ? 'u21' : 'senior');
-            const activeNt = level === 'u21' ? u21Nt : seniorNt;
-            const canManage = !!(activeNt && !activeNt.failed && activeNt.exists && activeNt.isSelector);
-            const resolvedTab = tab === 'calendar' ? 'calendar'
-                : (tab === 'general' ? 'general' : (canManage ? level : 'general'));
-
-            const facts = [
-                { label: 'ISO', value: country?.isoCode || countryIso },
-                { label: 'Currency', value: country?.currencyCode || '—' },
-                { label: 'Leagues', value: sortedLeagues.length },
-                { label: 'Reputation', value: country?.reputation ?? '—' },
-                { label: 'Youth rating', value: country?.youthRating ?? '—' }
-            ];
-
-            const schedule = {
-                weekDays, seasonWeeks,
-                calendarWeek: calendarResponse?.week, calendarNote: calendarResponse?.note
-            };
-
-            let body;
-            if (resolvedTab === 'general') {
-                body = buildGeneralTab({
-                    sortedLeagues, senior: seniorNt, u21: u21Nt,
-                    cup: cup || { exists: false }, playoffs: playoffs || { note: 'Unavailable' }, qualifying
-                });
-            } else if (resolvedTab === 'calendar') {
-                body = buildCalendarTab(schedule);
-            } else {
-                body = buildSelectorTab(activeNt, resolvedTab);
-            }
-
-            const tabs = buildTabs(resolvedTab);
-            const isGeneral = resolvedTab === 'general';
-
-            mainContent.innerHTML = `
-                <div class="fm-page fm-page--country">
-                    ${buildHeader(country, countryIso, facts,
-                        isGeneral ? [] : [{ label: 'Squad', value: String(activeNt?.squadSize ?? 0) + ' / 25' }])}
-                    ${tabs}
-                    ${body}
-                </div>`;
-
-            wireCountryPage(mainContent, countryIso, resolvedTab);
-        } catch (err) {
-            console.error('Failed to load country page:', err);
-            mainContent.innerHTML = `
-                <div class="manager-card">
-                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                    <h2>Error</h2>
-                    <p>Could not load your country overview.</p>
-                </div>`;
-        }
-    }
-
-    function wireCountryPage(root, countryIso, activeTab) {
-        root.querySelectorAll('[data-country-route]').forEach(element => {
-            element.addEventListener('click', () => {
-                const route = element.dataset.countryRoute;
-                if (route === 'cup' || route === 'playoffs') {
-                    loadPage(route === 'cup' ? 'countryCup' : 'countryPlayoffs');
-                    return;
-                }
-                // selector / election have no screen yet; the panel stays visible and disabled.
-                window.alert('Not built yet.');
-            });
-        });
-        root.querySelectorAll('[data-national-competition-level]').forEach(button => {
-            button.addEventListener('click', () => loadPage('nationalTournament', {
-                level: button.dataset.nationalCompetitionLevel,
-                stage: button.dataset.nationalCompetitionStage
-            }));
-        });
-        root.querySelectorAll('[data-country-tab]').forEach(button => {
-            button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTab }));
-        });
-        root.querySelectorAll('[data-country-tab-jump]').forEach(button => {
-            button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTabJump }));
-        });
-        root.querySelectorAll('[data-country-league-id]').forEach(button => {
-            button.addEventListener('click', () => {
-                openCountryLeague(Number(button.dataset.countryLeagueId), button.dataset.countryLeagueName || 'League');
-            });
-        });
-
-        const select = root.querySelector('#country-league-select');
-        const openButton = root.querySelector('#country-open-selected-league');
-        if (select && openButton) {
-            openButton.addEventListener('click', () => {
-                const option = select.options[select.selectedIndex];
-                const id = Number(select.value);
-                if (!id) return;
-                openCountryLeague(id, option?.dataset?.leagueName || option?.textContent || 'League');
-            });
-        }
-
-        root.querySelectorAll('[data-election-stand], [data-election-vote]').forEach(button => {
-            button.addEventListener('click', async () => {
-                button.disabled = true;
-                await runElectionAction(countryIso, button);
-                await loadCountryPage({ tab: activeTab === 'general' ? 'general' : activeTab });
-            });
-        });
-
-        root.querySelectorAll('[data-squad-add]').forEach(button => {
-            button.addEventListener('click', async () => {
-                button.disabled = true;
-                await postSquad(countryIso, activeTab, button.dataset.squadAdd);
-            });
-        });
-        root.querySelectorAll('[data-squad-remove]').forEach(button => {
-            button.addEventListener('click', async () => {
-                button.disabled = true;
-                await deleteSquad(countryIso, activeTab, button.dataset.squadRemove);
-            });
-        });
-    }
-
-    /**
-     * Election actions.
-     *
-     * <p>Withdraw is a DELETE and stand is a POST to the same route, so the button's own label
-     * decides which: a user who is already a candidate means withdraw. Sending the wrong one is
-     * harmless but confusing, so the intent is read from the payload the server returns.
-     */
-    async function runElectionAction(countryIso, element) {
-        const level = element.dataset.electionLevel
-            || element.dataset.electionStand
-            || element.closest('[data-country-nt-level]')?.dataset.countryNtLevel
-            || 'senior';
-
-        if (element.dataset.squadAdd != null) {
-            return;
-        }
-        if (element.dataset.electionVote) {
-            await postJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/vote?level=${encodeURIComponent(level)}`,
-                { candidateId: Number(element.dataset.electionVote) });
-            return;
-        }
-        if (element.dataset.electionStand) {
-            const election = await readJson(
-                `/countries/${encodeURIComponent(countryIso)}/national-team/election?level=${encodeURIComponent(level)}`);
-            if (election && election.viewerIsCandidate) {
-                await deleteJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/candidacy?level=${encodeURIComponent(level)}`);
-            } else {
-                await postJson(`/countries/${encodeURIComponent(countryIso)}/national-team/election/candidacy?level=${encodeURIComponent(level)}`, {});
-            }
-        }
-    }
-
-    async function postJson(path, body) {
-        const response = await authFetch(path, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body || {})
-        });
-        await reportElectionFailure(response);
-    }
-
-    async function deleteJson(path) {
-        const response = await authFetch(path, { method: 'DELETE' });
-        await reportElectionFailure(response);
-    }
-
-    /** A rejected election action has to say why, or the panel just blinks. */
-    async function reportElectionFailure(response) {
-        if (response.ok) return;
-        const body = await response.json().catch(() => ({}));
-        window.alert(body.message || 'That election action was refused.');
-    }
-
-    async function postSquad(countryIso, level, playerId) {
-        const response = await authFetch(
-            `/countries/${encodeURIComponent(countryIso)}/national-team/squad?level=${encodeURIComponent(level)}`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ playerId: Number(playerId) })
-            });
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            window.alert(body.message || 'Could not call that player up.');
-        }
-        await loadCountryPage({ tab: level });
-    }
-
-    async function deleteSquad(countryIso, level, playerId) {
-        const response = await authFetch(
-            `/countries/${encodeURIComponent(countryIso)}/national-team/squad/${encodeURIComponent(playerId)}?level=${encodeURIComponent(level)}`,
-            { method: 'DELETE' });
-        if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            window.alert(body.message || 'Could not release that player.');
-        }
-        await loadCountryPage({ tab: level });
-    }
-
-    /** The cup, as its own view. Reached from the general tab. */
     async function loadCupPage() {
         const mainContent = document.getElementById('main-content');
         const countryIsoCode = getCurrentUserCountryIsoCode();
@@ -1011,9 +563,30 @@ export function createCountryView(deps) {
         mainContent.querySelectorAll('[data-country-tab]').forEach(button => {
             button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTab }));
         });
+        // A cup tie opens the SHARED match view, like a league fixture. Not the bespoke sheet: that one
+        // could only ever show the two squads and whether the tie had been played, and the owner asked
+        // for every generated match to open the same way a league one does - prediction before, and
+        // lineups, stats, goals and a report after (P0-PREV-1).
+        //
+        // `fixture: true` is explicit and never inferred. A fixture id and a match id are both small
+        // integers over separate tables, and guessing between them has already once resolved a
+        // dashboard link to somebody else's played match.
         mainContent.querySelectorAll('[data-cup-fixture]').forEach(button => {
-            button.addEventListener('click', () => loadCupFixturePage(
-                countryIso, button.dataset.cupFixture));
+            button.addEventListener('click', () => {
+                const fixtureId = Number(button.dataset.cupFixture);
+                if (!fixtureId || typeof loadMatch !== 'function') {
+                    return;
+                }
+                // A played tie opens the MATCH, because lineups, stats, goals and the report are all
+                // keyed by match id. An unplayed one opens the fixture, and is told so explicitly.
+                const played = button.dataset.cupPlayed === 'true';
+                const matchId = Number(button.dataset.cupMatchId);
+                if (played && matchId) {
+                    loadMatch(matchId, 'countryCup', { initialTab: 'preview' });
+                } else {
+                    loadMatch(fixtureId, 'countryCup', { initialTab: 'preview', fixture: true });
+                }
+            });
         });
         mainContent.querySelectorAll('[data-country-route]').forEach(button => {
             button.addEventListener('click', () => {
