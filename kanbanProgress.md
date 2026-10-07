@@ -348,6 +348,39 @@ calls it.
 
 ---
 
+## P2-STAD-1, P2-TRAIN-1 and P2-TROPHY-1 — researched, two waiting on decisions (owner, 2026-10-07)
+
+> **nastavi do kraja** — meaning the whole queue, including the three added last. Two of them turn out
+> not to be quick builds, and the honest output is what is known, not a habit of guessing the missing
+> half.
+
+### P2-TRAIN-1 — answered: facilities upgrade, they are not repaired
+
+No damage or decay model exists anywhere, so there is nothing to repair. The one action per facility is
+**upgrade** — one level at a time, per-level cost and a small weekly upkeep. And yes, it affects training:
+weekly progression multiplies base growth by `facilityFactor`, which reads
+`Stadium.trainingFactorFor(skill)`, so a higher-level facility grows the whole squad faster at the skills
+it covers. The correct card, if ever wanted, is "add a damage model".
+
+### P2-STAD-1 — decision-gated: there is no stand to choose
+
+`StadiumBuildService` prices seats, better seats and a roof on a 1–20 scale and spends them in one
+`POST /build`. Crucially, **there is no stand model at all** — a stadium is one block of capacity, so
+"choose which stand" has no object to choose, a quote cannot differ per stand, and nothing commits
+partway. Built from the ground up it needs: (a) a per-stand model, (b) a quote endpoint that **returns**
+the price without spending, and (c) a confirm endpoint that spends. Until (a) exists the owner's sentence
+has no meaning.
+
+### P2-TROPHY-1 — decision-gated: there is no trophy record to show
+
+**No honours table exists.** Champions are only *derivable* — cup results live in `MatchFixture`s, and
+P0-RANK-5 already read them to pay bonuses — but there is no "this club won that in that season" row. So a
+medal row on the milestones panel is **a new record plus the row that reads it**, not a display. The
+medal-colouring rule (gold/silver/bronze) also needs an owner call: silver and bronze are not
+automatic today.
+
+---
+
 ## P2-TRAIN-1 — the answer: no repair system, only upgrades (owner, 2026-10-07)
 
 > **da li se mogu popravljati training facilities i da li i kako uticu na trening?**
