@@ -188,6 +188,10 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
+        if (action === 'run-due-jobs') {
+            await runDueJobs(button);
+            return;
+        }
         if (action === 'create-backup') {
             await createBackup(button);
             return;
@@ -390,6 +394,89 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
         } catch (err) {
             host.innerHTML = '<p class="fm-subtle">Could not read the backups.</p>';
+        }
+    }
+
+    /**
+     * The jobs table: trigger, last outcome, next trigger, failure count.
+     *
+     * <p>The FAILED badge is the point of this panel (owner, 2026-10-07). A job that throws is retried on
+     * the next hour and retried again, quietly - which is the owner's rule and it is correct, but it means
+     * a permanently broken job looks exactly like a healthy one. Nothing else in the application showed
+     * the status at all.
+     */
+    async function showJobs() {
+        const host = document.getElementById('fm-jobs');
+        if (!host) return;
+        try {
+            const res = await authFetch('/admin/jobs');
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const data = await res.json();
+            const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+
+            const banner = data.failing
+                ? `<div class="fm-callout fm-callout--warning">${data.failureCount} job run(s) have
+                   FAILED. A failed job is retried on the next hour; a permanently failing one will keep
+                   failing quietly.</div>`
+                : '';
+
+            host.innerHTML = banner + `
+                <p class="fm-subtle">Season ${escapeHtml(data.season)} · week ${escapeHtml(data.week)}
+                    · ${escapeHtml(data.dayLabel || ('day ' + data.day))} · ${escapeHtml(data.hour)}:00</p>
+                <table class="fm-table">
+                    <thead><tr>
+                        <th>Job</th><th>Trigger</th><th>Last run</th><th>Next trigger</th><th>Season</th>
+                    </tr></thead>
+                    <tbody>${jobs.map(job => `
+                        <tr${job.lastStatus === 'FAILED' ? ' class="fm-job-row--failed"' : ''}>
+                            <td><strong>${escapeHtml(job.key)}</strong></td>
+                            <td class="fm-subtle">${escapeHtml(job.trigger || '')}</td>
+                            <td>${job.lastStatus
+                                ? `<span class="fm-job-status fm-job-status--${escapeHtml(String(job.lastStatus).toLowerCase())}">${escapeHtml(job.lastStatus)}</span>`
+                                : '<span class="fm-subtle">never</span>'}
+                                ${job.lastRunAt ? `<div class="fm-subtle">${escapeHtml(job.lastRunAt)}</div>` : ''}
+                                ${job.lastMessage ? `<div class="fm-subtle">${escapeHtml(job.lastMessage)}</div>` : ''}</td>
+                            <td>${escapeHtml(job.nextTrigger || '—')}
+                                ${job.nextInHours >= 0 ? `<div class="fm-subtle">in ${job.nextInHours} hour(s)</div>` : ''}</td>
+                            <td>${job.runsThisSeason || 0} run(s)${job.failuresThisSeason
+                                ? `, <span class="fm-job-status fm-job-status--failed">${job.failuresThisSeason} failed</span>`
+                                : ''}</td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>`;
+        } catch (err) {
+            host.innerHTML = '<p class="fm-subtle">Could not read the jobs.</p>';
+        }
+    }
+
+    /**
+     * Runs whatever is due, and says what it did.
+     *
+     * <p>The outcome is reported because "pressed the button" and "it worked" are different claims, and
+     * this is the only place a manager can see which of the two happened.
+     */
+    async function runDueJobs(button) {
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Running...';
+        try {
+            const res = await authFetch('/api/jobs/run-due', { method: 'POST' });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                window.alert(`Failed: ${body.message || res.status}`);
+                return;
+            }
+            const ran = body.ran ?? 0;
+            const failed = body.failed ?? 0;
+            window.alert(`Ran ${ran} job(s), skipped ${body.skipped ?? 0}, failed ${failed}.`
+                + (failed ? '\n\nFailed: ' + (body.jobs || []).filter(j => j.status === 'FAILED')
+                    .map(j => j.key).join(', ') : ''));
+        } catch (err) {
+            window.alert(`Error: ${err.message}`);
+        } finally {
+            button.textContent = original;
+            button.disabled = false;
+            await showJobs();
         }
     }
 
@@ -789,6 +876,28 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
+                            <h3>Jobs</h3>
+                            <p class="fm-subtle">Every scheduled job: what it is triggered on, when it last
+                                ran, when it runs next, and whether anything failed. A job that ran and a
+                                job that did not used to look identical from here.</p>
+                        </div>
+                        <span class="fm-panel-action">Scheduler</span>
+                    </div>
+                    <div id="fm-jobs"><p class="fm-subtle">Reading...</p></div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Run due jobs now',
+                            body: 'Runs everything whose trigger has been reached without moving the clock. Safe to press repeatedly - a job already done is skipped.',
+                            action: 'run-due-jobs',
+                            label: 'Run due jobs',
+                            variant: 'secondary'
+                        })}
+                    </div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
                             <h3>World integrity</h3>
                             <p class="fm-subtle">What the world actually holds right now. Repair tops up
                                 what is missing and keeps what is there.</p>
@@ -914,6 +1023,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         void showUserManagement();
         void showRegistrationQueue();
         void showBackups();
+        void showJobs();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

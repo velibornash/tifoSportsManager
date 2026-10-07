@@ -33,6 +33,7 @@ public class AdminController {
 
     private final AdminDatabaseAsyncService adminDatabaseAsyncService;
     private final DatabaseBackupService databaseBackupService;
+    private final org.example.footballmanager.newLogic.service.JobStatusService jobStatusService;
     private final org.example.footballmanager.newLogic.service.CountryActivationService countryActivationService;
     private final org.example.footballmanager.newLogic.service.WorldIntegrityService worldIntegrityService;
     private final org.example.footballmanager.newLogic.service.WorldRepairService worldRepairService;
@@ -307,6 +308,19 @@ public class AdminController {
      *
      * <p>The list is what makes a backup worth taking: a dump nobody can find again is not a backup.
      */
+    /**
+     * Every job: its trigger, when it last ran, when it next runs, and whether anything failed.
+     *
+     * <p>The panel exists because of the question it makes answerable (owner, 2026-10-07): "does training
+     * work?" could not be answered from anywhere in the application. Training did work — it was recorded
+     * DONE — but with no history, no next trigger and no failure badge, <b>a job that ran and a job that
+     * did not looked identical</b>. The rows were already in `job_run`; they had no reader.
+     */
+    @GetMapping("/jobs")
+    public ResponseEntity<Map<String, Object>> jobs() {
+        return ResponseEntity.ok(jobStatusService.report());
+    }
+
     @GetMapping("/backups")
     public ResponseEntity<Map<String, Object>> listBackups() {
         return ResponseEntity.ok(Map.of("backups", databaseBackupService.list()));

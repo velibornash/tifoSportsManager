@@ -2255,6 +2255,28 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Admin → Jobs, and what an advance triggered — owner, 2026-10-07
+
+> **Mora u Admin deo da se doda poseban tab za jobove ... istorija kad je trigerovan job i da li je ispravno
+> zavrsen, kad je sledeci triger** · **advance hour/day/week ... da se pinguje job syncer**
+
+- [x] **A jobs panel**: every registered job with its trigger, last outcome, next trigger and failure
+      count. The rows were **already in `job_run` with no reader anywhere** — that is why "does training
+      work?" was unanswerable.
+- [x] **A FAILED badge and a tinted row.** A failed job is retried silently, which means a *permanently*
+      broken job looks healthy for ever. The status was being written and never read.
+- [x] **Next trigger is walked forward, not subtracted** — whether a trigger is reached depends on which
+      hours the clock offers. Pinned: from week 3 day 7 hour 22, a day-7 hour-23 job is **one hour away and
+      still week 3**, not week 4.
+- [x] **The advance commands were already correct** — `advanceHours` steps an hour at a time and runs what
+      is due at each step, and `advanceWeek` **is** `advanceHours(168)`. Checked, not assumed.
+- [x] **The gap was the report**: a 24-hour advance returned only the last hour's outcomes, so it reported
+      two or three jobs when it had run five. It now returns `advance: {hoursAdvanced, ran, skipped,
+      failed, jobsRan, jobsFailed}` — "moved 24 hours, ran training, skipped 3, nothing failed".
+- [x] `JobStatusServiceTest` **5/5**, `AdminJobsControllerTest` **2/2**.
+
+---
+
 ## ✅ Training: measured, and it works — but nothing could prove it (owner, 2026-10-07)
 
 > **potencijalni p0: da li nam radi trening? na Oracle je prosao dan za trening a nije se desio**

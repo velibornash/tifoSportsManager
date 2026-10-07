@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -269,10 +271,57 @@ public class GameClockService {
             throw new IllegalArgumentException("Advance must be a positive number of hours.");
         }
         Map<String, Object> last = null;
+        // Accumulated across every step, not just the last one (owner, 2026-10-07).
+        //
+        // Each step asks the runner what is due for that hour and returns that hour's outcome, so a
+        // 24-hour advance returned only the twenty-fourth hour's jobs. "Advance a day" then reported
+        // two or three jobs when it had run five, which reads as the day being wrong rather than the
+        // report being incomplete. The whole span is collected so the answer is
+        // "moved 24 hours, ran training, skipped 3 matchdays, nothing failed".
+        Map<String, Integer> totals = new LinkedHashMap<>();
+        totals.put("ran", 0);
+        totals.put("skipped", 0);
+        totals.put("failed", 0);
+        List<String> ranKeys = new ArrayList<>();
+        List<String> failedKeys = new ArrayList<>();
+
         for (int step = 0; step < hours; step++) {
             last = advanceHour();
+            if (last == null || !(last.get("jobs") instanceof List<?> outcomes)) {
+                continue;
+            }
+            for (Object entry : outcomes) {
+                if (!(entry instanceof Map<?, ?> job)) {
+                    continue;
+                }
+                String status = String.valueOf(job.get("status"));
+                String key = String.valueOf(job.get("key"));
+                if ("DONE".equals(status)) {
+                    totals.merge("ran", 1, Integer::sum);
+                    if (!ranKeys.contains(key)) {
+                        ranKeys.add(key);
+                    }
+                } else if ("FAILED".equals(status)) {
+                    totals.merge("failed", 1, Integer::sum);
+                    if (!failedKeys.contains(key)) {
+                        failedKeys.add(key);
+                    }
+                } else if ("ALREADY_DONE".equals(status)) {
+                    totals.merge("skipped", 1, Integer::sum);
+                }
+            }
         }
-        return last == null ? snapshot() : last;
+
+        Map<String, Object> result = last == null ? snapshot() : last;
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("hoursAdvanced", hours);
+        summary.put("ran", totals.get("ran"));
+        summary.put("skipped", totals.get("skipped"));
+        summary.put("failed", totals.get("failed"));
+        summary.put("jobsRan", ranKeys);
+        summary.put("jobsFailed", failedKeys);
+        result.put("advance", summary);
+        return result;
     }
 
     /**

@@ -5521,3 +5521,44 @@ body {
 .fm-qualifying-table tr.is-current-club.is-qualified {
     box-shadow: inset 3px 0 0 #4caf88, inset 6px 0 0 rgba(74, 158, 255, 0.7);
 }
+
+/* ── Jobs panel (admin, owner 2026-10-07) ────────────────────────────────────────────────────────────
+ *
+ * The FAILED badge is the whole point. A job that throws is retried on the next hour and retried again,
+ * which is the owner's rule and is correct — but it means a permanently broken job and a healthy one look
+ * identical from the panel. The status was in `job_run` all along with no reader.
+ */
+
+.fm-job-status {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.fm-job-status--done {
+    background: rgba(76, 175, 128, 0.16);
+    color: #7fd6a6;
+}
+
+.fm-job-status--failed {
+    background: rgba(244, 67, 54, 0.18);
+    color: #ff9d94;
+}
+
+.fm-job-status--pending {
+    background: rgba(255, 193, 7, 0.16);
+    color: #ffd76a;
+}
+
+/* A failed row is tinted, not just badged: the badge is small, and the row is what the eye lands on. */
+.fm-table tr.fm-job-row--failed {
+    background: rgba(244, 67, 54, 0.08);
+}
+
+.fm-callout--warning {
+    background: rgba(244, 67, 54, 0.12);
+    border-left: 3px solid #e5484d;
+}

@@ -1,5 +1,59 @@
 # kanbanProgress.md — the append-only log
 
+## A jobs panel, and what an advance actually triggered (owner, 2026-10-07)
+
+> **Mora u Admin deo da se doda poseban tab za jobove, da se jasno vidi lista jobova, da za svaki job
+> postoji istorija kad je trigerovan job i da li je ispravno zavrsen, kad je sledeci triger.**
+>
+> **advance hour / day / week komande da samo urade pomeranje sata/dana/nedelje a onda se pinguje job syncer
+> koji treba da trigeruje sve jobove koji su dospeli u medjuvremenu**
+
+### The panel
+
+Every registered `DayJob` with its trigger as a sentence, its last outcome, its next trigger, and its
+failure count. The data was **already there** — `job_run` has the key, the season, the week, the day, the
+hour, the status and the message — and it had **no reader anywhere in the application**. That is the whole
+reason "does training work?" could not be answered: not because training was broken, but because a job
+that ran and a job that did not were indistinguishable.
+
+**The FAILED badge is the point.** A failed job is retried on the next hour and retried again, which is the
+owner's rule and is correct — and it means a **permanently** broken job looks exactly like a healthy one,
+indefinitely. The status was being written and never read. The panel tints the failed row and shows the
+message, and a banner appears while anything has ever failed.
+
+**`nextTrigger` is walked forward, hour by hour — not computed by subtraction.** Whether a trigger is
+reached depends on which hours the clock actually offers, so "next = current + difference" is exactly the
+shortcut that goes wrong at a boundary. `weekRolloverPointsInsideThisWeek` pins the case that matters:
+from **week 3, day 7, hour 22**, a day-7 hour-23 job is **one hour away and still in week 3** — reporting
+week 4 is the boundary mistake, and it is the one a subtraction makes.
+
+`JobStatusServiceTest` **5/5**, `AdminJobsControllerTest` **2/5 → 2/2** (admin-only, every job carries its
+trigger and next trigger, and the payload says whether anything failed).
+
+### The advance commands: already correct, and now visible
+
+Worth stating plainly, because it was checked rather than assumed. `advanceHours` steps **one hour at a
+time** and calls `runDue` at each step, so no trigger is stepped over; `advanceWeek` **is**
+`advanceHours(168)`; and `POST /api/game-clock/advance?unit=day` already runs every job that came due on
+the way. **"Move the clock, then ping the syncer" is the design that was already there.**
+
+The gap was the report. Each step returned that hour's outcomes and `advanceHours` returned **only the
+last one**, so advancing a day reported two or three jobs when it had run five — which reads as the day
+being wrong rather than the report being incomplete.
+
+`advanceHours` now accumulates across every step:
+
+```json
+"advance": { "hoursAdvanced": 24, "ran": 5, "skipped": 3, "failed": 0,
+             "jobsRan": ["day-opened", "recovery", "training", ...], "jobsFailed": [] }
+```
+
+So **"advance a day" reads as "moved 24 hours, ran training, skipped 3 matchdays, nothing failed"** — which
+is the sentence the owner asked for, and it is the sentence that would have answered the training
+question at the time.
+
+---
+
 ## "Da li nam radi trening?" — measured, and the answer is yes (owner, 2026-10-07)
 
 > **potencijalni p0: da li nam radi trening? na Oracle je prosao dan za trening a nije se desio**
