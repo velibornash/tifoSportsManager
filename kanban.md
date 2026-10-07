@@ -2255,6 +2255,64 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## 🌍 THE QUEUE — split into one task per board card, worked one at a time (owner, 2026-10-07)
+
+> **razdvoji po taskovima, zapisi ih u kanban.md pa azuriraj kanban i kanban_progress md i uzimaj jedan po jedan**
+> ...**clean cut** (the ranking list shows ranking points only, not both)
+
+Everything below is one card. **One card in flight at a time**, each committed on its own with its own
+entry in `kanbanProgress.md`, so a half-built card is always visible rather than folded into a bigger one.
+
+### P0 — Ranking points: make the numbers real
+
+| Card | What it is | Done when |
+|---|---|---|
+| **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per team per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | A ledger table exists, is written by something, and a test proves the four-season window reads correctly off it. |
+| **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | `ClubRatingService` no longer scales by the rating gap, and a club's total is identical whether it beat a strong or a weak opponent. |
+| **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | Same property for a country; the two levels never pool. |
+| **P0-RANK-4** | **Remove `RatingEngine.clubK(value, own, opp)`'s gap term** — the one the owner rejected by name. | The gap no longer exists anywhere in the points path. |
+| **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | A trophy changes a team's total by exactly the documented amount, in the database. |
+| **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | `/countries/ranking` orders by points; a test proves the two orderings can differ and points wins. |
+
+### P0 — Every generated match opens to a preview, one competition per card
+
+> The owner's instruction: *"svaki generisan mec iz zreba nevezno da li je nacionalni kup, medjunarodni
+> kup, nt ili ntu21 mec, mora da ima cim se generise mogucnost da se udje na mec i vidi preview"*.
+
+Split one per competition because they do **not** share a code path — the national cup has a bespoke
+sheet today, the club cups have nothing clickable at all, and the two national-team competitions render
+ties as plain `<div>`s. Doing them together would hide which one actually broke.
+
+| Card | What it is | Done when |
+|---|---|---|
+| **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | A cup tie opens and shows the real prediction. |
+| **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | A Champions/Masters/Challenge tie opens and shows the real prediction. |
+| **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | A senior international opens and shows the real prediction. |
+| **P0-PREV-4** | **NT U-21** fixtures open. | A U-21 international opens and shows the real prediction. |
+| **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | A played cup tie and a played international both show all four, verified in the app. |
+| **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | A human's own cup tie can be watched and replayed. |
+
+**The boundary that must not be crossed again:** a fixture id and a match id are both small integers over
+separate tables. `ZoxApiController` already carries the scar — *"the guess resolved a dashboard link to
+somebody else's played match"*. Each card passes an explicit kind, never a guess.
+
+### P1 — Country page
+
+| Card | What it is | Done when |
+|---|---|---|
+| **P1-CTRY-1** | **A new tab listing the clubs of that country, ranked.** No endpoint exists today; `findClubTeamsForCountry` is already indexed. | The tab shows the country's clubs ranked, by ranking points once P0-RANK-6 lands. |
+| **P1-CTRY-2** | **International qualifying moves out of General into its own tab.** | It is its own tab, next to General / Calendar / National Team / U-21. |
+
+### P0 — Elections (owner already approved all of this on 2026-10-07)
+
+| Card | What it is | Done when |
+|---|---|---|
+| **P0-ELEC-1** | **Registration opens week 12 day 1 of the previous season**, not one day before week 1. Measured: 7 days, because week 12 is the last week and runs into the next season. | Season 1 stays usable; season 2 opens in the previous season's week 12. |
+| **P0-ELEC-2** | **`describe()` stops reporting a hardcoded stub.** It returns `stage: NONE` with no `acceptingCandidates`, so the button reads **"Registration closed"** whatever the clock says. | The panel reflects the real election. |
+| **P0-ELEC-3** | **`describeElection` creates the election on demand**, so a reset is not a dead end. Today a reset leaves **0 rows** and the panel can only ever say "no election running". | After a reset, registration is open without pressing Initialise. |
+
+---
+
 ## 🔶 The preview predicts again, and the ladder's top rung is reachable — owner, 2026-10-07
 
 > **preview vise ne daje prognoze a radile su pre** — showed `Not predicted`, `0%0%0%`, `xG 0.00 : 0.00`

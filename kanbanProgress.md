@@ -1,5 +1,50 @@
 # kanbanProgress.md — the append-only log
 
+## The remaining work, split into one board card each (owner, 2026-10-07)
+
+> **razdvoji po taskovima, zapisi ih u kanban.md pa azuriraj kanban i kanban_progress md i uzimaj jedan po jedan**
+
+Asked whether to do all five competition types in one pass, and told to split them. Done — seventeen
+cards are on the board now, worked **one at a time**, each with its own commit and its own entry here.
+
+### Why the competitions are not one task
+
+They do not share a code path, which is the whole reason for splitting them:
+
+| Competition | State today |
+|---|---|
+| League | works, and is the reference |
+| **National cup** | has a **bespoke** sheet (`loadCupFixturePage`) that is not the shared match view |
+| **International club cups** | **nothing clickable at all** — `club-cup-view.js` renders ties as `<tr>` |
+| **Senior NT** | ties are plain `<div class="fm-cup-tie">`, no match opening |
+| **NT U-21** | same code as senior, so the fix is shared but the verification is not |
+
+Batched into one task, whichever one broke would have been invisible.
+
+### And the boundary that must not be crossed again
+
+A fixture id and a match id are **both small integers over separate tables**. `ZoxApiController` already
+carries the scar from guessing between them:
+
+> *"Not a fallback to the fixture table, and the reason is worth stating: a fixture id and a match id are
+> both small integers over separate tables, so 'not found in matches, so it must be a fixture' is a
+> guess, and the guess resolved a dashboard link to somebody else's played match."*
+
+So every preview card passes an **explicit kind**, never a guess. The post-match views are already
+type-agnostic — `match-view.js`, `MatchController` and `ZoxApiController` branch on nothing — so
+**P0-PREV-5 is about proving that rather than assuming it**, which is the distinction this board keeps
+making.
+
+### The clean cut (owner decision)
+
+> **clean cut**
+
+When **P0-RANK-6** lands, `/countries/ranking` orders by ranking points and **Elo is no longer displayed
+as a ranking**. No transition period showing both. `RatingEngine` keeps its own internal role for
+anything that genuinely needs a strength number; it just stops being presented as a ranking.
+
+---
+
 ## The preview stopped predicting, and the ladder's top rung was dead code (owner, 2026-10-07)
 
 > **preview vise ne daje prognoze a radile su pre i da ih treba prilagoditi izmenama kad zavrsis**
