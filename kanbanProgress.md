@@ -348,6 +348,37 @@ calls it.
 
 ---
 
+## P2-TROPHY-1 (backend) — the medals a club has won, decided by the owner's rule (T2 half)
+
+> **u okviru milestones kao sledeci red trofeji... slicnu trofeja / medalje odredjene boje (zlato, srebro,
+> bronza) i ispod koje takmicenje i sezona**
+> **fashion: gubitnik finala dobija srebro, pobednik 3. meca bronzu; u ligi 2. i 3.**
+
+`ClubHonour` entity + `HonourService.derive(season)`. Medals come from the same finished results the
+ranking points read:
+
+- **League** — the final table: position 1 gold, 2 silver, 3 bronze, from `CompetitionEntry.position`.
+- **Cup / tournament** — the final decides gold and silver; if the format has a third-place match
+  (`NationalTournamentSchedule.ROUND_THIRD_PLACE`) its winner is bronze, otherwise no bronze.
+
+**Idempotent by rebuild** — the season's rows are deleted and rewritten from fixtures, so re-deriving a
+season does not double medals and a corrected fixture repairs itself. `deleteBySeasonYear` flushes before
+deleting, because a derived `deleteByX` ran the DELETE against still-pending inserts and the re-run of the
+same season tripped its own unique constraint.
+
+`competitionName` is **frozen at the time it was won**, so renaming a competition later does not rewrite
+history, and the medal colour is never something nobody told the code.
+
+**Not verified against real PostgreSQL** — the world has zero played matches, and the new `club_honour`
+table is created on the next application start. The table plus the `derive`'s whole shape are proven on
+the test slice (4 tests): the ladder for a league, a cup with a third-place match, a cup without one,
+and a double-derive leaving the second season intact.
+
+**Remaining for the card:** the Club page milestones tab must render this row — a gold/silver/bronze icon
+per honour with the competition name and season beneath.
+
+---
+
 ## P2-STAD-1, P2-TRAIN-1 and P2-TROPHY-1 — researched, two waiting on decisions (owner, 2026-10-07)
 
 > **nastavi do kraja** — meaning the whole queue, including the three added last. Two of them turn out
