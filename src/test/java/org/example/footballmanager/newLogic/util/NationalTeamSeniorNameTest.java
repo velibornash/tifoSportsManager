@@ -75,6 +75,24 @@ class NationalTeamSeniorNameTest extends BaseTest {
                 "only the suffix this codebase used is stripped");
     }
 
+    @Test
+    @Transactional
+    @DisplayName("a world that predates the rename is fixed by the rename alone, with no re-seed")
+    void theRenameIsReachableWithoutReseeding() {
+        Country country = aCountry();
+        Team stale = aSide(country, country.getName() + " National Team");
+        country.setSeniorNationalTeam(stale);
+        countries.save(country);
+
+        int renamed = seeder.renameSeniorSides(List.of(country));
+
+        assertEquals(1, renamed, "the repair reaches the rename without anybody re-seeding first");
+        assertEquals(country.getName(),
+                countries.findById(country.getId()).orElseThrow().getSeniorNationalTeam().getName());
+        assertEquals(0, seeder.renameSeniorSides(List.of(country)),
+                "and a second call changes nothing, so the button is safe to press twice");
+    }
+
     // ---------- world ----------
 
     private Country aCountry() {

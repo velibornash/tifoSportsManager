@@ -2255,6 +2255,22 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ P0 — Reset DB died on a foreign key; the senior-side rename never ran — owner, 2026-10-07
+
+- [x] **The schema has genuine FK cycles** — `cteam ↔ cscountry`, `new_logic_lineup ↔ new_logic_match`,
+      `country ↔ team`. **No ordering of row-by-row deletes satisfies an immediate FK around a cycle**,
+      which is what the children-first sort was pretending. Referential integrity is now suspended for the
+      reset and restored in a `finally`; the ordering code is deleted rather than patched.
+- [x] **The sabotage test passed** — H2's schema does not carry those basketball/legacy foreign keys, so
+      the wrong order completes there. `foreignKeyCyclesDoNotStopTheReset` puts rows in the cycle pair.
+      **Second time in this task H2's smaller schema hid a real defect.**
+- [x] **The senior-side rename was correct, compiled, and unreachable.** It lived only inside
+      `seedIfMissing`, so it ran only if somebody pressed Re-seed. `renameSeniorSides` is now standalone and
+      idempotent, the repair calls it and reports the count, and **the 48 rows in the owner's database were
+      corrected directly**.
+
+---
+
 ## ✅ A represented country now says something — owner, 2026-10-07
 
 > **za simulate zemlje trenutno stoji za npr Rumuniju ... da stoji ranking poeni i pozicija na ranking listi,

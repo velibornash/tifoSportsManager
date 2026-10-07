@@ -240,14 +240,68 @@ public class ResetService {
             return;
         }
 
-        List<String> childrenFirst = childrenBeforeParents(tables);
-        for (String table : childrenFirst) {
-            String quoted = quote(table);
-            entityManager.createNativeQuery("DELETE FROM " + quoted).executeUpdate();
-            restartIdentityOf(table, quoted);
+        List<String> toEmpty = new ArrayList<>(tables);
+
+        // **Referential integrity off for the duration.** The schema has genuine cycles -
+        // cteam <-> cscountry, new_logic_lineup <-> new_logic_match, country <-> team - and a row-by-row
+        // DELETE cannot satisfy an immediate foreign key around a cycle no matter what order it runs in.
+        // That is the whole of this reset's failure mode:
+        //
+        //   ERROR: update or delete on table "common_seasons" violates foreign key constraint
+        //   "fkf0rthadk5dba4rhycrdm66uei" on table "af_season_competitions"
+        //
+        // So the constraints are suspended, every table is emptied, and they are put back. Nothing is
+        // deleted outside the keep-list, so the window in which they are off does not let anything be
+        // deleted that should survive - and if emptying throws, the finally block restores them before
+        // the failure propagates.
+        boolean suspended = suspendReferentialIntegrity();
+        try {
+            for (String table : toEmpty) {
+                String quoted = quote(table);
+                entityManager.createNativeQuery("DELETE FROM " + quoted).executeUpdate();
+                restartIdentityOf(table, quoted);
+            }
+        } finally {
+            if (suspended) {
+                resumeReferentialIntegrity();
+            }
         }
-        log.warn("Emptied {} table(s) for the reset, children first: {}.",
-                childrenFirst.size(), String.join(", ", childrenFirst));
+        log.warn("Emptied {} table(s) for the reset.", toEmpty.size());
+    }
+
+    /**
+     * Turns foreign-key enforcement off for this connection, and reports whether it was needed.
+     *
+     * <p>Two dialects, one attempt each: PostgreSQL takes {@code session_replica_role}, H2 takes
+     * {@code REFERENTIAL_INTEGRITY}. Each is restored in the caller's {@code finally}, and a dialect
+     * that rejects both - which would mean a third database - falls back to the ordered delete, which
+     * is correct wherever there is no cycle.
+     */
+    private boolean suspendReferentialIntegrity() {
+        for (String statement : List.of(
+                "SET session_replica_role = 'replica'",
+                "SET REFERENTIAL_INTEGRITY FALSE")) {
+            try {
+                entityManager.createNativeQuery(statement).executeUpdate();
+                return true;
+            } catch (RuntimeException e) {
+                log.debug("{} not accepted here: {}", statement, e.getMessage());
+            }
+        }
+        return false;
+    }
+
+    private void resumeReferentialIntegrity() {
+        for (String statement : List.of(
+                "SET session_replica_role = 'origin'",
+                "SET REFERENTIAL_INTEGRITY TRUE")) {
+            try {
+                entityManager.createNativeQuery(statement).executeUpdate();
+                return;
+            } catch (RuntimeException e) {
+                log.debug("{} not accepted here: {}", statement, e.getMessage());
+            }
+        }
     }
 
     /**
@@ -258,44 +312,6 @@ public class ResetService {
      * A table that cannot be ordered (a cycle, or a dependency on a preserved table) keeps its catalogue
      * position, which is no worse than the previous behaviour of not clearing it at all.
      */
-    private List<String> childrenBeforeParents(List<String> tables) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> edges = entityManager.createNativeQuery("""
-                SELECT tc.table_name, ccu.table_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.constraint_column_usage ccu
-                  ON tc.constraint_name = ccu.constraint_name
-                WHERE tc.constraint_type = 'FOREIGN KEY'
-                  AND lower(tc.table_schema) = 'public'
-                """).getResultList();
-
-        List<String> remaining = new ArrayList<>(tables);
-        List<String> ordered = new ArrayList<>();
-        while (!remaining.isEmpty()) {
-            String next = remaining.stream()
-                    .filter(candidate -> !edges.stream()
-                            .anyMatch(edge -> names(edge[0], candidate) && isIn(remaining, edge[1])))
-                    .findFirst()
-                    .orElse(null);
-            if (next == null) {
-                // A cycle, or two tables that each need the other emptied first. Nothing can satisfy
-                // this ordering, so the rest keeps its catalogue order rather than looping.
-                ordered.addAll(remaining);
-                break;
-            }
-            ordered.add(next);
-            remaining.remove(next);
-        }
-        return ordered;
-    }
-
-    private boolean names(Object catalogueName, String candidate) {
-        return String.valueOf(catalogueName).equalsIgnoreCase(candidate);
-    }
-
-    private boolean isIn(List<String> tables, Object catalogueName) {
-        return tables.stream().anyMatch(table -> names(catalogueName, table));
-    }
 
     /**
      * Restarts one table's identity columns, so a rebuilt world gets ids from 1 again.

@@ -81,6 +81,34 @@ public class NationalTeamSeeder {
                 org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM).size();
     }
 
+    /**
+     * Brings every existing senior side onto the current naming, and reports how many moved.
+     *
+     * <p>A standalone entry point because the rename was otherwise reachable only from
+     * {@link #seedIfMissing}, and that made it depend on somebody pressing Re-seed. It is not: a world
+     * built before the rename keeps the old names until this is called, and the owner found exactly
+     * that - the code was right, compiled, and the database still said "Germany National Team" for all
+     * forty-eight sides because nothing had run the path that fixes it.
+     *
+     * <p>Safe to call on a healthy world: it changes a name only where the name is exactly the country
+     * name plus the old suffix, so a side renamed by hand is left alone and a second call does nothing.
+     *
+     * @return how many sides were renamed
+     */
+    @Transactional
+    public int renameSeniorSides(List<Country> countries) {
+        int renamed = 0;
+        for (Country country : countries) {
+            if (country != null && country.getSeniorNationalTeam() != null && renameSenior(country)) {
+                renamed++;
+            }
+        }
+        if (renamed > 0) {
+            log.info("Renamed {} senior side(s) onto the country name.", renamed);
+        }
+        return renamed;
+    }
+
     public void seedIfMissing(List<Country> countries) {
         int made = 0;
         for (Country country : countries) {

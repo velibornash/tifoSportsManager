@@ -1,5 +1,75 @@
 # kanbanProgress.md — the append-only log
 
+## Reset DB died on a foreign key, and the senior-side rename never reached the world (owner, 2026-10-07)
+
+Two defects in code committed earlier the same day, both found by using the buttons rather than reading
+the code.
+
+### 1. The reset failed on `common_seasons`
+
+> **Reset db iz Admin dela izbacuje gresku** — `ERROR: update or delete on table "common_seasons" violates
+> foreign key constraint "fkf0rthadk5dba4rhycrdm66uei" on table "af_season_competitions"`
+
+**The schema has genuine foreign-key cycles.** Measured against the live database:
+
+```
+cteam <-> cscountry
+new_logic_lineup <-> new_logic_match
+country <-> team
+```
+
+**No ordering of row-by-row deletes satisfies an immediate foreign key around a cycle.** The
+children-first ordering I had written handles an acyclic graph and cannot handle this one — and when it
+ran out of safe candidates it fell back to catalogue order, which is arbitrary, and deleted a parent
+while its children still pointed at it.
+
+**The fix is not a better sort. It is to stop pretending the sort can work:** referential integrity is
+suspended for the reset (`session_replica_role = 'replica'` on PostgreSQL, `REFERENTIAL_INTEGRITY FALSE`
+on H2 — each attempted, each restored in a `finally`), every table outside the keep-list is emptied, and
+the constraints go back. Nothing outside the keep-list is deleted, so the window in which they are off
+cannot lose anything that should have survived.
+
+**The ordering code is gone.** It was an optimisation pretending to be a correctness property, and it
+carried the bug.
+
+**The test could not see it, and that is the part worth keeping.** The sabotage run — restoring the
+inverted comparison — **passed**. The H2 test schema does not carry those basketball and legacy foreign
+keys, so a wrongly-ordered delete completes there and the suite stays green while the owner's database
+raises a constraint violation. A test that cannot fail is not a slow test, it is a false one, and this is
+the second time in this task that H2's schema being *smaller* than PostgreSQL's hid a real defect.
+`foreignKeyCyclesDoNotStopTheReset` puts rows in `cteam` and `cscountry` and asserts both are gone.
+
+### 2. The senior-side rename was correct, compiled, and had never run
+
+> **kod seedovanja timova, kako ide dalje kroz drzave tako ide sve sporije ... seeder za drzave pregazi
+> opet naziv i dodaje National Team - ne treba prvi timovi da imaju National Team samo naziv drzave**
+
+The code was right: `NationalTeamSeeder.seniorName` returns the bare country name, and `renameSenior`
+strips exactly the old suffix. It had been committed and compiled (`601cad3`, 23:54).
+
+**The database still said "Germany National Team" for all 48 sides.** The rename lived only inside
+`seedIfMissing`, so it ran only if somebody pressed **Re-seed national teams**. The World page's own
+repair never called it, so a world could sit on the old names indefinitely while the code that fixed them
+was present and correct.
+
+- `renameSeniorSides(countries)` is now a **standalone entry point**, idempotent, touching only names of
+  the exact old shape.
+- **Repair world → Re-seed national teams** calls it and reports `renamedSeniorSides`, because a repair
+  that renames 48 sides must not look identical to one that changed nothing.
+- **The 48 rows in the owner's database were corrected directly**, since a rename that waits for a button
+  press is a rename that does not happen. U-21 untouched; zero rows still carry the suffix.
+
+`NationalTeamSeniorNameTest` **4/4**, the new one asserting the rename is reachable **without** a re-seed.
+
+### And, recorded, because it is the same mistake twice
+
+The reset's own test helper had been guessing column values from column *names* and burned five
+iterations on `SUPPORTER_MOOD` being an integer. It then guessed **lengths** the same way and produced
+`'seed'` for a `VARCHAR(3)` ISO code. Literals are now chosen by the column's declared type **and length**,
+read from `information_schema`.
+
+---
+
 ## A represented country had nothing on its page (owner, 2026-10-07)
 
 ### What was asked for

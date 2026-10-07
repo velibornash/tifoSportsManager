@@ -51,6 +51,9 @@ public class WorldRepairService {
         switch (step) {
             case "national-teams" -> {
                 nationalTeamSeeder.seedIfMissing(countries.findAll());
+                // Reported, because a rename is a change and a repair that changes nothing should not
+                // be indistinguishable from one that fixed forty-eight names.
+                out.put("renamedSeniorSides", nationalTeamSeeder.renameSeniorSides(countries.findAll()));
                 out.put("action", "Re-seeded national teams");
                 out.put("nationalSides", nationalTeamSeeder.totalSides());
             }
