@@ -1,5 +1,83 @@
 # kanbanProgress.md — the append-only log
 
+## "Da li nam radi trening?" — measured, and the answer is yes (owner, 2026-10-07)
+
+> **potencijalni p0: da li nam radi trening? na Oracle je prosao dan za trening a nije se desio**
+
+### What the database said before anything was changed
+
+```sql
+select job_key, count(*) from job_run group by job_key;
+  day-opened 22 | recovery 9 | finance 2 | cup-draw 2 | matchday-international 2
+  training 1   | matchday-cup 1 | matchday-league-a 1 | matchday-league-b 1
+```
+
+**`training` had run exactly once**, on 2026-09-30, in week 12 — and every other job had run
+repeatedly. That is a real signal, and it is not explained by the world being freshly reset.
+
+### The hypothesis, and the test that killed it
+
+`TrainingJob` is **day 4, hour 10**. The clock advances like this:
+
+```java
+int hour = currentHour + 1;
+if (hour > 23) { hour = 0; day += 1; ... }
+return afterMove(clock, hour);      // day is ALREADY the new day
+```
+
+So the step that leaves day N asks the runner about **(day N+1, hour 0)**, and **(day N, hour 23) is
+never asked at all**. Two jobs sit on hour 23 — `WeekRolloverJob` and `SeasonRolloverJob` — and by that
+reasoning neither could ever fire. Invisible in the counters, because the week still advances: it is the
+**clock** that increments it, not the job.
+
+`JobTriggerCoverageTest` walks the real clock a full week, hour by hour, and asks which (day, hour) pairs
+the runner is actually offered. **Both tests pass: hour 23 *is* reached, on all seven days, including
+day 7.** The reasoning was wrong and the test is what said so. It is kept because "does job X fire" cannot
+be answered by reading X's day and hour alone — it depends on which hours the clock offers — and the next
+person to add a job at an unusual hour needs that question answered rather than assumed.
+
+### The real answer: training fires, and is recorded DONE
+
+`TrainingJobFiresTest` drives the **real `JobRunner`** with the real job list. At day 4, hour 10:
+
+```
+[{key=day-opened,           trigger=w* d* 0:00,  status=DONE},
+ {key=recovery,             trigger=w* d* 6:00,  status=DONE},
+ {key=league-table-reconcile-a, trigger=w* d4 1:00, status=DONE},
+ {key=national-tournament-draw, trigger=w* d* 0:00, status=DONE},
+ {key=training,             trigger=w* d4 10:00, status=DONE}]
+```
+
+**Training ran and is recorded DONE.** So the mechanism is sound, and the single historical run is a
+world-state fact rather than a defect — this database has been reset since, and 2 clubs / 2,400 players
+means the pyramid has not been seeded yet either.
+
+### What was genuinely missing, and it is the reason the question could not be answered
+
+**Nothing tested the job.** `SquadTrainingServiceTest` proves the service does its arithmetic and
+`TrainingControllerAuthorizationTest` proves who may ask for it by hand — **there was no test that the
+scheduler calls it, on the right day, at the right hour.** A service that is correct and wired to nothing
+looks exactly like a service that works.
+
+`TrainingJobFiresTest` 3/3, and one of its own assertions was wrong in an instructive way: it first
+asserted *"exactly one job ran"* at day 4 hour 10, and the real answer was **five** — day-opened,
+recovery, table-reconcile, tournament-draw and training are all due then. **Asserting a count rather than
+the presence of the job would have passed for the wrong reason**; it now asserts training is among the
+outcomes and that nothing failed.
+
+It also had to be driven **through the runner**, not by calling `job.run(...)`. Calling the job directly
+runs the work and writes **no row** — the first version of this test did exactly that and failed on the
+missing row, which is the distinction the whole test exists to make.
+
+### The conclusion that matters
+
+The likely reason the day passed on Oracle without training appearing is that **nothing told the owner it
+ran**. There is no jobs panel, no history, no "next trigger" — so a job that worked is indistinguishable
+from one that did not. That is the next task, and it is the real fix for this report rather than any
+change to `TrainingJob`.
+
+---
+
 ## Back went to the wrong place, qualifying rows were invisible, and seeding was a scan per club (owner, 2026-10-07)
 
 Three things, one of them the reason every country after the first was slower.

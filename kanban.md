@@ -2255,6 +2255,24 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Training: measured, and it works — but nothing could prove it (owner, 2026-10-07)
+
+> **potencijalni p0: da li nam radi trening? na Oracle je prosao dan za trening a nije se desio**
+
+- [x] **`job_run` said `training` had run once**, every other job repeatedly — a real signal, and the
+      reason for it turned out to be the world's state rather than a defect.
+- [x] **The hypothesis was wrong and the test said so.** Hour 23 looked unreachable (the clock increments
+      the day and the hour in the same step), and both rollover jobs sit there. `JobTriggerCoverageTest`
+      walks a real week: **hour 23 *is* reached, on all seven days.** Kept because the question is real
+      for the next job on an unusual hour.
+- [x] **`TrainingJobFiresTest` 3/3 proves it through the real `JobRunner`**: at day 4 hour 10 the outcomes
+      contain `key=training … status=DONE`, alongside day-opened, recovery, table-reconcile and
+      tournament-draw. **Training works.**
+- [x] **The real gap: nothing tested the job at all.** The service had a test, the manual endpoint had a
+      test, and the scheduler had none — a service wired to nothing looks exactly like one that works.
+
+---
+
 ## ✅ Back from an NT match went to the league; qualifying rows were unstyled; seeding scanned per club — owner, 2026-10-07
 
 - [x] **Back from a national-cup match landed on the league match list.** `match-view.js` mapped the caller
