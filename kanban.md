@@ -2255,6 +2255,24 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ The notification chime resumes instead of giving up — owner, 2026-10-07
+
+> **red dot radi lepo i broj ali taj ton kad stigne ja ne cujem**
+
+- [x] **The old code closed a suspended context and returned** — and a context created outside a user
+      gesture is suspended in **every current browser** (Chrome's own autoplay policy documents it). So the
+      chime was given up on **every ring**, inside a `try` with an empty `catch`: no error, no log, no
+      console message. It looked like defensive error handling; it was the reason the tone never sounded.
+- [x] **Resume instead of abandon**, one context for the page, kept rather than closed after each ring.
+- [x] **Unlocked on the first click or keypress**, because Chrome will only start a context from a gesture.
+- [x] `NotificationChimeBrowserTest` **1/1** against real Chromium — and it says plainly that **headless has
+      no autoplay policy**, so it cannot witness the bug. It asserts the checkable half: `resume()` leaves
+      the context running. The suspended half rests on Chrome's documentation, quoted in the test.
+- [x] **A regression this task introduced, caught by an existing assertion**: rewriting the chime deleted
+      `buildDropdownHtml` entirely, and `theDropdownShowsUnreadOnly` failed on the missing filter.
+
+---
+
 ## ✅ Opening a notification's target marks it read — owner, 2026-10-07
 
 > **kad se klikne na open conversation ili open forum iz notificationsa odmah smanji broj unread-a jer je taj

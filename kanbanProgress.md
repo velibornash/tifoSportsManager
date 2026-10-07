@@ -1,5 +1,78 @@
 # kanbanProgress.md — the append-only log
 
+## The chime gave up on itself, silently (owner, 2026-10-07)
+
+> **notification - red dot radi lepo i broj ali taj ton kad stigne ja ne cujem.**
+
+### The dot working was evidence about the other half, not this one
+
+The red dot and the tone were committed together, so "the dot works" says nothing about the tone. The dot
+and the badge are DOM writes. The sound is an audio context. They shared a commit and nothing else.
+
+### What was wrong
+
+```js
+const context = new AudioContext();
+if (context.state === 'suspended') { context.close(); return; }
+```
+
+**A context created outside a user gesture is suspended, in every current browser.** Chrome's own
+documentation:
+
+> *"If an AudioContext is created before the document receives a user gesture, it will be created in the
+> 'suspended' state, and you will need to call resume() after the user gesture."*
+> — [Chrome for Developers, Autoplay policy](https://developer.chrome.com/blog/autoplay/)
+
+So the guard was taken **on every ring**, inside a `try` with an empty `catch`. The sound could not play,
+and the failure produced no error, no log and no console message — which is why it read as "I can't hear
+it" rather than as a broken feature.
+
+**It looked like defensive error handling.** That is the part worth recording: the code's shape says
+"handle the case where audio is unavailable", and its effect is "give up exactly when audio is
+unavailable".
+
+### What it is now
+
+- **Resume instead of abandoning.** One context for the page, `resume()` when suspended.
+- **Unlocked on the first click or keypress**, because Chrome will only start a context from a gesture —
+  so the gesture has to happen somewhere, and making it the manager's first click is the only place it
+  can be.
+- The context is **kept** rather than closed after each ring: a resumed context is only reusable if it is
+  still there, and a long session should not accumulate one per notification.
+
+### What the browser test could and could not prove
+
+`NotificationChimeBrowserTest` asks Chromium directly — create a context, read its state, resume, read it
+again. The result:
+
+```
+created=running; oldGuardTook=false; afterResume=running
+```
+
+**Headless Chromium has no autoplay policy.** The context is created `running` there, so the old guard
+would not have fired and **this test cannot witness the bug** — it is the one environment where the defect
+does not appear, which is part of why the defect survived. What it does assert is the half that is
+checkable anywhere: **`resume()` leaves the context running**, so the chime has something to play through.
+The suspended half rests on the documentation quoted above, and the test says so rather than pretending.
+
+Getting that page to run took four attempts, each a different way of shipping the script: a `file:` page
+that silently did not execute it, a `data:` URL truncated at the first `+` and read as a JavaScript
+`SyntaxError`, and `setContent`, which works. **A probe that does not run reports a fact about the probe.**
+
+### A regression this task introduced and the tests caught
+
+Rewriting the chime **deleted `buildDropdownHtml` entirely** — the whole unread-only dropdown. The existing
+`theDropdownShowsUnreadOnly` assertion failed on the missing filter line, which is the only reason it was
+caught before it reached you.
+
+That is the third time in this task that a large string replacement took more than the string it was
+aimed at. The assertions are what made it visible: without them, a dropdown that renders nothing would
+have shipped the same way a badge that does not update did.
+
+`NotificationBellAlertTest` **9/9**, `NotificationChimeBrowserTest` **1/1**.
+
+---
+
 ## Opening a notification's target now reads it (owner, 2026-10-07)
 
 > **notifications - kad se klikne na open conversation ili open forum iz notificationsa odmah smanji broj
