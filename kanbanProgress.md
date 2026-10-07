@@ -348,6 +348,28 @@ calls it.
 
 ---
 
+## P2-STAD-1 — the spec is settled and half of it already exists (owner, 2026-10-07)
+
+> **morao prvo jasno da se izabere za koju tribinu, jasan proracun troskova i onda yes/no da se prihvati
+> ponuda** and **Attendance shd be connected to price, ranking of home team, form, ranking of guest
+> team, competition etc**
+
+The decision is recorded (four stands N/E/S/W plus four corners, individually buildable, per-stand price),
+and the important correction that half the ask is **already live**: `AttendanceService` already computes
+demand from home reputation, home success and form, away reputation and success, the occasion (competition
+round), pitch condition, and a **price elasticity** factor (a ticket at the reference price is "normal";
+doubling it costs roughly a third of the crowd, per the −0.55 elasticity), then splits it home 80% / away
+20% and caps each at its sector.
+
+So what is actually missing is **stand granularity**: `Stadium` still holds one `capacity` and one
+`ticketPrice`, the build spends in one `POST`, there is no stand to pick and no quote to accept. The plan,
+now on the board, is three small additions — (a) a stand model, (b) a quote endpoint that returns the
+price without spending, and (c) a confirm endpoint that spends.
+
+Not built — there is no stand model yet, and guessing one without a visible need was explicitly not done.
+
+---
+
 ## P2-TROPHY-1 (backend) — the medals a club has won, decided by the owner's rule (T2 half)
 
 > **u okviru milestones kao sledeci red trofeji... slicnu trofeja / medalje odredjene boje (zlato, srebro,
