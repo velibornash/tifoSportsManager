@@ -2255,6 +2255,25 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Jobs view: a real tab, and a table class that exists — owner, 2026-10-07
+
+> **napravi lepse job pregled, bas je zbrkano ... normalna leepa tabela ko sve druge tabele, kolone su ok,
+> pazi na mob prelom**
+
+- [x] **`fm-table` is defined nowhere in the stylesheet** — the panel had no padding, no header styling,
+      no borders and no hover, which is what "zbrkano" was. It uses **`fm-squad`**, the style every other
+      table here uses. The backup table had the same defect and is fixed too.
+- [x] **A real tab bar** at the top of Admin, so Jobs is not the ninth section in a scrolling page.
+- [x] **Panels toggle with `hidden`**, not a class — a `display:none` panel still fetches, so Jobs would
+      have read the server while invisible.
+- [x] **Mobile:** the table scrolls inside its own wrapper; below 640px the trigger and next-trigger
+      columns are dropped and the name, last outcome and failure count are kept. The outcome is never
+      dropped — it is the reason the panel exists.
+- [x] `AdminJobsViewTest` **4/4**, including **every class the view uses is defined** — this failure mode is
+      silent, so it is asserted rather than noticed.
+
+---
+
 ## ✅ P0 — Reset DB: a typo, then a subtle one, both found by running it for real — owner, 2026-10-07
 
 > **unrecognized configuration parameter "session_replica_role"** · **moras ovo da istestiras pre nego kazes

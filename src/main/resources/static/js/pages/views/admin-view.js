@@ -27,6 +27,40 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
      */
     const ROLE_OPTIONS = ['REGULAR', 'PLUS', 'STAFF', 'MOD', 'ADMIN', 'DEV', 'OWNER'];
 
+    /** Which admin tab is showing. 'tools' is the default because it is where the panel has always been. */
+    let adminTab = 'tools';
+
+    function activeAdminTab() {
+        return adminTab;
+    }
+
+    /**
+     * Shows one tab and hides the other.
+     *
+     * <p>`hidden` rather than a class, so a hidden panel is genuinely not rendered — a display:none
+     * panel still fetches, and the Jobs tab would have been reading the server while invisible.
+     */
+    function showAdminTab(name) {
+        adminTab = name;
+        document.querySelectorAll('[data-admin-tab]').forEach(button => {
+            const active = button.dataset.adminTab === name;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-admin-panel]').forEach(panel => {
+            panel.hidden = panel.dataset.adminPanel !== name;
+        });
+        if (name === 'jobs') {
+            void showJobs();
+        }
+    }
+
+    function wireAdminTabs() {
+        document.querySelectorAll('[data-admin-tab]').forEach(button => {
+            button.addEventListener('click', () => showAdminTab(button.dataset.adminTab));
+        });
+    }
+
     function guard() {
         if (isAdminSession()) return null;
         return buildEmptyState('Admins only - you do not have permission to view this page.');
@@ -186,6 +220,10 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 if (!res.ok) alert('Could not read violations');
                 else { const v = await res.json(); alert('National rating violations: ' + (v.violations || v.length || 'none')); }
             });
+            return;
+        }
+        if (action === 'refresh-jobs') {
+            await showJobs();
             return;
         }
         if (action === 'run-due-jobs') {
@@ -370,7 +408,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 return;
             }
             host.innerHTML = `
-                <table class="fm-table">
+                <div class="fm-table-wrap"><table class="fm-squad fm-jobs-table">
                     <thead>
                         <tr><th>Backup</th><th>Taken</th><th>Size</th><th></th></tr>
                     </thead>
@@ -423,27 +461,26 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             host.innerHTML = banner + `
                 <p class="fm-subtle">Season ${escapeHtml(data.season)} · week ${escapeHtml(data.week)}
                     · ${escapeHtml(data.dayLabel || ('day ' + data.day))} · ${escapeHtml(data.hour)}:00</p>
-                <table class="fm-table">
-                    <thead><tr>
-                        <th>Job</th><th>Trigger</th><th>Last run</th><th>Next trigger</th><th>Season</th>
-                    </tr></thead>
-                    <tbody>${jobs.map(job => `
-                        <tr${job.lastStatus === 'FAILED' ? ' class="fm-job-row--failed"' : ''}>
-                            <td><strong>${escapeHtml(job.key)}</strong></td>
-                            <td class="fm-subtle">${escapeHtml(job.trigger || '')}</td>
-                            <td>${job.lastStatus
-                                ? `<span class="fm-job-status fm-job-status--${escapeHtml(String(job.lastStatus).toLowerCase())}">${escapeHtml(job.lastStatus)}</span>`
-                                : '<span class="fm-subtle">never</span>'}
-                                ${job.lastRunAt ? `<div class="fm-subtle">${escapeHtml(job.lastRunAt)}</div>` : ''}
-                                ${job.lastMessage ? `<div class="fm-subtle">${escapeHtml(job.lastMessage)}</div>` : ''}</td>
-                            <td>${escapeHtml(job.nextTrigger || '—')}
-                                ${job.nextInHours >= 0 ? `<div class="fm-subtle">in ${job.nextInHours} hour(s)</div>` : ''}</td>
-                            <td>${job.runsThisSeason || 0} run(s)${job.failuresThisSeason
-                                ? `, <span class="fm-job-status fm-job-status--failed">${job.failuresThisSeason} failed</span>`
-                                : ''}</td>
-                        </tr>`).join('')}
-                    </tbody>
-                </table>`;
+                <div class="fm-table-wrap">
+                    <table class="fm-squad fm-jobs-table">
+                        <thead><tr>
+                            <th class="sq-name">Job</th>
+                            <th>Trigger</th>
+                            <th>Last run</th>
+                            <th>Next trigger</th>
+                            <th>Season</th>
+                        </tr></thead>
+                        <tbody>${jobs.map(job => `
+                            <tr${job.lastStatus === 'FAILED' ? ' class="fm-job-row--failed"' : ''}>
+                                <td class="sq-name"><strong>${escapeHtml(job.key)}</strong></td>
+                                <td>${escapeHtml(job.trigger || '')}</td>
+                                <td>${statusCell(job)}</td>
+                                <td>${nextTriggerCell(job)}</td>
+                                <td>${seasonCell(job)}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
         } catch (err) {
             host.innerHTML = '<p class="fm-subtle">Could not read the jobs.</p>';
         }
@@ -478,6 +515,31 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             button.disabled = false;
             await showJobs();
         }
+    }
+
+    /** Status badge, timestamp and the failure message - the three things that answer "did it run". */
+    function statusCell(job) {
+        if (!job.lastStatus) {
+            return '<span class="fm-subtle">never</span>';
+        }
+        const badge = `<span class="fm-job-status fm-job-status--${escapeHtml(String(job.lastStatus).toLowerCase())}">${escapeHtml(job.lastStatus)}</span>`;
+        const when = job.lastRunAt ? `<div class="fm-subtle">${escapeHtml(job.lastRunAt)}</div>` : '';
+        const message = job.lastMessage ? `<div class="fm-job-message">${escapeHtml(job.lastMessage)}</div>` : '';
+        return badge + when + message;
+    }
+
+    function nextTriggerCell(job) {
+        const when = escapeHtml(job.nextTrigger || '—');
+        const ahead = job.nextInHours >= 0 ? `<div class="fm-subtle">in ${job.nextInHours} h</div>` : '';
+        return when + ahead;
+    }
+
+    function seasonCell(job) {
+        const runs = `<span>${job.runsThisSeason || 0} run(s)</span>`;
+        const failed = job.failuresThisSeason
+            ? `<div><span class="fm-job-status fm-job-status--failed">${job.failuresThisSeason} failed</span></div>`
+            : '';
+        return runs + failed;
     }
 
     async function showCountryActivation() {
@@ -818,7 +880,38 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         <div class="fm-stat-card"><span>Current club</span><strong>${getTeamName?.() || 'Unassigned'}</strong></div>
                         <div class="fm-stat-card"><span>Tool groups</span><strong>4</strong></div>
                     </div>
+                    <nav class="fm-admin-tabs" role="tablist" aria-label="Admin sections">
+                        <button type="button" class="fm-admin-tab is-active" role="tab"
+                            aria-selected="true" data-admin-tab="tools">Tools</button>
+                        <button type="button" class="fm-admin-tab" role="tab"
+                            aria-selected="false" data-admin-tab="jobs">Jobs</button>
+                    </nav>
                 </section>
+
+                <div class="fm-admin-tabpanel" data-admin-panel="jobs" hidden>
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Jobs</h3>
+                                <p class="fm-subtle">Every scheduled job: what it is triggered on, when it
+                                    last ran, when it runs next, and whether anything failed. A job that ran
+                                    and a job that did not used to look identical from here.</p>
+                            </div>
+                            <span class="fm-panel-action">Scheduler</span>
+                        </div>
+                        <div class="fm-admin-toolbar">
+                            <button type="button" class="fm-action-btn" data-admin-action="run-due-jobs">
+                                Run due jobs now
+                            </button>
+                            <button type="button" class="fm-link-btn" data-admin-action="refresh-jobs">Refresh</button>
+                            <span class="fm-subtle">Runs everything whose trigger has been reached, without
+                                moving the clock. Safe to press repeatedly.</span>
+                        </div>
+                        <div id="fm-jobs"><p class="fm-subtle">Reading...</p></div>
+                    </section>
+                </div>
+
+                <div class="fm-admin-tabpanel" data-admin-panel="tools">
 
                 <section class="fm-panel">
                     <div class="fm-panel-head">
@@ -871,28 +964,6 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         })}
                     </div>
                     <div id="fm-backups"><p class="fm-subtle">Reading...</p></div>
-                </section>
-
-                <section class="fm-panel">
-                    <div class="fm-panel-head">
-                        <div>
-                            <h3>Jobs</h3>
-                            <p class="fm-subtle">Every scheduled job: what it is triggered on, when it last
-                                ran, when it runs next, and whether anything failed. A job that ran and a
-                                job that did not used to look identical from here.</p>
-                        </div>
-                        <span class="fm-panel-action">Scheduler</span>
-                    </div>
-                    <div id="fm-jobs"><p class="fm-subtle">Reading...</p></div>
-                    <div class="community-tool-grid">
-                        ${toolCard({
-                            title: 'Run due jobs now',
-                            body: 'Runs everything whose trigger has been reached without moving the clock. Safe to press repeatedly - a job already done is skipped.',
-                            action: 'run-due-jobs',
-                            label: 'Run due jobs',
-                            variant: 'secondary'
-                        })}
-                    </div>
                 </section>
 
                 <section class="fm-panel">
@@ -1019,11 +1090,12 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 </section>
             </div>`;
 
+        wireAdminTabs();
         void showCountryActivation();
         void showUserManagement();
         void showRegistrationQueue();
         void showBackups();
-        void showJobs();
+        if (activeAdminTab() === 'jobs') void showJobs();
 
         mainContent.querySelectorAll('[data-admin-action]').forEach((button) => {
             button.addEventListener('click', () => handleTool(button));

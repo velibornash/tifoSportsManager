@@ -5562,3 +5562,112 @@ body {
     background: rgba(244, 67, 54, 0.12);
     border-left: 3px solid #e5484d;
 }
+
+/* ── Admin tabs + the jobs table (owner, 2026-10-07) ────────────────────────────────────────────────
+ *
+ * The jobs panel was a table with class `fm-table`, **which is defined nowhere in this stylesheet** —
+ * so it rendered with no padding, no header styling, no hover and no borders, and read as a wall of
+ * text. It uses `fm-squad`, which is the table style every other table in the application uses.
+ *
+ * The tabs exist because Jobs was one more <section> in a page that had grown to nine, and scrolling to
+ * find the one you want is what "zbrkano" is.
+ */
+
+.fm-admin-tabs {
+    display: flex;
+    gap: 6px;
+    margin-top: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fm-admin-tab {
+    appearance: none;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #8fa0ba;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 10px 14px;
+    margin-bottom: -1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.fm-admin-tab:hover {
+    color: #d7e2f2;
+}
+
+.fm-admin-tab.is-active {
+    color: #eef4ff;
+    border-bottom-color: #4a9eff;
+}
+
+.fm-admin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+/* The scroll wrapper is what makes the table survivable on a phone: the table keeps its columns and
+ * scrolls sideways, rather than the page scrolling sideways under a fixed header. */
+.fm-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.fm-jobs-table {
+    min-width: 720px;
+}
+
+.fm-jobs-table td {
+    vertical-align: top;
+}
+
+.fm-job-message {
+    margin-top: 3px;
+    max-width: 34ch;
+    color: #ff9d94;
+    font-size: 0.78rem;
+    line-height: 1.35;
+}
+
+/* On a narrow screen the trigger and the next-trigger columns are the ones that can be dropped: the
+ * job's name, its last outcome and its failure count are what the screen is read for. */
+@media (max-width: 640px) {
+    .fm-jobs-table {
+        min-width: 0;
+    }
+
+    .fm-jobs-table th:nth-child(2),
+    .fm-jobs-table td:nth-child(2),
+    .fm-jobs-table th:nth-child(4),
+    .fm-jobs-table td:nth-child(4) {
+        display: none;
+    }
+
+    .fm-jobs-table th,
+    .fm-jobs-table td {
+        padding: 9px 6px;
+        font-size: 0.85rem;
+    }
+
+    .fm-job-message {
+        max-width: 22ch;
+    }
+}
+
+/* A tab panel is a plain block; the `hidden` attribute does the work. Declared so the class is a real
+ * one with a rule, rather than a name the view uses and the stylesheet has never heard of - which is
+ * exactly what happened to `fm-table`. */
+.fm-admin-tabpanel {
+    display: block;
+}
+
+.fm-admin-tabpanel[hidden] {
+    display: none;
+}

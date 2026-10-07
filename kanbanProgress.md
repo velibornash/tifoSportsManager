@@ -1,5 +1,47 @@
 # kanbanProgress.md — the append-only log
 
+## The Jobs view was a table class that does not exist (owner, 2026-10-07)
+
+> **napravi lepse job pregled, bas je zbrkano, znaci dodaj novi tab gore u admin (ili klasican tab ili
+> dugme koje otvara novu stranicu), normalna leepa tabela ko sve druge tabele, kolone su ok, pazi na mob prelom**
+
+### The reason it looked like that
+
+```html
+<table class="fm-table">
+```
+
+**`fm-table` is defined nowhere in the stylesheet.** Not thin, not wrong — *absent*. So the panel had no
+padding, no header styling, no row borders, no hover and no alignment, and rendered as a wall of text.
+Meanwhile **`fm-squad`**, the table style every other table in this application uses, was one class away.
+
+The backup table in the same panel had the same class, so it was equally unstyled and nobody had said so.
+
+### What changed
+
+- **A real tab bar** at the top of Admin — Tools, Jobs. Jobs was one more `<section>` in a page that had
+  grown to nine, so finding it meant scrolling.
+- **Panels are toggled with `hidden`, not a class.** A `display:none` panel still fetches, so Jobs would
+  have been reading the server while invisible. It loads when its tab is opened.
+- **`fm-squad` for both tables**, so the Jobs table and the backup table finally look like every other
+  table in the application.
+- **The table scrolls inside its own wrapper** (`.fm-table-wrap`, `overflow-x:auto`) rather than the page,
+  so on a phone the columns scroll sideways under a header that stays put.
+- **On a narrow screen the two droppable columns are dropped** — the trigger rule and the next trigger.
+  What remains is the job's name, its last outcome and its failure count, which is what the screen is
+  read for. The name and the outcome are never dropped: the outcome is the reason the panel exists.
+
+### A class the view used and the stylesheet had never heard of
+
+`fm-admin-tabpanel` had no rule either — the same defect, one commit later, in a class I had just written.
+It has a rule now, and there is a test that **checks every class the view uses is actually defined**,
+because this failure mode is silent: the page renders, the data arrives, and it just looks wrong.
+
+`AdminJobsViewTest` **4/4**, and it found three of those gaps on its first run — the undefined tab-panel
+class, and the leftover `fm-table` on the backup table.
+
+---
+
 ## Reset DB, fourth attempt: `TRUNCATE ... CASCADE` is also wrong (owner, 2026-10-07)
 
 > **resert db ne radi - Database operation failed. Error: unrecognized configuration parameter
