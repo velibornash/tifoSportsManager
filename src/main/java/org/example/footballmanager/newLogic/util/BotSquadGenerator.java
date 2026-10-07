@@ -12,6 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.regex.Pattern;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Random;
 
@@ -52,6 +55,38 @@ public class BotSquadGenerator {
      * rolled 11 wingers would be unplayable and a manager would be told the world is broken.
      */
     private static final int DEFENDERS = 8;
+    /** The initials {@link #name} draws from. Shared with {@link #isGenerated} so the two cannot drift. */
+    private static final List<String> NAME_PREFIXES = List.of("A.", "D.", "I.", "L.", "M.", "N.", "S.", "V.");
+
+    /**
+     * The exact shape {@link #name} produces - {@code A. SRB-GK02} - built from the same prefix list
+     * and the same {@link Position} values, so it tracks the generator instead of restating it.
+     *
+     * <p>This is how a national side that was filled before its clubs existed gets recognised later,
+     * and replaced with real players once they do. See {@code NationalTeamSeeder.squadsFor}.
+     */
+    private static final Pattern GENERATED_NAME = Pattern.compile(
+            "^(" + String.join("|", NAME_PREFIXES.stream().map(Pattern::quote).toList())
+                    + ") [A-Z0-9]{3}-("   // the generator does not validate the country code, so neither does this
+                    + Arrays.stream(Position.values()).map(p -> Pattern.quote(p.name()))
+                            .collect(Collectors.joining("|"))
+                    + ")\\d{2}$");
+
+    /**
+     * Whether this generator made this player.
+     *
+     * <p>There is no flag on the row, so the name is the record - which is the same reasoning
+     * {@code squadsFor} already used for "a squad exists". A generated player is not a real squad
+     * member and must not be mistaken for one: the owner asked for active sides to field real
+     * players, and a guard that cannot tell the two apart is how 2,400 simulated players ended up
+     * starting for sides that had 7,730 real ones on the books.
+     */
+    public boolean isGenerated(Player player) {
+        return player != null
+                && player.getName() != null
+                && GENERATED_NAME.matcher(player.getName()).matches();
+    }
+
     private static final int MIDFIELDERS = 7;
     private static final int ATTACKERS = 4;
     private static final int WINGERS = 3;
@@ -175,8 +210,7 @@ public class BotSquadGenerator {
      * identical. A code-based surname is honest about being generated, and the football still works.
      */
     private String name(Country country, Position position, int index, Random random) {
-        List<String> prefixes = List.of("A.", "D.", "I.", "L.", "M.", "N.", "S.", "V.");
-        String prefix = prefixes.get(random.nextInt(prefixes.size()));
+        String prefix = NAME_PREFIXES.get(random.nextInt(NAME_PREFIXES.size()));
         String code = country.getIsoCode() == null ? "XXX" : country.getIsoCode();
         return prefix + " " + code + "-" + position.name() + String.format("%02d", index + 1);
     }

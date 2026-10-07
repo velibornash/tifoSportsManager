@@ -1,5 +1,98 @@
 # kanbanProgress.md — the append-only log
 
+## Active national sides were fielding 25 simulated players (owner, 2026-10-07)
+
+> **zasto su u u-21 i prvom timu u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih
+> (koji se nalaze u poolu ispod)? AKTIVNA liga MORA imati STVARNE igrace a ne simulirane!!!**
+
+### What the owner saw, and what the database said
+
+`Serbia` and `Serbia U-21` both had a squad of 25 rows named `N. SRB-GK01`, `M. SRB-ATT22`, rated 66-82.
+Direct query: **all 2,400 national-squad players were generated** (`48 countries x 2 sides x 25`).
+
+| | Clubs | Real players available | Squad before |
+|---|---|---|---|
+| Serbia | 310 | **7,730** | 25 generated, rated 66-82 |
+| Other 47 | **0** | **0** | 25 generated |
+
+The pool on that same screen listed `Zoran Zivadinovic` at 94, rated far above anyone on the pitch.
+
+### Three defects, and only the first is the one he reported
+
+**1. The sides are seeded before the clubs exist.** `DatabaseInitializer.seedWorldBeforePyramid` runs
+`nationalTeamSeeder.seedIfMissing(...)` *before* the pyramid, so `squadsFor` found `eligible.isEmpty()`
+and took the bot fallback. The pyramid then built 7,730 real players.
+
+**2. The idempotence guard made the bots permanent.** It read *"a squad exists, so do not draw another"*
+- it could not tell a real squad from a generated one. So the guard that stopped duplicate squads also
+stopped the repair, forever.
+
+**3. `sourcePlayerId` was never set when seeding.** Only `NationalTeamService.addToSquad` set it, and
+that column is exactly what the pool uses to keep a called-up player out of the pool he was drawn from
+(`NationalTeamService:181`). So fixing (1) and (2) alone would have put the same 25 real players in the
+squad **and** in the pool below it.
+
+### And a fourth that would have made the fix silently do nothing
+
+`clubsIn` memoised per country with `computeIfAbsent` on an **instance field of a singleton bean**. The
+national sides are seeded before any club exists, so every country cached "no clubs" - and a cached empty
+list outlives the pyramid that was going to fill it. `WorldIntegrityService.repair()` would have
+reported success and replaced nothing. **An empty result is now deliberately not memoised**; a country
+that has clubs stays memoised, so the 48-country pass this was written for is unchanged, and the only
+cost is one indexed lookup on `team.country_id` for countries that have none.
+
+### The fix
+
+`BotSquadGenerator.isGenerated` recognises its own output, built from the same prefix list and the same
+`Position` values so the two cannot drift. `squadsFor` now drops generated players and draws real ones,
+topping up rather than rebuilding so a selector who called somebody up is not overwritten, and stamping
+`sourcePlayerId` on every copy.
+
+**Not done when the country has no clubs.** Deleting a side's only XI to leave it empty is worse than a
+squad that reads as generated, and an empty national side cannot be drawn against - which is what stopped
+the internationals from being drawn at all. The 47 club-less nations keep their generated sides until they
+have players, and the owner has deferred the full pyramid for exactly that reason.
+
+### The tests, and the one that was faking it
+
+Five in `NationalTeamSquadIdempotenceTest`, the key one reproducing the install order exactly: fill the
+side with **no clubs**, then build the clubs, then seed again and require real players.
+
+`aDrawnPlayerRemembersWhereItCameFrom` was **deliberately broken to check it could fail** - with
+`setSourcePlayerId` removed:
+
+```
+Real player 0 649a7130 has no source id, so the pool cannot exclude him and he appears in the squad
+and the pool at once ==> expected: not <null>
+```
+
+And the test fixture was itself wrong for a while: `side()` did not set `type`, so the side matched
+`findClubTeamsForCountry`'s `type is null or type = CLUB` predicate, became its own draw pool and fed its
+own 25 players back in - which looked exactly like the bug under repair. Production sets `NATIONAL_TEAM`
+on every side it creates; the fixture now does too.
+
+15 green across the seeder, club-scan, senior-name and query-count classes.
+
+### Seen in the database, not just logged
+
+Run through the real `WorldIntegrityService.repair()` path against the owner's database (backup at
+`/tmp/sokker_before_squad_fix.dump`):
+
+```
+Serbia: replacing 25 generated players with real ones (7730 eligible in the country).
+Serbia U-21: replacing 25 generated players with real ones (7730 eligible in the country).
+```
+
+| | Before | After |
+|---|---|---|
+| Serbia generated / real | 25 / 0 | **0 / 25** |
+| Serbia U-21 generated / real | 25 / 0 | **0 / 25** |
+
+And the pool arithmetic that defect 3 was about: **7,730 club players, 25 called up, all 25 tracked,
+pool 7,705** - no longer double-listed.
+
+---
+
 ## The message list was missing the one thing the list is for (owner, 2026-10-07)
 
 > **postoji jos jedna stvar, kada stigne poruka mozemo imati reply i onda te poruke treba da budu u threadu

@@ -2255,6 +2255,34 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ Active national sides field real players — owner, 2026-10-07
+
+> **zasto su u u-21 i prvom timu u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih?
+> AKTIVNA liga MORA imati STVARNE igrace a ne simulirane!!!**
+
+- [x] **All 2,400 national-squad players were generated.** Serbia had 7,730 real players available and
+      still fielded `N. SRB-GK01` at 82 while `Zoran Zivadinovic` sat in the pool at 94.
+- [x] **Cause: the sides are seeded before the pyramid exists**, so the bot fallback ran; then the
+      idempotence guard read *"a squad exists"* and made the simulated players permanent.
+- [x] **`BotSquadGenerator.isGenerated`** recognises its own output, built from the same prefix list and
+      the same `Position` values so the two cannot drift.
+- [x] **Generated players are replaced by real ones**, topping up rather than rebuilding, so a selector
+      who already called somebody up is not overwritten.
+- [x] **`sourcePlayerId` is now stamped on every seeded copy** — it was only set by `addToSquad`, and it
+      is the column that keeps a called-up player out of the pool. Without it the fix would have shown
+      the same 25 players in the squad *and* the pool.
+- [x] **An empty club list is no longer memoised.** `clubsIn` cached it on a singleton field, and since
+      the sides are seeded before any club exists, every country cached "no clubs" — **Repair world
+      would have reported success and replaced nothing.**
+- [x] **A country with no clubs keeps its generated side.** Deleting its only XI is worse, and an empty
+      national side cannot be drawn against. Full pyramid for the other 47 is deferred by owner decision.
+- [x] **Guard mutation-tested:** with `setSourcePlayerId` removed, the test fails with the exact message
+      it claims to prevent.
+- [x] **Seen in the database:** Serbia 25/0 generated/real → **0/25**; U-21 the same. Pool 7,730 → 7,705
+      with no double-listing.
+
+---
+
 ## ✅ The message list carries the last message — owner, 2026-10-07
 
 > **u listi poruka se samo vidi subject i poslednja poruka i kad se klikne onda se expanduje ceo thread**

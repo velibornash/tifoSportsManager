@@ -228,7 +228,25 @@ public class NationalTeamSeeder {
         if (country == null || country.getId() == null) {
             return List.of();
         }
-        return clubsByCountry.computeIfAbsent(country.getId(), teams::findClubTeamsForCountry);
+        List<Team> memoised = clubsByCountry.get(country.getId());
+        if (memoised != null) {
+            return memoised;
+        }
+        List<Team> found = teams.findClubTeamsForCountry(country.getId());
+        if (found.isEmpty()) {
+            // **An empty result is deliberately NOT memoised.** This seeder is a singleton, so a
+            // cached empty list outlives the pyramid that was going to fill it: `seedWorldBeforePyramid`
+            // seeds all forty-eight national sides before any club exists, so every country caches
+            // "no clubs" and never looks again. Repair world would report success and replace nothing
+            // - a green panel over an unchanged world, which is the one thing that must not happen.
+            //
+            // The cost is one indexed lookup on `team.country_id` per call, and only for the countries
+            // that have no clubs. Every country that has them stays memoised, so the forty-eight pass
+            // this memoisation was written for is unchanged.
+            return found;
+        }
+        clubsByCountry.put(country.getId(), found);
+        return found;
     }
 
     /**
@@ -247,10 +265,7 @@ public class NationalTeamSeeder {
         // pass added another squad of up to 25 players to a side that already had one - up to 2,400 duplicate
         // player rows per pass. BotSquadGenerator.ensureSquad has had exactly this check the whole time, and
         // its comment says why: called on every boot, and a second call must not add a second set.
-        if (!players.findByTeamId(nationalTeam.getId()).isEmpty()) {
-            log.debug("{} already has players; not drawing a second squad.", nationalTeam.getName());
-            return;
-        }
+        List<Player> existing = players.findByTeamId(nationalTeam.getId());
 
         List<Player> eligible = new ArrayList<>();
         // **One club read per country, not one per squad and not one whole-table scan.** clubsIn reads
@@ -260,21 +275,73 @@ public class NationalTeamSeeder {
         for (Team club : clubsIn(country)) {
             eligible.addAll(players.findByTeamId(club.getId()));
         }
+
+        // **A generated squad is not a squad.** The owner's report: *"zasto su u u-21 i prvom timu
+        // u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih (koji se nalaze u
+        // poolu ispod)? AKTIVNA liga MORA imati STVARNE igrace a ne simulirane!!!"*
+        //
+        // This is what produced it: `seedWorldBeforePyramid` seeds the national sides before the
+        // pyramid exists, so `eligible` was empty and the fallback below filled the side with 25
+        // generated players. The pyramid then created thousands of real players, and the old guard -
+        // "a squad exists, so do not draw another" - made the simulated ones permanent. Serbia ended
+        // up fielding `N. SRB-GK01` while Zoran Zivadinovic sat in the pool at 94.
+        //
+        // So the guard has to distinguish a squad that exists from a squad that is real. Anything
+        // BotSquadGenerator made is dropped, and real players take its place. Deliberately NOT done
+        // when `eligible` is empty: for a country with no clubs a generated side is the only thing
+        // that can field an XI, and deleting it would leave nothing to play with.
+        List<Player> generated = existing.stream().filter(botSquads::isGenerated).toList();
+
+        // A squad of real players is already here, so leave it alone. The emptiness test has to be on
+        // `existing` and not on `generated`: on a first draw both are empty, and testing `generated`
+        // returns before drawing anything, so the side is never filled at all.
+        if (!existing.isEmpty() && generated.isEmpty()) {
+            log.debug("{} already has real players; not drawing a second squad.", nationalTeam.getName());
+            return;
+        }
+
         if (eligible.isEmpty()) {
             // A country with no clubs used to end up as a national side with a name and no players,
             // which cannot be drawn against - that is why the internationals drew nothing. A bot squad
             // makes every country in the map playable immediately, at no cost to a country that is
             // never activated.
-            botSquads.ensureSquad(nationalTeam, country, youth);
+            if (existing.isEmpty()) {
+                botSquads.ensureSquad(nationalTeam, country, youth);
+            } else {
+                // Already generated and still nothing to replace them with: keep them. Deleting a
+                // side's only XI to leave it empty is strictly worse than a squad that reads as
+                // generated.
+                log.debug("{} has no club players to draw from; keeping its {} generated players.",
+                        nationalTeam.getName(), generated.size());
+            }
             return;
         }
+
+        if (!generated.isEmpty()) {
+            log.info("{}: replacing {} generated players with real ones ({} eligible in the country).",
+                    nationalTeam.getName(), generated.size(), eligible.size());
+            players.deleteAll(generated);
+        }
+
+        // Anyone already called up survives - a selector may have picked a real player into a side
+        // that was still generated - so the squad is topped up to size rather than rebuilt, and the
+        // players behind those calls are not drawn a second time.
+        java.util.Set<Long> calledUp = existing.stream()
+                .filter(p -> !botSquads.isGenerated(p))
+                .map(Player::getSourcePlayerId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        int room = SQUAD_SIZE - (existing.size() - generated.size());
 
         // Sorted on rating, the stored per-player attribute. `PlayerDTO.calculateOverall` is the
         // composite the UI shows, but it is private to the DTO and is a *display* number - it weighs
         // by position, so a keeper and a striker with the same rating are not equivalent. Selecting a
         // squad on the display number would quietly favour whichever position the formula favours.
         eligible.sort(Comparator.comparingInt((Player p) -> p.getRating()).reversed());
-        List<Player> squad = eligible.subList(0, Math.min(SQUAD_SIZE, eligible.size()));
+        List<Player> squad = eligible.stream()
+                .filter(p -> !calledUp.contains(p.getId()))
+                .limit(Math.max(room, 0))
+                .toList();
 
         for (Player source : squad) {
             Player copy = new Player();
@@ -284,6 +351,11 @@ public class NationalTeamSeeder {
             copy.setRating(source.getRating());
             copy.setForm(source.getForm());
             copy.setPlayerValue(0.0);
+            // **The pool excludes called-up players by this id, and it was never set here.** Only
+            // `NationalTeamService.addToSquad` set it, so a seeded squad member had a null and
+            // appeared in the squad *and* in the pool it was drawn from - which is precisely what the
+            // comment there says this column exists to prevent.
+            copy.setSourcePlayerId(source.getId());
             copy.setNationality(country.getIsoCode());
             copy.setTeam(nationalTeam);
             if (copy.getSkills() == null) {
