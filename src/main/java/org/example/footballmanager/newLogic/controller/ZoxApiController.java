@@ -53,16 +53,19 @@ public class ZoxApiController {
 
         String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
         String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
+        // By id, not by name - see teamIdOf(). A rename must not empty these panels.
+        Long homeTeamId = match.getHomeTeam() == null ? null : match.getHomeTeam().getId();
+        Long awayTeamId = match.getAwayTeam() == null ? null : match.getAwayTeam().getId();
 
         List<MatchPlayerStats> allStats = statsRepository.findByMatchId(matchId);
         double homeRating = allStats.stream()
             .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
-                && homeTeam.equals(s.getPlayer().getTeam().getName()))
+                && homeTeamId.equals(teamIdOf(s)))
             .mapToInt(MatchPlayerStats::getRating)
             .average().orElse(70);
         double awayRating = allStats.stream()
             .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
-                && awayTeam.equals(s.getPlayer().getTeam().getName()))
+                && awayTeamId.equals(teamIdOf(s)))
             .mapToInt(MatchPlayerStats::getRating)
             .average().orElse(70);
 
@@ -144,9 +147,28 @@ public class ZoxApiController {
     public ResponseEntity<Map<String, Object>> getMatchReport(@PathVariable Long matchId) {
         Match match = matchRepository.findById(matchId).orElse(null);
         if (match == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(postMatchReportFor(match.getId()));
+    }
+
+    /**
+     * The report itself, callable directly.
+     *
+     * <p>Extracted so a test can build the same report over a cup tie and an international without going
+     * through HTTP. {@link #getMatchReport} is now a lookup plus this call, so the endpoint and the test
+     * cannot drift apart - which is the failure mode of a test that re-implements the thing it is
+     * testing.
+     */
+    public Map<String, Object> postMatchReportFor(Long matchId) {
+        Match match = matchRepository.findById(matchId).orElse(null);
+        if (match == null) {
+            return Map.of();
+        }
 
         String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
         String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
+        // By id, not by name - see teamIdOf(). A rename must not empty these panels.
+        Long homeTeamId = match.getHomeTeam() == null ? null : match.getHomeTeam().getId();
+        Long awayTeamId = match.getAwayTeam() == null ? null : match.getAwayTeam().getId();
         List<MatchPlayerStats> stats = statsRepository.findByMatchId(matchId);
 
         String headline = match.getHomeGoals() > match.getAwayGoals()
@@ -158,15 +180,15 @@ public class ZoxApiController {
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("headline", headline);
         report.put("summary", generateSummary(match, homeTeam, awayTeam));
-        report.put("playerOfTheMatch", buildMotm(stats, homeTeam, awayTeam));
+        report.put("playerOfTheMatch", buildMotm(stats, homeTeamId, awayTeamId, homeTeam, awayTeam));
         report.put("timeline", buildTimeline(match, homeTeam, awayTeam));
         report.put("stats", computeTeamStats(match));
-        report.put("homeTopPerformers", buildTopPerformers(stats, homeTeam));
-        report.put("awayTopPerformers", buildTopPerformers(stats, awayTeam));
+        report.put("homeTopPerformers", buildTopPerformers(stats, homeTeamId));
+        report.put("awayTopPerformers", buildTopPerformers(stats, awayTeamId));
         report.put("turningPoint", findTurningPoint(match, homeTeam, awayTeam));
         report.put("tacticalVerdict", generateTacticalVerdict(match, homeTeam, awayTeam));
 
-        return ResponseEntity.ok(report);
+        return report;
     }
 
     @GetMapping("/match-stats/{matchId}")
@@ -419,9 +441,28 @@ public class ZoxApiController {
         return parsed == null ? fallback : parsed;
     }
 
+    /**
+     * Which team a player's stats row belongs to, by <b>id</b>.
+     *
+     * <p>The report used to match on the team's <b>name</b> — {@code teamName.equals(player.team.name)} —
+     * to decide whose performance it was. That breaks the moment a team is renamed, and one has already
+     * been: the senior national sides were renamed from "Germany Senior NT" to "Germany" (2026-10-07), and
+     * a stats row carrying the old name would have been attributed to nobody, silently emptying the
+     * player-of-the-match and the top-performer panels.
+     *
+     * <p>An id cannot drift. This is the same lesson as {@code NationalRatingService}, whose team-to-country
+     * map is built from membership rather than from names.
+     */
+    private static Long teamIdOf(MatchPlayerStats stats) {
+        return stats == null || stats.getPlayer() == null || stats.getPlayer().getTeam() == null
+                ? null
+                : stats.getPlayer().getTeam().getId();
+    }
+
     // ─── MOTM ─────────────────────────────────────────────────
 
-    private Map<String, Object> buildMotm(List<MatchPlayerStats> stats, String homeTeam, String awayTeam) {
+    private Map<String, Object> buildMotm(List<MatchPlayerStats> stats, Long homeTeamId, Long awayTeamId,
+                                          String homeTeam, String awayTeam) {
         if (stats.isEmpty()) {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("playerName", "N/A");
@@ -464,10 +505,10 @@ public class ZoxApiController {
 
     // ─── Top Performers ───────────────────────────────────────
 
-    private List<Map<String, Object>> buildTopPerformers(List<MatchPlayerStats> stats, String teamName) {
+    private List<Map<String, Object>> buildTopPerformers(List<MatchPlayerStats> stats, Long teamId) {
         return stats.stream()
             .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
-                && teamName.equals(s.getPlayer().getTeam().getName()))
+                && teamId.equals(teamIdOf(s)))
             .sorted(Comparator.comparingInt(MatchPlayerStats::getRating).reversed())
             .limit(3)
             .map(s -> {

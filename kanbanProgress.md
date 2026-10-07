@@ -1,5 +1,51 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-5 — the post-match report, proven for every competition, and a real defect (owner, 2026-10-07)
+
+The card's exit criterion was deliberately about **proof, not change**: the match view and the ZOX
+endpoints branch on nothing, so cup ties, club cups, senior internationals and U-21 internationals already
+use the same screen. *"It is type-agnostic"* was an assumption from reading the code — and that assumption
+has been wrong three times this week.
+
+So the same report is now built over the same players in **four different competitions** and required to
+produce the same thing. If any of them branched on competition type, or shaped its teams differently, it
+fails.
+
+### One real defect, in the very code the card was checking
+
+The report decided whose performance a row was with `teamName.equals(player.team.getName())` — **by name**.
+Changed to **by id**.
+
+**What actually breaks name matching is not a rename**, and my first test got that wrong. Renaming a team
+does nothing: the match and the stats rows point at the same `Team` row, so a rename moves them together,
+and the test passed against the code it was supposed to fail.
+
+What breaks it is **two teams sharing a name** — ordinary in this game, and the earlier fixture renames
+produced exactly this. With name matching both sides satisfy both filters, so **every player appears in
+both top-performer lists** and the player of the match is picked from a doubled-up field. The test builds
+that case and fails loudly.
+
+### Mutation-checked
+
+Putting name-based matching back — `getName().hashCode()` in place of the id — fails **both** tests:
+
+```
+theReportDoesNotCareWhatKindOfMatchItWas: LEAGUE: the home top performers are empty.
+twoTeamsWithTheSameNameAreStillApart:   the home side has performers
+```
+
+So the guard bites on the defect it claims, not on something adjacent.
+
+### Extracted so the test cannot drift
+
+`postMatchReportFor(matchId)` is now called by the endpoint, and the test calls the same method rather than
+re-implementing the report. A test that re-implements the thing it is testing proves only that the two
+implementations agree.
+
+**Not verified in the browser.**
+
+---
+
 ## P0-PREV-4 — the U-21, evidenced rather than assumed (owner, 2026-10-07)
 
 **No code change was needed, and that is the finding.** `national-tournament-view.js` serves **all four**

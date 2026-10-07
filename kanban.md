@@ -2289,7 +2289,7 @@ ties as plain `<div>`s. Doing them together would hide which one actually broke.
 | **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | ✅ Both club names open the shared match view. `matchId` added to the tie payload. 26 tests green. |
 | **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | ✅ Group ties and knockout ties both open. 18 tests green. |
 | **P0-PREV-4** | **NT U-21** fixtures open. | ✅ **Already delivered by P0-PREV-3** — one renderer and one payload builder serve all four competitions. Evidenced by a U-21 test rather than assumed. |
-| **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | A played cup tie and a played international both show all four, verified in the app. |
+| **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | ✅ Proven across league, cup, club cup and international. **One real defect fixed:** the report matched players to sides by team *name*. |
 | **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | A human's own cup tie can be watched and replayed. |
 
 **The boundary that must not be crossed again:** a fixture id and a match id are both small integers over
