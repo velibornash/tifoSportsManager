@@ -1,5 +1,110 @@
 # kanbanProgress.md — the append-only log
 
+## Reset DB, fourth attempt: `TRUNCATE ... CASCADE` is also wrong (owner, 2026-10-07)
+
+> **resert db ne radi - Database operation failed. Error: unrecognized configuration parameter
+> "session_replica_role"**
+>
+> **moras ovo da istestiras pre nego kazes da ok, slobodno drljaj po bazi.**
+
+The owner's second instruction is the one that matters, and it is now a standing rule for this
+repository: **nothing here is reported as working until it has been run against the real database.**
+
+### Attempt 3 failed on a typo
+
+`session_replica_role` **is not a PostgreSQL parameter.** The real one is
+`session_replication_role` — "replication", not "replica". Reproduced against the owner's server before
+changing anything:
+
+```
+$ psql -c "SET session_replica_role = 'replica'"
+ERROR:  unrecognized configuration parameter "session_replica_role"
+$ psql -c "SET session_replication_role = 'replica'"   -- inside a transaction, as the service runs it
+ replica
+(1 row)
+```
+
+So the fix worked and I never ran it. **The button stayed broken until the owner pressed it.**
+
+### Attempt 4: one `TRUNCATE ... CASCADE` — runs, and is still wrong
+
+Tempting, and it does clear the cycles: verified against a real three-table cycle, one statement, all
+three empty, and on the owner's schema it truncated **122 tables with no foreign-key error**.
+
+It is wrong because **`CASCADE` follows references in both directions.** Eight tables reference
+`app_user`:
+
+```
+nl_forum_topic  nl_forum_post  nl_message_thread  nl_direct_message  nl_notification
+national_team_candidate  national_team_appointment  national_team_election  national_team_vote
+```
+
+They are all emptied, and truncating any one of them takes `app_user` with it. Measured on a copy of the
+owner's database:
+
+```
+TRUNCATE TABLE "nl_notification" RESTART IDENTITY CASCADE;
+-- app_user: 8 rows -> 5
+```
+
+**A single `TRUNCATE` emptied the accounts this reset exists to keep.** It would have passed every test
+in the suite, because the H2 schema has neither `CASCADE` nor those eight foreign keys.
+
+### What is there now
+
+Ordered deletes with referential integrity suspended — **under the correct parameter name** — and the
+restore in a `finally`, so a failure cannot leave the database running without its foreign keys.
+
+**And the suspension is verified, not assumed.** `SET` through Hibernate can return without taking
+effect — a pooled connection handed back between the `SET` and the `DELETE` — and that failure then
+surfaces as a foreign-key violation a long way from its cause. The session is asked what it is now set
+to, one cheap query:
+
+```
+INFO ResetService : Referential integrity suspended (SET session_replication_role = 'replica' = replica).
+WARN  ResetService : Emptied 122 table(s) for the reset, children first.
+```
+
+A silent `SET` is the failure mode this guards, and it is the reason the log line exists.
+
+### The test that had to exist, and the rule it enforces
+
+`ResetServiceOnRealPostgresTest` runs against a **real PostgreSQL with a real copy of the world in it** —
+48 countries, 98 teams, 19 competitions, 2 accounts, and every foreign key the schema really has.
+
+- `@DataJpaTest` **replaces the DataSource with an embedded database.** That is why the first version of
+  this test silently skipped itself: it was never talking to PostgreSQL. `@AutoConfigureTestDatabase(replace
+  = NONE)` is what makes it real, and its absence is why the whole file looked green while testing
+  nothing.
+- **It refuses to run against anything but a scratch database**, by name. A destructive test whose target
+  is a config value is one edit away from emptying the real world, so the check lives in the same file.
+- The guard reads the URL **from the DataSource**, not from Hibernate's properties, where it is absent —
+  so the guard itself was reading `null` and skipping, which is worse than having no guard.
+
+**Result, against the owner's schema:**
+
+```
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+  Referential integrity suspended (session_replication_role = replica)
+  Emptied 122 table(s) for the reset, children first.
+  0 countries, 0 teams, 0 fixtures; app_user = {kecko@example.com, velibor@example.com}
+```
+
+Alongside `ResetServiceKeepsOnlyAccountsAndTacticsTest` 6/6 on H2, so **both paths are covered**: the
+suspended ordered deletes are exercised on both databases, and only the real one has the cycles.
+
+The owner's own database was **not** modified: a copy of it was restored into `sokker_reset_probe`, the
+test ran there, and the copy was dropped. `sokker_db` still reads 48 countries and 98 teams.
+
+### What four attempts say about this task
+
+Every one of the last three looked correct in the source and failed on the owner's database, and **two of
+the three failures are invisible to H2.** The generalisation: **anything that touches the real schema —
+constraints, dialects, DDL — is not verified by a suite running on a smaller one.** The scratch database
+exists for exactly that, and it is cheaper than a broken button.
+
+---
+
 ## A jobs panel, and what an advance actually triggered (owner, 2026-10-07)
 
 > **Mora u Admin deo da se doda poseban tab za jobove, da se jasno vidi lista jobova, da za svaki job

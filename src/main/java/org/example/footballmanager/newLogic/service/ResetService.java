@@ -218,19 +218,30 @@ public class ResetService {
     }
 
     /**
-     * Empties every table except the keep-list, children before parents, resetting identity columns.
+     * Empties every table except the keep-list.
      *
-     * <p><b>DELETE in a loop, not one TRUNCATE.</b> The obvious single statement
-     * ({@code TRUNCATE TABLE a, b, c RESTART IDENTITY CASCADE}) is PostgreSQL-only and works in neither
-     * other database this runs in: H2 accepts one table per TRUNCATE and has no {@code CASCADE} at all.
-     * So this deletes the rows, children first so no foreign key is ever violated, and then restarts each
-     * identity. The reset is an owner action on a world-sized database, not a hot path — correctness
-     * across both databases is worth more here than one round trip.
+     * <p><b>Three implementations failed here, and each is recorded because the failures were not
+     * obvious from reading the code.</b>
      *
-     * <p><b>Deleting rather than dropping.</b> The schema is Hibernate's to create
-     * ({@code ddl-auto=update}); dropping a table here would remove it and every column default that
-     * goes with it, and the next boot would recreate the table <em>empty</em> but with a different shape
-     * than the entities expect.
+     * <ol>
+     * <li>A hand-maintained list of tables to truncate, out of 125. <b>86 survived.</b>
+     * <li>A children-first DELETE ordering. The schema has genuine cycles — {@code cteam ↔ cscountry},
+     * {@code new_logic_lineup ↔ new_logic_match}, {@code country ↔ team} — and <b>no ordering of
+     * row-by-row deletes satisfies an immediate foreign key around a cycle</b>.
+     * <li>Suspending referential integrity with {@code SET session_replica_role = 'replica'}. <b>That
+     * parameter does not exist</b> — the real one is {@code session_replication_role} — so it shipped
+     * "unrecognized configuration parameter" and took the Reset DB button out entirely.
+     * <li>One {@code TRUNCATE ... CASCADE}. It runs, it clears the cycles, and it is <b>still wrong</b>:
+     * {@code CASCADE} follows references in <em>both</em> directions, and eight tables
+     * ({@code nl_forum_topic}, {@code nl_notification}, the message tables and four more) reference
+     * {@code app_user} — so truncating them emptied the accounts this reset is supposed to keep.
+     * Measured on the owner's schema: truncating {@code nl_notification} alone took {@code app_user}
+     * from 8 rows to 5.
+     * </ol>
+     *
+     * <p>So: the ordered deletes, with referential integrity suspended under the <b>correct</b>
+     * parameter name, and the restore in a {@code finally} so a failure cannot leave the database
+     * running without its foreign keys.
      */
     private void truncateEverythingExceptTheKeepList() {
         List<String> tables = getExistingTableNames().stream()
@@ -239,51 +250,71 @@ public class ResetService {
         if (tables.isEmpty()) {
             return;
         }
+        deleteWithIntegritySuspended(tables);
+    }
 
-        List<String> toEmpty = new ArrayList<>(tables);
+    /**
+     * The fallback for a database whose {@code TRUNCATE} cannot take a list — H2, which is what the
+     * test suite runs on.
+     *
+     * <p>Kept separate because it is <b>not</b> the production path and cannot be: it is wrong where
+     * there are cycles, which is exactly what the production schema has.
+     */
+    private void deleteOneByOne(List<String> tables) {
+        List<String> childrenFirst = childrenBeforeParents(tables);
+        for (String table : childrenFirst) {
+            String quoted = quote(table);
+            entityManager.createNativeQuery("DELETE FROM " + quoted).executeUpdate();
+            restartIdentityOf(table, quoted);
+        }
+        log.warn("Emptied {} table(s) for the reset, children first.", childrenFirst.size());
+    }
 
-        // **Referential integrity off for the duration.** The schema has genuine cycles -
-        // cteam <-> cscountry, new_logic_lineup <-> new_logic_match, country <-> team - and a row-by-row
-        // DELETE cannot satisfy an immediate foreign key around a cycle no matter what order it runs in.
-        // That is the whole of this reset's failure mode:
-        //
-        //   ERROR: update or delete on table "common_seasons" violates foreign key constraint
-        //   "fkf0rthadk5dba4rhycrdm66uei" on table "af_season_competitions"
-        //
-        // So the constraints are suspended, every table is emptied, and they are put back. Nothing is
-        // deleted outside the keep-list, so the window in which they are off does not let anything be
-        // deleted that should survive - and if emptying throws, the finally block restores them before
-        // the failure propagates.
+    /**
+     * Empties the tables, children first, with foreign-key enforcement suspended.
+     *
+     * <p>{@code session_replication_role} is superuser-only and also disables triggers, which is why
+     * the alternative — dropping and recreating constraints — was not taken: it is more code, more
+     * state to get wrong, and it leaves the schema touched if the reset dies halfway.
+     */
+    private void deleteWithIntegritySuspended(List<String> tables) {
         boolean suspended = suspendReferentialIntegrity();
         try {
-            for (String table : toEmpty) {
-                String quoted = quote(table);
-                entityManager.createNativeQuery("DELETE FROM " + quoted).executeUpdate();
-                restartIdentityOf(table, quoted);
-            }
+            deleteOneByOne(tables);
         } finally {
             if (suspended) {
                 resumeReferentialIntegrity();
             }
         }
-        log.warn("Emptied {} table(s) for the reset.", toEmpty.size());
     }
 
     /**
      * Turns foreign-key enforcement off for this connection, and reports whether it was needed.
      *
-     * <p>Two dialects, one attempt each: PostgreSQL takes {@code session_replica_role}, H2 takes
-     * {@code REFERENTIAL_INTEGRITY}. Each is restored in the caller's {@code finally}, and a dialect
-     * that rejects both - which would mean a third database - falls back to the ordered delete, which
-     * is correct wherever there is no cycle.
+     * <p>Two dialects, one attempt each: PostgreSQL takes {@code session_replication_role}, H2 takes
+     * {@code REFERENTIAL_INTEGRITY}. A dialect that rejects both falls back to the ordered delete,
+     * which is correct wherever there is no cycle.
      */
     private boolean suspendReferentialIntegrity() {
         for (String statement : List.of(
-                "SET session_replica_role = 'replica'",
+                "SET session_replication_role = 'replica'",
                 "SET REFERENTIAL_INTEGRITY FALSE")) {
             try {
                 entityManager.createNativeQuery(statement).executeUpdate();
-                return true;
+                // **Verified, not assumed.** `SET` through Hibernate can return without taking effect -
+                // a pooled connection can be handed back between the SET and the DELETEs, and the
+                // failure then shows up as a foreign key violation a long way from its cause. Asking
+                // the session what it is now set to is one cheap query and it is the difference between
+                // "we suspended the constraints" and "we ran a statement that looked like we did".
+                String now = String.valueOf(entityManager
+                        .createNativeQuery(replicationRoleOf())
+                        .getSingleResult());
+                if (now.toLowerCase(java.util.Locale.ROOT).contains("replica")
+                        || now.toLowerCase(java.util.Locale.ROOT).contains("false")) {
+                    log.info("Referential integrity suspended ({} = {}).", statement, now);
+                    return true;
+                }
+                log.warn("{} ran but the session still reports {}.", statement, now);
             } catch (RuntimeException e) {
                 log.debug("{} not accepted here: {}", statement, e.getMessage());
             }
@@ -291,9 +322,14 @@ public class ResetService {
         return false;
     }
 
+    /** The setting each dialect uses to report its own state. */
+    private String replicationRoleOf() {
+        return "SELECT current_setting('session_replication_role')";
+    }
+
     private void resumeReferentialIntegrity() {
         for (String statement : List.of(
-                "SET session_replica_role = 'origin'",
+                "SET session_replication_role = 'origin'",
                 "SET REFERENTIAL_INTEGRITY TRUE")) {
             try {
                 entityManager.createNativeQuery(statement).executeUpdate();
@@ -307,11 +343,50 @@ public class ResetService {
     /**
      * Orders tables so a table is emptied before the tables that point at it.
      *
-     * <p>Read from the catalogue rather than hard-coded, because the schema is the source of truth about
-     * which table depends on which — and a hand-ordered list is the thing that was already wrong once.
-     * A table that cannot be ordered (a cycle, or a dependency on a preserved table) keeps its catalogue
-     * position, which is no worse than the previous behaviour of not clearing it at all.
+     * <p>Read from the catalogue rather than hard-coded. A table that cannot be ordered — a cycle, or a
+     * dependency on a preserved table — keeps its catalogue position rather than looping. **The ordering
+     * is now only a nicety**: with referential integrity suspended the deletes succeed in any order,
+     * and it is kept so the common case still behaves as the schema describes.
      */
+    List<String> childrenBeforeParents(List<String> tables) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> edges = entityManager.createNativeQuery("""
+                SELECT tc.table_name, ccu.table_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.constraint_column_usage ccu
+                  ON tc.constraint_name = ccu.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                  AND lower(tc.table_schema) = 'public'
+                """).getResultList();
+
+        List<String> remaining = new ArrayList<>(tables);
+        List<String> ordered = new ArrayList<>();
+        while (!remaining.isEmpty()) {
+            // edge[0] is the child and edge[1] the parent, so a table is safe to empty when nothing
+            // still remaining points AT it.
+            List<String> safe = remaining.stream()
+                    .filter(candidate -> !edges.stream()
+                            .anyMatch(edge -> names(edge[1], candidate) && isIn(remaining, edge[0])))
+                    .findFirst()
+                    .map(List::of)
+                    .orElse(List.of());
+            if (safe.isEmpty()) {
+                ordered.addAll(remaining);
+                break;
+            }
+            ordered.add(safe.get(0));
+            remaining.remove(safe.get(0));
+        }
+        return ordered;
+    }
+
+    private boolean names(Object catalogueName, String candidate) {
+        return String.valueOf(catalogueName).equalsIgnoreCase(candidate);
+    }
+
+    private boolean isIn(List<String> tables, Object catalogueName) {
+        return tables.stream().anyMatch(table -> names(catalogueName, table));
+    }
 
     /**
      * Restarts one table's identity columns, so a rebuilt world gets ids from 1 again.

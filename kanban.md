@@ -2255,6 +2255,29 @@ that has since changed, so they are not a specification. Re-measure, then decide
 
 ---
 
+## ✅ P0 — Reset DB: a typo, then a subtle one, both found by running it for real — owner, 2026-10-07
+
+> **unrecognized configuration parameter "session_replica_role"** · **moras ovo da istestiras pre nego kazes
+> da ok, slobodno drljaj po bazi**
+
+- [x] **`session_replica_role` is not a PostgreSQL parameter.** The real one is
+      `session_replication_role`. Reproduced before changing anything, then fixed — **and the button stayed
+      broken until the owner pressed it**, which is the standing rule this task now follows.
+- [x] **One `TRUNCATE ... CASCADE` was also wrong**: `CASCADE` follows references in *both* directions, and
+      eight tables reference `app_user`, so it emptied the accounts the reset exists to keep. Measured:
+      truncating `nl_notification` alone took `app_user` from 8 rows to 5.
+- [x] **Ordered deletes with integrity suspended under the correct name**, restored in a `finally`.
+- [x] **The suspension is verified, not assumed** — `SET` through Hibernate can return without taking
+      effect, and the session is asked what it is set to. The log line exists for that failure mode.
+- [x] **`ResetServiceOnRealPostgresTest` against a real copy of the world**: 122 tables emptied, 0
+      countries, both accounts kept. `@DataJpaTest` **replaces the DataSource with an embedded database**,
+      which is why the first version silently skipped itself.
+
+**Two of the last three failures are invisible to H2.** Anything touching the real schema is not verified
+by a suite running on a smaller one.
+
+---
+
 ## ✅ Admin → Jobs, and what an advance triggered — owner, 2026-10-07
 
 > **Mora u Admin deo da se doda poseban tab za jobove ... istorija kad je trigerovan job i da li je ispravno
