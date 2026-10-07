@@ -1,5 +1,58 @@
 # kanbanProgress.md — the append-only log
 
+## P1-CTRY-1 — a Clubs tab on the country page (owner, 2026-10-07)
+
+> **nedostaje mi na stranici Country novi tab gde je ranking lista klubova iz tezemlje**
+
+A new **Clubs** tab listing that country's clubs, ordered by **the same ranking points** the national
+ranking uses. One system, not two: the club Elo that used to be the rating is head-to-head and is not a
+ranking any more, and a country page showing its national side by achievement points and its clubs by a
+different number would be two orderings on one screen.
+
+**Every row carries its division and tier**, because the points are scaled by tier — two clubs on the same
+number in different divisions are not equal, and a table that does not say which division a row is in
+cannot honestly be read.
+
+**Fetched only when that tab is asked for.** Tab switching is a full re-render, so all nine payloads are
+already re-read on every switch; the club list is the heaviest of them (one row per club) and an
+unconditional tenth read would tax the calendar and both squad tabs.
+
+### 🔴 A regression found and fixed here: the country page had been DEAD since P0-PREV-1
+
+`loadCountryPage`'s **entire body** was deleted by P0-PREV-1 — the tab builder, the tab resolution, the body
+dispatch and the wiring. It was still **referenced five times and exported**, so `node --check` passed and
+**every test since has passed**, because nothing in the suite renders this file. The country page did not
+work. Found while adding this tab: the anchors for the tab mechanism did not exist.
+
+Restored from the commit before P0-PREV-1 and the bespoke sheet removed **surgically** — 209 lines, the one
+function, not 458 lines and half the file.
+
+**This is the fifth card in a row whose verification was weaker than its claim**, and it is the one that
+mattered: a dead country page, green suite, four commits. Recorded prominently because the honest lesson is
+not "be careful with string edits" — it is that **there is still no test that renders `country-view.js`**,
+and until there is, this class of breakage is invisible.
+
+### Five fixture gaps in a row, each reading like a product defect
+
+| Card | The test said | The truth |
+|---|---|---|
+| P0-PREV-4 | "the U-21 field is drawn differently" | `@BeforeEach` built only **senior** sides |
+| P0-PREV-4 | "a U-21 tie lacks `matchId`" | same fixture |
+| P1-CTRY-1 | "every club of the country is listed" | clubs had **no `country`** reference |
+| P1-CTRY-1 | "the wrong club leads" | divisions had **no `country`**, so the join matched nothing and the tie broke alphabetically |
+| P1-CTRY-1 | "rated is 1" | it is a Boolean |
+
+The third and fourth are worth keeping: 310 of 310 real clubs carry a country, and 32 of 51 competitions
+do — the 19 that do not are the international cups, which correctly have no single country. **Checked in
+the owner's database before concluding either was a fixture gap**, because both would have been real bugs
+if the assumption had been the other way round.
+
+15 tests green.
+
+**Not verified in the browser** — and given what was just found, that is not a formality here.
+
+---
+
 ## P0-PREV-6 — a manager's own fixtures, by identity (owner, 2026-10-07)
 
 > **Human mecevi imaju mogucnost da se gleda live ili replay kao liga mec**

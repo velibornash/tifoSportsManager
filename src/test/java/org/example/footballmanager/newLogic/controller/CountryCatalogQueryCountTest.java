@@ -259,7 +259,8 @@ class CountryCatalogQueryCountTest extends BaseTest {
                 nationalTeamService, electionService, presenceRegistry, internationalClubCups,
                 plusFeatures, matchPlayerStatsRepository,
                 new org.example.footballmanager.newLogic.service.RankingPointsReader(
-                        clubSeasonRankingPointsRepository, countrySeasonRankingPointsRepository));
+                        clubSeasonRankingPointsRepository, countrySeasonRankingPointsRepository),
+                clubSeasonRankingPointsRepository);
 
         List<Map<String, Object>> catalog = counting.getCountryCatalog();
 

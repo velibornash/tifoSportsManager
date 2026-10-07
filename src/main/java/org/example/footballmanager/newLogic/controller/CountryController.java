@@ -72,6 +72,8 @@ public class CountryController {
     private final ScheduleInsightService scheduleInsightService;
     private final SeasonService seasonService;
     private final org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints;
+    private final org.example.footballmanager.newLogic.repository.ClubSeasonRankingPointsRepository
+            clubSeasonRankingPointsRepository;
     private final org.example.commonmanager.repository.UserRepository humanUserRepository;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     private final org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
@@ -84,7 +86,9 @@ public class CountryController {
             org.example.footballmanager.newLogic.util.InternationalClubCups internationalClubCups,
             org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures,
             org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository,
-            org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints) {
+            org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints,
+            org.example.footballmanager.newLogic.repository.ClubSeasonRankingPointsRepository
+                    clubSeasonRankingPointsRepository) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -103,6 +107,7 @@ public class CountryController {
         this.internationalClubCups = internationalClubCups;
         this.plusFeatures = plusFeatures;
         this.rankingPoints = rankingPoints;
+        this.clubSeasonRankingPointsRepository = clubSeasonRankingPointsRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
     }
 
@@ -224,6 +229,90 @@ public class CountryController {
      * is claiming a difference it cannot support. The count of countries strictly above is what defines
      * the position.
      */
+    /**
+     * The clubs of one country, ranked (owner, 2026-10-07, P1-CTRY-1).
+     *
+     * <p>*"nedostaje mi na stranici Country novi tab gde je ranking lista klubova iz te zemlje"* — a tab
+     * listing the clubs of that country.
+     *
+     * <p>Ordered by the same <b>ranking points</b> the national ranking uses, so there is one system and
+     * not two: the club Elo that used to be the rating is head-to-head and is not a ranking
+     * ({@code RatingEngine.clubK} no longer reads either rating). A country with clubs ranked by its
+     * national Elo and its clubs ranked by the old club Elo would be two orderings on one screen.
+     *
+     * <p><b>Division tier is carried, because it is what the points are scaled by.</b> Two clubs on the
+     * same number in different divisions are not equal, and a table that does not say which division a
+     * row is in cannot be read.
+     *
+     * <p>The whole country's clubs are returned in one read of the ledger, not one read per club.
+     */
+    @GetMapping("/{isoCode}/clubs/ranking")
+    public Map<String, Object> clubRanking(@PathVariable String isoCode,
+                                          @RequestParam(defaultValue = "100") int limit) {
+        Country country = requireCountry(isoCode);
+        int season = seasonService.getActiveSeasonYear();
+
+        Map<Long, Double> totals = new LinkedHashMap<>();
+        List<ClubSeasonRankingPoints> rows =
+                clubSeasonRankingPointsRepository.findAllByCompetitionCountryId(country.getId());
+        Map<Long, Map<Integer, Double>> byTeam = new LinkedHashMap<>();
+        for (ClubSeasonRankingPoints row : rows) {
+            byTeam.computeIfAbsent(row.getTeam().getId(), key -> new LinkedHashMap<>())
+                    .put(row.getSeasonYear(), row.total());
+        }
+        for (Map.Entry<Long, Map<Integer, Double>> entry : byTeam.entrySet()) {
+            totals.put(entry.getKey(), org.example.footballmanager.newLogic.service.RankingPointsEngine.windowedTotal(season, entry.getValue()));
+        }
+
+        int safeLimit = limit < 1 ? 100 : Math.min(limit, 500);
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Team club : teamRepository.findClubTeamsForCountry(country.getId())) {
+            if (club.getId() == null) {
+                continue;
+            }
+            Double total = totals.get(club.getId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("teamId", club.getId());
+            row.put("name", club.getName());
+            row.put("tier", club.getCompetition() == null || club.getCompetition().getTier() == null
+                    ? 1 : club.getCompetition().getTier());
+            row.put("division", club.getCompetition() == null ? null : club.getCompetition().getName());
+            row.put("points", total == null
+                    ? org.example.footballmanager.newLogic.service.RankingPointsEngine.START_POINTS
+                    : round2(total));
+            row.put("rated", total != null);
+            out.add(row);
+        }
+        out.sort(Comparator.comparingDouble((Map<String, Object> row) -> (Double) row.get("points"))
+                .reversed()
+                .thenComparing(row -> String.valueOf(row.get("name"))));
+
+        int position = 0;
+        Double previous = null;
+        int shown = 0;
+        for (Map<String, Object> row : out) {
+            Double current = (Double) row.get("points");
+            if (previous == null || current.compareTo(previous) != 0) {
+                position++;
+                previous = current;
+            }
+            row.put("position", position);
+            if (shown++ < safeLimit) {
+                continue;
+            }
+        }
+        // The list itself is capped, but the position each row carries is the country's real position.
+        List<Map<String, Object>> page = out.size() > safeLimit ? out.subList(0, safeLimit) : out;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("country", country.getIsoCode());
+        result.put("seasonYear", season);
+        result.put("totalClubs", out.size());
+        result.put("clubs", page);
+        return result;
+    }
+
     @GetMapping("/ranking")
     public List<Map<String, Object>> ranking(@RequestParam(defaultValue = "senior") String level) {
         boolean youth = "u21".equalsIgnoreCase(String.valueOf(level));
