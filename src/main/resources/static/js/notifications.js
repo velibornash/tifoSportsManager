@@ -216,44 +216,92 @@ function decrementUnread() {
  * would have broken a test that has nothing to do with notifications.
  */
 function playNotificationChime() {
+    const context = audioContext();
+    if (!context) return;
+
+    // Two notes a fifth apart, the second quieter and later: a "ting-ting" rather than an alarm,
+    // because most of these are somebody replying in a forum.
+    [[880, 0], [1174.66, 0.12]].forEach(([frequency, at]) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.0001, context.currentTime + at);
+        gain.gain.exponentialRampToValueAtTime(0.2, context.currentTime + at + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.32);
+        oscillator.connect(gain).connect(context.destination);
+        oscillator.start(context.currentTime + at);
+        oscillator.stop(context.currentTime + at + 0.34);
+    });
+}
+
+/**
+ * One AudioContext for the page, and it is resumed rather than abandoned.
+ *
+ * <p><b>This is what was wrong, and it was silent.</b> The previous version created a context, and if
+ * {@code context.state === 'suspended'} it closed it and returned:
+ *
+ * <pre>{@code
+ * const context = new AudioContext();
+ * if (context.state === 'suspended') { context.close(); return; }   // always true
+ * }</pre>
+ *
+ * A newly constructed {@code AudioContext} is <b>suspended in every current browser until the page has
+ * been interacted with</b>, so that guard was taken on <em>every</em> ring. The sound could not play, ever,
+ * and the failure was silent because the whole body was inside a {@code try} with an empty {@code catch}.
+ * The owner reported it as "the tone does not come" and the red dot worked, which is consistent: the dot
+ * and the badge are DOM writes and nothing was wrong with those.
+ *
+ * <p>So: **resume instead of giving up**, and keep the context. One context for the page rather than one
+ * per notification, both because a long session should not accumulate dozens and because a resumed
+ * context is only reusable if it is still there.
+ */
+let audio = null;
+let audioUnlockAttached = false;
+
+function audioContext() {
     try {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContextClass) return;
-        const context = new AudioContextClass();
-        if (context.state === 'suspended') {
-            context.close().catch(() => {});
-            return;
+        if (!AudioContextClass) return null;
+        if (!audio) {
+            audio = new AudioContextClass();
+            unlockAudioOnFirstGesture();
         }
-
-        // Two notes a fifth apart, the second quieter and later: a "ting-ting" rather than an alarm,
-        // because most of these are somebody replying in a forum.
-        [[880, 0], [1174.66, 0.12]].forEach(([frequency, at]) => {
-            const oscillator = context.createOscillator();
-            const gain = context.createGain();
-            oscillator.type = 'sine';
-            oscillator.frequency.value = frequency;
-            gain.gain.setValueAtTime(0.0001, context.currentTime + at);
-            gain.gain.exponentialRampToValueAtTime(0.15, context.currentTime + at + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + at + 0.28);
-            oscillator.connect(gain).connect(context.destination);
-            oscillator.start(context.currentTime + at);
-            oscillator.stop(context.currentTime + at + 0.3);
-        });
-
-        // Closed after it has rung, so a long session does not accumulate one AudioContext per arrival.
-        window.setTimeout(() => context.close().catch(() => {}), 800);
+        if (audio.state === 'suspended') {
+            // The autoplay policy: a context only runs after a user gesture somewhere on the page. One
+            // gesture unlocks it for the rest of the session, so this is normally the *first* ring rather
+            // than every ring - which is exactly the difference between this and the version that gave up.
+            audio.resume().catch(() => {});
+        }
+        return audio.state === 'running' ? audio : null;
     } catch {
-        // No audio, no complaint. A notification that cannot make a noise is still on the screen.
+        return null;
     }
 }
 
 /**
- * The dropdown body.
+ * Resumes the context on the manager's first click or keypress.
  *
- * <p>Every value goes through {@link escapeHtml}. A notification summary is built from a forum topic
- * title or a message subject — both of which are typed by another manager — so this is the one place in
- * the notification UI where untrusted text arrives, and it is the place a stored XSS would land.
+ * <p>Attached once, and never removed: a page that has been clicked once can ring for the rest of the
+ * session, which is the difference between a chime that works and a chime that works only if you happen to
+ * have clicked in the last second.
  */
+function unlockAudioOnFirstGesture() {
+    if (audioUnlockAttached) return;
+    audioUnlockAttached = true;
+    const unlock = () => {
+        try {
+            if (audio && audio.state === 'suspended') {
+                audio.resume().catch(() => {});
+            }
+        } catch {
+            // Nothing to do. The next gesture, or the next notification, tries again.
+        }
+    };
+    document.addEventListener('pointerdown', unlock, { once: false, passive: true });
+    document.addEventListener('keydown', unlock, { once: false, passive: true });
+}
+
 /**
  * The dropdown's contents: **unread only**.
  *
@@ -261,10 +309,10 @@ function playNotificationChime() {
  * reasoning being that "what happened to me" should survive the badge clearing. The owner overruled it
  * (2026-10-07):
  *
- * > *"kad se poruka procita skida se iz tickera, isto vazi i za ostale poruke, kad se uradi sto psie
- * > prestane da izlazi"*
+ * <p>*"kad se poruka procita skida se iz tickera, isto vazi i za ostale poruke, kad se uradi sto psie
+ * prestane da izlazi"*
  *
- * which is the right instinct: a list of things to deal with should empty as they are dealt with.
+ * <p>which is the right instinct: a list of things to deal with should empty as they are dealt with.
  * A ticker that keeps showing read items is a to-do list nobody can clear.
  *
  * <p>The rows stay in the database. This is a view over the unread set, not a delete — the unread count
@@ -272,9 +320,6 @@ function playNotificationChime() {
  */
 export function buildDropdownHtml(payload) {
     const all = Array.isArray(payload?.notifications) ? payload.notifications : [];
-    const unread = readUnreadCount(payload);
-    // Trusted over the payload's own count: if the two ever disagreed, the row the manager can see is
-    // the honest answer, and the header is derived from the same list so it cannot contradict it.
     const rows = all.filter(row => row?.read !== true);
 
     if (!rows.length) {
@@ -284,19 +329,18 @@ export function buildDropdownHtml(payload) {
                 private messages will appear here.</div>`;
     }
 
-    const items = rows.map(row => {
-        const destination = targetActionHtml(row);
-        return `
-            <div class="notification-row" data-notification-id="${escapeHtml(row.id)}">
-                <div class="notification-row-head">
-                    <span class="notification-kind">${escapeHtml(kindLabel(row.kind))}</span>
-                    <span class="fm-subtle">${escapeHtml(formatWhen(row.createdAt))}</span>
-                </div>
-                <div class="notification-summary">${escapeHtml(row.summary || '')}</div>
-                ${destination}
-            </div>`;
-    }).join('');
+    const items = rows.map(row => `
+        <div class="notification-row" data-notification-id="${escapeHtml(row.id)}">
+            <div class="notification-row-head">
+                <span class="notification-kind">${escapeHtml(kindLabel(row.kind))}</span>
+                <span class="fm-subtle">${escapeHtml(formatWhen(row.createdAt))}</span>
+            </div>
+            <div class="notification-summary">${escapeHtml(row.summary || '')}</div>
+            ${targetActionHtml(row)}
+        </div>`).join('');
 
+    // The header count is the number of rows shown, not the payload's own count, so the two cannot
+    // disagree about what is left.
     return `
         <div class="notification-dropdown-head">
             <strong>${rows.length} unread</strong>

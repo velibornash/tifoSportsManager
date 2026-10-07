@@ -84,8 +84,17 @@ class NotificationBellAlertTest {
                 "audio is blocked until the page is interacted with; the refusal arrives as a rejected "
                         + "promise and must not become an unhandled rejection");
 
-        assertTrue(js.contains("context.state === 'suspended'"),
-                "a suspended context is closed and left alone instead of being played into nothing");
+        assertTrue(js.contains("audio.state === 'suspended'"),
+                "a suspended context is resumed rather than abandoned");
+        assertTrue(js.contains("audio.resume()"),
+                "**resumed, not closed.** The old code closed a suspended context and returned, and a "
+                        + "context created outside a user gesture is suspended in every current browser "
+                        + "(Chrome's autoplay policy) - so the chime was given up on on every single ring, "
+                        + "inside a try/catch with an empty catch. That is why the tone never sounded while "
+                        + "the red dot, which is a DOM write, worked perfectly.");
+        assertTrue(js.contains("unlockAudioOnFirstGesture"),
+                "and the context is unlocked on the first click or keypress, because Chrome will only "
+                        + "start it from a user gesture - so the gesture has to happen somewhere");
     }
 
     @Test
@@ -139,6 +148,7 @@ class NotificationBellAlertTest {
         assertTrue(js.contains("all.filter(row => row?.read !== true)"),
                 "the dropdown is a view over the unread set: the owner asked for a read message to leave "
                         + "the ticker, and a list of things to deal with should empty as they are dealt with");
+
 
         assertTrue(!js.contains("is-read"),
                 "nothing is rendered dimmed any more - a dimmed row is a row still being shown");
