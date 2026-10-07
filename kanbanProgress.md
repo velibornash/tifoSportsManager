@@ -1,5 +1,38 @@
 # kanbanProgress.md — the append-only log
 
+## P0-ELEC-3 — an election is created when asked for (owner, 2026-10-07)
+
+The owner reported the selector panel always reading "Registration closed", and the database explained it:
+after a Reset there are **zero** `national_team_election` rows, and `describeElection` returned
+`exists: false, stage: NONE` with no `acceptingCandidates` at all. The button's
+`!!election.acceptingCandidates` was false forever, so the only thing the panel could ever say was "no
+election running". **A reset was a dead end.**
+
+`describeElection` now calls `ensureElection` and returns the real, created election: `exists: true`,
+`stage: REGISTRATION`, `acceptingCandidates: true`. Idempotent, so the common case is a lookup.
+
+### This is a write inside what reads like a read, on purpose
+
+The alternative is a world where nobody can stand for selector until an admin presses a particular button,
+and a screen that says "closed" when it means "not created" is lying. The write is the honest behaviour.
+
+### ELEC-2 turned out to be a misdiagnosis, recorded honestly
+
+My board said `describe()` returned a hardcoded stub. It does — but **only in the branch for a country
+whose national team was never created**, where `stage: NONE, exists: false` is the honest answer. The live
+path already delegated to `describeElection`. The closed button came from ELEC-3, not from a stub.
+
+### Two fresh caveats on the new write
+
+It constructs the week-1 kickoff the way `DatabaseInitializer` does for a fresh install (start of today,
+per `weekOneKickoff()`), so an election created on demand is windowed the same as one the bootstrapper
+made. And it no longer is `@Transactional(readOnly = true)`, because a method that writes cannot run
+read-only — the annotation on it was the lie that hid the whole bug.
+
+2 tests green.
+
+---
+
 ## P1-CTRY-2 — International qualifying has its own tab (owner, 2026-10-07)
 
 > **International qualifying sekciju sa general taba iz Country dela da se prebaci u zaseban tab kao sto

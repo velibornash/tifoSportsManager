@@ -378,23 +378,29 @@ public class NationalTeamElectionService {
      * is false for an undecided election unless the caller is an admin or the owner, so the counts
      * are absent from the payload rather than merely hidden on screen.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> describeElection(Country country, NationalTeamLevel level, int seasonYear,
                                                User viewer, boolean canSeeTallies) {
-        Optional<NationalTeamElection> found =
-                elections.findByCountryIdAndLevelAndSeasonYear(country.getId(), level, seasonYear);
+        // **An election is CREATED here if it is missing, rather than reported as absent.**
+        //
+        // The owner reported the panel reading "Registration closed" no matter what, and the database
+        // explained it: after a Reset there are **zero** rows, and this returned
+        // `exists: false, stage: NONE` with no `acceptingCandidates` at all — so the button's
+        // `!!election.acceptingCandidates` was false and the only thing the panel could ever say was
+        // "no election running". A reset was a dead end.
+        //
+        // This is a WRITE inside what reads like a read, and that is the point: the alternative is a
+        // world where nobody can stand for selector until an admin presses a button, and a screen that
+        // reports "closed" when it means "not created" is lying. `ensureElection` is idempotent, so the
+        // common case is a lookup and nothing else.
+        // Same convention DatabaseInitializer uses on a fresh install: the week-1 kickoff is the
+        // start of today, so registration runs back from it and voting opens now. Matching that
+        // convention keeps a "created on demand" election identical to one the bootstrapper made.
+        java.time.Instant weekOneDayOne = java.time.Instant.now()
+                .truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        NationalTeamElection election = ensureElection(country, level, seasonYear, weekOneDayOne);
+        advanceToClock(election, Instant.now());
         Map<String, Object> out = new LinkedHashMap<>();
-
-        if (found.isEmpty()) {
-            out.put("exists", false);
-            out.put("open", false);
-            out.put("stage", "NONE");
-            out.put("candidates", List.of());
-            out.put("note", "No election is running for this team.");
-            return out;
-        }
-
-        NationalTeamElection election = found.get();
         boolean decided = election.getStatus() == NationalTeamElection.Status.DECIDED;
         boolean voting = election.getStatus() == NationalTeamElection.Status.VOTING;
         boolean registration = election.getStatus() == NationalTeamElection.Status.REGISTRATION;
