@@ -2267,7 +2267,7 @@ entry in `kanbanProgress.md`, so a half-built card is always visible rather than
 
 | Card | What it is | Done when |
 |---|---|---|
-| **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per team per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | A ledger table exists, is written by something, and a test proves the four-season window reads correctly off it. |
+| **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per subject per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | ✅ Two tables round-trip decimals, the window reads off them, and senior/U-21 cannot pool. **The writers land in -2 and -3** — nothing writes these rows yet. |
 | **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | `ClubRatingService` no longer scales by the rating gap, and a club's total is identical whether it beat a strong or a weak opponent. |
 | **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | Same property for a country; the two levels never pool. |
 | **P0-RANK-4** | **Remove `RatingEngine.clubK(value, own, opp)`'s gap term** — the one the owner rejected by name. | The gap no longer exists anywhere in the points path. |

@@ -66,6 +66,29 @@ public final class RankingPointsEngine {
         return SEASON_WEIGHTS[seasonsAgo];
     }
 
+    /**
+     * The displayed total: the starting points plus every season in the window, weighted by its age.
+     *
+     * <p>This is the one place the four-season window is applied, for clubs and countries alike, because
+     * it is the same arithmetic on both and two copies of a window calculation is two places for the
+     * weights to drift apart.
+     *
+     * <p>Seasons outside the window are **dropped, not clamped**: a fifth season ago contributes
+     * nothing at all. A replay that walks deeper history than the window holds is not a bug, and it must
+     * not quietly keep counting.
+     *
+     * @param currentSeason the season being ranked, counted from 1
+     * @param pointsBySeason that team's subtotal per season; missing seasons count as nothing
+     * @return the number to display
+     */
+    public static double windowedTotal(int currentSeason, java.util.Map<Integer, Double> pointsBySeason) {
+        double total = START_POINTS;
+        for (java.util.Map.Entry<Integer, Double> entry : pointsBySeason.entrySet()) {
+            total += entry.getValue() * seasonWeight(currentSeason - entry.getKey());
+        }
+        return total;
+    }
+
     // ── What a team was expected to do ──────────────────────────────────────────────────────────────
 
     /**

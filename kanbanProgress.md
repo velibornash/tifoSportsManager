@@ -1,5 +1,63 @@
 # kanbanProgress.md — the append-only log
 
+## P0-RANK-1 — the per-season ledger the rolling window reads (owner, 2026-10-07)
+
+> **razdvoji po taskovima ... i uzimaj jedan po jedan**
+
+First of seventeen cards. Nothing could compute a four-season window before this, because the
+per-season subtotals had nowhere to live.
+
+### Two tables, deliberately not one
+
+`ClubSeasonRankingPoints` and `CountrySeasonRankingPoints`, rather than one table with a nullable
+`team_id` **or** a nullable `country_id`. A single table would carry an invariant the database cannot
+enforce — exactly one of the two is set — and every reader would have to check it. Two tables make that
+impossible to get wrong, and the window arithmetic itself is shared as a pure function so the weights
+cannot drift between them.
+
+`points` is a **`double`, not an integer.** The division weights are `0.85 / 0.70 / 0.55 / 0.40`, so a
+tier-3 result crossing by two goals is `40 × 0.70 = 28.0`, and a 1.25 competition makes the same result
+`50.0`. Rounding at the storage boundary would throw away the arithmetic the system is built on, and a
+test now asserts a fractional subtotal comes back un-rounded.
+
+Both tables are unique on (subject, season) — a replay that runs twice must update one row, not leave two
+for the window to add together. That is the exact bug class this repository keeps meeting.
+
+### The window is dropped, not clamped
+
+```java
+public static double windowedTotal(int currentSeason, Map<Integer, Double> pointsBySeason)
+```
+
+A season older than the window contributes **nothing**, rather than being clamped to the oldest weight.
+A replay walking five seasons of history is not a bug and must not quietly keep counting it. Tested:
+a fifth-season-ago 1000 points is worth exactly zero next to a current 10.
+
+And the window has to earn its keep: **four seasons of 100 beats one season of 100** (1550 vs 1600 in
+windowed terms, and the four-season figure is the larger because it carries 250 points of history rather
+than 100). A test asserts the decay is exactly `100 × (1.00 + 0.75 + 0.50 + 0.25) = 250` and **not** the
+raw sum of 400.
+
+### Senior and U-21 cannot pool
+
+The level is part of the unique key and part of every read. A country that is excellent at both levels is
+not one entity that did well twice — the same reason a club's reserve side is not the club. Tested by
+saving +90 senior and −30 U-21 and requiring two different totals (1590 and 1470).
+
+### 33 tests green — and one test of mine that was wrong
+
+`aClubsSeasonsRoundTrip` expected `1551.75` and got `1531.5`. The implementation was right and the
+expectation was wrong: with the current season at 3, season 3 weighs 1.00 and season 1 weighs 0.50, and I
+had written them the other way round — `1551.75` is the total for a *season 1* current season. So the
+assertion was answering a different question than the one it appeared to ask, and the window would have
+passed while it did so.
+
+**Not verified against real PostgreSQL.** These tables are created by `ddl-auto=update` on boot, and the
+application is only started through `run-app.sh`, which the owner is not to run until the queue is clear.
+The round-trip above is H2, which is the profile this suite runs in.
+
+---
+
 ## The remaining work, split into one board card each (owner, 2026-10-07)
 
 > **razdvoji po taskovima, zapisi ih u kanban.md pa azuriraj kanban i kanban_progress md i uzimaj jedan po jedan**

@@ -356,5 +356,68 @@ class RankingPointsEngineTest {
         void everyoneStartsLevel() {
             assertEquals(1500.0, RankingPointsEngine.START_POINTS, EPS);
         }
+
+        /**
+         * The window read off a ledger, which is what {@code P0-RANK-1} exists to make possible.
+         *
+         * <p>A club that scored the same in all four seasons of its window must still rank higher than
+         * one that scored the same amount in the current season alone — otherwise the window is not
+         * doing anything and the four weights are decoration.
+         */
+        @Test
+        @DisplayName("four seasons of the same result beats one season of it")
+        void fourSeasonsBeatOne() {
+            java.util.Map<Integer, Double> fourSeasons = new java.util.LinkedHashMap<>();
+            fourSeasons.put(4, 100.0);
+            fourSeasons.put(3, 100.0);
+            fourSeasons.put(2, 100.0);
+            fourSeasons.put(1, 100.0);
+
+            java.util.Map<Integer, Double> oneSeason = java.util.Map.of(4, 100.0);
+
+            double four = RankingPointsEngine.windowedTotal(4, fourSeasons);
+            double one = RankingPointsEngine.windowedTotal(4, oneSeason);
+
+            assertEquals(1500.0 + 100.0 * 2.5, four, EPS,
+                    "100 + 75 + 50 + 25 = 250 points over four seasons");
+            assertEquals(1500.0 + 100.0, one, EPS);
+            assertTrue(four > one, "the window must reward sustained form over a single good season");
+        }
+
+        @Test
+        @DisplayName("a season older than the window is dropped, not clamped")
+        void seasonsBeyondTheWindowAreDropped() {
+            java.util.Map<Integer, Double> history = new java.util.LinkedHashMap<>();
+            history.put(5, 1000.0);   // older than the window
+            history.put(4, 10.0);     // current
+
+            assertEquals(1510.0, RankingPointsEngine.windowedTotal(4, history), EPS,
+                    "the fifth season ago must contribute nothing at all");
+        }
+
+        @Test
+        @DisplayName("a side with no ledger rows still reads 1500, and never below")
+        void anEmptyLedgerIsTheStartingPoints() {
+            assertEquals(1500.0, RankingPointsEngine.windowedTotal(1, java.util.Map.of()), EPS);
+
+            java.util.Map<Integer, Double> losing = new java.util.LinkedHashMap<>();
+            losing.put(3, -400.0);
+            losing.put(2, -300.0);
+            double total = RankingPointsEngine.windowedTotal(3, losing);
+            assertEquals(1500.0 + -400.0 - 300.0 * 0.75, total, EPS);
+            assertTrue(total < 1500.0, "a side that lost its matches reads below where it started");
+        }
+
+        @Test
+        @DisplayName("fractional subtotals survive the window un-rounded")
+        void fractionalSubtotalsSurvive() {
+            // 40 ladder points x 0.70 tier weight = 28.0. Rounding here would lose the arithmetic the
+            // division weights exist to produce.
+            java.util.Map<Integer, Double> one = java.util.Map.of(2, 28.0);
+            assertEquals(1528.0, RankingPointsEngine.windowedTotal(2, one), EPS);
+            assertEquals(0.0, RankingPointsEngine.windowedTotal(2, one) - Math.rint(
+                    RankingPointsEngine.windowedTotal(2, one)), 0.5,
+                    "the total is not an integer and must not be rounded to one");
+        }
     }
 }
