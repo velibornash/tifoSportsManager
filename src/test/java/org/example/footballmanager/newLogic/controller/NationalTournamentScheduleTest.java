@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,10 +97,56 @@ class NationalTournamentScheduleTest extends BaseTest {
             country.setState(CountryState.SIMULATED);
             Country saved = countries.save(country);
             saved.setSeniorNationalTeam(side(saved, "Senior"));
+            // A U-21 side per nation as well. Without one the U-21 seeder has nothing to draw from and
+            // the U-21 schedule comes back empty - which is what the first version of the U-21 test
+            // reported as "the field is drawn differently", when the real answer was that the fixture
+            // had built no U-21 teams to draw.
+            saved.setU21NationalTeam(side(saved, "U21"));
             countries.save(saved);
         }
         catalogue.ensureAll();
         seeder.ensureGroupStage(NationalTeamLevel.SENIOR, SEASON);
+    }
+
+    /**
+     * The U-21 is opened by the same card as the senior side, so this proves it rather than assuming it.
+     *
+     * <p>{@code national-tournament-view.js} serves all four competitions — senior and U-21, qualifying
+     * and finals — from one renderer and one payload builder, so {@code tie(MatchFixture)} is level
+     * agnostic and the senior fix ({@code P0-PREV-3}) should already cover the U-21. "Should already" is
+     * exactly the kind of claim that is true until a level filter is added somewhere, so the U-21 schedule
+     * is fetched here and required to carry the same fields a senior tie does.
+     *
+     * <p>{@code matchId} is the one that matters: every post-match endpoint is keyed by it, so a U-21 tie
+     * without it would open with lineups, stats, goals and the report all empty.
+     */
+    @Test
+    @Transactional
+    @DisplayName("a U-21 tie carries the same opening fields a senior tie does")
+    void aU21TieCarriesTheOpeningFields() throws Exception {
+        seeder.ensureGroupStage(NationalTeamLevel.U21, SEASON);
+
+        Map<String, Object> body = readFor("u21", "QUALIFYING");
+        List<Map<String, Object>> groups = groupsOf(body);
+        assertEquals(NationalTournamentSchedule.GROUPS, groups.size(),
+                "the U-21 field is drawn the same way the senior one is");
+
+        List<Map<String, Object>> ties = new java.util.ArrayList<>();
+        for (Map<String, Object> group : groups) {
+            for (Map<String, Object> day : castList(group.get("fixtures"))) {
+                ties.addAll(castList(day.get("fixtures")));
+            }
+        }
+        assertFalse(ties.isEmpty(), "the U-21 schedule has ties in it");
+
+        Map<String, Object> tie = ties.get(0);
+        assertNotNull(tie.get("id"), "the fixture id, so an unplayed tie can be opened");
+        assertTrue(tie.containsKey("matchId"),
+                "a U-21 tie must carry matchId like a senior one. It does not, so a played U-21 tie would "
+                        + "open with lineups, stats, goals and the report all empty.");
+        assertTrue(tie.containsKey("played"));
+        assertTrue(tie.containsKey("homeIso") && tie.containsKey("awayIso"),
+                "and the country codes, so the names are still links to those countries");
     }
 
     @Test
@@ -189,6 +236,16 @@ class NationalTournamentScheduleTest extends BaseTest {
     // ---------- reading ----------
 
     @SuppressWarnings("unchecked")
+    /** The same read, for any level and stage, so the U-21 can be checked on its own terms. */
+    private Map<String, Object> readFor(String level, String stage) throws Exception {
+        String body = mockMvc.perform(get("/api/national-tournaments/" + level + "/" + stage
+                        + "?season=" + SEASON)
+                        .header("Authorization", auth.bearer(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return json.readValue(body, Map.class);
+    }
+
     private Map<String, Object> readQualifying() throws Exception {
         String body = mockMvc.perform(get("/api/national-tournaments/senior/QUALIFYING?season=" + SEASON)
                         .header("Authorization", auth.bearer(UserRole.ADMIN)))

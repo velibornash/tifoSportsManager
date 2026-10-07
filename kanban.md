@@ -2288,7 +2288,7 @@ ties as plain `<div>`s. Doing them together would hide which one actually broke.
 | **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | ✅ A tie opens the same screen a league fixture does. A **played** tie opens the **match**, so lineups/stats/goals/report are keyed correctly. 453 lines of bespoke sheet deleted. |
 | **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | ✅ Both club names open the shared match view. `matchId` added to the tie payload. 26 tests green. |
 | **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | ✅ Group ties and knockout ties both open. 18 tests green. |
-| **P0-PREV-4** | **NT U-21** fixtures open. | A U-21 international opens and shows the real prediction. |
+| **P0-PREV-4** | **NT U-21** fixtures open. | ✅ **Already delivered by P0-PREV-3** — one renderer and one payload builder serve all four competitions. Evidenced by a U-21 test rather than assumed. |
 | **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | A played cup tie and a played international both show all four, verified in the app. |
 | **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | A human's own cup tie can be watched and replayed. |
 

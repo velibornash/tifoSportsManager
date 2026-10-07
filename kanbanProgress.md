@@ -1,5 +1,29 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-4 — the U-21, evidenced rather than assumed (owner, 2026-10-07)
+
+**No code change was needed, and that is the finding.** `national-tournament-view.js` serves **all four**
+competitions from one renderer — senior and U-21, qualifying and finals — and
+`NationalTournamentController.tie(MatchFixture)` takes only a fixture, so it is level-agnostic by
+construction. P0-PREV-3's fix therefore covered the U-21 with it.
+
+**"Should already" is the kind of claim that is true until somebody adds a level filter somewhere**, so
+`aU21TieCarriesTheOpeningFields` fetches the U-21 schedule on its own terms and requires the same opening
+fields a senior tie has — above all **`matchId`**, the field every post-match endpoint is keyed by.
+
+### The test's first failure was its own fixture
+
+It reported *"the U-21 field is drawn the same way the senior one is — expected 8, was 0"*, which reads
+like a production difference. It was not: `@BeforeEach` built **only senior sides**, so the U-21 seeder
+had nothing to draw from. Every nation now has a U-21 side too.
+
+That is the second time in two cards that a test reported a product difference and the real answer was the
+fixture. Worth naming, because both read convincingly as a bug.
+
+6/6 in `NationalTournamentScheduleTest`.
+
+---
+
 ## P0-PREV-3 — a senior international opens the shared match view (owner, 2026-10-07)
 
 > **svaki generisan mec... nt ili ntu21 mec**
