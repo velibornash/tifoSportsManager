@@ -1,5 +1,19 @@
 # kanbanProgress.md — the append-only log
 
+## P1-CTRY-2 — International qualifying has its own tab (owner, 2026-10-07)
+
+> **International qualifying sekciju sa general taba iz Country dela da se prebaci u zaseban tab kao sto
+> su trenutno General, Calendar, national team i u-21**
+
+Its own **Qualifying** tab. It was a panel in the middle of General, wedged between the competitions list
+and the two national-team summaries — a per-tier table of the league positions that feed the three
+continental cups, sitting where it read as part of the national-team block.
+
+The country page now has **General · Calendar · Clubs · Qualifying · National Team · U-21**, and the
+qualifying panel appears **only** on its own tab.
+
+---
+
 ## P1-CTRY-1 — a Clubs tab on the country page (owner, 2026-10-07)
 
 > **nedostaje mi na stranici Country novi tab gde je ranking lista klubova iz tezemlje**

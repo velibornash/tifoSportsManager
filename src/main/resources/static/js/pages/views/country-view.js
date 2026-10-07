@@ -94,12 +94,27 @@ export function createCountryView(deps) {
                 <button type="button" class="fm-player-tab ${activeTab === 'general' ? 'is-active' : ''}" data-country-tab="general">General</button>
                 <button type="button" class="fm-player-tab ${activeTab === 'calendar' ? 'is-active' : ''}" data-country-tab="calendar">Calendar</button>
                 <button type="button" class="fm-player-tab ${activeTab === 'clubs' ? 'is-active' : ''}" data-country-tab="clubs">Clubs</button>
+                <button type="button" class="fm-player-tab ${activeTab === 'qualifying' ? 'is-active' : ''}" data-country-tab="qualifying">Qualifying</button>
                 <button type="button" class="fm-player-tab ${activeTab === 'senior' ? 'is-active' : ''}" data-country-tab="senior">National Team</button>
                 <button type="button" class="fm-player-tab ${activeTab === 'u21' ? 'is-active' : ''}" data-country-tab="u21">U-21</button>
             </nav>`;
     }
 
     // --------------------------------------------------------------- general
+
+    /**
+     * International qualifying, as its own tab (owner, 2026-10-07, P1-CTRY-2).
+     *
+     * <p>*"International qualifying sekciju sa general taba iz Country dela da se prebaci u zaseban tab
+     * kao sto su trenutno General, Calendar, national team i u-21"*.
+     *
+     * <p>It was a panel in the middle of General, between the competitions list and the two national-team
+     * summaries — a per-tier table of league positions feeding three continental cups, sitting where it
+     * looked like part of the national-team block.
+     */
+    function buildQualifyingTab(data) {
+        return `<div class="fm-country-stack">${buildQualifyingSummary(data)}</div>`;
+    }
 
     function buildQualifyingSummary(data) {
         if (!data || data.failed) {
@@ -180,8 +195,6 @@ export function createCountryView(deps) {
                         <button type="button" id="country-open-selected-league" class="fm-action-btn">Open league</button>
                     </div>
                 </section>
-
-                ${buildQualifyingSummary(ctx.qualifying)}
 
                 ${buildNationalTeamSummary('Senior national team', 'senior', senior)}
                 ${buildNationalTeamSummary('Under-21', 'u21', u21)}
@@ -660,7 +673,8 @@ export function createCountryView(deps) {
             // for a non-selector, because they are the selector's own working surface.
             const resolvedTab = tab === 'calendar' ? 'calendar'
                 : (tab === 'clubs' ? 'clubs'
-                    : (tab === 'general' ? 'general' : (canManage ? level : 'general')));
+                    : (tab === 'qualifying' ? 'qualifying'
+                        : (tab === 'general' ? 'general' : (canManage ? level : 'general'))));
 
             const facts = [
                 { label: 'ISO', value: country?.isoCode || countryIso },
@@ -685,6 +699,8 @@ export function createCountryView(deps) {
                 body = buildCalendarTab(schedule);
             } else if (resolvedTab === 'clubs') {
                 body = buildClubsTab(clubRanking);
+            } else if (resolvedTab === 'qualifying') {
+                body = buildQualifyingTab(qualifying);
             } else {
                 body = buildSelectorTab(activeNt, resolvedTab);
             }

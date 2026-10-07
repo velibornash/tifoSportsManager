@@ -2301,7 +2301,7 @@ somebody else's played match"*. Each card passes an explicit kind, never a guess
 | Card | What it is | Done when |
 |---|---|---|
 | **P1-CTRY-1** | **A new tab listing the clubs of that country, ranked.** No endpoint exists today; `findClubTeamsForCountry` is already indexed. | ✅ A **Clubs** tab, ranked by the same ranking points, division on every row, fetched only when that tab is asked for. |
-| **P1-CTRY-2** | **International qualifying moves out of General into its own tab.** | It is its own tab, next to General / Calendar / National Team / U-21. |
+| **P1-CTRY-2** | **International qualifying moves out of General into its own tab.** | ✅ Its own **Qualifying** tab, next to General / Calendar / Clubs / National Team / U-21. Removed from the General panel. |
 
 ### P0 — Elections (owner already approved all of this on 2026-10-07)
 
