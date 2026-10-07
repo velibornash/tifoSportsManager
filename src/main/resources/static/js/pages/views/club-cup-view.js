@@ -26,7 +26,7 @@ export const CUPS = [
 
 export const TIERS = [1, 2, 3, 4, 5];
 
-export function createClubCupView({ authFetch, escapeHtml, loadPage }) {
+export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch }) {
     /** Read the payload, or say why it could not be read. Never both. */
     async function readJson(url) {
         const response = await authFetch(url);
@@ -126,17 +126,69 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage }) {
             </div>`;
     }
 
+    /**
+     * One tie, as a row that opens (owner, 2026-10-07).
+     *
+     * <p>Every competition used to render its ties as a plain {@code <tr>}. The league made them
+     * clickable and the international club cups did not, so a Champions Cup tie could not be opened at
+     * all — not to see a prediction before it, and not to see lineups, stats, goals or a report
+     * afterwards. Same screen as a league fixture, with the kind passed explicitly rather than guessed,
+     * because fixture ids and match ids are both small integers over separate tables.
+     */
     function tieRow(tie) {
         const score = tie.played
             ? `${escape(tie.homeGoals ?? '')} – ${escape(tie.awayGoals ?? '')}`
             : 'v';
+        const label = `${tie.home || 'TBC'} ${score} ${tie.away || 'TBC'}`;
         return `
-            <tr>
+            <tr class="fm-cup-tie-row">
                 <td>Matchday ${escape(tie.round)}</td>
-                <td>${escape(tie.home || 'TBC')}</td>
+                <td>
+                    <button type="button" class="fm-cup-tie js-open-tie"
+                            data-tie-fixture="${escape(tie.id)}"
+                            data-tie-played="${tie.played ? 'true' : 'false'}"
+                            data-tie-match-id="${escape(tie.matchId ?? '')}"
+                            title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">
+                        ${escape(tie.home || 'TBC')}
+                    </button>
+                </td>
                 <td class="fm-cup-final-score">${score}</td>
-                <td>${escape(tie.away || 'TBC')}</td>
+                <td>
+                    <button type="button" class="fm-cup-tie js-open-tie"
+                            data-tie-fixture="${escape(tie.id)}"
+                            data-tie-played="${tie.played ? 'true' : 'false'}"
+                            data-tie-match-id="${escape(tie.matchId ?? '')}"
+                            title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">
+                        ${escape(tie.away || 'TBC')}
+                    </button>
+                </td>
             </tr>`;
+    }
+
+    /**
+     * Wires every tie on the page.
+     *
+     * <p>A played tie opens the MATCH, because lineups, stats, goals and the report are keyed by match
+     * id; an unplayed one opens the fixture and is told so explicitly.
+     */
+    function wireTies(root, caller) {
+        root.querySelectorAll('.js-open-tie').forEach(button => {
+            button.addEventListener('click', () => {
+                if (typeof loadMatch !== 'function') {
+                    return;
+                }
+                const fixtureId = Number(button.dataset.tieFixture);
+                const matchId = Number(button.dataset.tieMatchId);
+                if (!fixtureId) {
+                    return;
+                }
+                if (button.dataset.tiePlayed === 'true' && matchId) {
+                    loadMatch(matchId, caller, { initialTab: 'preview' });
+                } else {
+                    loadMatch(fixtureId, caller, { initialTab: 'preview', fixture: true });
+                }
+            });
+        });
     }
 
     /** The bracket: one block per round, final last. */
@@ -224,6 +276,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage }) {
                     loadPage('clubCup', { cupKey, tier: Number(button.dataset.cupTier) });
                 });
             });
+            wireTies(mainContent, 'clubCup');
         } catch (err) {
             console.error('Failed to load the club cup page:', err);
             mainContent.innerHTML = `<div class="manager-card"><h2>${escape(cup.name)}</h2>

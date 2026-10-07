@@ -453,7 +453,10 @@ function buildPageNavState(page, options = {}) {
     const clubCupView = createClubCupView({
         authFetch,
         escapeHtml,
-        loadPage: (...args) => loadPage(...args)
+        loadPage: (...args) => loadPage(...args),
+        // The shared match view, so a Champions / Masters / Challenge Cup tie opens the same screen a
+        // league fixture does - prediction before, lineups, stats, goals and a report after (P0-PREV-2).
+        loadMatch: (...args) => loadMatch(...args)
     });
     const nationalTournamentView = createNationalTournamentView({ authFetch, escapeHtml });
     const statsView = createStatsView({

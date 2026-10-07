@@ -1,5 +1,37 @@
 # kanbanProgress.md — the append-only log
 
+## P0-PREV-2 — an international club-cup tie opens the shared match view (owner, 2026-10-07)
+
+> **svaki generisan mec... nevezno da li je nacionalni kup, medjunarodni kup, nt ili ntu21**
+
+`club-cup-view.js` rendered every tie as a plain `<tr>`: no clickable target anywhere on the Champions,
+Masters or Challenge Cup pages. Not a prediction before the tie, and not lineups, stats, goals or a report
+after it. The league already did this; the club cups simply never got it.
+
+Both club names are now buttons that open the same screen a league fixture does, and the **kind is passed
+explicitly**: a played tie opens the **match**, an unplayed one opens the fixture with `fixture: true`.
+Never inferred — fixture ids and match ids are both small integers over separate tables, and
+`ZoxApiController` already carries the scar from guessing.
+
+### `tieOf` was the one place to change, and it was missing two fields
+
+Every group tie and every knockout tie on these pages is shaped by a single method, so this was one
+edit rather than two paths. It was sending `id`, `round`, `week`, `group`, both team ids and names, both
+countries and `played` — and **not** `matchId`, the goals, or anything a post-match endpoint could be
+called with.
+
+`MatchFixture` carries no goals of its own; the result lives on the `Match` it was played into. So
+`matchId`, `homeGoals` and `awayGoals` now come from `getPlayedMatch()`. **Without this a played tie would
+have opened with lineups, stats, goals and the report all empty** — the same trap P0-PREV-1 hit on the
+national cup, caught here before it shipped rather than after.
+
+26 tests green across `InternationalClubCupsTest`, `InternationalClubCupDrawTest` and
+`InternationalClubCupsQueryBudgetTest`.
+
+**Not verified in the browser.**
+
+---
+
 ## P0-PREV-1 — a national-cup tie opens the same screen a league fixture does (owner, 2026-10-07)
 
 > **svaki generisan mec iz zreba... mora da ima cim se generise mogucnost da se udje na mec i vidi

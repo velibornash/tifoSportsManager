@@ -2286,7 +2286,7 @@ ties as plain `<div>`s. Doing them together would hide which one actually broke.
 | Card | What it is | Done when |
 |---|---|---|
 | **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | ✅ A tie opens the same screen a league fixture does. A **played** tie opens the **match**, so lineups/stats/goals/report are keyed correctly. 453 lines of bespoke sheet deleted. |
-| **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | A Champions/Masters/Challenge tie opens and shows the real prediction. |
+| **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | ✅ Both club names open the shared match view. `matchId` added to the tie payload. 26 tests green. |
 | **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | A senior international opens and shows the real prediction. |
 | **P0-PREV-4** | **NT U-21** fixtures open. | A U-21 international opens and shows the real prediction. |
 | **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | A played cup tie and a played international both show all four, verified in the app. |
@@ -2323,6 +2323,26 @@ that the rating should distinguish *"held on to a draw against Roma"* from *"bea
 is not lost — it moved. The forecast in `ScheduleInsightService` already knows Roma is stronger, so a
 result is rewarded for **beating what was predicted** rather than for beating a bigger name. Weighing the
 result by the gap as well counted the opponent **twice**.
+
+---
+
+## 🌍 P2-MINE — from the owner, 2026-10-07 (queue behind the current run)
+
+> **prvo nastavi to da zavrsis a onda dodaj i ovo u kanban pa da preuzmes posle**
+
+Added after the ranking and preview work was under way, at the owner's instruction to finish what was
+running first. **None of this has been started.** Two of the four are questions as much as tasks, and the
+answers are not written down anywhere in the codebase yet.
+
+| Card | What the owner asked | What has to be decided first |
+|---|---|---|
+| **P2-STAD-1** | **Stadium works need a stand, a cost, and a yes/no.** Building a roof or repairing seats currently commits straight away: *"mora prvo jasno da se izabere za koju tribinu, jasan proracun troskova i onda yes/no da se prihvati ponuda a ne odmah kako sad radi."* | Which stands exist, and whether a cost differs per stand. Nothing on the code says yet whether a stand is chosen today or assumed. |
+| **P2-TRAIN-1** | **Can training facilities be repaired, and how does that affect training?** | **A question, not yet a task.** Training is proven to run at day 4, hour 10. Whether a facility can be repaired, what it costs, and what a repair changes about training outcomes is **unresearched** — answer this before writing a card, because the answer may be "they cannot, and here is what does exist". |
+| **P2-TROPHY-1** | **Trophies on the Club page, inside milestones.** *"da na Club strani treba da postoji u okviru milestones kao sledeci red trofeji ako ih ima klub gde imamo slicicu trofeja / medalje odredjene boje (zlato, srebro, bronza) i ispod koje takmicenje i sezona (npr Superliga tier 1 season 1 ili Masters Cup season 3)"* | Whether any trophy is **recorded** at all today. The ranking-points work reads trophies off the fixtures, but whether a club keeps a honours list is not established. If nothing stores it, this is a new record plus a display, not a display. |
+
+**Order once the current run clears:** P2-TRAIN-1 is a question and should be answered first because it
+may not become a task at all; P2-TROPHY-1 may turn out to need a new table; P2-STAD-1 is the most
+self-contained of the three.
 
 ---
 

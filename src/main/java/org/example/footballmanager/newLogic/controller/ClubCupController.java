@@ -336,6 +336,14 @@ public class ClubCupController {
         out.put("away", fixture.getAwayTeam() == null ? null : fixture.getAwayTeam().getName());
         out.put("awayCountry", fixture.getAwayTeam() == null ? null : countryByTeam.get(fixture.getAwayTeam().getId()));
         out.put("played", fixture.isPlayed());
+        // The Match this fixture became, and its score. Both needed for a tie to open the shared match
+        // view: every post-match endpoint is keyed by MATCH id, so without this a played tie would open
+        // with lineups, stats, goals and the report all empty. The score is on the Match, not the
+        // fixture - `MatchFixture` carries no goals of its own.
+        org.example.footballmanager.newLogic.model.Match played = fixture.getPlayedMatch();
+        out.put("matchId", played == null ? null : played.getId());
+        out.put("homeGoals", played == null ? null : played.getHomeGoals());
+        out.put("awayGoals", played == null ? null : played.getAwayGoals());
         return out;
     }
 
