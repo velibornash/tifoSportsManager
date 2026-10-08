@@ -23,5 +23,22 @@ public enum NotificationKind {
     FORUM_BANNED,
 
     /** A registration request was approved or rejected. Payload: the decision, the club. */
-    REGISTRATION_DECIDED
+    REGISTRATION_DECIDED,
+
+    /**
+     * Somebody offered one of our players out on loan, or offered us one of theirs.
+     *
+     * <p>Payload: the loan id, the player's name, the other club's name, and the season the loan runs.
+     */
+    LOAN_PROPOSED,
+
+    /**
+     * A loan moved on: agreed, taken in, asked to end, or ended.
+     *
+     * <p>Payload: the loan id, the player's name, the other club's name, and what happened. The owner's
+     * point, 2026-10-08: *"loan bi trebao izmedju ostalog da stize u notifications"* — a loan that starts
+     * and a player who arrives are things a manager should be told about rather than discover by opening
+     * the loans screen.
+     */
+    LOAN_MOVED
 }

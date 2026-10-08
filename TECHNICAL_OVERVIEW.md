@@ -848,6 +848,36 @@ rank with the tie broken alphabetically, which is an arbitrary rule presented as
 pattern is the same one `NationalGroupTieBreak` uses for a group table, and for the same reason: a coin
 re-rolled per read is a table that reorders itself while nobody is watching.
 
+### 8.9 Loans
+
+`LoanService` owns the rules and the controller owns none of them, so every caller gets them: under 24
+(younger than 24), domestic only, lender strictly above borrower in tier, bottom-tier clubs cannot lend,
+one loan per player at a time.
+
+**Room is checked when the borrower accepts, not when the offer is made.** An offer costs the lending club
+nothing — the borrower may still sell somebody before accepting — so `offer` deliberately does no room
+check and `activate` calls `requireRoomAt`. A loan is `AGREED` until then, and the rows say so:
+
+| Status | Lending club | Borrowing club |
+|---|---|---|
+| `AGREED` | *waiting for them to take him in* | **Take him in** (`POST /loans/{id}/activate`) |
+| `ACTIVE` | Request return | Send him back |
+| notice outstanding | Accept return | Accept return |
+
+The status decides the action and the side only refines it. It used to branch on the **side** first, which
+meant every borrowing row fell through to *"Send him back"* — refused by the service with
+`LOAN_NOT_ACTIVE` — and the one button that starts the loan was on no row at all.
+
+**Termination is symmetrical, never immediate.** Seven days' notice unless the other club agrees; the
+world ticks weekly, so a notice raised in week N closes at the end of week N+1. A recall that took effect at
+once would be the *borrowing* club's problem — it has built the week around a player who is no longer
+there, with no matchday left to replace him.
+
+**A loan tells you it happened.** Four moments notify both clubs where both are affected — offered,
+activated (arrived / left), termination requested, and closed, including the weekly sweep that ends loans
+nobody pressed anything for — as `LOAN_PROPOSED` and `LOAN_MOVED`. Before this, a player arrived silently
+and a manager found out by opening the loans screen.
+
 ## 9. Match simulation and persistence
 
 #### Reading a lazy entity outside a transaction is a live defect, not a style note
@@ -991,6 +1021,7 @@ that every route has a current screen.
 | `LineupController` | `/lineups` | lineup reads and templates |
 | `TrainingController` | `/training` | setup, player and weekly reports |
 | `TransferController` | `/transfers` | listing, offers, buying, objections and loans |
+| `LoanController` | `/loans` | rules, destinations, available players, offers in/out, offer, activate, terminate, accept-termination |
 | `ScoutingController` | `/scouting` | assignments and scouting views |
 | `JuniorController`, `JuniorSchoolController` | `/juniors` | academy and school |
 | `CountryController` | `/countries` | world, country, leagues, cups, national sides |

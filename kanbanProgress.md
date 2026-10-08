@@ -451,6 +451,71 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 Loans — "I send him back and he does not arrive, and I have no option to accept" (owner, 2026-10-08)
+
+> *"poslajem ga nazad al ne stigne niti imam opciju da prihvatim — loan bi trebao izmedju ostalog da stize
+> u notifications"*
+
+The row as the owner saw it: **Zvezdan Vukomanović · AGREED · S1 W1 → Week 12 day 7 · "Send him back"**.
+
+### Two separate defects, reported as one
+
+**1. The row offered the action that could not work.** `loanRow` branched on the **side** first:
+
+```javascript
+if (status === 'AGREED' && side === 'out')  'Waiting for them to accept'
+else if (side === 'out')                    'Request return'
+else if (noticeOutstanding)                 'Accept return'
+else                                         'Send him back'      // ← every 'in' row lands here
+```
+
+For a loan **this club borrowed**, none of the first three can be true, so every such row fell through to
+*"Send him back"* — which the service refuses with `LOAN_NOT_ACTIVE`, because an `AGREED` loan has not
+started. The action that actually starts it, and which the owner was looking for, was **on no row at all**:
+an `AGREED` loan the borrowing club accepts is `activate`, and it had no button and no click handler.
+
+The status now decides and the side only refines it: notice first, then `AGREED` (**Take him in** /
+*waiting for them*), then `ACTIVE` (request or send back), then nothing.
+
+**2. Nothing was ever notified.** `LoanService` wrote no notification at any point. A player arrived, was
+asked back, or went home, and a manager found out by opening the loans screen and looking. Four moments
+now notify both clubs where both are affected: **offer**, **activate** (arrives / left), **termination
+requested**, and **close** (including the weekly sweep that ends loans nobody pressed anything for).
+Two new kinds, `LOAN_PROPOSED` and `LOAN_MOVED`.
+
+The termination one matters most: without it the asking manager's button appears to do nothing for a week,
+which is the same silence the owner reported.
+
+### The owner's rule, kept where it belongs
+
+*"Accepting ends the question of room — the refusal happens at the moment you accept, not when the offer is
+made."* The service already enforced this (`activate` calls `requireRoomAt`, `offer` deliberately does not),
+and the frontend now says the same thing: the button reads **"Take him in"**, because that is the moment the
+place is committed.
+
+### Four fixture mistakes, recorded because two of them were instructive
+
+The test took four attempts, and every failure was the fixture rather than the code:
+
+1. clubs without `humanControlled` — refused by `requireManaged`;
+2. clubs in different countries — refused by the domestic rule;
+3. **a static ISO-code counter that was an instance field**, so JUnit's per-method instance reset it and the
+   class collided with itself on a unique index;
+4. **`loans.offer(playerId, lenderId, borrowerId)`** — the signature is
+   `offer(lendingClub, player, borrowingClub)`. Two `Long`s side by side and no compiler to help, and the
+   symptom is "No such player" **with the player provably present**, which reads exactly like a missing row
+   and is not one. That cost the most time and is the one worth remembering.
+
+Each is now commented where it lives, because a test that failed for a reason its author had to re-derive
+is a test the next person will also have to re-derive.
+
+### Guards
+
+Emptying `notifyClub` turns **both** notification tests red. Renaming the activate action turns the row
+guard red. Neither was assumed.
+
+---
+
 ## 🔴 P0-CLOCK-BUTTON — Advance Week was dead: `LazyInitializationException` (2026-10-08)
 
 Found because the verification could not get the clock to move, then read out of the **running

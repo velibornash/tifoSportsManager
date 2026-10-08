@@ -81,6 +81,8 @@ public class LoanService {
     private final PlayerContractRepository contracts;
     private final GameClockRepository clocks;
     private final SquadRegistrationService squadRegistration;
+    private final org.example.commonmanager.repository.UserRepository userRepository;
+    private final NotificationService notifications;
 
     // ── offering ───────────────────────────────────────────────────────────────────────────────
 
@@ -143,7 +145,14 @@ public class LoanService {
         loan.setEndWeek(SeasonCalendar.WEEKS_PER_SEASON);
         loan.setWageContribution(0.0);
         loan.setStatus(Loan.LoanStatus.AGREED);
-        return loans.save(loan);
+        Loan saved = loans.save(loan);
+
+        // The borrowing club's manager has to know a player is on offer, or the loan is a row only they
+        // will ever open the screen to see. The lending club is the one who just did it, so it needs none.
+        notifyClub(borrower.getId(), org.example.footballmanager.newLogic.model.NotificationKind.LOAN_PROPOSED,
+                loanSummary(player, lender, "is on loan offer from"));
+
+        return saved;
     }
 
     /**
@@ -169,7 +178,19 @@ public class LoanService {
 
         loan.setStatus(Loan.LoanStatus.ACTIVE);
         loan.setStartedAt(java.time.Instant.now());
-        return loans.save(loan);
+        Loan saved = loans.save(loan);
+
+        // **The moment the owner asked to be told about.** He has a player now, and the club he lent him
+        // to has lost him; both are facts a manager should not have to go and look for.
+        String playerName = players.findById(loan.getPlayerId()).map(Player::getName).orElse(null);
+        notifyClub(loan.getBorrowingClubId(),
+                org.example.footballmanager.newLogic.model.NotificationKind.LOAN_MOVED,
+                (playerName == null ? "A player" : playerName) + " has arrived on loan");
+        notifyClub(loan.getParentClubId(),
+                org.example.footballmanager.newLogic.model.NotificationKind.LOAN_MOVED,
+                (playerName == null ? "A player" : playerName) + " has left on loan");
+
+        return saved;
     }
 
     // ── terminating ────────────────────────────────────────────────────────────────────────────
@@ -207,7 +228,19 @@ public class LoanService {
         loan.setTerminationNoticeWeek(Math.min(SeasonCalendar.WEEKS_PER_SEASON, currentWeek() + NOTICE_WEEKS));
         loan.setTerminationAccepted(Boolean.FALSE);
         loan.setTerminationReason(reason);
-        return loans.save(loan);
+        Loan saved = loans.save(loan);
+
+        // The other club is being asked to give up a player it is currently using. That is the one loan
+        // event where silence is a cost to somebody: without this, the asking manager's button appears to
+        // do nothing until the week rolls over on its own.
+        Long otherClub = isLender ? loan.getBorrowingClubId() : loan.getParentClubId();
+        String playerName = players.findById(loan.getPlayerId()).map(Player::getName).orElse(null);
+        notifyClub(otherClub, org.example.footballmanager.newLogic.model.NotificationKind.LOAN_MOVED,
+                (playerName == null ? "A player" : playerName) + " is being asked back on loan"
+                        + (loan.getTerminationNoticeWeek() != null
+                        ? " — ends week " + loan.getTerminationNoticeWeek() : ""));
+
+        return saved;
     }
 
     /** The other club agrees: it ends now, with no notice. */
@@ -455,11 +488,49 @@ public class LoanService {
 
     // ── plumbing ────────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Tells one club's manager that something happened to a loan of theirs.
+     *
+     * <p>Owner, 2026-10-08: *"loan bi trebao izmedju ostalog da stize u notifications"*. Until this, a
+     * loan moved entirely inside the loans screen: a manager found out that a player had arrived, or that
+     * the other club wanted him back, only by opening that screen and looking.
+     *
+     * <p>Skipped for a club with no manager, which is most of a 14,880-club world — the lookup is one
+     * indexed query and the alternative is a notification table full of rows nobody will ever read.
+     */
+    private void notifyClub(Long clubId, org.example.footballmanager.newLogic.model.NotificationKind kind,
+                            String summary) {
+        if (clubId == null || summary == null || summary.isBlank()) {
+            return;
+        }
+        userRepository.findAllByFootballTeamId(clubId).forEach(manager ->
+                notifications.notify(manager, kind, summary, "loans", null));
+    }
+
+    /** "Zvezdan Vukomanović to NK Bravdo" — the same words the loans screen uses, so neither surprises. */
+    private String loanSummary(Player player, Team otherClub, String what) {
+        String name = player == null ? "a player" : player.getName();
+        String club = otherClub == null ? "another club" : otherClub.getName();
+        return name + " " + what + " " + club;
+    }
+
     private Loan close(Loan loan, Loan.LoanStatus status, String reason) {
         loan.setStatus(status);
         loan.setEndedAt(java.time.Instant.now());
         log.info("Loan {} closed as {}: {}", loan.getId(), status, reason);
-        return loans.save(loan);
+        Loan saved = loans.save(loan);
+
+        // A loan ending is a squad change for both clubs, and it is the one event that happens on its own
+        // schedule - the weekly sweep - with nobody having pressed anything. Told here, or never.
+        String playerName = players.findById(loan.getPlayerId()).map(Player::getName).orElse(null);
+        String summary = (playerName == null ? "A player" : playerName) + " is back from loan ("
+                + status.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ') + ")";
+        notifyClub(loan.getParentClubId(),
+                org.example.footballmanager.newLogic.model.NotificationKind.LOAN_MOVED, summary);
+        notifyClub(loan.getBorrowingClubId(),
+                org.example.footballmanager.newLogic.model.NotificationKind.LOAN_MOVED, summary);
+
+        return saved;
     }
 
     private Loan requireLoan(Long loanId) {

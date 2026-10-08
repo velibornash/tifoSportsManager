@@ -2371,6 +2371,23 @@ code path would ever have filled them.
 | **International club-cup Draw** guessed its week and day | `POST /admin/international-club-cups/redraw` passed **the current week** and a hardcoded **day 1**, while the job draws on week 12 day 7. The job only reads the week, so on any other week the button answered **200 and drew nothing** — and the day in the request was a number nothing looked at. | It draws on the job's **own** `DRAW_WEEK`/`DRAW_DAY`, so the button does what its label says at any point in the year, and the response names the season qualified from and the season drawn for. |
 | **National warm-up** was unreachable | Three finished endpoints (`/slot`, `/opponents`, `POST /`) since 2026-10-06 with **no frontend caller anywhere**. No manager could see the slot, name an opponent, or ask for a match. | A panel on both national-team tabs: the slot **read from `/slot`** rather than restated in the page, the opponent list, a request button that shows the endpoint's own 409 explanation, and both lists — asked and asked of. Written as **optional**: the owner said a warm-up is not compulsory, so the panel says what not playing costs, which is nothing. Read only on the two NT tabs. |
 
+### 🔴 Loans: "I send him back and he does not arrive, and I have no option to accept" (closed 2026-10-08)
+
+One report, **two separate defects**.
+
+- [x] **The row offered the action that could not work.** `loanRow` branched on the *side* first, so every
+      loan **this club borrowed** fell through to the last branch and offered *"Send him back"* — refused by
+      the service with `LOAN_NOT_ACTIVE`, because an `AGREED` loan has not started. The action that starts
+      it, **Take him in**, was on no row and had no click handler.
+- [x] **The status now decides and the side refines it:** notice first, then `AGREED` (take him in /
+      waiting for them), then `ACTIVE` (request / send back), then nothing. An ended loan shows no button.
+- [x] **Nothing was ever notified.** Four moments now notify both clubs where both are affected — offered,
+      activated (arrived / left), termination requested, closed — as `LOAN_PROPOSED` and `LOAN_MOVED`. The
+      termination one matters most: without it the asking manager's button looked like it did nothing for a
+      week, which is the silence the owner reported.
+- [x] **The owner's rule kept where it belongs:** the room is checked when the borrower **accepts**, so the
+      button says *Take him in* — the moment the place is committed.
+
 ### 🔴 Advance Week was dead — found in the running app's log (closed 2026-10-08)
 
 `POST /simulation/week/advance` answered **500 and did nothing**, and it is the button the whole game is

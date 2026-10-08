@@ -90,17 +90,36 @@ export function createLoansFeature(deps) {
         // An offer nobody has answered has no actions. "Request return" on a loan that has not started
         // would be refused by the service with LOAN_NOT_ACTIVE, and a button whose only outcome is an
         // error is worse than no button.
-        if (loan.status === 'AGREED' && side === 'out') {
-            actions.push('<span class="fm-subtle">Waiting for them to accept</span>');
-        } else if (side === 'out') {
-            actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Request return</button>`);
-        } else if (loan.noticeOutstanding) {
+        // **The status decides the action, then the side.** It was decided the other way round, and every
+        // borrowing row fell through to the last branch: a loan that had been AGREED but not yet started
+        // offered "Send him back", which the service refuses with LOAN_NOT_ACTIVE, and the button the
+        // owner needed — **Take him in** — was nowhere on the row. Owner, 2026-10-08: "poslajem ga nazad
+        // al ne stigne niti imam opciju da prihvatim".
+        //
+        // A notice is answered before anything else: it is the only state where the other club is waiting
+        // on an answer from this one.
+        if (loan.noticeOutstanding && loan.status === 'ACTIVE') {
             // The other club has asked for this loan to end. Accepting ends it at once; leaving it alone
             // means it ends a week later anyway, so the button is "yes" and the copy says what happens
             // if they do nothing.
             actions.push(`<button class="mini-btn" data-loan-action="accept-termination" data-loan-id="${loan.loanId}">Accept return</button>`);
+        } else if (loan.status === 'AGREED') {
+            // Agreed, not started. Only the borrowing club starts it, and that is the moment the room is
+            // checked — the offer was not a promise of a place.
+            if (side === 'in') {
+                actions.push(`<button class="mini-btn" data-loan-action="activate" data-loan-id="${loan.loanId}">Take him in</button>`);
+            } else {
+                actions.push('<span class="fm-subtle">Waiting for them to take him in</span>');
+            }
+        } else if (loan.status === 'ACTIVE') {
+            if (side === 'out') {
+                actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Request return</button>`);
+            } else {
+                actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Send him back</button>`);
+            }
         } else {
-            actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Send him back</button>`);
+            // Ended, recalled or returned: nothing to do.
+            actions.push('<span class="fm-subtle">—</span>');
         }
         return `
             <tr>
@@ -353,6 +372,21 @@ export function createLoansFeature(deps) {
                 }
 
                 if (!loanId) return;
+
+                if (action === 'activate') {
+                    // The button the row never had: an AGREED loan is not a running one, so the player
+                    // is not at the club yet, and this is the moment the room is checked. That is the
+                    // owner's rule - the refusal happens when you accept, not when the offer is made.
+                    btn.disabled = true;
+                    const res = await authFetch(`/loans/${loanId}/activate`, { method: 'POST' });
+                    if (!res.ok) {
+                        alert(await failureMessage(res, 'Could not take him in.'));
+                        btn.disabled = false;
+                        return;
+                    }
+                    await loadLoans();
+                    return;
+                }
 
                 if (action === 'terminate') {
                     const reason = window.prompt(
