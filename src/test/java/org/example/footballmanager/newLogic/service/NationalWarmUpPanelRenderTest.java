@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -65,6 +66,44 @@ class NationalWarmUpPanelRenderTest {
                 "the panel does not say the warm-up is optional");
         assertTrue(js.contains("costs nothing"),
                 "and does not say what not playing costs — which is nothing, and is the owner's point");
+    }
+
+    /**
+     * The panel must not be referenced from a function that does not have its data.
+     *
+     * <p><b>How this broke, and why the guards above did not see it.</b> The panel was first written into
+     * {@code buildGeneralTab}, which destructures only {@code sortedLeagues, senior, u21} out of its
+     * context — and the panel referenced {@code tab}, {@code warmUpSideId}, {@code warmUp},
+     * {@code warmUpSlot} and {@code warmUpOpponents}, none of which exist there. Every tab of the country
+     * page died with {@code ReferenceError: tab is not defined}.
+     *
+     * <p>All four existing guards stayed green: the endpoint strings were still in the file, the copy was
+     * still there, and the reads were still gated on the two tabs. The defect was not about <i>whether
+     * something mentions the endpoints</i>, it was about <b>which function mentions them</b>.
+     *
+     * <p>A {@code ReferenceError} inside a template string cannot be caught by reading the text — it needs
+     * an engine. {@code CountryPageRendersTest} does that with a real browser, and it is the only check in
+     * the repository that would have caught this; it needs Chromium and a running application, so it is
+     * skipped in CI and was not run here. This guard is the cheap half: it cannot evaluate JavaScript,
+     * but it can insist that the panel is only referenced from the function that receives it.
+     */
+    @Test
+    @DisplayName("the panel is only referenced from the tab that is given its data")
+    void thePanelIsOnlyUsedWhereItIsDefined() throws IOException {
+        String js = countryView();
+
+        int generalTab = js.indexOf("function buildGeneralTab");
+        int generalTabEnd = js.indexOf("\n    function ", generalTab + 10);
+        String general = js.substring(generalTab, generalTabEnd);
+
+        assertFalse(general.contains("buildNationalWarmUpHtml("),
+                "buildGeneralTab destructures only sortedLeagues, senior and u21, so calling the "
+                        + "warm-up panel there makes every tab of the country page throw ReferenceError");
+
+        assertTrue(js.contains("buildNationalWarmUpHtml(level, warmUp.teamId"),
+                "the panel belongs on the senior and U-21 tabs, and is given its data as context");
+        assertTrue(js.contains("${warmUpPanel}"),
+                "and it has to actually be rendered, not merely declared");
     }
 
     @Test

@@ -451,6 +451,55 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 Country page — every tab threw `ReferenceError: tab is not defined` (owner, 2026-10-08)
+
+```
+Failed to load country page: ReferenceError: tab is not defined
+  buildGeneralTab  country-view.js:201
+  loadCountryPage  country-view.js:828
+```
+
+Mine, from the warm-up panel an hour earlier. `buildGeneralTab(ctx)` destructures **only**
+`sortedLeagues, senior, u21` out of its context, and the panel referenced `tab`, `warmUpSideId`,
+`warmUp`, `warmUpSlot` and `warmUpOpponents` — none of which exist in that scope. Every tab of the
+country page died, and the error was found by a person opening it.
+
+It was also in the wrong place: a warm-up is a thing the **national team** does, so it belongs on the
+senior and U-21 tabs. It now renders inside `buildSelectorTab`, which receives the data as context like
+every other tab's data, instead of closing over the caller's variables.
+
+### Four static guards were green the whole time
+
+The endpoint strings were still in the file. The copy was still there. The reads were still gated on the
+two NT tabs. `node --check` passed — **it parses**, and the name was only undefined at run time. A
+`ReferenceError` inside a template string needs an **engine**, and nothing in this repository had one that
+could run without a browser and a server.
+
+### So one now exists, and it needs neither
+
+`CountryPageRendersWithoutReferenceErrorTest` loads the real `country-view.js` in Node with the fetch
+layer stubbed and drives the real `loadCountryPage` over all six tabs. Putting the panel back where it was
+produces the owner's own message:
+
+```
+these tabs did not render: Failed to load country page: ReferenceError: tab is not defined
+```
+
+It also asserts the panel appears on **senior and U-21 and not on general**, so the mistake cannot return
+in a form that only fails on click.
+
+`CountryPageRendersTest` remains the better check — real browser, real login, real page — and it is the
+only one that can catch a fault in the fetch layer itself. It needs Chromium and a running application, so
+it is skipped in CI. This one is the half that always runs.
+
+### Also learned: the two static guards were not wrong, they were the wrong shape
+
+`NationalWarmUpPanelRenderTest` gained a scope guard — the panel must not be referenced from a function
+that does not receive its data — because the defect was never about *whether something mentions the
+endpoints*. It was about **which function mentions them**.
+
+---
+
 ## 🔴 Loans — "Take him in" returned 500, and it was my notification code (owner, 2026-10-08)
 
 The owner's console, which is how this was found:

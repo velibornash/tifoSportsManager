@@ -895,6 +895,25 @@ because a courtesy row could not be written.
 
 ## 9. Match simulation and persistence
 
+#### A `ReferenceError` in a template string needs an engine, not a lint
+
+The national warm-up panel was written into `buildGeneralTab`, which destructures only
+`sortedLeagues, senior, u21` out of its context, and it referenced five names that do not exist there.
+**Every tab of the country page** threw `ReferenceError: tab is not defined`.
+
+Four static guards on that file were green throughout: the endpoint strings were present, the copy was
+present, the reads were gated on the two national-team tabs, and `node --check` passed — it **parses**, and
+the name was only undefined at run time.
+
+`CountryPageRendersWithoutReferenceErrorTest` loads the real `country-view.js` in Node with the fetch layer
+stubbed and drives the real `loadCountryPage` over all six tabs. No browser, no running application, and it
+reproduces the owner's exact message. `CountryPageRendersTest` (Chromium, real login) remains the better
+check for anything in the fetch layer, and is skipped in CI for want of infrastructure — so the Node one is
+the half that always runs.
+
+The rule this leaves behind: **the data a builder function uses has to arrive in its context.** Closing over
+the caller's variables is how a panel ends up rendering inside a function that never had them.
+
 #### Reading a lazy entity outside a transaction is a live defect, not a style note
 
 `POST /simulation/week/advance` returned **500 and did nothing** until 2026-10-08, because the controller

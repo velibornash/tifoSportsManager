@@ -198,7 +198,6 @@ export function createCountryView(deps) {
 
                 ${buildNationalTeamSummary('Senior national team', 'senior', senior)}
                 ${buildNationalTeamSummary('Under-21', 'u21', u21)}
-                ${buildNationalWarmUpHtml(tab, warmUpSideId, warmUp, warmUpSlot, warmUpOpponents)}
 
             </div>`;
     }
@@ -564,7 +563,23 @@ export function createCountryView(deps) {
             </div>`).join('');
     }
 
-    function buildSelectorTab(nt, level) {
+    /**
+     * The national-team tab: the squad, and the optional warm-up beside it.
+     *
+     * <p><b>The warm-up panel was first written into the General tab and broke the country page.</b> It
+     * referenced `tab`, `warmUpSideId`, `warmUp`, `warmUpSlot` and `warmUpOpponents` — none of which are
+     * in `buildGeneralTab`'s scope, since it only destructures `sortedLeagues, senior, u21` out of its
+     * context. Every tab of the country page died with `ReferenceError: tab is not defined`, found in the
+     * browser and not by any test.
+     *
+     * <p>It also belongs here rather than there: a warm-up is a thing the **national team** does, so it
+     * sits on the senior and U-21 tabs where that team is, and it is passed in as context like every other
+     * tab's data rather than closed over from the caller.
+     */
+    function buildSelectorTab(nt, level, warmUp) {
+        const warmUpPanel = warmUp
+            ? buildNationalWarmUpHtml(level, warmUp.teamId, warmUp.view, warmUp.slot, warmUp.opponents)
+            : '';
         if (!nt || nt.failed) {
             return '<section class="fm-panel"><div class="fm-empty">This national team could not be loaded.</div></section>';
         }
@@ -628,6 +643,7 @@ export function createCountryView(deps) {
                         ? `<div class="fm-squad">${buildSquadRows(pool, { showClub: true, addable: !full && !locked })}</div>`
                         : '<div class="fm-empty">No players available.</div>'}
                 </section>
+                ${warmUpPanel}
             </div>`;
     }
 
@@ -836,7 +852,9 @@ export function createCountryView(deps) {
             } else if (resolvedTab === 'qualifying') {
                 body = buildQualifyingTab(qualifying);
             } else {
-                body = buildSelectorTab(activeNt, resolvedTab);
+                body = buildSelectorTab(activeNt, resolvedTab, wantsWarmUp
+                    ? { teamId: warmUpSideId, view: warmUp, slot: warmUpSlot, opponents: warmUpOpponents }
+                    : null);
             }
 
             const tabs = buildTabs(resolvedTab);
