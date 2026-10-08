@@ -784,7 +784,7 @@ shelling out to these tools needs the same treatment — read the server's major
 driver is already there) and take the first client new enough to read it. `app.backup.pg-tools` overrides
 the search.
 
-### 8.9 Ranking points — one number, specified and tested, not yet wired
+### 8.9 Ranking points — one number, wired and rebuilt after every matchday
 
 `RankingPointsEngine` (`service/RankingPointsEngine.java`) is the owner's ranking system. It is **pure
 arithmetic** — no Spring, no repository, no clock — which is what makes it testable row by row.
@@ -794,7 +794,7 @@ weights a result by the rating gap, so beating a strong side moves a club more t
 The owner rejected that in one line: *"snaga tima moze da utice na projekciju rezultata ali ne i na
 rejting poene"* — a team's strength may move the forecast, never the points. `RankingPointsEngine`
 therefore has **no gap term**, and a test asserts that the ladder is a function of exactly two numbers.
-When this is wired in, `RatingEngine.clubK(value, own, opp)` goes.
+`RatingEngine.clubK` has had its gap term removed; the two-argument overload ignores both arguments.
 
 ```
 displayed = 1500 + Σ ( seasonPoints × windowWeight )      window 1.00 / 0.75 / 0.50 / 0.25
@@ -813,8 +813,20 @@ national team has no tier. **This is why the totals are decimals** — `40 × 0.
 `CompetitionType` and `CompetitionScope` alone cannot tell a continental club cup from a World Cup
 qualifier; `teamType` can, and a test pins that.
 
-**State: arithmetic only.** No team's points are computed, there is no ledger, the ranking list still
-orders by Elo, and the old gap-weighted deltas are still being written.
+**State: wired.** `ClubSeasonRankingPoints` and `CountrySeasonRankingPoints` are the per-season ledger;
+`ClubRankingPointsService` and `NationalRankingPointsService` replay the played matches into them;
+`AchievementBonusService` adds qualification, phase and trophy bonuses in the same pass. All four are
+driven by **`RankingPointsRebuildService.rebuild(season)`**, called by `AsyncSimulationRunner` **once per
+matchday batch** — the owner's decision, 2026-10-08. Until that call existed the services had no caller at
+all: the ranking lists sorted an empty ledger.
+
+**Ties are settled by a stored coin.** `RankingTieBreakSeed` (`ranking_tie_break_seed`) holds one seed per
+ladder — the world ladder, and one per country for its club ladder — written the first time the ladder needs
+it and read from then on. `RankingTieBreakService.coin(seed, id)` mixes the stored seed with the id, so two
+clubs level on points get **two distinct positions** in a **stable** order. It was previously a shared
+rank with the tie broken alphabetically, which is an arbitrary rule presented as a sporting result. The
+pattern is the same one `NationalGroupTieBreak` uses for a group table, and for the same reason: a coin
+re-rolled per read is a table that reorders itself while nobody is watching.
 
 ## 9. Match simulation and persistence
 

@@ -6,7 +6,10 @@ import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.controller.ControllerAuthFixture;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.CountrySeasonRankingPoints;
 import org.example.footballmanager.newLogic.model.CountryState;
+import org.example.footballmanager.newLogic.model.NationalTeamLevel;
+import org.example.footballmanager.newLogic.repository.CountrySeasonRankingPointsRepository;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -22,6 +25,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -56,6 +60,23 @@ class CountryRankingTest extends BaseTest {
     @Autowired
     TeamRepository teams;
 
+    @Autowired
+    CountrySeasonRankingPointsRepository ledger;
+
+    @Autowired
+    org.example.footballmanager.newLogic.service.SeasonService seasons;
+
+    private int season() {
+        return seasons.getActiveSeasonYear();
+    }
+
+    private Country countryByIso(String iso) {
+        return countries.findAll().stream()
+                .filter(c -> iso.equals(c.getIsoCode()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no country with ISO " + iso));
+    }
+
     @Test
     @Transactional
     @DisplayName("the ranking is ordered by position and every country appears exactly once")
@@ -75,26 +96,43 @@ class CountryRankingTest extends BaseTest {
         }
     }
 
+    /**
+     * Equal totals, distinct positions.
+     *
+     * <p><b>This test used to assert the opposite</b> — "countries on the same rating share a position" —
+     * and it was <b>already red before the coin existed</b>, because it fed {@code reputation} into a list
+     * that had been rebuilt on ranking points some commits earlier. It was failing for two reasons at once:
+     * the numbers it set were not the numbers the list reads, and the rule it asserted is the one the
+     * owner has since overruled.
+     *
+     * <p>The owner's rule is that level totals get <b>distinct</b> positions settled by a coin, never a
+     * shared rank and never alphabetical. So the ledger is seeded directly, which is what the list reads.
+     */
     @Test
     @Transactional
-    @DisplayName("countries on the same rating share a position")
-    void equalRatingsShareAPosition() throws Exception {
-        // Three countries on exactly the same senior rating, and one behind them.
+    @DisplayName("countries level on points get distinct positions, and the country below is behind them")
+    void levelCountriesAreSeparatedByTheCoin() throws Exception {
+        int season = season();
+        // Three countries on exactly the same points, and one behind them.
         country("T11", "Tied one", 1500);
         country("T22", "Tied two", 1500);
         country("T33", "Tied three", 1500);
         country("B44", "Behind", 1400);
+        for (String iso : List.of("T11", "T22", "T33")) {
+            ledger.save(new CountrySeasonRankingPoints(countryByIso(iso), NationalTeamLevel.SENIOR, season, 200.0));
+        }
+        ledger.save(new CountrySeasonRankingPoints(countryByIso("B44"), NationalTeamLevel.SENIOR, season, 100.0));
 
         List<Map<String, Object>> rows = read("senior");
-
         Map<String, Integer> positionOf = new java.util.HashMap<>();
         rows.forEach(row -> positionOf.put(String.valueOf(row.get("isoCode")), (Integer) row.get("position")));
 
-        assertEquals(positionOf.get("T11"), positionOf.get("T22"),
-                "two countries with the same rating are the same distance from the top");
-        assertEquals(positionOf.get("T11"), positionOf.get("T33"), "three of them");
-        assertEquals(1, positionOf.get("T11"), "and nobody is above anyone here");
-        assertEquals(4, positionOf.get("B44"), "while the country below them is behind all three");
+        assertNotEquals(positionOf.get("T11"), positionOf.get("T22"),
+                "two countries on identical points must not share a position");
+        assertNotEquals(positionOf.get("T11"), positionOf.get("T33"), "three of them");
+        assertEquals(4, positionOf.get("B44"),
+                "and the country a hundred points behind is fourth, because the three level ones take "
+                        + "positions one, two and three rather than sharing one: " + positionOf);
     }
 
     @Test
@@ -112,17 +150,26 @@ class CountryRankingTest extends BaseTest {
                         + "average', which nobody has earned.");
     }
 
+    /**
+     * Senior and U-21 are separate ladders, from separate rows.
+     *
+     * <p>Also written against the old reputation columns and therefore already red before the coin work:
+     * the ranking reads {@code CountrySeasonRankingPoints}, not {@code reputation} and
+     * {@code youthRating}. Seeded from the ledger instead, which is the thing the list actually shows.
+     */
     @Test
     @Transactional
-    @DisplayName("senior and U-21 are ranked separately, from two different columns")
+    @DisplayName("senior and U-21 are ranked separately, from separate ledger rows")
     void theTwoLevelsAreRankedSeparately() throws Exception {
-        Country seniorStrong = country("SSS", "Senior strong", 1800);
-        seniorStrong.setYouthRating(1200);
-        countries.save(seniorStrong);
+        int season = season();
+        Country strong = country("SSS", "Senior strong", 1500);
+        ledger.save(new CountrySeasonRankingPoints(strong, NationalTeamLevel.SENIOR, season, 300.0));
+        ledger.save(new CountrySeasonRankingPoints(strong, NationalTeamLevel.U21, season, -100.0));
 
-        assertEquals(1800.0, pointsFor(read("senior"), "SSS"), 0.01);
-        assertEquals(1200.0, pointsFor(read("u21"), "SSS"), 0.01,
-                "the U-21 rating is read from youthRating, not from the senior reputation");
+        assertEquals(1800.0, pointsFor(read("senior"), "SSS"), 0.01,
+                "1500 start + 300 earned on the senior side");
+        assertEquals(1400.0, pointsFor(read("u21"), "SSS"), 0.01,
+                "and the U-21 list reads its own row, not the senior side's points");
     }
 
     @Test

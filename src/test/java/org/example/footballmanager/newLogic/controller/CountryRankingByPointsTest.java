@@ -225,7 +225,7 @@ class CountryRankingByPointsTest extends BaseTest {
         country.setState(CountryState.SIMULATED);
         country.setSeniorNationalTeam(aTeam(prefix + " senior"));
         country.setU21NationalTeam(aTeam(prefix + " u21"));
-        country.setReputation(reputation);
+        country.setReputation((int) reputation);
         country.setYouthRating((int) RankingPointsEngine.START_POINTS);
         return countries.save(country);
     }

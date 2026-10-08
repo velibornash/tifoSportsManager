@@ -74,6 +74,7 @@ public class CountryController {
     private final org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints;
     private final org.example.footballmanager.newLogic.repository.ClubSeasonRankingPointsRepository
             clubSeasonRankingPointsRepository;
+    private final org.example.footballmanager.newLogic.service.RankingTieBreakService tieBreaks;
     private final org.example.commonmanager.repository.UserRepository humanUserRepository;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
     private final org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository;
@@ -88,7 +89,8 @@ public class CountryController {
             org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository matchPlayerStatsRepository,
             org.example.footballmanager.newLogic.service.RankingPointsReader rankingPoints,
             org.example.footballmanager.newLogic.repository.ClubSeasonRankingPointsRepository
-                    clubSeasonRankingPointsRepository) {
+                    clubSeasonRankingPointsRepository,
+            org.example.footballmanager.newLogic.service.RankingTieBreakService tieBreaks) {
         this.countryRepository = countryRepository;
         this.competitionRepository = competitionRepository;
         this.competitionEntryRepository = competitionEntryRepository;
@@ -109,6 +111,7 @@ public class CountryController {
         this.rankingPoints = rankingPoints;
         this.clubSeasonRankingPointsRepository = clubSeasonRankingPointsRepository;
         this.matchPlayerStatsRepository = matchPlayerStatsRepository;
+        this.tieBreaks = tieBreaks;
     }
 
     /**
@@ -284,20 +287,20 @@ public class CountryController {
             row.put("rated", total != null);
             out.add(row);
         }
+        // Points, then the country's own coin. Never the name: alphabetical order is not a sporting
+        // result, and it is the rule a manager can see straight away and has no reason to believe.
+        long coin = tieBreaks.clubSeed(season, country.getId());
         out.sort(Comparator.comparingDouble((Map<String, Object> row) -> (Double) row.get("points"))
                 .reversed()
-                .thenComparing(row -> String.valueOf(row.get("name"))));
+                .thenComparingLong(row -> tieBreaks.coin(coin, clubIdOf(row))));
 
+        // A distinct position for every row, whatever the points say. Two clubs level on points get two
+        // positions, decided by the coin — the owner's rule, and the reason this loop no longer shares a
+        // position between equals.
         int position = 0;
-        Double previous = null;
         int shown = 0;
         for (Map<String, Object> row : out) {
-            Double current = (Double) row.get("points");
-            if (previous == null || current.compareTo(previous) != 0) {
-                position++;
-                previous = current;
-            }
-            row.put("position", position);
+            row.put("position", ++position);
             if (shown++ < safeLimit) {
                 continue;
             }
@@ -337,6 +340,9 @@ public class CountryController {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("isoCode", country.getIsoCode());
             row.put("name", country.getName());
+            // Carried for the tie-break coin only, so the ladder does not have to look the country up
+            // again by its ISO code to decide who is level with whom.
+            row.put("countryId", country.getId());
             row.put("level", youth ? "u21" : "senior");
             // Ordered by ACHIEVEMENT points, not by the head-to-head Elo this replaced. The owner
             // collapsed the two into one system: a club or country earns points for what it achieved and
@@ -348,23 +354,32 @@ public class CountryController {
             rows.add(row);
         }
 
-        // Position computed here rather than stored, for the same reason as before: it is a statement about
-        // every other country too, so storing it lets two screens disagree. Strictly-greater, so equal
-        // totals share a position until the tie is broken for display.
+        // Points, then the world's coin for this season. Never the name — see the club ladder.
+        long coin = tieBreaks.countrySeed(season);
         rows.sort(Comparator.comparingDouble((Map<String, Object> row) -> (Double) row.get("points"))
                 .reversed()
-                .thenComparing(row -> String.valueOf(row.get("name"))));
+                .thenComparingLong(row -> tieBreaks.coin(coin, countryIdOf(row))));
+
+        // Computed here rather than stored: a position is a statement about every other country too, so
+        // storing it lets two screens disagree. Every row gets its own, so two countries level on points
+        // no longer share a rank.
         int position = 0;
-        Double previous = null;
         for (Map<String, Object> row : rows) {
-            Double current = (Double) row.get("points");
-            if (previous == null || current.compareTo(previous) != 0) {
-                position++;
-                previous = current;
-            }
-            row.put("position", position);
+            row.put("position", ++position);
         }
         return rows;
+    }
+
+    /** The club behind a ladder row, for the coin. Null id sorts on the mixed seed alone. */
+    private static Long clubIdOf(Map<String, Object> row) {
+        Object id = row.get("teamId");
+        return id instanceof Number n ? n.longValue() : null;
+    }
+
+    /** The country behind a ranking row, for the coin. */
+    private static Long countryIdOf(Map<String, Object> row) {
+        Object id = row.get("countryId");
+        return id instanceof Number n ? n.longValue() : null;
     }
 
     private static double round2(double value) {

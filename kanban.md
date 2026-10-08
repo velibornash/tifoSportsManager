@@ -2356,9 +2356,9 @@ code path would ever have filled them.
       rebuild, and `AsyncSimulationRunnerRebuildsRankingTest` asserts the *caller* — because the first
       version of the rebuild test **passed with the hook deleted**, which is the very defect it was written
       to catch.
-- [ ] **Not yet seen in a live matchday.** The end-to-end run is waiting on the clock, and one
-      `advance day` on this world is still reconciling season entries for 48 countries one division at a
-      time — see the P1 note below.
+- [ ] **Not yet seen in a live matchday.** Blocked on the clock: one `advance day` on this world
+      reconciles season entries for 48 countries one division at a time (~22 minutes, measured), and the
+      matchday job only fires on day 3. See the P1 note below.
 
 ### Found alongside it, not fixed here
 
@@ -2475,9 +2475,34 @@ answers are not written down anywhere in the codebase yet.
 - [x] **Three bugs the table caught in my own code:** the ladder ignored "won by more than forecast";
       a club cup and a WC qualifier were indistinguishable without `teamType`; `tierWeight` contradicted
       its own javadoc.
-- [ ] **Storage and replay** — a per-season ledger so the window can be computed; nothing is computed yet.
-- [ ] **Ranking list ordered by points** — it still orders by the old Elo.
-- [ ] **`RatingEngine.clubK`'s gap weighting removed**, which is the term the owner rejected.
+- [x] **Storage and replay** — `ClubSeasonRankingPoints` / `CountrySeasonRankingPoints`, replayed per
+      season and windowed at 100/75/50/25. Was unticked because the replay had no caller; **wired** by
+      `4f8830b` (🔴 P0-RANK-WIRE).
+- [x] **Ranking list ordered by points** — both `/countries/ranking` and the country **Clubs** tab sort by
+      the points total, not by the Elo they replaced.
+- [x] **`RatingEngine.clubK`'s gap weighting removed** — the weight is `CLUB_BASE_K × value.scale()` and
+      reads neither rating. The two-argument overload is kept so the call sites still compile, and it
+      ignores both arguments.
+- [x] **Equal totals no longer share a position.** `RankingTieBreakSeed` holds one coin per ladder — the
+      world ladder and one per country for its club ladder — written on first use and read from then on.
+      `RankingTieBreakService.coin(seed, id)` mixes it with the id, so level totals get **distinct**
+      positions in a **stable** order. Verified against PostgreSQL: 48 countries and 310 clubs all on
+      1500, distinct positions, identical order on a second read, one stored row per ladder.
+      The pattern and the reason are `NationalGroupTieBreak`'s: a coin re-rolled per read is a table that
+      reorders itself while nobody is watching.
+
+#### Two stale tests this uncovered, and what they had been asserting
+
+`CountryRankingTest` was **already red before the coin existed** — two failures, confirmed by running it
+on the commit before. Both were written against the pre-points ranking:
+
+| Test | Was asserting | Now |
+|---|---|---|
+| `equalRatingsShareAPosition` | level ratings **share** a position, fed from `reputation` | `levelCountriesAreSeparatedByTheCoin` — level **points** get distinct positions, seeded from the ledger the list actually reads |
+| `theTwoLevelsAreRankedSeparately` | senior and U-21 read `reputation` and `youthRating` | reads two separate `CountrySeasonRankingPoints` rows, 300 senior and −100 U-21 |
+
+The first one had been wrong twice over — the numbers it set were not the numbers the list reads, **and**
+the rule it asserted is the one the owner has since overruled.
 
 ---
 

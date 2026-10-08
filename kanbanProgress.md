@@ -1,5 +1,55 @@
 # kanbanProgress.md — the append-only log
 
+## 🔴 P0-RANK-TIE — level totals shared a position, settled by the alphabet (2026-10-08)
+
+The owner's standing rule, previously unmet: **equal totals get distinct positions, never a shared rank
+and never alphabetical.** Both ranking lists did the opposite — a strictly-greater position counter, so
+equals shared a rank, with the order between them decided by the country's name.
+
+### What it is
+
+`RankingTieBreakSeed` (`ranking_tie_break_seed`) holds one coin per ladder: the world ladder, and one per
+country for its club ladder. `RankingTieBreakService` writes it the first time a ladder needs it — derived
+from the season and the ladder's own subject, so a fresh install and a restored backup land on the same
+coin — and mixes it with the team or country id for each row.
+
+The pattern is `NationalGroupTieBreak`'s, and for the same reason, written down in that class: *a coin
+re-rolled per read is a table that reorders itself while nobody is watching.* Stored rather than derived on
+every read so the draw is a record rather than arithmetic. Cleared by Reset DB with everything else, since
+the reset keeps three tables by name and takes the rest from the catalogue.
+
+### Verified in PostgreSQL, not in a test
+
+48 countries and 310 Serbian clubs, **all on 1500** because nothing has been played yet — so every row is
+a tie and the coin is doing all of the work:
+
+- the national list returns 48 rows with **distinct** positions, and the first five are `SVK, NOR, USA,
+  MNE, SVN` — not alphabetical;
+- a second read returns the **same five**, which is the difference between a coin and a shuffle;
+- the club list returns 310 total, 100 shown, positions that are the country's real position out of 310,
+  and it wrote its **own** seed row (`subject_key = 1`) rather than reusing the world's.
+
+### The two tests that were already red
+
+`CountryRankingTest` had two failures **before any of this** — confirmed by running it on the previous
+commit. Both were written against the pre-points ranking and had not been touched by the clean cut:
+
+| Was asserting | Why it was red | Now |
+|---|---|---|
+| level ratings **share** a position, values fed from `reputation` | the list reads `CountrySeasonRankingPoints`, and the rule was the one the owner has since overruled | `levelCountriesAreSeparatedByTheCoin`: level **points**, distinct positions, seeded from the ledger |
+| senior and U-21 read `reputation` and `youthRating` | same reason | two separate ledger rows, 300 senior and −100 U-21 |
+
+The first was wrong twice over, which is the useful part: the numbers it set were not the numbers the list
+reads, **and** the rule it asserted was obsolete. A red test is not always a broken feature.
+
+### Guards proved by putting the old behaviour back
+
+Restoring the shared-position counter and the name tie-break turns **three** of the five new guards red —
+distinct positions, not-alphabetical, and the U-21 ladder separating the two — and leaves the stability
+and seed-count guards green, which is right: those two are about the coin existing at all.
+
+---
+
 ## 🔴 P0-RANK-WIRE — the ranking points and the medals computed nothing; now wired (2026-10-08)
 
 Found while starting the trophy UI. `ClubRankingPointsService.recompute()`,
