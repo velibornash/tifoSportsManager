@@ -44,25 +44,14 @@ export function createLoansFeature(deps) {
      * country is a tier below yours", and only one of them is a bug.
      */
     /**
-     * Whether the server said this club can be loaned to.
+     * The dropdown, from the eligible list only.
      *
-     * <p>Accepts `true` and `null` as eligible, because both are in flight: the current contract sends
-     * a boolean and a separate `reason`, while the build that was running when this screen was written
-     * sent `null` for eligible and the reason string in the same field. Guessing wrong here does not
-     * throw — it silently offers no destinations at all, which reads as "there is nobody to loan to"
-     * and is the least useful possible answer.
+     * <p>The server sends the clubs you may loan to and nothing else. It used to send all 14,626 of them
+     * with a reason attached — 2.38 MB to deliver one option — and a screen that reads every row it is
+     * given is how that happened. Refusals now arrive as counts by reason, below.
      */
-    function isEligible(d) {
-        return d.eligible === true || d.eligible === null;
-    }
-
-    function ineligibilityReason(d) {
-        if (d.reason) return d.reason;
-        return typeof d.eligible === 'string' ? d.eligible : null;
-    }
-
-    function destinationOptions(destinations) {
-        const eligible = destinations.filter(isEligible);
+    function destinationOptions(payload) {
+        const eligible = (payload && Array.isArray(payload.eligible)) ? payload.eligible : [];
         if (!eligible.length) {
             return `<option value="">No eligible club</option>`;
         }
@@ -71,21 +60,39 @@ export function createLoansFeature(deps) {
         ).join('');
     }
 
-    /** Why the rest could not be loaned to, in the server's words. The rules are one message. */
-    function refusalSummary(destinations) {
-        const blocked = destinations.filter(d => !isEligible(d));
-        if (!blocked.length) return '';
-        const reasons = [...new Set(blocked.map(ineligibilityReason).filter(Boolean))];
-        const count = `${blocked.length} club${blocked.length === 1 ? '' : 's'}`;
-        if (!reasons.length) return '';
-        return `<p class="fm-subtle academy-panel-copy">${count} could not be loaned to: `
-            + `${escapeHtml(reasons.join('; '))}.</p>`;
+    /**
+     * Why the rest could not be loaned to, as counts rather than as 14,000 names.
+     *
+     * <p>"1,625 clubs are not managed by a person" tells a manager what to do next. A list of 1,625
+     * club names tells him nothing he can act on, and costs more to draw than the rest of the page.
+     */
+    function refusalSummary(payload) {
+        if (!payload) return '';
+        const rows = [];
+        if (payload.note) rows.push(escapeHtml(payload.note));
+        const refused = Array.isArray(payload.refused) ? payload.refused : [];
+        if (refused.length) {
+            rows.push(refused
+                .map(r => `${r.count} club${Number(r.count) === 1 ? '' : 's'}: ${escapeHtml(r.reason)}`)
+                .join('; ') + '.');
+        }
+        if (payload.eligibleTotal > payload.shown) {
+            rows.push(escapeHtml(`Showing ${payload.shown} of ${payload.eligibleTotal} clubs you could loan to.`));
+        }
+        if (!rows.length) return '';
+        return `<p class="fm-subtle academy-panel-copy">${rows.join(' ')}</p>`;
     }
 
     function loanRow(loan, side) {
         // side: 'in' = this club borrowed him, 'out' = this club lent him
         const actions = [];
-        if (side === 'out') {
+
+        // An offer nobody has answered has no actions. "Request return" on a loan that has not started
+        // would be refused by the service with LOAN_NOT_ACTIVE, and a button whose only outcome is an
+        // error is worse than no button.
+        if (loan.status === 'AGREED' && side === 'out') {
+            actions.push('<span class="fm-subtle">Waiting for them to accept</span>');
+        } else if (side === 'out') {
             actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Request return</button>`);
         } else if (loan.noticeOutstanding) {
             // The other club has asked for this loan to end. Accepting ends it at once; leaving it alone
@@ -122,6 +129,40 @@ export function createLoansFeature(deps) {
                     <span class="fm-panel-action">${count}</span>
                 </div>
                 ${bodyHtml || `<div class="fm-empty">${escapeHtml(emptyText)}</div>`}
+            </section>`;
+    }
+
+    /**
+     * The rules, in their own panel.
+     *
+     * <p>They were in the hero first, and the hero's text column is narrow — the club action row sits
+     * beside it — so four paragraphs of rules wrapped into a column about twenty characters wide and
+     * pushed the counters off the bottom of the panel. The hero carries one line; the rules get the
+     * width of the page, which is what a manager reads them at.
+     */
+    function rulesPanel(rules) {
+        const items = [
+            rules.ageRule,
+            rules.tierLadder,
+            rules.wage,
+            rules.runsTo,
+            rules.domesticOnly ? 'A loan can only be made between clubs in the same country.' : null,
+            rules.lowerTierOnly ? 'A loan can only go down the tiers, never up and never across.' : null,
+            rules.noticeWeeks != null
+                ? `Ending a loan: either club can ask. If the other agrees it ends at once; if nobody answers it ends after ${rules.noticeWeeks} week(s).`
+                : null,
+        ].filter(Boolean);
+        return `
+            <section class="fm-panel academy-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>How loans work</h3>
+                        <p class="fm-subtle academy-panel-copy">Every rule the service enforces, in words, so nothing here has to be discovered by being refused.</p>
+                    </div>
+                </div>
+                <ul class="fm-subtle academy-panel-copy" style="margin:0;padding-left:18px;line-height:1.7;">
+                    ${items.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                </ul>
             </section>`;
     }
 
@@ -182,7 +223,7 @@ export function createLoansFeature(deps) {
 
         const loanable = (available || []).filter(p => p.loanable);
         const notLoanable = (available || []).filter(p => !p.loanable);
-        const eligibleCount = (destinations || []).filter(isEligible).length;
+        const eligibleCount = destinations && Array.isArray(destinations.eligible) ? destinations.eligible.length : 0;
 
         const lendRows = loanable.map(p => `
             <tr>
@@ -193,7 +234,7 @@ export function createLoansFeature(deps) {
                 <td>
                     <div class="fm-season-select-wrap">
                         <select class="fm-season-select" data-loan-destination-for="${p.playerId}">
-                            ${destinationOptions(destinations || [])}
+                            ${destinationOptions(destinations)}
                         </select>
                     </div>
                 </td>
@@ -214,10 +255,6 @@ export function createLoansFeature(deps) {
                         <div class="fm-eyebrow">Club overview</div>
                         <h2>Loans</h2>
                         <p class="fm-subtle">A player too young for this tier goes down to a weaker club for minutes, and comes back at the end of the season.</p>
-                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.ageRule || '')} ${escapeHtml(rules.tierLadder || '')}</p>
-                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.wage || '')}</p>
-                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.runsTo || '')}</p>
-                        <p class="fm-subtle academy-hero-copy">Ending a loan: either club can ask. If the other agrees it ends at once; if nobody answers it ends after ${escapeHtml(String(rules.noticeWeeks ?? 1))} week(s).</p>
                     </div>
                     ${buildClubActionsHtml('loans')}
                 </div>
@@ -229,6 +266,8 @@ export function createLoansFeature(deps) {
                 </div>
             </section>
 
+            ${rulesPanel(rules)}
+
             ${section('Players loaned in', incoming.length,
                 loanTable(incoming, 'in'),
                 'They play for this club and count against its thirty. The wage and the training stay with the club that owns them.',
@@ -236,7 +275,7 @@ export function createLoansFeature(deps) {
 
             ${section('Players loaned out', outgoing.length,
                 loanTable(outgoing, 'out'),
-                'Still this club\'s players: still in its thirty, still on its wage bill, still trained by its coaches. They just cannot be picked for this club.',
+                'Still this club\'s players: still in its thirty, still on its wage bill, still trained by its coaches. They just cannot be picked for this club. An offer they have not answered yet is not running.',
                 'This club has nobody out on loan.')}
 
             ${offers.length ? section('Offers to take a player on', offers.length,
@@ -260,7 +299,7 @@ export function createLoansFeature(deps) {
                         <tbody>${lendRows}</tbody>
                     </table>
                 </div>
-                ${refusalSummary(destinations || [])}
+                ${refusalSummary(destinations)}
                 ${notLoanable.length ? `<p class="fm-subtle academy-panel-copy">Not loanable: `
                     + `${notLoanable.map(p => `${escapeHtml(p.name)} (${escapeHtml(p.reason || 'no')})`).join('; ')}.</p>` : ''}
             ` : '', '', 'Nobody here can be loaned out.')}

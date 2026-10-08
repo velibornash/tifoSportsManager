@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -277,15 +278,24 @@ public class LoanService {
     // ── reads ───────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Whether this player is out on loan, and to whom.
+     * Whether this player is committed to another club — running there, or offered and unanswered.
      *
      * <p>Consulted by the transfer paths. A loanee has no contract with the borrowing club and
      * {@code requirePlayerTeam} would name the <b>lender</b> as the seller, so without this a manager
      * could buy a player he does not own and pay the wrong club.
+     *
+     * <p><b>AGREED counts as well as ACTIVE</b>, and it was found by using the screen: a player who had
+     * just been offered out still appeared in the lending table as loanable, so the manager could
+     * offer him a second time and the button would refuse him with LOAN_ALREADY_OUT. A button whose only
+     * outcome is an error is worse than no button.
+     *
+     * <p>It is also the right answer for the guard itself: while another club is deciding whether to take
+     * him, he is not available to be sold.
      */
     @Transactional(readOnly = true)
     public boolean isOnLoan(Long playerId) {
-        return !loans.findByPlayerIdAndStatusIn(playerId, List.of(Loan.LoanStatus.ACTIVE)).isEmpty();
+        return !loans.findByPlayerIdAndStatusIn(playerId,
+                List.of(Loan.LoanStatus.AGREED, Loan.LoanStatus.ACTIVE)).isEmpty();
     }
 
     /** The club he belongs to, whatever is on loan — used to keep a signing from stealing a loanee. */
@@ -313,9 +323,23 @@ public class LoanService {
         return loans.findByBorrowingClubIdAndStatus(clubId, Loan.LoanStatus.AGREED);
     }
 
+    /**
+     * Loans this club has made and not yet finished: running ones and offers nobody has answered.
+     *
+     * <p>Found by using the screen. It offered a player, the POST succeeded, and the refreshed page still
+     * said "0 Out" — because this asked for {@code ACTIVE} and a fresh offer is {@code AGREED}. The
+     * manager's own pending offer was invisible to the manager, which is worse than the feature not
+     * existing: it looks like it silently failed.
+     *
+     * <p>The status column distinguishes them, and the row shows what is waiting on whom.
+     */
     @Transactional(readOnly = true)
     public List<Loan> outgoing(Long clubId) {
-        return loans.findByParentClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
+        List<Loan> running = loans.findByParentClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
+        List<Loan> pending = loans.findByParentClubIdAndStatus(clubId, Loan.LoanStatus.AGREED);
+        List<Loan> all = new ArrayList<>(running);
+        all.addAll(pending);
+        return all;
     }
 
     /**

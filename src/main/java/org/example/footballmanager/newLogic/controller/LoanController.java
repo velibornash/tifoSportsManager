@@ -80,39 +80,90 @@ public class LoanController {
     }
 
     /**
-     * Clubs this viewer may loan to: same country, a lower tier, and with a free place.
+     * Clubs this viewer may loan to, and a count of why the rest are not.
      *
-     * <p>Computed on the server so the screen cannot offer a destination the service would refuse. An
-     * empty list is a legitimate answer and the copy has to say why — "no clubs" is a much worse screen
-     * than "no club in your country is a tier below yours and has room".
+     * <p><b>Found by calling this against the owner's world, not by reading it.</b> The first version
+     * looped every club and shipped every one of them with a reason: <b>2.38 MB and 14,626 rows to
+     * deliver a dropdown with one option in it</b>, on a world of 14,880 clubs. Nothing about that is
+     * slow enough to time out and nothing about it fails — it just quietly moves two and a half megabytes
+     * to build a list of one, and it would get worse with every club the world gains.
+     *
+     * <p>So the query is the country — {@code findClubTeamsForCountry} already exists for exactly this,
+     * and asking for the whole world to keep 310 rows is the mistake its javadoc warns about — and the
+     * refusals come back as <b>counts by reason</b>. "1,625 clubs in your country are not managed by a
+     * person" is a better sentence than a list of 1,625 names, and it is the same information.
+     *
+     * <p>{@link #DESTINATION_LIMIT} caps the eligible list so a future world with thousands of human
+     * clubs cannot turn this back into the same mistake.
      */
     @GetMapping("/destinations")
-    public List<Map<String, Object>> destinations(@AuthenticationPrincipal User principal) {
+    public Map<String, Object> destinations(@AuthenticationPrincipal User principal) {
         Long mine = requireOwnClub(principal);
         Team lender = teams.findById(mine).orElse(null);
-        List<Map<String, Object>> out = new ArrayList<>();
-        if (lender == null) return out;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("myClubId", mine);
+        List<Map<String, Object>> eligible = new ArrayList<>();
+        if (lender == null || lender.getCountry() == null || lender.getCountry().getId() == null) {
+            // No country means no domestic loan is possible, and the copy has to say that rather than
+            // offering an empty dropdown.
+            out.put("eligible", eligible);
+            out.put("eligibleTotal", 0);
+            out.put("shown", 0);
+            out.put("refused", List.of());
+            out.put("note", "This club has no country, so a domestic loan is not possible.");
+            return out;
+        }
 
-        for (Team candidate : teams.findClubTeamsForOperations()) {
+        int totalEligible = 0;
+        Map<String, Integer> refused = new LinkedHashMap<>();
+        for (Team candidate : teams.findClubTeamsForCountry(lender.getCountry().getId())) {
             if (candidate.getId() == null || candidate.getId().equals(mine)) continue;
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("teamId", candidate.getId());
-            row.put("name", candidate.getName());
-            row.put("country", candidate.getCountry() == null ? null : candidate.getCountry().getName());
-            row.put("tier", candidate.getCompetition() == null ? null : candidate.getCompetition().getTier());
-            // Every rule evaluated here is a rule LoanService.offer enforces, and the screen has to be
-            // able to say no for the same reasons or it will offer a button that 409s. The reason is
-            // sent as a sentence rather than a flag because "no club in your country is a lower tier" and
-            // "no club has room" are different problems and only one of them is a bug.
             String reason = eligibility(lender, candidate);
-            row.put("eligible", reason == null);
+            if (reason != null) {
+                refused.merge(reason, 1, Integer::sum);
+                continue;
+            }
+            totalEligible++;
+            if (eligible.size() < DESTINATION_LIMIT) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("teamId", candidate.getId());
+                row.put("name", candidate.getName());
+                row.put("country", candidate.getCountry() == null ? null : candidate.getCountry().getName());
+                row.put("tier", candidate.getCompetition() == null ? null : candidate.getCompetition().getTier());
+                row.put("eligible", Boolean.TRUE);
+                eligible.add(row);
+            }
+        }
+
+        List<Map<String, Object>> refusedRows = new ArrayList<>();
+        refused.forEach((reason, count) -> {
+            Map<String, Object> row = new LinkedHashMap<>();
             row.put("reason", reason);
-            out.add(row);
+            row.put("count", count);
+            refusedRows.add(row);
+        });
+
+        out.put("eligible", eligible);
+        out.put("eligibleTotal", totalEligible);
+        out.put("shown", eligible.size());
+        out.put("refused", refusedRows);
+        if (totalEligible > eligible.size()) {
+            out.put("note", "Showing the first " + eligible.size() + " of " + totalEligible
+                    + " clubs you could loan to.");
         }
         return out;
     }
 
-    /** The reason a destination is refused, or null when it is not. One definition, shared with the screen. */
+    /** Enough destinations to choose between; not so many that the page becomes a directory. */
+    private static final int DESTINATION_LIMIT = 200;
+
+    /**
+     * Why this club cannot be loaned to, or {@code null} when it can.
+     *
+     * <p>Every rule here is also a rule {@code LoanService.offer} enforces, and they must agree: a
+     * screen that offers a button the service refuses is worse than a screen that never offers it, and
+     * a screen that hides a club without saying why leaves the manager thinking there is nobody.
+     */
     private String eligibility(Team lender, Team borrower) {
         if (!borrower.isHumanControlled()) return "not a club a person manages";
         Long a = lender.getCountry() == null ? null : lender.getCountry().getId();
