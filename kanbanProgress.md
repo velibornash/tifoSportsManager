@@ -1,5 +1,122 @@
 # kanbanProgress.md — the append-only log
 
+## 🟢 P2-22 — the youth academy gets one clear cycle (2026-10-08)
+
+Owner instruction, in short: the Juniors screen and promotion-with-reveal were fine; what was missing was
+a rule that could be stated out loud. "When do they arrive, how many, can I reveal one on arrival?"
+
+### What the code actually did
+
+Traced before changing anything, because the screen's copy and the service's constants had drifted apart:
+
+| | Before |
+|---|---|
+| Arrival | week 2, a **bell over 1..10** (`{3,6,9,12,14,14,12,9,6,3}`, Σ=88) |
+| Age at arrival | `15 + nextInt(5)` → **15–19**, inline literals at two sites, no constant |
+| Tenure | `GRADUATION_MAX_AGE − arrivalAge` → **one to five seasons**, depending on the roll |
+| Deadline | `findByStatusAndAgeGreaterThanEqual(ACTIVE, 20)` |
+| Unresolved outcome | **promoted**, or **released** if the squad was full |
+| Decision window | weeks **1–2** |
+| Narrowing clock | **ages**, over `graduationAge − arrivalAge` |
+| Reach | `YouthAcademyService.java:54` — human clubs with a **purchased** school only |
+
+The tenure was the indefensible part. The same intake produced nineteen-year-olds who debuted the
+following spring and fifteen-year-olds who sat in the academy for five seasons, and the only reason the
+long case existed was that a junior had to be given time to reach twenty. He no longer has to reach
+anything.
+
+### Three owner decisions, taken before writing code
+
+Asked rather than guessed, because each one changes the model and not a constant:
+
+1. **Unresolved at the end of his tenure** → `TRANSFER_LISTED`. Not promotion (a manager who never opened
+   the page should not end up with ten players he did not choose), not release (a prospect the club spent
+   a season developing is worth something to somebody).
+2. **Decision window** → **week 1 only**. Two weeks was a late-login allowance; with a one-season tenure
+   it became the whole of the manager's involvement — arrive Tuesday of week 2, prospects already listed.
+3. **Count shape** → **uniform 6–10**, so the number on screen is a number he can quote.
+
+### The defect the change exposed
+
+**Talent narrowing was measured in ages**, and intake produces ages 15–19. A nineteen-year-old therefore
+had a span of **zero**: progress 1.0 on arrival, report at ±1, exact ceiling revealed on the day he
+signed. Only fifteen-year-olds ever saw a narrowing band.
+
+Why the suite was green: `TalentRangeTest` covered `arrivalAge 15` against `graduationAge 19` and had no
+case for a nineteen-year-old. Nothing asserted the property the mechanic rested on. Same shape as the
+mobile table finding — the tests were green because they measured the easy case.
+
+Narrowing now runs on **weeks of the tenure**, 11 of them: arrival week 2 → week 12 of the same season
+→ week 1 of the next, which is the decision week. So the report is widest on arrival, tightens every
+week of the season, and is already at the ±1 floor on the morning the manager may act. This is also what
+the owner asked for — the coach firms the estimate up *while the season runs*, not at the boundary.
+
+The clock arithmetic lives in `YouthAcademyService.weeksObserved` and keeps `TalentRange` knowing two
+numbers and no calendar, matching how that class is already written.
+
+### Kept against the new rule, deliberately
+
+**The squad cap on the expiry pass.** A graduate gets no `PlayerContract` and `canRegister` counts
+contracts, so the P2-6 guard has to count `Team.players` itself. Room is counted down per club and the
+overflow is **released**. This is the only path where the outcome is not the owner's `TRANSFER_LISTED`,
+and it fires only when the club genuinely has no place — otherwise the club ends up with a
+twenty-sixth player. Left to `graduateExpiredJuniors` rather than dropped, with the reasoning in its
+javadoc.
+
+### Two things the sweep deliberately kept
+
+- **A `RuntimeException` in one junior still leaves him `ACTIVE`** and retried next season. Better a
+  late listing than a season of missing players.
+- **`GRADUATION_MIN_AGE` / `GRADUATION_MAX_AGE` stay**, re-documented as a **clamp, not a deadline**. A
+  nineteen-year-old ages to twenty within his one season, and `createSeniorFromJunior` still needs a
+  defensible age to write.
+
+### The rules reach the screen
+
+`JuniorAcademyStateDTO` gained `intakeWeek`, `intakeMinCount`, `intakeMaxCount`, `decisionWeek`,
+`maxActiveJuniors`, read from the service constants. `academy.js` had the window open-coded as
+`week >= 1 && week <= 2` and the academy limit written as `10` **four times** — the debt the
+`MAX_ACTIVE_JUNIORS` javadoc already admitted. Both now come off the payload. The hero copy states the
+whole cycle and answers the reveal question directly: the estimate firms up weekly, an arrival cannot be
+revealed, and the exact figure comes when he is promoted.
+
+### Verification
+
+49 youth tests green (`TalentRangeTest` 22, `JuniorTenureClockTest` 7 — **new**, `JuniorSchoolServiceTest`
+10, `JuniorDecisionWindowTest` 10, `GraduationRespectsTheSquadTest` 4, `YouthAcademyGraduationTest` 10,
+`JuniorDevelopmentTest` 14, `JuniorSchoolRulesTest` 9, `PlusJuniorVisibilityTest` 7, `AcademyQualityTest`
+9). `JobTriggerCoverageTest` green.
+
+**Six mutations, all caught** — the point of writing them down:
+
+| Mutation | Caught by |
+|---|---|
+| Intake back to the 1..10 bell | `intakeBringsSixToTen` — "intake of 1 is outside the owner's 6-10 band" |
+| Window reopened to weeks 1–2 | `windowIsWeekOneOnly`, `decisionsRefusedOutsideTheWindow`, `tenureIsElevenWeeks` |
+| Expiry reading rows instead of the arrival season | `juniorInsideHisTenureIsUntouched` — "arrived in season 4 and must survive the season-4 pass" |
+| Legacy guard dropped from `weeksObserved` | `unrecordedArrivalIsTheWidestReport` — "expected 0 but was 11", i.e. every legacy row would have been handed ±1 |
+| Expiry changed to `PROMOTED` | `expiredJuniorIsTransferListed`, and the post-tense cohort check |
+| `observationProgress` returning 1.0 always | 7 tests, including `everyTrainingWeekNarrowsTheBand` |
+
+### Two notes against myself
+
+**A green test that measured nothing.** `intakeBringsSixToTen` originally could not fail: it walked 40
+intakes and asserted a band, which any correct *or* incorrect constant inside 6–10 satisfies. It now also
+requires all five values to occur and both ends to be reachable, which a bell clipped into the band
+would fail.
+
+**A sweep that reads the whole world.** `graduateExpiredJuniors` returns a global count, so an early
+version of `juniorInsideHisTenureIsUntouched` asserted on that total and went red on 31 juniors belonging
+to other classes' fixtures. It now asserts by id on this club's prospects only. Worth remembering: a
+season-rollover method is not testable through its return value in a shared test database.
+
+### Not done
+
+**No browser check of the new copy.** `academy.js` parses and the payload fields are wired, but the
+academy screen has not been rendered at 430px or on a desktop after this change.
+
+---
+
 ## 🔴 P0-CLOCK — week 1 built the world's static half twice per tick (2026-10-08)
 
 Found while waiting for a live matchday to verify the ranking rebuild, and the reason that verification

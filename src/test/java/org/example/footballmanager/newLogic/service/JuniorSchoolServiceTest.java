@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.Junior;
 import org.example.footballmanager.newLogic.model.JuniorStatus;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Stadium;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.JuniorRepository;
@@ -168,6 +169,104 @@ class JuniorSchoolServiceTest {
             assertTrue(j.getTalentRangeHalfWidth() >= 1.0 && j.getTalentRangeHalfWidth() <= 4.0,
                     "intake width must be the rolled 1..4, got " + j.getTalentRangeHalfWidth());
         }
+    }
+
+    /**
+     * The owner's intake rule, exactly (2026-10-08): 6 to 10 juniors, once a season, in week 2.
+     *
+     * <p>Walked over 40 intakes rather than one, because a single sample cannot tell a uniform 6-10
+     * from a bell clipped into 6-10 — both would satisfy a naive bound check. Both ends of the band
+     * must actually occur, and the total must land on a flat histogram rather than bunching in the
+     * middle.
+     */
+    @Test
+    @DisplayName("an intake brings 6 to 10 juniors, and every value in that band occurs")
+    void intakeBringsSixToTen() {
+        assertEquals(6, YouthAcademyService.INTAKE_MIN);
+        assertEquals(10, YouthAcademyService.INTAKE_MAX);
+        assertEquals(2, YouthAcademyService.INTAKE_WEEK);
+
+        java.util.Map<Integer, Integer> histogram = new java.util.TreeMap<>();
+        for (int i = 0; i < 40; i++) {
+            Team c = club("Intake club " + i, true);
+            schools.open(c.getId(), 1, JuniorSchoolService.OPEN_WEEK);
+            academy.generateSeasonIntakeForWeek2(1, 2);
+
+            int size = juniors.findByTeamIdAndStatus(c.getId(), JuniorStatus.ACTIVE).size();
+            assertTrue(size >= YouthAcademyService.INTAKE_MIN && size <= YouthAcademyService.INTAKE_MAX,
+                    "intake of " + size + " is outside the owner's 6-10 band");
+            histogram.merge(size, 1, Integer::sum);
+        }
+        assertEquals(5, histogram.size(),
+                "all five values in the band must occur across 40 intakes, saw " + histogram);
+        assertTrue(histogram.containsKey(YouthAcademyService.INTAKE_MIN)
+                        && histogram.containsKey(YouthAcademyService.INTAKE_MAX),
+                "both ends of the band must be reachable, saw " + histogram);
+    }
+
+    @Test
+    @DisplayName("intake happens in week 2 and in no other week")
+    void intakeIsWeekTwoOnly() {
+        Team c = club("Week club", true);
+        schools.open(c.getId(), 1, JuniorSchoolService.OPEN_WEEK);
+
+        for (int week = 1; week <= 12; week++) {
+            if (week == YouthAcademyService.INTAKE_WEEK) continue;
+            academy.generateSeasonIntakeForWeek2(1, week);
+            assertTrue(juniors.findByTeamIdAndStatus(c.getId(), JuniorStatus.ACTIVE).isEmpty(),
+                    "week " + week + " must not bring an intake");
+        }
+
+        academy.generateSeasonIntakeForWeek2(1, YouthAcademyService.INTAKE_WEEK);
+        assertFalse(juniors.findByTeamIdAndStatus(c.getId(), JuniorStatus.ACTIVE).isEmpty(),
+                "week " + YouthAcademyService.INTAKE_WEEK + " must bring the intake");
+    }
+
+    /**
+     * The cost of a one-season tenure, stated rather than left to be discovered.
+     *
+     * <p>Carryover is now <b>transient</b>: a prospect who arrived in season N must be resolved in
+     * week 1 of season N+1, and by week 2 he is gone — so the academy is empty when the new cohort
+     * lands and the full 6-10 arrive. But a manager who ignores the week-1 window leaves his
+     * carryover in place, the academy holds the maximum, and the new intake is suppressed entirely.
+     * That is the cap doing its job, and it is the deadline being real; it is pinned here so that a
+     * manager reporting "no prospects arrived" gets the reason rather than a bug.
+     */
+    @Test
+    @DisplayName("an academy still holding the maximum takes no new intake")
+    void aFullAcademyTakesNoNewIntake() {
+        Team c = club("Full academy", true);
+        schools.open(c.getId(), 1, JuniorSchoolService.OPEN_WEEK);
+        academy.generateSeasonIntakeForWeek2(1, 2);
+
+        // Fill to the cap with unresolved carryover from an earlier season.
+        List<Junior> held = juniors.findByTeamIdAndStatus(c.getId(), JuniorStatus.ACTIVE);
+        while (held.size() < YouthAcademyService.MAX_ACTIVE_JUNIORS) {
+            held.add(juniorRow(c, 1));
+        }
+        assertEquals(YouthAcademyService.MAX_ACTIVE_JUNIORS, held.size());
+
+        academy.generateSeasonIntakeForWeek2(2, 2);
+
+        assertEquals(YouthAcademyService.MAX_ACTIVE_JUNIORS,
+                juniors.findByTeamIdAndStatus(c.getId(), JuniorStatus.ACTIVE).size(),
+                "no room, no intake — resolve the carryover and the next cohort arrives");
+    }
+
+    private Junior juniorRow(Team team, int arrivalSeason) {
+        Junior j = new Junior();
+        j.setName("Test junior");
+        j.setAge(17);
+        j.setTalent(6);
+        j.setAcademySkillExact(8.0);
+        j.setAcademySkill(8);
+        j.setPosition(Position.MID);
+        j.setStatus(JuniorStatus.ACTIVE);
+        j.setTeam(team);
+        j.setArrivalAge(17);
+        j.setArrivalSeasonNumber(arrivalSeason);
+        j.setArrivalWeekNumber(YouthAcademyService.INTAKE_WEEK);
+        return juniors.save(j);
     }
 
     private static void assertNotNull(Object value, String message) {

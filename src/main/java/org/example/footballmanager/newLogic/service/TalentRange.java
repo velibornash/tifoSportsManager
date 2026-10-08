@@ -19,15 +19,25 @@ import org.example.footballmanager.newLogic.model.Junior;
  *   <li>on promotion the exact talent is revealed.</li>
  * </ul>
  *
+ * <p><b>Owner, 2026-10-08 — narrowing now runs on the season, not on the age.</b> Progress used to
+ * be measured in ages, over the span {@code graduationAge - arrivalAge}. That worked only because
+ * tenure was long: one to five seasons, so an age moved once a year and the band crept. Tenure is now
+ * exactly one season, which collapses an age-based span to almost nothing — a nineteen-year-old
+ * spanned zero ages and sat at ±1 from arrival, handing over the exact ceiling for free. The clock is
+ * therefore the <b>weeks of the tenure</b>, and the coach narrows week by week, which is what the
+ * owner asked for: the estimate firms up <i>while the season is running</i>.
+ *
  * <p><b>This class never touches the true value.</b> It is handed a range and produces a range. The
  * caller decides whether the viewer is entitled to see one at all — that gate is
  * {@code PlusFeatureService}'s job and it is a separate axis (subscription versus uncertainty). Keeping
  * the two apart is the point: a range shown to someone who may not see talent is not a narrower leak,
  * it is the same leak.
  *
- * <p>Pure and static on purpose. The arithmetic is the part of this feature most likely to be
- * "improved" later by someone who does not know why it is shaped the way it is, and it is much easier
- * to defend in a unit test than inside a service with a dozen dependencies.
+ * <p>Pure and static on purpose, and it stays that way: the calendar arithmetic lives in
+ * {@code YouthAcademyService.weeksObserved}, so this class knows two numbers and no seasons. The
+ * arithmetic is the part of this feature most likely to be "improved" later by someone who does not
+ * know why it is shaped the way it is, and it is much easier to defend in a unit test than inside a
+ * service with a dozen dependencies.
  */
 public final class TalentRange {
 
@@ -80,17 +90,17 @@ public final class TalentRange {
         return intakeHalfWidth(RANDOM_HALF_WIDTH);
     }
 
-    /**
-     * The half-width to report for a junior right now.
-     *
-     * @param junior          the junior being reported on; supplies the intake width and the ages
-     * @param currentAge      his age today (it moves once a year at the season boundary)
-     * @param graduationAge   the age he graduates at, from {@code YouthAcademyService.graduationAge}
-     * @param youthCoachDevelopment the {@code YOUTH_COACH}'s development attribute, 1-20, or null
-     * @return the half-width, never below {@link #FINAL_HALF_WIDTH} and never above
-     *         {@link #maxHalfWidth()}
-     */
-    public static double currentHalfWidth(Junior junior, int currentAge, int graduationAge,
+/**
+ * The half-width to report for a junior right now.
+ *
+ * @param junior               the junior being reported on; supplies the intake width
+ * @param weeksObserved        weeks of the tenure behind the club, as the caller counts them
+ * @param tenureWeeks          the length of the whole tenure
+ * @param youthCoachDevelopment the {@code YOUTH_COACH}'s development attribute, 1-20, or null
+ * @return the half-width, never below {@link #FINAL_HALF_WIDTH} and never above
+ *         {@link #maxHalfWidth()}
+ */
+    public static double currentHalfWidth(Junior junior, int weeksObserved, int tenureWeeks,
                                           Integer youthCoachDevelopment) {
         double intake = intakeWidthOf(junior);
         double finalWidth = FINAL_HALF_WIDTH;
@@ -98,7 +108,7 @@ public final class TalentRange {
             return finalWidth;
         }
 
-        double progress = observationProgress(junior, currentAge, graduationAge);
+        double progress = observationProgress(weeksObserved, tenureWeeks);
         double speed = coachSpeedup(youthCoachDevelopment);
         // Squashing progress rather than scaling it: a coach can make a report converge faster, but
         // must never make it *wider* than the natural rate would, nor skip past the ±1 floor.
@@ -147,31 +157,29 @@ public final class TalentRange {
         return (double) (int) Math.round(trueTalent);
     }
 
-    /**
-     * How much of the observation period has elapsed, 0..1.
+/**
+ * How much of the tenure has been observed, 0..1.
+ *
+ * <p>Measured in <b>weeks of the tenure</b> — arrival to the decision week. It was ages, and with
+ * tenure now fixed at one season an age spans either zero or one step, so the estimate would have
+ * jumped straight from widest to ±1 and never crept. Weeks are also the honest clock: the coach
+ * watches the player train for ten of them, and the eleventh is the morning the manager signs him.
+ *
+ * <p>Both degenerate cases collapse to "no progress" rather than dividing by zero:
+ *
+ * <ul>
+ *   <li><b>A tenure length of zero or less</b> → {@code 0}. Nothing to measure against, so nothing is
+ *       claimed. Returning "fully observed" here would hand every caller a confident ±1.</li>
+ *   <li><b>More weeks observed than the tenure has</b> → {@code 1}. A junior nobody resolved is still
+ *       resolved eventually, and by then he is as known as he is ever going to get.</li>
+ * </ul>
      *
-     * <p>Measured in <b>ages</b>, not weeks. A junior's age is the only clock in the academy that moves
-     * on its own, so a report that narrowed by week would be narrowing during a season in which
-     * nothing about the player changed.
-     *
-     * <p>Two degenerate cases, and they deliberately do <b>not</b> get the same answer:
-     *
-     * <ul>
-     *   <li><b>No arrival age recorded</b> → {@code 0}. We do not know how long the club has been
-     *       watching, and the honest report is the widest one. Returning "fully observed" here would
-     *       hand every pre-existing junior in the database a confident ±1 he has not earned.</li>
-     *   <li><b>Arrived at or after his graduation age</b> → {@code 1}. The observation period is
-     *       zero-length, so there is nothing to narrow and the report is already at its floor. This is
-     *       the branch that stops a division by zero.</li>
-     * </ul>
-     */
-    static double observationProgress(Junior junior, int currentAge, int graduationAge) {
-        Integer arrivalAge = junior == null ? null : junior.getArrivalAge();
-        if (arrivalAge == null) return 0.0;
-        if (graduationAge <= arrivalAge) return 1.0;
-        double elapsed = currentAge - arrivalAge;
-        double span = graduationAge - arrivalAge;
-        return clamp(elapsed / span, 0.0, 1.0);
+ * @param weeksObserved weeks of the tenure behind the club, never negative from the caller
+ * @param tenureWeeks   the length of the whole tenure in weeks
+ */
+    static double observationProgress(int weeksObserved, int tenureWeeks) {
+        if (tenureWeeks <= 0) return 0.0;
+        return clamp((double) weeksObserved / tenureWeeks, 0.0, 1.0);
     }
 
     /** The coach's acceleration, 1.0 (no help) to 2.0 (a perfect youth coach halves the wait). */

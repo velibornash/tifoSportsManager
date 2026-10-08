@@ -88,11 +88,18 @@ class GraduationRespectsTheSquadTest {
         return players.save(p);
     }
 
-    /** A junior past the graduation window, attached to this club. */
-    private Junior anOverdueJunior(Team team, String name, double academySkill) {
+    /**
+     * A junior whose one academy season is over, attached to this club.
+     *
+     * <p>Arrived in season 1, so any sweep run from season 2 onwards expires him. The age is left at
+     * a plausible mid-window value rather than pinned to the old deadline constant: since 2026-10-08
+     * the sweep reads the arrival season, and a fixture that still set the age would keep passing
+     * after the rule it was built to test had been deleted.
+     */
+    private Junior anExpiredJunior(Team team, String name, double academySkill) {
         Junior j = new Junior();
         j.setName(name);
-        j.setAge(YouthAcademyService.GRADUATION_MAX_AGE);
+        j.setAge(17);
         j.setTalent(6);
         j.setAcademySkillExact(academySkill);
         j.setAcademySkill((int) Math.floor(academySkill));
@@ -110,29 +117,29 @@ class GraduationRespectsTheSquadTest {
     }
 
     /**
-     * The cap itself: five graduates due, two places, two promoted.
+     * The cap itself: five expired juniors, two places, two resolved and listed.
      *
      * <p>Filled with real senior players rather than a mocked count, because the count is the thing
      * under test.
      */
     @Test
-    @DisplayName("a club promotes only as many graduates as it has senior places for")
-    void aFullClubCannotPromoteEveryone() {
+    @DisplayName("a club resolves only as many expired juniors as it has senior places for")
+    void aFullClubCannotResolveEveryone() {
         Team club = aClub("FullClub");
         int room = 2;
         for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD - room; i++) {
             aSenior(club, "Senior " + i);
         }
         for (int i = 0; i < 5; i++) {
-            anOverdueJunior(club, "Graduate " + i, 8 + i);
+            anExpiredJunior(club, "Graduate " + i, 8 + i);
         }
         long before = squadSize(club);
 
-        academy.promoteJuniorsPastWindow(2, 2);
+        academy.graduateExpiredJuniors(2);
 
         assertEquals(before + room, squadSize(club),
                 "the squad may not grow past " + PlayerContractService.MAX_SENIOR_SQUAD
-                        + "; graduation was previously unconditional");
+                        + "; expiry was previously unconditional");
         assertTrue(squadSize(club) <= PlayerContractService.MAX_SENIOR_SQUAD,
                 "and never past it, however many juniors came through the window");
 
@@ -153,11 +160,11 @@ class GraduationRespectsTheSquadTest {
             aSenior(full, "Filler " + i);
         }
         for (int i = 0; i < 3; i++) {
-            anOverdueJunior(roomy, "Roomy " + i, 9 + i);
-            anOverdueJunior(full, "Blocked " + i, 9 + i);
+            anExpiredJunior(roomy, "Roomy " + i, 9 + i);
+            anExpiredJunior(full, "Blocked " + i, 9 + i);
         }
 
-        academy.promoteJuniorsPastWindow(3, 3);
+        academy.graduateExpiredJuniors(3);
 
         assertEquals(3, squadSize(roomy),
                 "a club with a full squad of its own does not stop another club graduating");
@@ -168,28 +175,28 @@ class GraduationRespectsTheSquadTest {
     /**
      * The board's criterion, end to end.
      *
-     * <p>Fourteen overdue juniors is a state the product cannot reach — intake stops at ten, so at most
+     * <p>Fourteen expired juniors is a state the product cannot reach — intake stops at ten, so at most
      * ten can be ACTIVE and overdue at once. The fixture builds it anyway, on purpose: the sweep reads
      * junior rows directly, and fixtures and the seeder insert them without passing through intake, so
      * a pass that promoted fourteen first-team players out of a ten-place academy would be relying on
      * an invariant it does not itself enforce.
      */
     @Test
-    @DisplayName("a capped intake cannot produce more graduates than it could hold")
-    void aCappedIntakeProducesCappedGraduates() {
+    @DisplayName("a capped intake cannot produce more seniors than it could hold")
+    void aCappedIntakeProducesCappedSeniors() {
         Team club = aClub("CappedClub");
         assertEquals(10, YouthAcademyService.MAX_ACTIVE_JUNIORS,
                 "the academy's own capacity, named rather than an inline literal");
         for (int i = 0; i < YouthAcademyService.MAX_ACTIVE_JUNIORS + 4; i++) {
-            anOverdueJunior(club, "Overdue " + i, 7 + (i % 5));
+            anExpiredJunior(club, "Expired " + i, 7 + (i % 5));
         }
         long before = squadSize(club);
 
-        academy.promoteJuniorsPastWindow(4, 4);
+        academy.graduateExpiredJuniors(4);
 
         long produced = squadSize(club) - before;
         assertTrue(produced <= YouthAcademyService.MAX_ACTIVE_JUNIORS,
-                "fourteen overdue juniors produced " + produced + " seniors; an academy of ten "
+                "fourteen expired juniors produced " + produced + " seniors; an academy of ten "
                         + "cannot manufacture fourteen first-team players");
         assertTrue(produced <= PlayerContractService.MAX_SENIOR_SQUAD - before,
                 "and never past the senior squad limit either");
@@ -198,16 +205,16 @@ class GraduationRespectsTheSquadTest {
     /**
      * The defect P2-3 introduced, fixed here.
      *
-     * <p>A graduate has no contract, so {@code ListingObjectionService.roleOf} used to fall back to a
+     * <p>A senior made from a junior has no contract, so {@code ListingObjectionService.roleOf} used to fall back to a
      * position switch mapping {@code MID -> STARTER}. A seventeen-year-old on his first day was
      * therefore judged as a senior starter, at reluctance 0.75, and almost half of all graduations
      * drew an objection the club then had to pay 5% to clear.
      */
     @Test
-    @DisplayName("an academy graduate is treated as a youth, not a senior starter")
+    @DisplayName("a player made from the academy is treated as a youth, not a senior starter")
     void aGraduateIsJudgedAsAYouth() {
         Team club = aClub("GraduateClub");
-        Junior j = anOverdueJunior(club, "Seventeen", 8);
+        Junior j = anExpiredJunior(club, "Seventeen", 8);
         j.setAge(17);
         juniors.save(j);
         Player graduate = new Player();

@@ -709,12 +709,12 @@ public class SeasonService {
 
     @Transactional
     /**
-     * The year turn: everybody a year older, and anybody out of the academy graduated.
+     * The year turn: everybody a year older, and anybody out of the academy resolved.
      *
-     * <p>Order matters. Juniors are aged <b>first</b> and the graduation window is enforced
-     * <b>afterwards</b>, so a junior who was nineteen when the season ended reaches twenty and is
-     * promoted in the same pass. Checking the window before the ageing would let a twenty-year-old
-     * sit in the academy for a whole extra season.
+     * <p>Order still matters, but for a different reason than it used to. Ageing comes first because
+     * a nineteen-year-old who arrived in week 2 has to reach twenty by the time he is resolved, or a
+     * debutant would be created at nineteen and then age to twenty mid-season. Retirement sits
+     * between the two so that a player who retires can be replaced by a prospect in one turn.
      */
     protected void agePlayersAndJuniorsOneYear() {
         playerRepository.incrementAgeForAllPlayers();
@@ -728,10 +728,10 @@ public class SeasonService {
         // left a squad by age at all, so the pyramid could not turn over.
         retirementService.retireOverduePlayers(season);
 
-        int graduated = youthAcademyService.promoteJuniorsPastWindow(season, season);
+        int graduated = youthAcademyService.graduateExpiredJuniors(season);
         if (graduated > 0) {
-            log.info("Season {}: {} junior(s) graduated on reaching the age of {}",
-                    season, graduated, YouthAcademyService.GRADUATION_MAX_AGE);
+            log.info("Season {}: {} junior(s) transfer-listed on finishing their one academy season",
+                    season, graduated);
         }
     }
 

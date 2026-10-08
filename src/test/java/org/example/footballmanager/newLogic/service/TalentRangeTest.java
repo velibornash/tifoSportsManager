@@ -11,20 +11,32 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The talent report's width and how it narrows (Sprint 5.2).
+ * The talent report's width and how it narrows (Sprint 5.2, owner rule 2026-10-08).
  *
  * <p>The owner's numbers are pinned exactly: intake is {@code ±(1 + rnd(0..3))}, promotion is
  * {@code ±1}, and a better youth coach narrows faster. Every one of those is a decision, not a
  * derived figure, so a test is the only thing that stops a later "cleanup" quietly changing what a
  * manager is told about his own academy.
+ *
+ * <p><b>The clock is the season, not the age</b> (owner, 2026-10-08). Progress used to be measured in
+ * ages over {@code graduationAge - arrivalAge}. Tenure is now exactly one season, so that span is
+ * zero or one and the estimate would have jumped from widest to ±1 on arrival, handing over the exact
+ * ceiling for free. These tests are written on weeks of the tenure, and
+ * {@link #arrivalAgeNoLongerDrivesTheBand()} exists specifically to fail if that regresses.
  */
 class TalentRangeTest {
 
-    private static Junior junior(int arrivalAge, Double intakeHalfWidth) {
+    /** The tenure the owner specified, restated here so a change to the service constant is visible. */
+    private static final int TENURE = YouthAcademyService.TENURE_WEEKS;
+
+    private static Junior junior(Double intakeHalfWidth) {
         Junior j = new Junior();
-        j.setArrivalAge(arrivalAge);
         j.setTalentRangeHalfWidth(intakeHalfWidth);
         return j;
+    }
+
+    private static double widthAt(double intake, int weeksObserved, Integer coachDev) {
+        return TalentRange.currentHalfWidth(junior(intake), weeksObserved, TENURE, coachDev);
     }
 
     @Test
@@ -45,39 +57,62 @@ class TalentRangeTest {
     }
 
     @Test
-    @DisplayName("a report starts at its intake width and ends at ±1")
+    @DisplayName("a report starts at its intake width and has converged by the decision week")
     void narrowsFromIntakeToOne() {
-        Junior j = junior(15, 4.0);
-
-        assertEquals(4.0, TalentRange.currentHalfWidth(j, 15, 19, null),
+        assertEquals(4.0, widthAt(4.0, 0, null),
                 "on arrival the report is exactly the rolled width");
-        assertEquals(1.0, TalentRange.currentHalfWidth(j, 19, 19, null),
-                "at graduation the report has converged to ±1");
+        assertEquals(1.0, widthAt(4.0, TENURE, null),
+                "by the week the manager decides, the report has converged to ±1");
     }
 
     @Test
-    @DisplayName("the width never rises as a junior is observed, and never falls below ±1")
-    void narrowsMonotonicallyAndStopsAtOne() {
-        Junior j = junior(15, 4.0);
+    @DisplayName("the tenure is 11 weeks: intake in week 2, decided in week 1 of the next season")
+    void tenureIsElevenWeeks() {
+        // 12-week season, arrival in week 2, decision in week 1 of the following season:
+        //   (12 + 1) - 2 = 11
+        assertEquals(11, YouthAcademyService.TENURE_WEEKS);
+        assertEquals(2, YouthAcademyService.INTAKE_WEEK);
+        assertEquals(1, YouthAcademyService.DECISION_WINDOW_LAST_WEEK,
+                "the decision window is a single week");
+    }
+
+    @Test
+    @DisplayName("the width narrows week by week, never rises, and never falls below ±1")
+    void narrowsWeekByWeekAndStopsAtOne() {
+        Junior j = junior(4.0);
         double previous = Double.MAX_VALUE;
-        for (int age = 15; age <= 25; age++) {
-            double width = TalentRange.currentHalfWidth(j, age, 19, null);
-            assertTrue(width <= previous, "width must not widen with age: age " + age + " gave " + width);
+        for (int week = 0; week <= TENURE; week++) {
+            double width = TalentRange.currentHalfWidth(j, week, TENURE, null);
+            assertTrue(width <= previous, "width must not widen at week " + week + ": " + width);
             assertTrue(width >= TalentRange.FINAL_HALF_WIDTH,
-                    "width must never go below ±1: age " + age + " gave " + width);
+                    "width must never go below ±1 at week " + week + ": " + width);
             previous = width;
         }
-        assertEquals(1.0, previous, "past graduation the report stays at ±1 forever");
+        assertEquals(1.0, previous, "at the end of the tenure the report sits at ±1");
+    }
+
+    @Test
+    @DisplayName("the coach's narrowing is visible week by week, not only at the end")
+    void everyTrainingWeekNarrowsTheBand() {
+        // The owner asked for the estimate to firm up *during* the season. A model that only narrowed
+        // at the boundary would produce the same endpoints as this one and still be wrong, so this
+        // walks the weeks and requires a strict decrease rather than checking arrival and exit only.
+        Junior j = junior(4.0);
+        for (int week = 0; week < TENURE; week++) {
+            double now = TalentRange.currentHalfWidth(j, week, TENURE, null);
+            double next = TalentRange.currentHalfWidth(j, week + 1, TENURE, null);
+            assertTrue(next < now,
+                    "week " + week + " -> " + (week + 1) + " did not narrow: " + now + " -> " + next);
+        }
     }
 
     @Test
     @DisplayName("a better youth coach narrows the same report faster")
     void coachNarrowsFaster() {
-        Junior j = junior(15, 4.0);
-
-        double noCoach = TalentRange.currentHalfWidth(j, 16, 19, null);
-        double averageCoach = TalentRange.currentHalfWidth(j, 16, 19, 10);
-        double goodCoach = TalentRange.currentHalfWidth(j, 16, 19, 20);
+        int midSeason = Math.max(1, TENURE / 2);
+        double noCoach = widthAt(4.0, midSeason, null);
+        double averageCoach = widthAt(4.0, midSeason, 10);
+        double goodCoach = widthAt(4.0, midSeason, 20);
 
         assertTrue(goodCoach < averageCoach, "a 20 development coach must beat a 10: "
                 + goodCoach + " vs " + averageCoach);
@@ -85,16 +120,16 @@ class TalentRangeTest {
     }
 
     @Test
-    @DisplayName("the coach can only ever help — the best coach matches an already-finished report")
+    @DisplayName("the coach can only ever help — the best coach never beats the ±1 floor")
     void coachNeverWidensAndNeverBeatsTheFloor() {
-        Junior j = junior(15, 4.0);
-        for (int age = 15; age <= 19; age++) {
-            double best = TalentRange.currentHalfWidth(j, age, 19, 20);
-            double worst = TalentRange.currentHalfWidth(j, age, 19, 1);
-            assertTrue(best <= worst, "coach must never widen: age " + age);
-            assertTrue(best >= TalentRange.FINAL_HALF_WIDTH, "coach must never beat the ±1 floor: age " + age);
+        Junior j = junior(4.0);
+        for (int week = 0; week <= TENURE; week++) {
+            double best = TalentRange.currentHalfWidth(j, week, TENURE, 20);
+            double worst = TalentRange.currentHalfWidth(j, week, TENURE, 1);
+            assertTrue(best <= worst, "coach must never widen at week " + week);
+            assertTrue(best >= TalentRange.FINAL_HALF_WIDTH, "coach must never beat the ±1 floor at week " + week);
         }
-        assertEquals(1.0, TalentRange.currentHalfWidth(j, 19, 19, 20),
+        assertEquals(1.0, TalentRange.currentHalfWidth(j, TENURE, TENURE, 20),
                 "a perfect coach cannot make a converged report narrower than the owner's ±1");
     }
 
@@ -111,48 +146,47 @@ class TalentRangeTest {
     }
 
     @Test
-    @DisplayName("a junior who arrived at graduation age has no observation period, not a divide by zero")
-    void zeroSpanIsHandled() {
-        Junior j = junior(19, 4.0);
-        assertEquals(1.0, TalentRange.observationProgress(j, 19, 19));
-        assertEquals(1.0, TalentRange.currentHalfWidth(j, 19, 19, null),
-                "no time to observe means the report is already at its floor");
+    @DisplayName("a zero-length tenure claims no progress rather than dividing by zero")
+    void zeroTenureIsHandled() {
+        assertEquals(0.0, TalentRange.observationProgress(0, 0),
+                "nothing to measure against, so nothing is claimed");
+        assertEquals(0.0, TalentRange.observationProgress(5, -3));
+        assertEquals(4.0, TalentRange.currentHalfWidth(junior(4.0), 5, 0, 20),
+                "even a perfect coach cannot manufacture certainty from an empty tenure");
     }
 
     @Test
-    @DisplayName("an unknown arrival age and a zero-length window are NOT the same answer")
-    void unknownArrivalIsNotFullyObserved() {
-        // These two look alike and are not. A zero-length window means the junior is already at his
-        // floor. An unknown arrival age means we do not know how long we have been watching, and the
-        // only honest report is the widest one. Returning "fully observed" for both would hand every
-        // junior in a pre-existing database a confident ±1 he has not earned.
-        Junior unknownArrival = new Junior();
-        unknownArrival.setTalentRangeHalfWidth(4.0);
-        assertEquals(0.0, TalentRange.observationProgress(unknownArrival, 19, 19),
-                "an unrecorded arrival age means no observation progress");
-        assertEquals(4.0, TalentRange.currentHalfWidth(unknownArrival, 19, 19, 20),
-                "even a perfect coach cannot manufacture certainty from an unrecorded arrival age");
+    @DisplayName("weeks observed beyond the tenure clamp to fully observed")
+    void overLongObservationClampsToOne() {
+        // A junior nobody resolved is still resolved eventually, and by then he is as known as he is
+        // ever going to get. This must not exceed 1.0, which would push the width below the ±1 floor.
+        assertEquals(1.0, TalentRange.observationProgress(TENURE + 40, TENURE));
+        assertEquals(1.0, TalentRange.currentHalfWidth(junior(4.0), TENURE + 40, TENURE, null));
+    }
+
+    @Test
+    @DisplayName("negative weeks observed clamp to zero")
+    void negativeObservationClampsToZero() {
+        assertEquals(0.0, TalentRange.observationProgress(-7, TENURE));
     }
 
     @Test
     @DisplayName("a junior with no recorded width is reported wide, never certain")
     void missingWidthIsNotCertainty() {
-        Junior unrolled = junior(15, null);
-        assertEquals(TalentRange.maxHalfWidth(), TalentRange.currentHalfWidth(unrolled, 15, 19, null),
+        assertEquals(TalentRange.maxHalfWidth(), TalentRange.currentHalfWidth(junior(null), 0, TENURE, null),
                 "a pre-existing junior with no rolled width must not be handed a ±0 report");
-
-        Junior noArrival = new Junior();
-        assertEquals(TalentRange.maxHalfWidth(), TalentRange.currentHalfWidth(noArrival, 17, 19, null),
-                "no arrival age means no observation period, so full width");
+        assertEquals(TalentRange.maxHalfWidth(),
+                TalentRange.currentHalfWidth(new Junior(), 0, TENURE, null),
+                "no intake width recorded means full width");
     }
 
     @Test
     @DisplayName("a stored width outside the legal band is clamped on read")
     void badStoredWidthIsClamped() {
-        assertEquals(1.0, TalentRange.currentHalfWidth(junior(15, 0.0), 15, 19, null),
+        assertEquals(1.0, TalentRange.currentHalfWidth(junior(0.0), 0, TENURE, null),
                 "a stored zero would claim certainty nobody has");
-        assertEquals(4.0, TalentRange.currentHalfWidth(junior(15, 99.0), 15, 19, null));
-        assertEquals(4.0, TalentRange.currentHalfWidth(junior(15, Double.NaN), 15, 19, null));
+        assertEquals(4.0, TalentRange.currentHalfWidth(junior(99.0), 0, TENURE, null));
+        assertEquals(4.0, TalentRange.currentHalfWidth(junior(Double.NaN), 0, TENURE, null));
     }
 
     @Test
@@ -177,8 +211,8 @@ class TalentRangeTest {
 
         for (int talent = 1; talent <= 10; talent++) {
             for (int roll = 1; roll <= 4; roll++) {
-                Junior j = junior(15, TalentRange.intakeHalfWidth(roll));
-                double[] b = TalentRange.bounds(talent, TalentRange.currentHalfWidth(j, 15, 20, null));
+                Junior j = junior(TalentRange.intakeHalfWidth(roll));
+                double[] b = TalentRange.bounds(talent, TalentRange.currentHalfWidth(j, 0, TENURE, null));
                 assertTrue(b[0] >= TalentRange.MIN_TALENT,
                         "talent " + talent + " roll " + roll + " reported below the floor: " + b[0]);
                 assertTrue(b[1] <= TalentRange.MAX_TALENT,
@@ -209,7 +243,7 @@ class TalentRangeTest {
         assertEquals(7.0, TalentRange.revealExact(7.0));
         assertEquals(10.0, TalentRange.revealExact(10.0));
         assertEquals(1.0, TalentRange.revealExact(1.0));
-        org.junit.jupiter.api.Assertions.assertNull(TalentRange.revealExact(Double.NaN));
+        assertNull(TalentRange.revealExact(Double.NaN));
     }
 
     @Test
@@ -231,13 +265,13 @@ class TalentRangeTest {
         // clamp working correctly: a talent of 10.25 does not exist, and a report that "contains" it
         // would have to claim a talent of 14 is possible.
         for (double talent = TalentRange.MIN_TALENT; talent <= TalentRange.MAX_TALENT; talent += 0.37) {
-            for (int age = 15; age <= 20; age++) {
+            for (int week = 0; week <= TENURE; week++) {
                 for (int roll = 0; roll <= 3; roll++) {
-                    Junior j = junior(15, TalentRange.intakeHalfWidth(roll));
-                    double width = TalentRange.currentHalfWidth(j, age, 19, 12);
+                    Junior j = junior(TalentRange.intakeHalfWidth(roll));
+                    double width = TalentRange.currentHalfWidth(j, week, TENURE, 12);
                     double[] b = TalentRange.bounds(talent, width);
                     assertTrue(b[0] <= talent && talent <= b[1],
-                            "talent " + talent + " at age " + age + " roll " + roll
+                            "talent " + talent + " at week " + week + " roll " + roll
                                     + " fell outside [" + b[0] + ", " + b[1] + "]");
                 }
             }
@@ -245,38 +279,26 @@ class TalentRangeTest {
     }
 
     @Test
-    @DisplayName("the horizon is the graduation deadline, not the junior's own graduation age")
-    void horizonMustBeTheDeadlineNotHisOwnAge() {
-        // Found against live data, not by a failing test: every junior in a real academy came back at
-        // the +/-1 floor from arrival, because the caller passed graduationAge(), which clamps to the
-        // CURRENT age. Span therefore equalled elapsed time, progress was 1.0 for everyone, and the
-        // narrowing mechanic did nothing at all. A green suite did not catch it because the arithmetic
-        // is correct for the arguments it was given.
-        //
-        // The tell: a wide intake roll must still be wide for a nineteen-year-old who has a season
-        // left to be watched.
-        Junior j = junior(15, 4.0);
-        double againstOwnAge = TalentRange.currentHalfWidth(j, 19, 19, null);
-        double againstDeadline = TalentRange.currentHalfWidth(j, 19, 20, null);
+    @DisplayName("a wide intake roll is still wide on arrival for a nineteen-year-old")
+    void arrivalAgeNoLongerDrivesTheBand() {
+        // The regression this model change was made to prevent. Intake produces ages 15-19 and the
+        // nineteen-year-old ages to twenty within his single season, so under the old age-based span
+        // (graduationAge - arrivalAge) he spanned **zero** ages: progress 1.0 on arrival and every
+        // report pinned at ±1, i.e. his exact talent handed over the moment he signed. He must now be
+        // exactly as uncertain on arrival as a fifteen-year-old is, because nothing about his arrival
+        // age is what the club has or has not observed.
+        Junior wide = junior(4.0);
+        wide.setArrivalAge(19);
+        wide.setAge(19);
+        assertEquals(4.0, TalentRange.currentHalfWidth(wide, 0, TENURE, null),
+                "a nineteen-year-old on arrival knows nothing, exactly like a fifteen-year-old");
 
-        assertEquals(1.0, againstOwnAge,
-                "passing his own age as the horizon collapses the span and pins every report at the floor");
-        assertTrue(againstDeadline > 1.0,
-                "against the real deadline a 19-year-old must still be uncertain, got " + againstDeadline);
-        assertEquals(1.0, TalentRange.currentHalfWidth(j, 20, 20, null),
-                "at the deadline the report has converged");
-    }
-
-    @Test
-    @DisplayName("a wide intake roll is still wide for a young player with years to go")
-    void youngPlayerStaysUncertain() {
-        Junior j = junior(15, 4.0);
-        assertEquals(4.0, TalentRange.currentHalfWidth(j, 15, 20, null),
-                "a fifteen-year-old on arrival knows nothing");
-        assertTrue(TalentRange.currentHalfWidth(j, 17, 20, null) < 4.0,
-                "two years of observation must tighten the band");
-        assertTrue(TalentRange.currentHalfWidth(j, 17, 20, null) > 1.0,
-                "but two years is not the whole window");
+        Junior young = junior(4.0);
+        young.setArrivalAge(15);
+        young.setAge(15);
+        assertEquals(TalentRange.currentHalfWidth(young, 0, TENURE, null),
+                TalentRange.currentHalfWidth(wide, 0, TENURE, null),
+                "arrival age must not change the report at all");
     }
 
     @Test

@@ -133,28 +133,32 @@ class JuniorDecisionWindowTest {
     // ── the window ─────────────────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("the decision window is weeks 1 and 2 and nothing else")
-    void windowIsWeeksOneAndTwo() {
+    @DisplayName("the decision window is week 1 and nothing else (owner, 2026-10-08)")
+    void windowIsWeekOneOnly() {
+        assertEquals(1, YouthAcademyService.DECISION_WINDOW_FIRST_WEEK);
+        assertEquals(1, YouthAcademyService.DECISION_WINDOW_LAST_WEEK);
         assertTrue(YouthAcademyService.isDecisionWindow(1));
-        assertTrue(YouthAcademyService.isDecisionWindow(2));
-        for (int week = 3; week <= 12; week++) {
+        for (int week = 2; week <= 12; week++) {
             assertFalse(YouthAcademyService.isDecisionWindow(week),
                     "week " + week + " must be outside the registration window");
         }
     }
 
     @Test
-    @DisplayName("a decision is allowed in week 1 and in week 2, and refused from week 3")
+    @DisplayName("a decision is allowed in week 1 and refused from week 2 onwards")
     void decisionsRefusedOutsideTheWindow() {
         Junior week1 = carryover(18);
         academy.promoteJunior(week1.getId(), 2, 1, false);
         assertEquals(JuniorStatus.PROMOTED, juniors.findById(week1.getId()).orElseThrow().getStatus(),
                 "week 1 must allow the decision");
 
+        // Week 2 was the last day of the window when it ran 1-2. It is now the intake week of the
+        // following season's cohort and nothing else, so it must refuse like any other week.
         Junior week2 = carryover(18);
-        academy.releaseJunior(week2.getId(), 2, 2, false);
-        assertEquals(JuniorStatus.RELEASED, juniors.findById(week2.getId()).orElseThrow().getStatus(),
-                "week 2 is the last day of the window, not the first day of the closed one");
+        assertThrows(ApiException.class, () -> academy.releaseJunior(week2.getId(), 2, 2, false),
+                "week 2 is outside a one-week window");
+        assertEquals(JuniorStatus.ACTIVE, juniors.findById(week2.getId()).orElseThrow().getStatus(),
+                "a refused decision must leave the junior exactly as he was");
 
         Junior week3 = carryover(18);
         assertThrows(ApiException.class, () -> academy.promoteJunior(week3.getId(), 2, 3, false),
@@ -170,40 +174,68 @@ class JuniorDecisionWindowTest {
         ApiException ex = assertThrows(ApiException.class, () -> academy.promoteJunior(junior.getId(), 2, 7, false));
 
         assertEquals("DECISION_WINDOW_CLOSED", ex.getCode());
-        assertTrue(ex.getMessage().contains("weeks 1-2"),
+        assertTrue(ex.getMessage().contains("week 1"),
                 "the message must name the window, got: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("week 7"),
                 "the message must name the week it actually is, got: " + ex.getMessage());
     }
 
-    // ── the exception that overrides the window ────────────────────────────────────────────────
+    // ── the tenure, which overrides the window ─────────────────────────────────────────────────
 
     @Test
-    @DisplayName("a junior who reaches 20 is promoted mid-season, window or not")
-    void ageCeilingOverridesTheWindow() {
-        // Decision (a), 2026-09-27: the age ceiling is the hard rule. A twenty-one-year-old in an
-        // academy is a squad player described as a prospect. That path holds no decision, so there is
-        // nothing for the window to protect against -- and this must keep working in, say, week 7.
+    @DisplayName("a junior whose academy season is over is transfer-listed, not promoted")
+    void expiredJuniorIsTransferListed() {
+        // Owner, 2026-10-08. The age ceiling is gone and the tenure replaced it: the deadline is one
+        // season, not twenty years old. This path holds no manager decision, so it is not bound by the
+        // week-1 window — it fires from the season rollover, and must still fire in any week.
+        assertFalse(YouthAcademyService.isDecisionWindow(7), "week 7 is outside the window");
+        assertEquals(JuniorStatus.TRANSFER_LISTED, YouthAcademyService.EXPIRED_JUNIOR_STATUS,
+                "an unresolved prospect goes on the market, he does not walk into the first team");
+
         Junior junior = carryover(19);
         junior.setAge(YouthAcademyService.GRADUATION_MAX_AGE);
         juniors.save(junior);
 
-        assertFalse(YouthAcademyService.isDecisionWindow(7), "week 7 is outside the window");
+        // carryover() stamps arrivalSeasonNumber = 1, so closing season 2 expires him.
+        int listed = academy.graduateExpiredJuniors(2);
 
-        int promoted = academy.promoteJuniorsPastWindow(1, 1);
-
-        assertEquals(1, promoted, "the age ceiling must fire regardless of the week");
-        assertEquals(JuniorStatus.PROMOTED, juniors.findById(junior.getId()).orElseThrow().getStatus());
+        assertTrue(listed >= 1, "the tenure must fire regardless of the week");
+        assertEquals(JuniorStatus.TRANSFER_LISTED,
+                juniors.findById(junior.getId()).orElseThrow().getStatus());
     }
 
     @Test
-    @DisplayName("the age ceiling and the window agree inside the window")
-    void ageCeilingStillWorksInWeekOne() {
-        Junior junior = carryover(19);
-        junior.setAge(YouthAcademyService.GRADUATION_MAX_AGE);
-        juniors.save(junior);
+    @DisplayName("a junior still inside his tenure is left alone by the expiry pass")
+    void juniorInsideHisTenureIsUntouched() {
+        // The counterpart that makes the rule mean one season rather than "everyone, always". A
+        // prospect who arrived this season has not served it yet.
+        //
+        // The intake is generated here rather than assumed, because `assertEquals(0, ...)` over an
+        // empty academy is the kind of test that cannot fail: it is green whether the sweep works or
+        // whether there was never anything to sweep. The precondition is asserted first so the zero
+        // below means something.
+        academy.generateSeasonIntakeForWeek2(4, 2);
+        List<Junior> thisSeason = juniors.findByTeamIdAndStatus(club.getId(), JuniorStatus.ACTIVE);
+        assertFalse(thisSeason.isEmpty(), "precondition: the academy has prospects to protect");
+        assertTrue(thisSeason.stream().allMatch(j -> j.getArrivalSeasonNumber() == 4));
 
-        assertEquals(1, academy.promoteJuniorsPastWindow(1, 1));
+        // The sweep is global, so its return count is not this test's to assert on — other fixtures in
+        // the shared test database hold older cohorts. What is this club's is whether his prospects
+        // survived, and that is asserted by id rather than by a total.
+        academy.graduateExpiredJuniors(4);
+
+        for (Junior junior : thisSeason) {
+            assertEquals(JuniorStatus.ACTIVE, juniors.findById(junior.getId()).orElseThrow().getStatus(),
+                    junior.getName() + " arrived in season 4 and must survive the season-4 pass");
+        }
+
+        // And the same cohort does expire the moment the next season closes.
+        academy.graduateExpiredJuniors(5);
+        for (Junior junior : thisSeason) {
+            JuniorStatus after = juniors.findById(junior.getId()).orElseThrow().getStatus();
+            assertTrue(after == JuniorStatus.TRANSFER_LISTED || after == JuniorStatus.RELEASED,
+                    junior.getName() + " served his one season and must be resolved, was " + after);
+        }
     }
 
     // ── the promotion reveal ───────────────────────────────────────────────────────────────────

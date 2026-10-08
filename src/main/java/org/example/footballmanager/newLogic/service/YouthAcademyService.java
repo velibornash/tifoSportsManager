@@ -37,7 +37,7 @@ public class YouthAcademyService {
 
     @Transactional
     public void generateSeasonIntakeForWeek2(int seasonNumber, int weekNumber) {
-        if (weekNumber != 2) return;
+        if (weekNumber != INTAKE_WEEK) return;
 
         List<Team> teams = teamRepository.findClubTeamsForOperations();
 
@@ -55,7 +55,7 @@ public class YouthAcademyService {
                 continue;
             }
 
-            long alreadyGenerated = juniorRepository.countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(team.getId(), seasonNumber, 2);
+            long alreadyGenerated = juniorRepository.countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(team.getId(), seasonNumber, INTAKE_WEEK);
             if (alreadyGenerated > 0) continue;
             archiveResolvedJuniorsBeforeSeason(team.getId(), seasonNumber);
 
@@ -72,14 +72,14 @@ public class YouthAcademyService {
             for (int i = 0; i < intakeCount; i++) {
                 Junior j = new Junior();
                 j.setName(NameGenerator.fullName());
-                j.setAge(15 + random.nextInt(5));
+                j.setAge(INTAKE_MIN_AGE + random.nextInt(INTAKE_AGE_SPAN));
                 j.setTalent(rollTalent());
                 double initialSkill = rollInitialAcademySkill();
                 j.setAcademySkillExact(round2(initialSkill));
                 j.setAcademySkill((int) Math.floor(j.getAcademySkillExact()));
                 j.setLastWeeklyDelta(0.0);
                 j.setArrivalSeasonNumber(seasonNumber);
-                j.setArrivalWeekNumber(2);
+                j.setArrivalWeekNumber(INTAKE_WEEK);
                 j.setArrivalAge(j.getAge());
                 // Signed for a position, not rolled on the way out (Sprint 5.3).
                 j.setPosition(rollPosition());
@@ -124,52 +124,55 @@ public class YouthAcademyService {
     }
 
     /**
-     * Promotes every junior who has run out of graduation window.
+     * Resolves every junior whose one season in the academy is over, by transfer-listing him
+     * (owner, 2026-10-08).
      *
-     * <p><b>This does not age anyone.</b> Ageing already happens once a year at the season boundary
-     * in {@code SeasonService.agePlayersAndJuniorsOneYear()}, and an earlier version of this method
+     * <p><b>This does not age anyone.</b> Ageing happens once a year at the season boundary in
+     * {@code SeasonService.agePlayersAndJuniorsOneYear()}, and an earlier version of this method
      * aged juniors as well, which would have made every player a year older per season twice over.
-     * The bug it caused is the one worth recording: because a junior's age moved at the season
-     * boundary, adding a year at promotion double-counted it, which is why graduation had to be
-     * hard-coded to a floor of seventeen to compensate.
      *
-     * <p>What was genuinely missing is what happens when the window closes. Nothing acted on a junior
-     * reaching twenty, so he sat in the academy indefinitely — a twenty-four-year-old "prospect". The
-     * window is the rule, and a manager who has had all five years to decide has had the decision.
+     * <p><b>What replaced what.</b> The sweep used to read {@code age >= 20}. That made tenure a
+     * function of the intake roll — one to five seasons — and it needed the age ceiling as an
+     * emergency exit, because nothing else ever closed: a junior who was released, listed or
+     * promoted left the ACTIVE pool, but a junior nobody acted on simply kept ageing and never left.
+     * Tenure is now {@link #TENURE_SEASONS} and the query is the <b>arrival season</b>, so the
+     * emergency exit is the same code path as the normal one. There is no second rule to forget.
      *
-     * <p><b>And what happens when the club has no room for him (P2-6).</b> Graduation used to be
-     * unconditional: every ACTIVE junior aged twenty in the entire world was turned into a senior
-     * {@code Player} in one loop, with no check that the club could field him. {@code canRegister}
-     * could not stop it either, because graduation creates no {@code PlayerContract} and
-     * {@code canRegister} counts contracts — so a graduate was invisible to the 25-senior cap and then
-     * drew a wage for a season before the backfill noticed. A club's academy was therefore an
-     * unlimited source of free players.
+     * <p><b>Why transfer listing rather than promotion</b> (owner). A manager who never opened the
+     * academy page should not end the season with ten players he did not choose, and a prospect the
+     * club spent a season developing should be worth something to somebody. He is built as a senior,
+     * listed at his own estimated value, and another manager decides.
      *
-     * <p>So the cap is the squad, not a number: a graduate is promoted only while his club has room,
-     * and otherwise he is <b>released</b>. That is the football answer and it now has teeth in both
-     * directions — a club that refuses to let players go fills its own squad and blocks its own
-     * academy, which is what P2-7's retirement mechanic is for.
+     * <p><b>The squad cap still has teeth</b> (P2-6, kept deliberately). Graduation creates no
+     * {@code PlayerContract} and {@code canRegister} counts contracts, so a graduate is invisible to
+     * the 25-senior cap — an academy would otherwise be an unlimited source of players. Room is
+     * therefore counted down per club here, and a junior whose club has no place for him is
+     * <b>released</b> rather than listed, because listing him would put a twenty-sixth player in a
+     * twenty-five-man squad. He is still better off than the version where a failed promotion left
+     * him {@code ACTIVE} past twenty forever.
      */
     @Transactional
-    public int promoteJuniorsPastWindow(int seasonNumber, int seasonNumberNow) {
-        List<Junior> overAge = juniorRepository.findByStatusAndAgeGreaterThanEqual(
-                JuniorStatus.ACTIVE, GRADUATION_MAX_AGE);
-        if (overAge == null || overAge.isEmpty()) return 0;
+    public int graduateExpiredJuniors(int seasonNumber) {
+        // Called while seasonNumber is still the season being closed, so "arrived before this
+        // season" is exactly the cohort whose one season is over.
+        List<Junior> expired = juniorRepository.findByStatusAndArrivalSeasonNumberLessThan(
+                JuniorStatus.ACTIVE, seasonNumber);
+        if (expired == null || expired.isEmpty()) return 0;
 
-        Map<Long, Integer> squadSizes = squadSizesOf(overAge);
+        Map<Long, Integer> squadSizes = squadSizesOf(expired);
 
-        int promoted = 0;
+        int listed = 0;
         int released = 0;
-        // Room is counted down per club as its graduates are made, so a club with five due juniors and
-        // two places promotes exactly two rather than all five and discovers the overflow later. The
-        // countdown is merge(clubId, -1, Integer::sum): a remapping function of (a, b) -> a returns
-        // the OLD value, so the room never shrank and a squad of twenty-eight got through until the
-        // test below caught it.
+        // Room is counted down per club as its juniors are resolved, so a club with six expired
+        // juniors and two places resolves exactly two rather than all six and discovers the overflow
+        // later. The countdown is merge(clubId, -1, Integer::sum): a remapping function of
+        // (a, b) -> a returns the OLD value, so the room never shrank and a squad of twenty-eight got
+        // through until the test below caught it.
         Map<Long, Integer> roomLeft = new HashMap<>();
-        for (Junior junior : overAge) {
+        for (Junior junior : expired) {
             Long clubId = junior.getTeam() == null ? null : junior.getTeam().getId();
             if (clubId == null) {
-                // No club to graduate into. Releasing is the honest outcome; a "senior" player with
+                // No club to resolve him into. Releasing is the honest outcome; a listed senior with
                 // no team is a row nobody will ever select.
                 releaseUnplaced(junior);
                 released++;
@@ -179,8 +182,8 @@ public class YouthAcademyService {
                 // Bounded twice: by the senior places the club has free, and by the academy's own
                 // capacity. The second bound is unreachable through intake — which stops at
                 // MAX_ACTIVE_JUNIORS — but the sweep reads rows directly, and fixtures and the
-                // seeder insert juniors without going through it. A graduation pass that can promote
-                // more than the academy holds is relying on an invariant it does not enforce.
+                // seeder insert juniors without going through it. A pass that can resolve more
+                // juniors than the academy holds is relying on an invariant it does not enforce.
                 int seniorRoom = Math.max(0, PlayerContractService.MAX_SENIOR_SQUAD
                         - squadSizes.getOrDefault(id, 0));
                 return Math.min(MAX_ACTIVE_JUNIORS, seniorRoom);
@@ -195,26 +198,27 @@ public class YouthAcademyService {
 
             try {
                 PromotionBuild build = createSeniorFromJunior(junior);
-                junior.setStatus(JuniorStatus.PROMOTED);
+                transferService.listPlayerForTransfer(build.player.getId(), build.player.getPlayerValue());
+                junior.setStatus(EXPIRED_JUNIOR_STATUS);
                 junior.setPromotedPlayer(build.player);
-                promoted++;
+                listed++;
             } catch (RuntimeException e) {
-                // One unpromotable junior must not cost every other club's deadline. He is left
+                // One unresolvable junior must not cost every other club's deadline. He is left
                 // ACTIVE and picked up next season, which is the safe failure: a slightly late
-                // promotion beats a season of missing players.
-                log.warn("Junior {} ({}) reached the graduation age and could not be promoted",
+                // listing beats a season of missing players.
+                log.warn("Junior {} ({}) finished his academy season and could not be transfer-listed",
                         junior.getId(), junior.getName(), e);
             }
         }
-        if (promoted > 0) {
-            log.info("Season {}: promoted {} junior(s) who reached the age of {}",
-                    seasonNumber, promoted, GRADUATION_MAX_AGE);
+        if (listed > 0) {
+            log.info("Season {}: transfer-listed {} junior(s) whose academy season was over",
+                    seasonNumber, listed);
         }
         if (released > 0) {
-            log.info("Season {}: released {} junior(s) with no senior place at their club",
+            log.info("Season {}: released {} expired junior(s) with no senior place at their club",
                     seasonNumber, released);
         }
-        return promoted;
+        return listed;
     }
 
     /**
@@ -290,13 +294,19 @@ public class YouthAcademyService {
         dto.setYouthFacilityLevel(team.getStadium() == null ? null : team.getStadium().getYouthLevel());
         dto.setYouthCoachDevelopment(coachDevelopment);
 
+        dto.setIntakeWeek(INTAKE_WEEK);
+        dto.setIntakeMinCount(INTAKE_MIN);
+        dto.setIntakeMaxCount(INTAKE_MAX);
+        dto.setDecisionWeek(DECISION_WINDOW_FIRST_WEEK);
+        dto.setMaxActiveJuniors(MAX_ACTIVE_JUNIORS);
+
         // One resolution of the youth coach per request rather than per junior: it is the same
         // attribute for all of them, and the report narrows against it (TalentRange).
         Integer youthCoachDevelopment = youthCoachDevelopment(team);
 
-        visible.forEach(j -> dto.getJuniors().add(toDto(j, canSeeTalent, youthCoachDevelopment)));
+        visible.forEach(j -> dto.getJuniors().add(toDto(j, canSeeTalent, youthCoachDevelopment, currentSeason, currentWeek)));
         juniorRepository.findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(teamId)
-                .forEach(j -> dto.getArchive().add(toDto(j, canSeeTalent, youthCoachDevelopment)));
+                .forEach(j -> dto.getArchive().add(toDto(j, canSeeTalent, youthCoachDevelopment, currentSeason, currentWeek)));
         return dto;
     }
 
@@ -386,38 +396,114 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
     /**
      * The age window a junior may leave the academy in (owner rule 2026-09-27): <b>15 to 20</b>.
      *
-     * <p>These are not decoration. The upper bound is a deadline — a junior who reaches it is
-     * promoted whether the manager is ready or not, because a twenty-one-year-old in a youth academy
-     * is a squad player being described as a prospect, and the whole point of the window is that it
-     * closes. The lower bound exists because intake can produce a fifteen-year-old, and a manager
-     * who wants to debut him immediately should be able to.
+     * <p><b>This is a clamp, not a deadline.</b> It used to be the deadline: a junior who reached
+     * {@link #GRADUATION_MAX_AGE} was promoted on the spot. Since the one-season rule
+     * ({@link #TENURE_SEASONS}) the sweep reads the <b>arrival season</b> instead of the age, so a
+     * prospect can no longer sit in an academy until twenty. The clamp stays because intake produces
+     * ages 15-19 and one ageing step puts a nineteen-year-old at twenty, which is the top of a
+     * sensible football age for a debut. A row carrying a nonsense age is pulled inside the window
+     * rather than trusted.
      */
     public static final int GRADUATION_MIN_AGE = 15;
     public static final int GRADUATION_MAX_AGE = 20;
 
+    // ── The intake, the tenure, the decision (owner, 2026-10-08) ───────────────────────────────
+    // One coherent cycle, replacing the age window:
+    //
+    //   season N   week 2   INTAKE_MIN..INTAKE_MAX juniors arrive, aged INTAKE_MIN_AGE..19
+    //   season N   week 3+  they train, and the talent estimate narrows week by week
+    //   end of N            they age one year
+    //   season N+1 week 1   the manager decides: Promote / Transfer List / Release
+    //   end of N+1          anything still ACTIVE is transfer-listed automatically
+
+    /** The week of the season the intake arrives in. One arrival, one cohort, once a season. */
+    public static final int INTAKE_WEEK = 2;
+
+    /** Fewest juniors an intake can bring, owner-specified. */
+    public static final int INTAKE_MIN = 6;
+
+    /** Most juniors an intake can bring, owner-specified. */
+    public static final int INTAKE_MAX = 10;
+
+    /** Youngest age at intake. */
+    public static final int INTAKE_MIN_AGE = 15;
+
+    /** Age spread at intake, so intake runs {@value #INTAKE_MIN_AGE}..(15 + span - 1). */
+    public static final int INTAKE_AGE_SPAN = 5;
+
     /**
-     * The weeks in which a manager may decide a junior's fate (owner, 2026-09-27).
+     * How long a junior stays, in seasons. <b>Exactly one</b>, owner-specified 2026-10-08.
      *
-     * <p>Promoting a youth player is a <b>registration</b> decision, not a match-day one: real football
-     * submits squad lists at the start of a season, and a manager does not sign a seventeen-year-old in
-     * week nine because he had a good month. Before this the window ran from the start of the following
-     * season to the end of it — effectively "always available".
+     * <p>Replaces a tenure that was {@code GRADUATION_MAX_AGE - arrivalAge} and therefore ranged
+     * from one to five seasons depending on a roll. That was indefensible as a game mechanic: the
+     * same intake produced nineteen-year-olds who debuted immediately and fifteen-year-olds who sat
+     * in the academy for five seasons, and the only reason the long case existed was that a junior
+     * had to be given enough time to reach twenty. He no longer has to reach anything.
+     */
+    public static final int TENURE_SEASONS = 1;
+
+    /**
+     * The weeks from the intake to the decision week: week 2 of season N through week 1 of season
+     * N+1, which is 11 weeks of a 12-week season plus the decision itself.
      *
-     * <p>Two weeks rather than one rigid week, so that logging in slightly late does not cost a
-     * prospect a whole season. It is still a window, not a standing permission.
+     * <p>This is the denominator of the talent narrowing. It is deliberately the <b>whole</b> tenure
+     * rather than the training weeks: a manager watches a prospect during the season and puts a name
+     * to him in week 1, so by the moment the decision is available the report should be tight.
+     */
+    public static final int TENURE_WEEKS = SeasonCalendar.WEEKS_PER_SEASON - INTAKE_WEEK + 1;
+
+    /**
+     * The week in which a manager may decide a junior's fate: <b>week 1 only</b> (owner, 2026-10-08).
      *
-     * <p><b>Does not apply to the age ceiling.</b> A junior who reaches
-     * {@link #GRADUATION_MAX_AGE} is promoted whether the manager is ready or not, in whatever week
-     * that falls — a twenty-one-year-old in an academy is a squad player described as a prospect. That
-     * path contains no decision, so there is nothing for the window to protect against. Nor does it
-     * apply to school closure, which is a scheduled end-of-season decision.
+     * <p>Was weeks 1-2. Two weeks was a late-login allowance, and with a one-season tenure it became
+     * the whole of the manager's involvement: he arrives on Tuesday of week 2 and finds the prospects
+     * he never looked at already transfer-listed at the end of it. One week is the registration
+     * window, and the deadline is real either way.
+     *
+     * <p><b>Does not apply to school closure</b>, which is a scheduled end-of-season decision about a
+     * whole intake, and <b>not to the automatic transfer listing</b>, which contains no decision.
      */
     public static final int DECISION_WINDOW_FIRST_WEEK = 1;
-    public static final int DECISION_WINDOW_LAST_WEEK = 2;
+    public static final int DECISION_WINDOW_LAST_WEEK = 1;
 
     /** Whether manager-initiated junior decisions are open this week. */
     public static boolean isDecisionWindow(int weekNumber) {
         return weekNumber >= DECISION_WINDOW_FIRST_WEEK && weekNumber <= DECISION_WINDOW_LAST_WEEK;
+    }
+
+    /**
+     * The outcome for a junior who reaches the end of his tenure still {@code ACTIVE}: he is
+     * converted to a senior player and put on the transfer market (owner, 2026-10-08).
+     *
+     * <p>Chosen over auto-promotion because a manager who never opened the academy page should not
+     * end up with ten players he did not choose; chosen over release because a prospect the club
+     * spent a season developing is worth something to somebody. He leaves on the club's terms and
+     * another manager decides whether to buy him.
+     */
+    public static final JuniorStatus EXPIRED_JUNIOR_STATUS = JuniorStatus.TRANSFER_LISTED;
+
+    /**
+ * How many weeks of his tenure this junior has been watched for, clamped to {@link #TENURE_WEEKS}.
+ *
+ * <p>Both dates are placed on one flat week line ({@code season * 12 + week}) and subtracted, so a
+ * prospect who arrived in week 2 of season 4 has been observed for 0 weeks in week 2, 10 in week 12,
+ * and 11 by week 1 of season 5 — which is the week the manager decides, and the point the report
+ * should already be tight.
+ *
+ * <p><b>A junior with no recorded arrival season gets zero.</b> That is a real case, not a
+ * hypothetical: {@code arrivalSeasonNumber} is a primitive {@code int}, so a row written before the
+ * column existed reads as {@code 0} rather than null. Left alone, season 0 sits far in the past, the
+ * subtraction returns a huge number, and every one of those legacy rows would be handed a confident
+ * ±1 it never earned — the exact leak this class exists to prevent. Zero is the widest report and the
+ * honest one: the club does not know how long it has been watching.
+ */
+    static int weeksObserved(Junior junior, int currentSeason, int currentWeek) {
+        if (junior == null) return 0;
+        if (junior.getArrivalSeasonNumber() <= 0 || junior.getArrivalWeekNumber() <= 0) return 0;
+        int arrival = junior.getArrivalSeasonNumber() * SeasonCalendar.WEEKS_PER_SEASON
+                + junior.getArrivalWeekNumber();
+        int now = currentSeason * SeasonCalendar.WEEKS_PER_SEASON + currentWeek;
+        return Math.max(0, Math.min(TENURE_WEEKS, now - arrival));
     }
 
     @Transactional
@@ -429,7 +515,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         junior.setStatus(JuniorStatus.PROMOTED);
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
-        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()), currentSeason, currentWeek);
     }
 
     @Transactional
@@ -468,7 +554,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         junior.setStatus(JuniorStatus.TRANSFER_LISTED);
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
-        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()), currentSeason, currentWeek);
     }
 
     /**
@@ -492,7 +578,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         Junior junior = juniorRepository.findById(juniorId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "JUNIOR_NOT_FOUND", "Junior not found."));
         if (junior.getStatus() != JuniorStatus.ACTIVE) {
-            return toDto(junior, false, null);
+            return toDto(junior, false, null, currentSeason, currentWeek);
         }
         PromotionBuild build = createSeniorFromJunior(junior);
         Player player = build.player;
@@ -500,7 +586,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         junior.setStatus(JuniorStatus.TRANSFER_LISTED);
         junior.setPromotedPlayer(player);
         juniorRepository.save(junior);
-        return toDto(junior, false, null);
+        return toDto(junior, false, null, currentSeason, currentWeek);
     }
 
     @Transactional
@@ -510,7 +596,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         junior.setStatus(JuniorStatus.RELEASED);
         junior.setLastWeeklyDelta(0.0);
         juniorRepository.save(junior);
-        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()));
+        return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()), currentSeason, currentWeek);
     }
 
     /**
@@ -536,10 +622,14 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
                     "This junior is too new. Decisions open from next season.");
         }
         if (!isDecisionWindow(currentWeek)) {
+            // Spelled out in words rather than interpolated from two constants. With the window now a
+            // single week, "weeks 1-1" is what that concatenation produces, and a refusal message is
+            // the one piece of text a manager reads when he is trying to work out what to do next.
             throw new ApiException(HttpStatus.CONFLICT, "DECISION_WINDOW_CLOSED",
-                    "Junior decisions are open in weeks " + DECISION_WINDOW_FIRST_WEEK + "-"
-                            + DECISION_WINDOW_LAST_WEEK + " only; it is week " + currentWeek
-                            + ". A prospect cannot be signed into the first team mid-season.");
+                    "Junior decisions are open in week " + DECISION_WINDOW_FIRST_WEEK
+                            + " only; it is week " + currentWeek
+                            + ". A prospect cannot be signed into the first team mid-season, and he is "
+                            + "transfer-listed when his academy season ends whether you are ready or not.");
         }
         return junior;
     }
@@ -798,16 +888,16 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         }
     }
 
+    /**
+     * How many juniors this intake brings: uniform over {@value #INTAKE_MIN}..{@value #INTAKE_MAX}.
+     *
+     * <p>Was a bell over 1..10 (weights {@code {3,6,9,12,14,14,12,9,6,3}}). The owner moved the
+     * floor to six (2026-10-08) and asked for a flat band, so the shape is gone rather than
+     * rescaled — a bell clipped into 6..10 would still cluster on 7-8, and the number a manager reads
+     * on the screen is now a rule he can quote.
+     */
     private int rollIntakeCount() {
-        int[] weights = {3, 6, 9, 12, 14, 14, 12, 9, 6, 3}; // 1..10
-        int total = Arrays.stream(weights).sum();
-        int r = random.nextInt(total);
-        int acc = 0;
-        for (int i = 0; i < weights.length; i++) {
-            acc += weights[i];
-            if (r < acc) return i + 1;
-        }
-        return 5;
+        return INTAKE_MIN + random.nextInt(INTAKE_MAX - INTAKE_MIN + 1);
     }
 
     private double rollTalent() {
@@ -833,18 +923,18 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         ensureCoachSkill(team);
         List<Junior> existing = juniorRepository.findByTeamIdOrderByAcademySkillExactDesc(teamId);
         if (!existing.isEmpty()) return;
-        int count = 4 + random.nextInt(3); // 4-6 for immediate testing
+        int count = rollIntakeCount();
         List<Junior> seed = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             Junior j = new Junior();
             j.setName(NameGenerator.fullName());
-            j.setAge(15 + random.nextInt(5)); // 15-19
+            j.setAge(INTAKE_MIN_AGE + random.nextInt(INTAKE_AGE_SPAN)); // 15-19
             j.setTalent(rollTalent());
             j.setAcademySkillExact(round2(5 + random.nextDouble() * 9.99)); // mid range for test visibility
             j.setAcademySkill((int) Math.floor(j.getAcademySkillExact()));
             j.setLastWeeklyDelta(0.0);
             j.setArrivalSeasonNumber(Math.max(0, seasonNumber - 1)); // eligible in current season week 1 as seed data
-            j.setArrivalWeekNumber(2);
+            j.setArrivalWeekNumber(INTAKE_WEEK);
             // The two Sprint 5.2 fields. Without them a seeded junior reports the maximum uncertainty
             // forever, which looks like a bug rather than a missing column.
             j.setArrivalAge(j.getAge());
@@ -890,7 +980,8 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
      * academy exists to make a manager watch a player; printing the ceiling on arrival removes the
      * only thing the feature was for.
      */
-    private JuniorAcademyItemDTO toDto(Junior j, boolean canSeeTalent, Integer youthCoachDevelopment) {
+    private JuniorAcademyItemDTO toDto(Junior j, boolean canSeeTalent, Integer youthCoachDevelopment,
+                                       int currentSeason, int currentWeek) {
         JuniorAcademyItemDTO dto = new JuniorAcademyItemDTO();
         dto.setId(j.getId());
         dto.setName(j.getName());
@@ -919,14 +1010,10 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
             if (revealed) {
                 dto.setTalentExact(round2(j.getTalent()));
             }
-            // The observation horizon is the graduation DEADLINE, not this junior's own graduation age.
-            // graduationAge() clamps to the current age, so passing it here would make the span
-            // (graduationAge - arrivalAge) equal the elapsed time for every active junior — progress
-            // would be 1.0 for all of them, every report would sit at the +/-1 floor from arrival, and
-            // the whole narrowing mechanic would be inert. A19-year-old has one more season of
-            // observation left, and his band should say so.
-            double halfWidth = TalentRange.currentHalfWidth(
-                    j, j.getAge(), GRADUATION_MAX_AGE, youthCoachDevelopment);
+            // Progress is weeks of the tenure, so the band tightens week by week while the season
+            // runs and is already at the +/-1 floor on the morning the manager is allowed to decide.
+            double halfWidth = TalentRange.currentHalfWidth(j,
+                    weeksObserved(j, currentSeason, currentWeek), TENURE_WEEKS, youthCoachDevelopment);
             dto.setTalentRangeHalfWidth(halfWidth);
             double[] bounds = TalentRange.bounds(j.getTalent(), halfWidth);
             if (bounds != null) {

@@ -53,7 +53,17 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     @Query("update Junior j set j.age = j.age + 1 where j.status = :status")
     int incrementAgeByStatus(@Param("status") JuniorStatus status);
 
-    /** Every active junior at or past the graduation age — the window closing on them. */
-    List<Junior> findByStatusAndAgeGreaterThanEqual(@Param("status") JuniorStatus status,
-                                                    @Param("age") int age);
+    /**
+     * Every active junior who arrived before {@code arrivalSeasonNumber} — his tenure is over
+     * (owner, 2026-10-08).
+     *
+     * <p>Replaces {@code findByStatusAndAgeGreaterThanEqual}. The deadline used to be an age, which
+     * made it depend on the roll at intake: the same season produced prospects who debuted the
+     * following spring and prospects who sat in the academy for five more years. Tenure is now
+     * measured in seasons, so the cohort that arrived in season N is resolved when season N+1 ends,
+     * whoever was fifteen and whoever was nineteen.
+     */
+    @Query("SELECT j FROM Junior j WHERE j.status = :status AND j.arrivalSeasonNumber < :arrivalSeasonNumber")
+    List<Junior> findByStatusAndArrivalSeasonNumberLessThan(@Param("status") JuniorStatus status,
+                                                            @Param("arrivalSeasonNumber") int arrivalSeasonNumber);
 }

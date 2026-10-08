@@ -2955,6 +2955,69 @@ and no dot on screen.
 
 ---
 
+## ✅ P2-22 — the youth academy gets one clear cycle (owner, 2026-10-08)
+
+**The owner's complaint was not a bug.** The Juniors screen worked; what was missing was a rule a
+manager could quote. "When do they arrive, how many, and can I reveal one on arrival?" had no answer
+that was true, because the rules were spread across a query, two constants, and four hardcoded literals
+in the JavaScript.
+
+### The cycle, as specified
+
+| | |
+|---|---|
+| **Arrival** | once a season, **week 2**, **6 to 10** juniors — was a bell over 1..10 |
+| **Age, talent, skill** | unchanged; still the existing rolls |
+| **Tenure** | **exactly one season** — was `20 − arrivalAge`, i.e. one to five seasons |
+| **Ageing** | at the season boundary, as before |
+| **Decision** | **week 1 of the following season** — was weeks 1–2 |
+| **Narrowing** | the talent estimate firms up **week by week through the season** — was by age |
+| **Unresolved at the end** | **transfer-listed** — was promoted at 20 |
+| **Promotion** | unchanged, reveal included |
+
+Three points were owner decisions and are recorded because they were not derivable: the outcome for an
+unresolved prospect (**TRANSFER_LISTED**, not promotion — a manager who never opened the page should not
+end up with ten players he did not choose), the window (**week 1 only**), and the count's shape
+(**uniform**, not a bell clipped into 6–10).
+
+### The defect the tenure change exposed, and why it mattered
+
+**Talent narrowing was measured in ages.** `TalentRange.observationProgress` spanned
+`graduationAge − arrivalAge`. Intake produces ages **15–19**, so a nineteen-year-old's span was
+**zero**: progress 1.0 on the day he arrived, every report pinned at ±1, and the exact ceiling handed
+over the moment he signed. The band only ever worked for the fifteen-year-olds.
+
+This was invisible for the same reason the mobile table was: the suite was green. `TalentRangeTest`
+passed 15-year-olds and had no case for a nineteen-year-old. Narrowing is now measured in **weeks of the
+tenure** (11: arrival week 2 through week 1 of the next season), which is also what the owner asked for
+— the coach narrows *during* the season. `TalentRangeTest.arrivalAgeNoLongerDrivesTheBand` exists
+specifically to fail if that regresses, and `everyTrainingWeekNarrowsTheBand` fails if the report only
+moves at the boundary.
+
+### The rules now reach the screen instead of living in a comment
+
+`JuniorAcademyStateDTO` carries `intakeWeek`, `intakeMinCount`, `intakeMaxCount`, `decisionWeek` and
+`maxActiveJuniors`, read from the service's own constants. `academy.js` was writing the decision window
+out as `week >= 1 && week <= 2` and the academy limit **four times** as `10` — the debt the
+`MAX_ACTIVE_JUNIORS` javadoc had already recorded. Changing a rule in Java did not change the screen.
+
+### Kept on purpose, against the new rule
+
+**The squad cap on the expiry pass** (P2-6). `graduateExpiredJuniors` counts senior room down per club
+and **releases** the overflow rather than listing it, because graduation creates no `PlayerContract` and
+`canRegister` counts contracts — without this an academy is an unlimited source of players. This is the
+one place the outcome is `RELEASED` rather than the owner's `TRANSFER_LISTED`, and only when the club has
+no place for him. `GraduationRespectsTheSquadTest` guards it.
+
+### The one behaviour worth knowing
+
+**A manager who ignores week 1 blocks his own intake.** An academy still holding unresolved carryover is
+at the cap, and the season's intake is suppressed entirely. With a one-season tenure carryover is
+transient — resolve it in week 1 and week 2 brings the full 6–10 — but "no prospects arrived" is now a
+consequence rather than a mystery. Pinned by `aFullAcademyTakesNoNewIntake`.
+
+---
+
 ## 🔧 P2-21 — mobile: the iPhone 14 Pro Max pass, 2026-10-06
 
 **Reference device: iPhone 14 Pro Max, portrait — 430 × 932 CSS px at DPR 3.** Measured in Chromium at

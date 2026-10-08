@@ -155,7 +155,7 @@
      * no reason is indistinguishable from a bug, and the window *is* the rule: the school can only be
      * opened in week 1 and only closed in week 12.
      */
-    function renderSchoolPanel(s) {
+    function renderSchoolPanel(s, maxActive) {
         if (!s) {
             return `<section class="fm-panel academy-school-panel">
                 <div class="fm-panel-head"><h3>Junior school</h3></div>
@@ -173,14 +173,14 @@
             ? `<div class="fm-medical-stat-grid academy-school-grid">
                    <div><strong>${escapeHtml(upkeep)}</strong><span>Per week</span></div>
                    <div><strong>${escapeHtml(seasonCost)}</strong><span>Rest of season</span></div>
-                   <div><strong>${Number(s.activeJuniors || 0)}/10</strong><span>Prospects</span></div>
+                   <div><strong>${Number(s.activeJuniors || 0)}/${escapeHtml(String(maxActive))}</strong><span>Prospects</span></div>
                    <div><strong>${s.sinceSeason != null ? 'S' + escapeHtml(String(s.sinceSeason)) : '—'}</strong><span>Running since</span></div>
                </div>`
             : `<div class="fm-medical-stat-grid academy-school-grid">
                    <div><strong>${escapeHtml(fee || '—')}</strong><span>To open</span></div>
                    <div><strong>${escapeHtml(upkeep)}</strong><span>Per week after</span></div>
                    <div><strong>${escapeHtml(seasonCost)}</strong><span>Season total</span></div>
-                   <div><strong>0/10</strong><span>Prospects</span></div>
+                   <div><strong>0/${escapeHtml(String(maxActive))}</strong><span>Prospects</span></div>
                </div>`;
 
         // The button and the sentence explaining it are rendered together, so they can never disagree.
@@ -258,13 +258,21 @@
         let currentSort = sessionStorage.getItem('academy_sort') || 'workRate';
 
         const canDecide = academy.decisionsOpen === true;
-        // Junior decisions are a registration window (Sprint 5.3, owner 2026-09-27): weeks 1-2 only.
-        // A prospect cannot be signed into the first team mid-season, and a manager who could would
-        // sign one in week nine because he had a good month. The window is stated in the copy below
-        // rather than left as a set of missing buttons.
+        // The mechanism, read from the server rather than written here (owner, 2026-10-08). The weeks
+        // of the decision window and the academy limit used to be open-coded in this file — the limit
+        // four times — so a rule changed in Java would not have changed the screen. The fallbacks keep
+        // an older payload rendering rather than printing "week undefined".
+        const intakeWeek = Number(academy.intakeWeek ?? 2);
+        const intakeMin = Number(academy.intakeMinCount ?? 6);
+        const intakeMax = Number(academy.intakeMaxCount ?? 10);
+        const decisionWeek = Number(academy.decisionWeek ?? 1);
+        const maxActive = Number(academy.maxActiveJuniors ?? 10);
+        // Junior decisions are a registration window, not a match-day one: week 1 of the season after
+        // the intake. A prospect cannot be signed into the first team mid-season, and the week is not
+        // negotiable — anything still unresolved is transfer-listed when its academy season ends.
         const week = Number(academy.currentWeekNumber || 0);
-        const inDecisionWindow = week >= 1 && week <= 2;
-        const windowNote = `Decisions open in weeks 1-2 only. It is week ${week}.`;
+        const inDecisionWindow = week === decisionWeek;
+        const windowNote = `Decisions open in week ${decisionWeek} only. It is week ${week}.`;
         const currentSeason = Number(academy.currentSeasonNumber || 0);
         const archive = Array.isArray(academy.archive) ? academy.archive : [];
 
@@ -372,11 +380,13 @@
                         <div class="fm-eyebrow">Academy overview</div>
                         <h2>Youth Academy</h2>
                         <p class="fm-subtle">Season ${academy.currentSeasonNumber} · Week ${academy.currentWeekNumber} · Junior Coach Skill ${academy.juniorCoachSkill}/100</p>
+                        <p class="fm-subtle academy-hero-copy">${intakeMin}–${intakeMax} juniors arrive in week ${intakeWeek}, once a season. Each stays exactly one season and ages at the end of it. You decide in week ${decisionWeek} of the following season.</p>
+                        <p class="fm-subtle academy-hero-copy">Talent is an estimate that firms up week by week — you cannot reveal a new arrival, and the exact figure is revealed when you promote him.</p>
                         <p class="fm-subtle academy-hero-copy">${inDecisionWindow
                             ? (canDecide
                                 ? "Carryover juniors are ready for Promote / Transfer List / Release decisions."
                                 : "No carryover juniors are waiting for a final decision right now.")
-                            : windowNote + " A prospect keeps developing until then, and still graduates at 20 whether you are ready or not."}</p>
+                            : windowNote + " Prospects keep training until then, and anything still unresolved is transfer-listed when its academy season ends."}</p>
                     </div>
                     ${buildClubActionsHtml('juniors')}
                 </div>
@@ -387,10 +397,10 @@
                     <div><strong>${archive.length}</strong><span>Archive</span></div>
                 </div>
                 <p class="fm-subtle academy-quality-line">${renderQuality(academy)}</p>
-                <p class="fm-subtle academy-footnote">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is 10.</p>
+                <p class="fm-subtle academy-footnote">Carryover juniors stay visible, do not train further, and keep actions until resolved. Academy active limit is ${maxActive}.</p>
             </section>
 
-            ${renderSchoolPanel(school)}
+            ${renderSchoolPanel(school, maxActive)}
             ${renderSortBar(currentSort, allProspects)}
 
             ${renderSection('Carryover juniors', carryover.length, carryover, true, 'Decision pending players remain visible until you resolve them.')}
