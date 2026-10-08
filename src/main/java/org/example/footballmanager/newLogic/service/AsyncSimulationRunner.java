@@ -22,6 +22,8 @@ public class AsyncSimulationRunner {
     private final TransactionTemplate transactionTemplate;
     private final SimMatchService simMatchService;
     private final ClubRatingService clubRatingService;
+    private final SeasonService seasonService;
+    private final RankingPointsRebuildService rankingRebuild;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicInteger simulatedCount = new AtomicInteger(0);
@@ -99,6 +101,7 @@ public class AsyncSimulationRunner {
             }
         } finally {
             rateClubs();
+            rebuildRanking();
             running.set(false);
             log.info("Background simulation runner stopped");
         }
@@ -115,6 +118,31 @@ public class AsyncSimulationRunner {
      * <p>Its own transaction, and it cannot fail the batch: the football is already saved by the time
      * this runs, and the next matchday or restart would catch up anyway.
      */
+    /**
+     * Rebuilds the ranking points and the medals once the batch is over (owner's decision, 2026-10-08).
+     *
+     * <p><b>This is the only thing in the application that ever writes those tables.</b> Before it,
+     * {@code ClubRankingPointsService.recompute()}, {@code NationalRankingPointsService.recompute()},
+     * {@code AchievementBonusService.apply()} and {@code HonourService.derive()} had no caller at all —
+     * their tests called them, so they were green and the ledgers were empty. The country and club
+     * ranking lists sorted nothing, no achievement bonus was applied, and no medal was derived.
+     *
+     * <p>Skipped for a batch that simulated nothing, so an empty matchday does not replay the world.
+     *
+     * <p>The catch is here and not only inside the rebuild: "cannot fail the matchday" is the runner's
+     * promise, and it should not depend on a collaborator remembering to keep it.
+     */
+    private void rebuildRanking() {
+        if (totalCount.get() <= 0) {
+            return;
+        }
+        try {
+            rankingRebuild.rebuildAfterBatch(seasonService.getActiveSeasonYear());
+        } catch (RuntimeException e) {
+            log.warn("Could not rebuild the ranking after the batch: {}", e.getMessage(), e);
+        }
+    }
+
     private void rateClubs() {
         try {
             ClubRatingService.Result rated = clubRatingService.recomputeDurably();
@@ -124,4 +152,5 @@ public class AsyncSimulationRunner {
             log.warn("Could not recompute club Elo after the batch: {}", e.getMessage());
         }
     }
+
 }

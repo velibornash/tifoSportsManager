@@ -1,25 +1,68 @@
 # kanbanProgress.md — the append-only log
 
-## 🔴 P0-RANK-WIRE — the ranking points and the medals compute nothing (found 2026-10-08)
+## 🔴 P0-RANK-WIRE — the ranking points and the medals computed nothing; now wired (2026-10-08)
 
 Found while starting the trophy UI. `ClubRankingPointsService.recompute()`,
-`NationalRankingPointsService.recompute()`, `AchievementBonusService` and `HonourService.derive()` have
-**no caller in `src/main`**. Their own tests call them, which is why they are green.
+`NationalRankingPointsService.recompute()`, `AchievementBonusService.apply()` and
+`HonourService.derive()` had **no caller in `src/main`**. Their own tests called them, which is why they
+were green. `AsyncSimulationRunner.rateClubs()` recomputed **club Elo only** after a matchday batch, and
+`sokker_db` held 0 played matches and 0 rows in `club_season_ranking_points`,
+`country_season_ranking_points` and `club_honour` — so not even an empty world: no code path would fill
+them.
 
-`AsyncSimulationRunner.rateClubs()` — the batch boundary every matchday ends at — recomputes **club Elo
-only**. `sokker_db` confirms it is not merely an empty world: 0 played matches, and 0 rows in
-`club_season_ranking_points`, `country_season_ranking_points` and `club_honour`.
+### Owner's decision
 
-So the ranking lists the owner asked for sort an empty ledger, the achievement bonuses are never applied,
-and a trophy UI built now would render an empty row forever. Not started: wiring it, because where the
-replay runs is an owner decision (per matchday batch like Elo, at week rollover, or both) and the cost has
-never been measured — there are no played matches to measure against.
+*"After each matchday batch, like Elo."* So one rebuild at the batch boundary, beside the Elo replay, in
+`RankingPointsRebuildService`, and `AsyncSimulationRunner` calls it.
 
-Recorded rather than fixed here, and P2-TROPHY-1's UI is explicitly sequenced behind it.
+**Order is the whole contract:** base ledgers, then the bonuses (they read those rows and add to them),
+then the medals (a trophy bonus and a trophy medal are the same fact and must not disagree). All four in
+one `REQUIRES_NEW` transaction — a bonus left standing on a rolled-back ledger is worse than no bonus, and
+the whole rebuild is idempotent, so the next batch simply does it again.
+
+Skipped when the batch simulated nothing, and wrapped in a catch **at the runner**, not only inside the
+rebuild: "cannot fail the matchday" is the runner's promise and should not depend on a collaborator
+remembering to keep it.
+
+### The test that had to be written twice
+
+`RankingPointsRebuildServiceTest` goes through the rebuild rather than through the four services — and the
+first version of it **passed with the caller deleted**, because it called the service directly. That is the
+original defect reproduced inside its own regression test.
+
+So the caller is asserted separately, in `AsyncSimulationRunnerRebuildsRankingTest`, built by hand:
+`simulateInBackground` is `@Async`, but a `new AsyncSimulationRunner(...)` is not the async proxy, so the
+batch runs inline. Removing the hook line makes `aBatchRebuildsTheRanking` fail; it was checked, not
+assumed.
+
+Two things that test found in the runner rather than in the rebuild:
+
+- the hook ran even for a batch that simulated **nothing**, which would replay the world on an empty
+  matchday;
+- a throwing rebuild propagated out of `finally`, so a broken ledger could have failed a matchday whose
+  football was already saved.
+
+### The assertion that had to be weakened, honestly
+
+"No team with a won match may sit on 0 points" failed: a 3-0 between a firm favourite and a weak side can
+land **inside** the forecast and be worth nothing. The arithmetic belongs to `RankingPointsEngineTest` and
+`ClubRankingPointsReplayTest`; this class asserts who calls it, so it now asserts both clubs are in the
+ledger and the winner is not below the loser.
+
+Also worth recording: **none** of these tests is `@Transactional`, because the rebuild commits on its own
+transaction and a fixture saved inside a test transaction is invisible to it. The first draft was
+transactional and reported a rebuild that had written nothing at all — as a clean run.
+
+### Not yet seen live
+
+A real matchday is still owed. One `advance day` on this world is currently stuck reconciling season
+entries for 48 countries one division at a time — roughly 1.5 s per division, so a day advance is minutes
+long. Pre-existing, unrelated to this change, and a fair measure of what the P1 performance category is
+worth.
 
 ---
 
-## P2-STAD-1 — the ground is built one section at a time (owner, 2026-10-08)
+## P2-STAD-1 — the ground is built one section at a time (owner, 2026-10-08)## P2-STAD-1 — the ground is built one section at a time (owner, 2026-10-08)
 
 > **svaka od 4 strana i svaki od 4 uglova su isti zahtevi: tip sedista, kapacitet koji se dogradjuje,
 > krov samo za tu tribinu; proracun: cena + koliko vremena se NECE moci koristiti tribina; svaka

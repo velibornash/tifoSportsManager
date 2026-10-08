@@ -3,6 +3,8 @@ package org.example.footballmanager.newLogic.service;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.service.RankingPointsRebuildService;
+import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.sim.SimMatchService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,8 +48,13 @@ class AsyncSimulationRunnerCountsFailuresTest {
         when(transactionManager.getTransaction(any())).thenReturn(mock(org.springframework.transaction.TransactionStatus.class));
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        // The post-batch ranking rebuild is a collaborator now, and this class is about failure
+        // counting, so it is mocked: the rebuild has its own test and its own transaction.
+        RankingPointsRebuildService rebuild = mock(RankingPointsRebuildService.class);
+        SeasonService seasons = mock(SeasonService.class);
+        when(seasons.getActiveSeasonYear()).thenReturn(1);
         return new AsyncSimulationRunner(fixtures, template, simMatchService,
-                mock(ClubRatingService.class));
+                mock(ClubRatingService.class), seasons, rebuild);
     }
 
     /**
