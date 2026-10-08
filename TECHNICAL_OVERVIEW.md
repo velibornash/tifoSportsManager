@@ -878,6 +878,21 @@ activated (arrived / left), termination requested, and closed, including the wee
 nobody pressed anything for — as `LOAN_PROPOSED` and `LOAN_MOVED`. Before this, a player arrived silently
 and a manager found out by opening the loans screen.
 
+#### Two things that cost a real outage, both about notifications
+
+**A CHECK constraint pins the kinds, and nothing maintained it.** `nl_notification.kind` had a constraint
+listing the four kinds that existed when the table was created. `ddl-auto=update` widens a column and
+**never rewrites a CHECK**, so a new `NotificationKind` compiled, passed every test — the test database is
+built from the entities and has no constraint — and then failed on the first real write.
+`ResetService.alignNotificationKindConstraint()` rebuilds it from `NotificationKind.values()` at boot, so
+adding a kind is a one-line change and the list cannot drift from the enum.
+
+**`NotificationService.notify` runs in `REQUIRES_NEW`, and that is the whole point.** It catches its
+exceptions and documents itself as unable to fail its caller — and it *was* failing its caller, because a
+rejected statement poisons the persistence context and the caller's own transaction then dies at flush with
+`HHH000099: null id in Notification entry`. Taking a player in on loan succeeded and then answered 500
+because a courtesy row could not be written.
+
 ## 9. Match simulation and persistence
 
 #### Reading a lazy entity outside a transaction is a live defect, not a style note

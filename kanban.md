@@ -2385,6 +2385,17 @@ One report, **two separate defects**.
       activated (arrived / left), termination requested, closed — as `LOAN_PROPOSED` and `LOAN_MOVED`. The
       termination one matters most: without it the asking manager's button looked like it did nothing for a
       week, which is the silence the owner reported.
+- [x] **"Take him in" then answered 500**, from the owner's console: a CHECK constraint on
+      `nl_notification.kind` that **no code maintained** rejected `LOAN_MOVED`, and the failed insert
+      poisoned the session so the loan transaction rolled back. The loan stayed `AGREED` — nothing half-done.
+      - ✅ **The constraint is rebuilt from `NotificationKind.values()`** at boot, beside the two existing
+            schema-compatibility steps. `ddl-auto=update` widens a column and never a CHECK, so this was a
+            landmine for every future notification.
+      - ✅ **`NotificationService.notify` is `REQUIRES_NEW`.** Its catch gave false comfort: a rejected
+            statement poisons the persistence context, so the caller's own transaction died at flush.
+            A notification is a thing a manager is *told*, not the thing that happened.
+      - ✅ **A guard that passed against the broken database** was replaced. Asserting the database's
+            constraint is vacuous on H2, which has none; it now asserts on the repair itself.
 - [x] **The owner's rule kept where it belongs:** the room is checked when the borrower **accepts**, so the
       button says *Take him in* — the moment the place is committed.
 

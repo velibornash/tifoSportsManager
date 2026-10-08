@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.NotificationKind;
 import org.example.footballmanager.newLogic.repository.NotificationRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -56,7 +57,7 @@ public class NotificationService {
      * <p>A null recipient is the one thing that cannot be defaulted — there is nobody to notify, and
      * writing the row anyway would leave a notification in a table no read ever queries.
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notify(User recipient, NotificationKind kind, String summary,
                        String targetPage, Long targetId) {
         if (recipient == null || recipient.getId() == null || kind == null) {

@@ -26,6 +26,46 @@ public class ResetService {
     }
 
     /**
+     * The notification kinds a row may hold, rebuilt from the enum (2026-10-08).
+     *
+     * <p><b>This is a landmine that was set long before anybody stepped on it.</b> {@code nl_notification.kind}
+     * carries a check constraint listing the four kinds that existed when the table was created. Hibernate's
+     * {@code ddl-auto=update} will widen a column but it will <b>never rewrite a CHECK constraint</b>, and no
+     * code in this repository created or maintained one — so adding a constant to {@link
+     * org.example.footballmanager.newLogic.model.NotificationKind} compiled, passed every test that did not
+     * touch a real database, and then failed at runtime on the first real write:
+     *
+     * <pre>
+     * ERROR: new row for relation "nl_notification" violates check constraint "nl_notification_kind_check"
+     *   Detail: Failing row contains (1, ..., LOAN_MOVED, ..., Zvezdan Vukomanović has arrived on loan, ...)
+     * </pre>
+     *
+     * <p>It is rebuilt here from {@code NotificationKind.values()} rather than from a written list, which is
+     * the whole point: adding a kind is now a one-line change and this step widens the database to match it
+     * on the next start. The list cannot drift from the enum because it <i>is</i> the enum.
+     *
+     * <p>Existing rows are not touched, and no kind is removed — a narrower list would only reject what is
+     * already there.
+     */
+    @Transactional
+    public void alignNotificationKindConstraint() {
+        String[] kinds = java.util.Arrays.stream(
+                        org.example.footballmanager.newLogic.model.NotificationKind.values())
+                .map(Enum::name)
+                .toArray(String[]::new);
+        if (kinds.length == 0) {
+            return;
+        }
+        String allowed = String.join("', '", kinds);
+        log.info("Aligning nl_notification kind constraint with {} kind(s)...", kinds.length);
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS nl_notification DROP CONSTRAINT IF EXISTS "
+                + "nl_notification_kind_check").executeUpdate();
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS nl_notification ADD CONSTRAINT "
+                + "nl_notification_kind_check CHECK (kind IN ('" + allowed + "'))").executeUpdate();
+        log.info("nl_notification now accepts every NotificationKind: {}", allowed);
+    }
+
+    /**
      * MINUTE is a reserved word in H2 2.x, so MatchTickState now persists it as
      * {@code match_minute}. Existing dev/prod databases created with the old bare name keep
      * the legacy column, which Hibernate (ddl-auto=update) would simply leave behind, so drop

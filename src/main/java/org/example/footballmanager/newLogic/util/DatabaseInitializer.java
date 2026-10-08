@@ -192,6 +192,9 @@ public class DatabaseInitializer {
     public void sanitizeLegacySchemaOnStartup() {
         resetService.sanitizeLegacyLineupOrderSchema();
         resetService.migrateTickStateMinuteColumn();
+        // The notification kinds a row may hold. A check constraint written before the enum grew is not
+        // widened by ddl-auto, so a new kind fails on its first real write - see the method.
+        resetService.alignNotificationKindConstraint();
         // Before anything can create a season row. Rewriting calendar years into season numbers
         // happens further down, and a world that still holds 2025 will have a seeder ask for season 1,
         // find nothing, and create a second row beside the one it should have reused. That is how one

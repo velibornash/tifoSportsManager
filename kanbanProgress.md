@@ -451,6 +451,72 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 Loans — "Take him in" returned 500, and it was my notification code (owner, 2026-10-08)
+
+The owner's console, which is how this was found:
+
+```text
+loans/1/activate:1  Failed to load resource: the server responded with a status of 500 ()
+auth.js:331 AuthFetchError: null id in Notification entry
+                  (don't flush the Session after an exception occurs)
+```
+
+and out of the server log:
+
+```text
+ERROR: new row for relation "nl_notification" violates check constraint "nl_notification_kind_check"
+  Detail: Failing row contains (1, ..., LOAN_MOVED, ..., Zvezdan Vukomanović has arrived on loan, ...)
+HHH000099: null id in Notification entry (don't flush the Session after an exception occurs)
+```
+
+**The loan stayed `AGREED`** — the transaction rolled back, so nothing was half-done and the click can be
+repeated once the cause is gone.
+
+### Defect one: a landmine nobody had stepped on
+
+`nl_notification.kind` carries a CHECK constraint listing the four kinds that existed when the table was
+created. **No code in this repository created or maintains it**, and `ddl-auto=update` widens a column but
+never rewrites a CHECK. So adding a constant to `NotificationKind` compiled, passed every test — because
+the test database is built from the entities and has no constraint — and then failed on the first real
+write in the owner's world.
+
+That is a landmine for every future notification, not just this one.
+
+`ResetService.alignNotificationKindConstraint()` now rebuilds the constraint **from
+`NotificationKind.values()`**, and runs at boot beside the two existing schema-compatibility steps. Adding
+a kind is now a one-line change and the database widens with it; the list cannot drift because it *is* the
+enum.
+
+### Defect two, the worse one: the catch was false comfort
+
+`NotificationService.notify` documents itself as never throwing, and catches `RuntimeException` so a
+courtesy row cannot fail the feature that wrote it. **It still failed the feature.** A rejected statement
+poisons the persistence context, so the caller's own transaction died at flush with `HHH000099`.
+
+`notify` is now `REQUIRES_NEW`: the notification gets its own transaction, its failure rolls back only
+itself, and the session doing the real work is untouched. A notification is a thing a manager is *told*,
+not the thing that happened.
+
+### A guard that passed against the broken database
+
+The first version of this test asserted the database's constraint definition. **It passed with the
+constraint narrowed back to four kinds**, because the suite runs on H2, which has no such constraint — the
+test returned early and proved nothing while looking green. The same "green is not evidence" trap as
+everywhere else here.
+
+It now asserts on the **code that repairs the constraint**, which runs on every database: replacing
+`values()` with a written-out list turns it red.
+
+### Guards
+
+- Notification kinds enumerated in the test → a kind declared but not writable is red.
+- `REQUIRES_NEW` removed from `notify` → red.
+- `values()` replaced with a literal list → red.
+
+All three were checked by breaking them, not assumed.
+
+---
+
 ## 🔴 Loans — "I send him back and he does not arrive, and I have no option to accept" (owner, 2026-10-08)
 
 > *"poslajem ga nazad al ne stigne niti imam opciju da prihvatim — loan bi trebao izmedju ostalog da stize
