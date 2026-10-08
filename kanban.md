@@ -2362,20 +2362,24 @@ code path would ever have filled them.
 
 ### Found alongside it, not fixed here
 
-- **Advancing a single day takes minutes, and the cause is this job, not the clock.** Measured while
-  waiting for a matchday: **659 divisions reconciled in 10 minutes**, each logging *"0 removed, 10
-  added"* — a day advance is not only slow, it **deletes and re-inserts every club's season entry on every
-  day**. The reason is `InternationalClubCupJob`, which runs on **every hour of week 1** and calls
-  `seedAllSimulated` **twice for the same season** — `qualifyingSeason` clamps at 1, so in season 1
-  `Math.max(1, season - 1)` and `season` are the same world build asked for twice. A world whose simulated
-  half does not exist yet pays that build twice per tick, which is why one `advance day` ran past twenty
-  minutes with the clock never moving and read as a hang. The class's own javadoc already promised *"running
-  this job twice in one week changes nothing"*.
-  **Fixed** — the second seeding is skipped when the qualifying season is the active one. **Not yet
-  timed**, because another session is mid-edit in this repository and the build will not compile.
-  **Still open:** the world is being built implicitly inside a day advance, when there is already a
-  **Seed other nations** button for exactly that. Whether that belongs in a matchday job is an owner
-  decision, not a performance tweak.
+- **Advancing a single day takes minutes, and the cause is this job, not the clock.** Owner, 2026-10-08:
+  *"if you can break up the process, speed it up — do it, the point is that the functionality remains,
+  the implementation I leave to you."*
+  - ✅ **The duplicate pass is gone.** Week 1 asked for the qualifying season and the active season; in
+        season 1 those are the same season, so the world's static half was built twice per tick.
+  - ✅ **The whole world was one transaction, and that is what made it look like a hang.** Measured: after
+        **37 countries** the `team` table still read **406** rows, because nothing commits until the last
+        country finishes — a failure at country 40 lost all of it. Each country is now its own
+        `REQUIRES_NEW` transaction, so **the same run showed 2,510 → 9,043 teams while it worked.**
+  - ✅ **Two queries per club removed.** The standing-table loop asked for the season competition and the
+        club's entry once per club — the same season-competition row every time. One read and one
+        `saveAll` per division instead: ~30,000 queries to write 14,260 rows. Club creation batched the
+        same way, 14,260 individual INSERTs into one per division.
+  - [ ] **The remaining cost is the rows themselves**, ~43,000 inserts for 14,260 clubs and their entries,
+        which is about one country a minute. Faster, visible, and resumable — but not instant.
+  - ✅ **Where it runs: still the job, by the owner's decision to keep the functionality.** The
+        **Seed other nations** button remains the deliberate route; the matchday job only fills in what is
+        missing, and per-country short-circuiting means it is nearly free once the world is built.
 
 ---
 
@@ -2952,6 +2956,86 @@ in a test file is one edit away from dropping the owner's world.
 version fails the increase test, and renaming the CSS selector so the JS's class has no styling fails the
 dot test — which is exactly how this bug would arrive in production, the class set, a JS-only test green,
 and no dot on screen.
+
+---
+
+## ✅ P2-24 — Loans: a player too young for his tier goes down for minutes (owner, 2026-10-08)
+
+**A feature that had been half-built for three sprints.** Sprint 3.4 wrote the `Loan` entity, created
+the `loan` table, wrote `LoanService` and wired `closeFinishedLoans()` into `WeekRolloverJob`. **Nothing
+could create a loan**, nothing moved a player, `isRegisteredByNobody` and `wageCarriedBy` had no callers,
+and there was no controller. The weekly tick has been dutifully closing loans that nothing could open.
+
+### The rules
+
+| | |
+|---|---|
+| Age | younger than **24** |
+| Country | **domestic only** |
+| Tier | **strictly down**: 1→2–5, 2→3–5, 3→4–5, 4→5, **5 cannot lend at all** |
+| Clubs | **human only, both sides** — an AI club has no policy for agreeing to one |
+| Duration | **to the end of the season it started in** — week 12 day 7, back to the club |
+| Week 12 | **refused** — a loan started now returns in six days having played nothing |
+| Ending | **either** club may ask; agreement ends it at once, otherwise it ends a week later |
+| Wage, training | **stay with the lending club**. The borrower gives minutes and nothing else |
+
+### The owner's model, and why it is cheaper than mine
+
+He proposed it: keep `Player.team` on the lender. I had planned to move the player to the borrower and
+filter the lender's wage bill and trainer. He was right, and for a reason worth keeping: **his two
+explicitly stated rules become correct by construction instead of by remembering a filter.** A forgotten
+filter means the borrower's coaches train a player the owner said the lender trains, and nothing reports
+it.
+
+### Two lists, and they are not the same
+
+| | fieldable | counts against the 30 |
+|---|---|---|
+| owned, not loaned out | yes | yes |
+| owned, **loaned out** | **no** | **yes** |
+| borrowed in | yes | yes |
+
+**The middle row is a bug the tests caught in this commit.** The first version was `owned + borrowed-in`,
+which left a loaned-out player fieldable by the club that owns him — **both clubs could field him on one
+matchday**. And fixing it exposed the third column: loaning somebody out frees no places, or loans would
+be a way to grow a squad past the limit one loan at a time.
+
+### Two rules dropped, both in the javadoc
+
+**Nationality is not enforced.** `Player.nationality` is set only by `BotSquadGenerator` — **7,730 of
+10,130 players have none** — and given the domestic rule it either adds nothing or blocks every
+foreign-signed domestic player. `Player.nationality` being three-quarters null is recorded below as its
+own defect rather than fixed here.
+
+**No transfer-window gate.** Sprint 3.4 had one because a loan moved a player. It does not.
+
+### A loanee cannot be traded — and this had no test
+
+The guards in `TransferService` and `PlayerContractService` were written, believed covered, and then a
+mutation deleted the "cannot list" guard and `LoanServiceTest` passed **19/19**. They had no test at
+all. `LoaneeCannotBeTradedTest` exists because of that, and because the failure mode is concrete:
+`requirePlayerTeam` resolves the **lender** as the seller, so a buyer would pay the wrong club and the
+borrower would carry on fielding a player sold out from under it.
+
+### Not done
+
+**No UI.** The whole feature is reachable over HTTP (`/loans/**`) and nothing calls it from a screen.
+
+---
+
+## 🔴 `Player.nationality` is null for 7,730 of 10,130 players
+
+Found while implementing the loan rules, 2026-10-08. **`BotSquadGenerator:133` is the only place that
+sets it** — `PlayerFactory`, which builds the actual club squads, never does.
+
+Three-quarters of the world's players have no nationality. **Nothing currently reads the column**, so
+nothing is broken today, and that is exactly why it is a trap rather than a bug: the next feature that
+needs "is this player eligible for X" will read `null` and silently refuse three players in four.
+
+Options, none taken: set it in `PlayerFactory` and backfill the existing world from the club's country,
+or delete the column. The first is honest — a player's nationality should be fixed when he is created
+and never follow him across a transfer — but it is a data migration over ten thousand rows and it was not
+asked for.
 
 ---
 

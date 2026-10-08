@@ -1,5 +1,110 @@
 # kanbanProgress.md — the append-only log
 
+## 🟢 P2-24 — Loans (2026-10-08)
+
+### What existed before I wrote a line
+
+**A half-built feature from Sprint 3.4, and the owner did not know it was there.** `Loan`, the `loan`
+table in the live database, `LoanRepository`, `LoanService` with seven methods, `LoanServiceTest` at 231
+lines, and `closeFinishedLoans()` called from `WeekRolloverJob:90`. The weekly tick had been closing
+loans that nothing could ever open.
+
+What was missing: no controller, nothing that moved a player, `isRegisteredByNobody` and `wageCarriedBy`
+with zero callers, and `FinanceCategory.LOAN_IN` / `LOAN_OUT` never posted to. **Bookkeeping with no
+football attached**, for three sprints.
+
+### His model beat mine, and I said so
+
+He proposed it in one line — *dodas polje u Team loanedPlayer, i za squad konkurise i Player i
+loanedPlayer* — and I had been planning to move `Player.team` to the borrower and then filter the
+lender's wage bill and the lender's trainer.
+
+His version was better for a reason I had underweighted: **his two explicit rules — the lender pays, the
+lender trains — become correct by construction instead of by remembering a filter.** In mine a forgotten
+filter means the borrower's coaches train a player the owner said the lender trains, and nothing anywhere
+reports it.
+
+His half of the idea that does not work is the field: `Team.players` is `cascade = ALL,
+orphanRemoval = true`, so a loanee added to it is **deleted** when the loan ends. `PlayersRetireTest`
+already carries the note that `Team.removePlayer` "would have deleted it", which is why that method has
+no callers. And `mappedBy = "team"` means `Player.team` is the single owning side — a second mapped
+collection over the same rows would be a second source of truth drifting from the `loan` table.
+
+The squad therefore lives in `SquadRegistrationService.availablePlayers`, derived from the `loan` rows.
+
+### Two bugs the tests caught, both in code I had just written
+
+**A loaned player was fieldable by both clubs.** The union was `owned + borrowed-in`; because a loanee
+keeps `Player.team` on the lender, he was still in the lender's list. Two clubs, one player, one
+matchday. The fix is `owned − loaned-out + borrowed-in`.
+
+**`acceptTermination` recorded the wrong outcome.** It read the closing status off the club that
+*agreed* rather than the one that *asked*, so every mutual recall was filed as a borrower sending him
+back instead of a lender recalling him. `enforceNotices` had it right; the acceptance path did not. Both
+branches now read the requester, and `theBorrowerCanSendHimBack` exists to keep them apart.
+
+### Fixing the first bug produced a decision I had not made
+
+A player loaned out cannot be fielded by the lender — but he is still registered there, and loaning out
+fifteen players should not free fifteen places. So **`availablePlayers` and `squadSize` are different
+lists** and both are asked for. They are tabulated in the class javadoc so the next reader does not
+re-unite them.
+
+### A guard I believed was tested, and was not
+
+Mutation seven deleted the "cannot put a loanee on the transfer list" guard and `LoanServiceTest` passed
+**19/19**. The guards in `TransferService` and `PlayerContractService` had no test at all. That is the
+fourth time in this project — the contract count, the nineteen-year-old band, the `test-compile` build,
+and now this — and the pattern is always the same: a guard that is obviously necessary, so nobody writes
+the test.
+
+`LoaneeCannotBeTradedTest` exists because of that mutation. The failure it protects against is concrete:
+`requirePlayerTeam` resolves the **lender** as the seller, so a buyer would pay the wrong club and the
+borrower would keep fielding a player who had been sold.
+
+### The old test passed only in suite order
+
+`LoanServiceTest` did `clocks.findAll().stream().findFirst().orElseThrow()` against an in-memory H2 with
+**no clock row**. It was green because another test class in the shared context had created one first; run
+alone it threw 19 errors. Same class as P2-6: green on the order, red on its own. It now calls
+`seasons.getOrCreateClock()`.
+
+### Verification
+
+**133 green** across fourteen classes, including the two loan classes and the four the squad-union change
+touches. **Eight mutations, all caught:**
+
+| Mutation | Caught by |
+|---|---|
+| "loaned out" dropped from the fieldable list | `aLoaneeCountsAndCanBeFielded` — *"the lending club must not be able to field a player who is playing elsewhere"* |
+| termination status read off the agreeing club | 3 tests, both directions |
+| tier ladder removed | `onlyDownTheLadder`, `theTierIsCheckedAgainWhenHeArrives` |
+| bot clubs allowed | `botsAreOut` |
+| age limit removed | `onlyTheYoungGoOut` |
+| notice week never set | `anUnansweredNoticeEndsIt`, `theBorrowerCanSendHimBack` |
+| cannot-list guard removed | `cannotBeListed` — only after the test above was written |
+| cannot-sign guard removed | `cannotBeSigned` |
+
+### Two test bugs of my own, for the record
+
+`onlyDownTheLadder` reused one player across two successful loans, so the second offer failed as
+`LOAN_ALREADY_OUT` rather than as whatever the ladder case was testing. And an assertion I added while
+writing it — that a second `enforceNotices()` returns 1 — asserted the opposite of idempotence and was
+wrong.
+
+### Not done
+
+**No UI.** `/loans/**` is complete and unreachable from a screen.
+
+### Blocked on, not caused by, parallel work
+
+Three of the owner's files broke the build under me in twenty minutes (`PyramidBuilder` missing a
+`SeasonCompetition` import, then `InternationalClubCupJob.java:194`). I added the one missing import to
+`PyramidBuilder` to unblock verification and **did not stage that file** — it is theirs, along with
+`InternationalClubCupJob`, `SimulatedWorldSeeder` and two test classes.
+
+---
+
 ## 🟢 P2-23 — one squad limit, counted in players (2026-10-08)
 
 Owner rule, in his words: clubs (not NT) have **MAX 30 players**, seniors and juniors and loanees all
