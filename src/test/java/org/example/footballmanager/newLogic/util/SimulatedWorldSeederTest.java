@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * A simulated country is in the world without being a season's worth of database.
@@ -35,7 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Transactional
+// **No @Transactional, and that is deliberate.** SimulatedWorldSeeder.seed is REQUIRES_NEW — one
+// transaction per country, so the static world commits as it is built and a failure costs one country
+// instead of all forty-six. A REQUIRES_NEW boundary cannot see another transaction's uncommitted rows,
+// so a @Transactional fixture country was invisible to the seeder: the test failed on a foreign key
+// from a Competition pointing at a Country that had never been committed. Each test uses its own ISO
+// code, so committed fixtures do not collide.
 class SimulatedWorldSeederTest {
 
     @Autowired private SimulatedWorldSeeder seeder;
@@ -47,6 +51,8 @@ class SimulatedWorldSeederTest {
     @Autowired private org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository seasonCompetitions;
     @Autowired private PlayerRepository players;
     @Autowired private MatchFixtureRepository fixtures;
+
+    @Autowired private org.springframework.transaction.support.TransactionTemplate transactions;
 
     @Test
     @DisplayName("a simulated country gets its whole pyramid, its ratings and a standing table")
@@ -174,7 +180,15 @@ class SimulatedWorldSeederTest {
                 .orElse(0);
     }
 
+    /**
+     * Reads the clubs of one tier and their reputations.
+     *
+     * <p>Inside its own transaction, because this class is deliberately not {@code @Transactional} (the
+     * seeder commits per country) and {@code Team.competition} is a lazy proxy — walking it outside a
+     * session is a LazyInitializationException, not a wrong answer.
+     */
     private double tierReputation(int tier) {
+        return transactions.execute(status -> {
         List<Team> clubs = teams.findByNameStartingWithIgnoreCase("ZZR").stream()
                 .filter(t -> t.getCompetition() != null
                         && t.getCompetition().getTier() != null
@@ -184,6 +198,7 @@ class SimulatedWorldSeederTest {
         double min = clubs.stream().mapToDouble(t -> t.getReputation() == null ? 0 : t.getReputation()).min().orElseThrow();
         double max = clubs.stream().mapToDouble(t -> t.getReputation() == null ? 0 : t.getReputation()).max().orElseThrow();
         return max;
+        });
     }
 
     private Country country(String name, String iso) {

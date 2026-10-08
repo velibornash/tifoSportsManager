@@ -27,34 +27,37 @@ import java.util.List;
  * <h2>What it does, in order of the season</h2>
  *
  * <ul>
- *   <li><b>Week 1</b> — for each of the fifteen cups, read the clubs that qualified <i>off last
- *       season's finished tables</i> and draw the group stage. This is the only week that needs the
- *       qualification rule; after it the bracket is self-contained.</li>
- *   <li><b>Weeks 7-10</b> — walk one knockout round per week. The last sixteen cannot be drawn until the
- *       group stage is finished, so this is re-entered every week and stops wherever the results do not
- *       yet reach. Week 10 carries the final and the third-place play-off together.</li>
+ *   <li><b>Week 12, day 7</b> — the last day of the season, with the tables finished: for each of the
+ *       fifteen cups, read the clubs that qualified <i>off this season's tables</i> and draw the group
+ *       stage <b>into next season's</b> competition. This is the only week that needs the qualification
+ *       rule; after it the bracket is self-contained. (Owner, 2026-10-08: the draw happens at the end of
+ *       the season it qualifies from, because a promotion playoff can otherwise move a club into a
+ *       division whose cup it has already been drawn into.)</li>
+ *   <li><b>Weeks 7-10 of that next season</b> — walk one knockout round per week. The last sixteen cannot
+ *       be drawn until the group stage is finished, so this is re-entered every week and stops wherever
+ *       the results do not yet reach. Week 10 carries the final and the third-place play-off together.</li>
  * </ul>
  *
  * <h2>Why this is not on day 2 like the domestic cup</h2>
  *
  * <p>{@link CupDrawJob} draws the national cup three days before the tie, because clubs need time to scout
  * the opposition. A continental field is drawn once a season, its five matchdays are already spread
- * across weeks 1-5, and a manager can read a group off the group table — so there is nothing to scout in
- * week 1 that a calendar does not already say.
+ * across weeks 1-5, and a manager can read a group off the group table — so there is nothing to scout
+ * that a calendar does not already say.
  *
  * <h2>Which season's tables</h2>
  *
- * <p>The <b>finished</b> one. A cup is entered on the strength of last season, so a club that wins its
- * division in week 12 cannot enter the same season's Champions Cup by winning it in week 12 — the entry
- * is decided by the table everyone has already played. {@link #qualifyingSeason(int)} clamps at 1, which
- * is what makes season 1 honest: there is no season 0, so nothing has finished, no club qualifies, and no
- * field is invented from a season that was never played.
+ * <p>The one that has <b>just finished</b>, which is why this runs on the last day of it. A cup is entered
+ * on the strength of a finished table, so the draw cannot honestly happen before the season ends — and a
+ * club that wins its division in week 12 enters <i>next</i> season's cup by winning it, never the one it
+ * is in the middle of. Season 1 is honest for the same reason it always was: its tables have nothing in
+ * them yet, so no club qualifies and no field is invented from a season nobody played.
  *
  * <h2>Hour 8, and order 30</h2>
  *
- * <p>Before the day-1 matchday job at 20:00, because this job <b>creates</b> the fixtures that job plays
- * — and before the 20:45 kickoff. The existing {@code league-table-reconcile-a} job uses hour 1 on day 4
- * for the same reason.
+ * <p>On week 12 day 7 the league's season is over, so the tables are settled before this runs; the hour
+ * and order are kept from the old week-1 slot because nothing else competes for them. The existing
+ * {@code league-table-reconcile-a} job uses hour 1 on day 4 for the same kind of reason.
  *
  * <p>Idempotent by construction: the draw skips a cup whose fixtures already exist, and the bracket stops
  * at the first round whose results are not in. Running this job twice in one week changes nothing.
@@ -91,15 +94,28 @@ public class InternationalClubCupJob implements DayJob {
 
     @Override
     public int week() {
-        // Any week: week 1 is the group stage and 7-10 are the knockouts. The job decides which by
-        // looking at the week rather than being registered twice under one key — a shared key would let
-        // whichever ran first mark the other done.
+        // Any week: week 12 draws, and weeks 7-10 of the following season are the knockouts. The job
+        // decides which by looking at the week rather than being registered twice under one key — a
+        // shared key would let whichever ran first mark the other done.
         return ANY_WEEK;
     }
 
+    /**
+     * Week 12, day 7 — the last day of the season (owner, 2026-10-08).
+     *
+     * <p><b>The draw happens at the end of the season it qualifies from.</b> Previously it ran on day 1
+     * of week 1 and read <i>last</i> season's tables, which had two consequences the owner did not want:
+     * a promotion playoff could still change who was in which division after the field had been drawn,
+     * and a tier-2 champion who qualified could end up promoted to tier 1 — so he would be seen playing
+     * "Champions Cup" in a division he no longer belongs to. Drawing the moment the tables are finished
+     * removes the confusion rather than explaining it.
+     */
+    public static final int DRAW_WEEK = 12;
+    public static final int DRAW_DAY = 7;
+
     @Override
     public int day() {
-        return InternationalClubCupDraw.CUP_DAY;
+        return DRAW_DAY;
     }
 
     @Override
@@ -125,28 +141,24 @@ public class InternationalClubCupJob implements DayJob {
         // explicit world work; boot still does not seed anything.
         cups.ensureCompetitionsDurably();
 
-        if (week == 1) {
-            // Simulated clubs are deliberately playerless until a competition needs them. Qualification
-            // needs their static tables first, so finish that world step before reading the field. Both
-            // seasons matter: entry comes from last season, while the active season owns the fixtures.
+        if (week == DRAW_WEEK) {
+            // Simulated clubs are deliberately playerless until a competition needs them, and qualification
+            // reads finished tables, so the world's static half is completed before the field is read.
             //
-            // **The two calls are the same call in season 1.** qualifyingSeason clamps at 1 because there
-            // is no season 0, so `seedAllSimulated(Math.max(1, 0))` and `seedAllSimulated(1)` are the same
-            // world build asked for twice — and this job fires on every hour of week 1, so the world's
-            // static half was being built twice per tick, which is why a day advance on an unseeded world
-            // took twenty minutes and looked like a hang. The javadoc above already promised that running
-            // this job twice in one week changes nothing; this is where it was not true.
-            int qualifying = qualifyingSeason(season);
-            simulatedWorldSeeder.seedAllSimulated(qualifying);
-            if (qualifying != season) {
-                simulatedWorldSeeder.seedAllSimulated(season);
-            }
-            drawEveryGroupStage(season);
+            // One season, not two: the draw qualifies off **this** season's tables and creates **next**
+            // season's competition, so this season is the one that has to exist. The old version asked for
+            // both, and in season 1 those were the same call — the world's static half built twice per
+            // tick, which is why a day advance on an unseeded world ran past twenty minutes.
+            //
+            // Each country is its own transaction now, so this is visible while it runs and a failure
+            // costs one country rather than all forty-six.
+            simulatedWorldSeeder.seedAllSimulated(season);
+            drawEveryGroupStage(season + 1, season);
         } else if (isKnockoutWeek(week)) {
             walkEveryBracket(season, week);
         } else {
-            // Weeks 2-5 are group matchdays; weeks 6, 11 and 12 belong to national teams and the league
-            // promotion play-off.
+            // Weeks 1-5 of the cup season are group matchdays; weeks 6 and 11 belong to national teams
+            // and the league promotion play-off.
             log.debug("Club cups: week {} is neither the group draw nor a knockout round.", week);
         }
     }
@@ -158,8 +170,15 @@ public class InternationalClubCupJob implements DayJob {
      * Cup never meets tier 5's. A cup already drawn is skipped by the draw itself, so this is safe to
      * re-run.
      */
-    private void drawEveryGroupStage(int season) {
-        int qualifying = qualifyingSeason(season);
+    /**
+     * Draws every cup's group stage for {@code targetSeason} off the finished tables of
+     * {@code qualifyingSeason}.
+     *
+     * <p>Two seasons as arguments rather than one derived inside, because they are genuinely different
+     * numbers now and the old helper — which reached back a season — is what put the draw in week 1.
+     */
+    private void drawEveryGroupStage(int targetSeason, int qualifyingSeason) {
+        int qualifying = qualifyingSeason;
 
         for (InternationalClubCups.Cup cup : InternationalClubCups.cups()) {
             Competition competition = theCompetition(cup);
@@ -172,13 +191,15 @@ public class InternationalClubCupJob implements DayJob {
             if (entrants.isEmpty()) {
                 log.info("Club cups: {} has no qualified clubs. The entry rule reads season {}'s finished "
                                 + "tables, and season {} has none.",
-                        cup.fullName(), qualifying, season);
+                        cup.fullName(), qualifying, qualifying);
                 continue;
             }
             InternationalClubCupDraw.DrawResult result = draw.ensureGroupStage(
-                    competition, entrants, InternationalClubCupDraw.qualifyPerGroupFor(cup.name()), season);
-            log.info("Club cups: {} — {} club(s) into {} group(s), {} group fixture(s).",
-                    cup.fullName(), result.clubs(), result.groups(), result.groupFixtures());
+                    competition, entrants, InternationalClubCupDraw.qualifyPerGroupFor(cup.name()), targetSeason);
+            log.info("Club cups: {} — {} club(s) from season {} into season {}: {} group(s), "
+                            + "{} group fixture(s).",
+                    cup.fullName(), entrants.size(), qualifying, targetSeason,
+                    result.clubs(), result.groups(), result.groupFixtures());
         }
     }
 
@@ -221,10 +242,6 @@ public class InternationalClubCupJob implements DayJob {
     }
 
     /** The season whose finished tables decide this season's entry. Never below 1. */
-    private int qualifyingSeason(int season) {
-        return Math.max(1, season - 1);
-    }
-
     /**
      * The competition row for a cup, by tier and name.
      *

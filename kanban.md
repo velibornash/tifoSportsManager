@@ -2302,6 +2302,7 @@ somebody else's played match"*. Each card passes an explicit kind, never a guess
 |---|---|---|
 | **P1-CTRY-1** | **A new tab listing the clubs of that country, ranked.** No endpoint exists today; `findClubTeamsForCountry` is already indexed. | ✅ A **Clubs** tab, ranked by the same ranking points, division on every row, fetched only when that tab is asked for. |
 | **P1-CTRY-2** | **International qualifying moves out of General into its own tab.** | ✅ Its own **Qualifying** tab, next to General / Calendar / Clubs / National Team / U-21. Removed from the General panel. |
+| **P1-CUPS-DRAW** | **When does the international club-cup draw happen?** | ✅ **Owner, 2026-10-08: week 12, day 7** — *"week 12 day 7 ima informacije koji su se timovi kvalifikovali, napraviti odmah zreb od tih timova… da ne bi bilo zabune, zreb radimo na kraju sezone."* Drawn the moment the tables are finished, off **that** season's tables, into **next** season's competition. Replaces week 1 reading the season before. |
 
 ### P0 — Elections (owner already approved all of this on 2026-10-07)
 

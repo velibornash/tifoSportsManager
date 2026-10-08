@@ -643,8 +643,12 @@ There are three named international club cups across five tiers: Champions, Mast
 The backend creates 15 competition rows, qualifies clubs from finished domestic tables, gives simulated
 entrants lazy squads, draws group stages, records group tables and advances knockout rounds.
 
-`InternationalClubCupJob` is now a live job at week/day/hour order 30. The previous unreachable-only
-draw path was replaced. `ClubCupController` exposes:
+`InternationalClubCupJob` is a live job, hour 8, order 30, on **any** week; it decides what to do from the
+week number. The group draw runs on **week 12, day 7** — the last day of the season — qualifying off that
+season's finished tables and creating **next** season's competition (owner, 2026-10-08). It used to run on
+week 1 and read the season before, which meant the field was decided before the season that decides it
+finished, and a promotion could leave a club in a cup that is no longer its division's. Weeks 7-10 of the
+cup season are the knockouts. `ClubCupController` exposes:
 
 ```text
 GET /club-cups
@@ -655,7 +659,7 @@ The World page links into `club-cup-view.js`, which renders each tier's groups, 
 three World rows report complete 48, 96 and 48 fields once a finished season exists. Small fields of 2–7 entrants now use a knockout
 path; two entrants play a direct final and odd fields carry a bye. The repair action durably creates
 missing international rows before filling static simulated-country tables, and the
-week-1 job repeats that durable repair boundary before drawing. The domestic cup draw is separately country-scoped
+draw-night job repeats that durable repair boundary before drawing. The domestic cup draw is separately country-scoped
 and no longer selects one primary cup globally.
 
 The repair boundary was verified against PostgreSQL on 2026-10-06: all 15 competition rows existed, all

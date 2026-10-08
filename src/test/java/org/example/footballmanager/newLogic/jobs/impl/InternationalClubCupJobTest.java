@@ -105,9 +105,9 @@ class InternationalClubCupJobTest extends BaseTest {
     void weekOneDrawsTheGroupStage() {
         Worlds world = aWorldWithEightChampions();
 
-        job.run(context(world.season(), 1));
+        job.run(drawNight(world.season()));
 
-        Set<String> inTheCup = clubNamesIn(world.season());
+        Set<String> inTheCup = clubNamesIn(world.season() + 1);
         assertEquals(world.champions().size(), world.champions().stream()
                         .map(Team::getName).filter(inTheCup::contains).count(),
                 "every division winner should be in the Champions Cup. Drawn: " + inTheCup.size() + " club(s).");
@@ -118,9 +118,9 @@ class InternationalClubCupJobTest extends BaseTest {
     void theGroupStageIsOnDayOne() {
         Worlds world = aWorldWithEightChampions();
 
-        job.run(context(world.season(), 1));
+        job.run(drawNight(world.season()));
 
-        List<MatchFixture> drawn = fixturesIn(world.season());
+        List<MatchFixture> drawn = fixturesIn(world.season() + 1);
         assertFalse(drawn.isEmpty(), "the Champions Cup drew nothing, so this test proves nothing");
         for (MatchFixture fixture : drawn) {
             assertEquals(1, fixture.getDayNumber(),
@@ -133,10 +133,10 @@ class InternationalClubCupJobTest extends BaseTest {
     void theGroupStageIsFiveWeeks() {
         Worlds world = aWorldWithEightChampions();
 
-        job.run(context(world.season(), 1));
+        job.run(drawNight(world.season()));
 
         Set<Integer> weeks = new TreeSet<>();
-        for (MatchFixture fixture : fixturesIn(world.season())) {
+        for (MatchFixture fixture : fixturesIn(world.season() + 1)) {
             weeks.add(fixture.getWeekNumber());
         }
         assertEquals(Set.of(1, 2, 3, 4, 5), weeks,
@@ -148,14 +148,14 @@ class InternationalClubCupJobTest extends BaseTest {
     void theJobIsIdempotent() {
         Worlds world = aWorldWithEightChampions();
 
-        job.run(context(world.season(), 1));
-        int afterFirst = fixturesIn(world.season()).size();
+        job.run(drawNight(world.season()));
+        int afterFirst = fixturesIn(world.season() + 1).size();
         assertTrue(afterFirst > 0, "the first run drew nothing, so this test proves nothing");
 
-        job.run(context(world.season(), 1));
-        job.run(context(world.season(), 1));
+        job.run(drawNight(world.season()));
+        job.run(drawNight(world.season()));
 
-        assertEquals(afterFirst, fixturesIn(world.season()).size(),
+        assertEquals(afterFirst, fixturesIn(world.season() + 1).size(),
                 "the done-flag is not the only guard — a second run in the same week must find the draw "
                         + "already there and leave it alone");
     }
@@ -166,12 +166,12 @@ class InternationalClubCupJobTest extends BaseTest {
     void nationalTeamWeeksAreLeftAlone() {
         Worlds world = aWorldWithEightChampions();
 
-        job.run(context(world.season(), 1));
-        int afterWeek1 = fixturesIn(world.season()).size();
+        job.run(drawNight(world.season()));
+        int afterDraw = fixturesIn(world.season() + 1).size();
 
         for (int week : new int[]{6, 11, 12}) {
             job.run(context(world.season(), week));
-            assertEquals(afterWeek1, fixturesIn(world.season()).size(),
+            assertEquals(afterDraw, fixturesIn(world.season() + 1).size(),
                     "week " + week + " is not a cup week and must not add a fixture");
         }
     }
@@ -201,7 +201,9 @@ class InternationalClubCupJobTest extends BaseTest {
      */
     private Worlds aWorldWithEightChampions() {
         int season = SEASONS.incrementAndGet();
-        int qualifying = season - 1;
+        // The draw now runs on the last day of the season it qualifies from, so the finished table this
+        // world needs is **this** season's, and the group stage it produces belongs to the next one.
+        int qualifying = season;
         cups.ensureCompetitionsDurably();
 
         List<Team> champions = new ArrayList<>();
@@ -288,6 +290,16 @@ class InternationalClubCupJobTest extends BaseTest {
 
     private JobContext context(int season, int week) {
         return new JobContext(season, week, InternationalClubCupDraw.CUP_DAY, 8);
+    }
+
+    /**
+     * The draw tick: week 12, day 7 — the last day of the season (owner, 2026-10-08).
+     *
+     * <p>Not week 1 any more: the field is drawn the moment the tables are finished, off this season's
+     * tables and into next season's competition.
+     */
+    private JobContext drawNight(int season) {
+        return new JobContext(season, InternationalClubCupJob.DRAW_WEEK, InternationalClubCupJob.DRAW_DAY, 8);
     }
 
     private SeasonCompetition aFinishedSeason(Competition competition, int season) {

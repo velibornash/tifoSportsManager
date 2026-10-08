@@ -337,6 +337,32 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 P0-CUPS — the draw happens at the end of the season it qualifies from (2026-10-08)
+
+> *"week 12 day 7 ima informacije koji su se timovi kvalifikovali, napraviti odmah zreb od tih timova
+> (jer npr tim champion iz tier2 koji se se kvalifikovao ce igrati sledece sezone Champions Cup tier 2 a
+> on ce zapravo preci u tier 1 kao sampion — to je ok ali da ne bi bilo zabune zreb radimo na kraju
+> sezone)"*
+
+The job drew on **week 1, day 1**, reading the season *before* by way of a `qualifyingSeason` clamp. Two
+things were wrong with that, and only one of them was arithmetic.
+
+**A cup field was decided before the season that decides it had finished.** A promotion playoff in week 12
+could still move a club into a different division after the field had been drawn — and the owner named the
+case he cared about: a tier-2 champion who qualified plays next season's **tier-2** Champions Cup, and may
+be promoted to tier 1 as champion. That is correct football, but a manager seeing his club in a "Champions
+Cup" that is not his division's is a confusion the game should not create.
+
+Now: **week 12, day 7**, qualifying off that season's finished tables and creating **next** season's
+competition. The two seasons are explicit parameters of `drawEveryGroupStage(targetSeason,
+qualifyingSeason)` rather than one derived inside, because the old helper — which reached back a season — is
+precisely what put the draw in week 1.
+
+`DRAW_WEEK` and `DRAW_DAY` are asserted directly, because nothing else in that class would notice the draw
+moving back: a week-1 draw is exactly what it did before.
+
+---
+
 ## 🔴 P0-CLOCK — week 1 built the world's static half twice per tick (2026-10-08)
 
 Found while waiting for a live matchday to verify the ranking rebuild, and the reason that verification
@@ -363,19 +389,35 @@ The class's own javadoc already promised *"running this job twice in one week ch
 the draw, false of the seeding. And the existing `theJobIsIdempotent` test passes against the broken code,
 because it counts **fixtures** and the fixtures were never what doubled.
 
-### Fixed, and the guard is asserted through the seeder
+### Then the real cause, in three more pieces (owner: "break it up and speed it up")
 
-The second seeding is skipped when the qualifying season is the active one. `InternationalClubCupJobSeedingTest`
-verifies the *seeder* calls rather than the fixtures, which is the whole difference; putting the duplicate
-call back turns `seasonOneSeedsOnce` red.
+1. **The whole world was one transaction.** Measured on the old code: after **37 of 46 countries** the
+   `team` table still read **406** rows, because nothing commits until the last country finishes. A failure
+   at country 40 lost all of it and left an empty table, with no way to tell how far it had got. Each
+   country is now its own `REQUIRES_NEW` transaction — and the same work then showed **2,510 → 9,043 teams
+   while it ran**. That is the difference between a slow button and a hung one.
+2. **Two queries per club, to write a standing table.** The loop asked for the season competition *and* the
+   club's entry once per club — the season competition is the same row every time. Across the static world
+   that is ~30,000 queries to write 14,260 rows. Now one read and one `saveAll` per division.
+3. **One INSERT per club.** `teams.save` inside the club loop, so 14,260 individual inserts each with its
+   own flush. Now one `saveAll` per division.
 
-### Not timed, and why
+`PyramidBuilderQueryCountTest` — which counts queries and is the test that would notice — passes with the
+lower count.
 
-Another session is mid-edit in this repository — `YouthAcademyService`, `TalentRange`,
-`GraduationRespectsTheSquadTest` and others are being changed by something else, and the module does not
-currently compile. So the wall-clock improvement is **reasoned, not measured**: the removed pass is the
-entire seeding cost of a tick on an unbuilt world, so the duplicate is gone, and the first build still takes
-minutes. That distinction is worth keeping — this is not "the day advance is fast now".
+### The lesson from the transaction change, and what it cost in tests
+
+`SimulatedWorldSeederTest` is **no longer `@Transactional`**, and that is not tidying. A `REQUIRES_NEW`
+boundary cannot see another transaction's uncommitted rows, so the test's fixture country was invisible to
+the seeder and the test failed on a foreign key from a `Competition` pointing at a `Country` that had never
+been committed. Same trap as `RankingPointsRebuildServiceTest`, from the same cause. One of its helpers
+then needed its own transaction, because `Team.competition` is a lazy proxy and the class no longer holds
+a session for the whole method.
+
+### What is still slow, honestly
+
+~43,000 row inserts for 14,260 clubs and their entries — about a country a minute. Faster, visible,
+resumable, and no longer mistaken for a hang. Not instant, and the board says so.
 
 ### Still an owner decision
 

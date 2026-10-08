@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.util.SimulatedWorldSeeder;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -33,6 +34,8 @@ import static org.mockito.Mockito.when;
  */
 class InternationalClubCupJobSeedingTest {
 
+    private static final int DRAW_WEEK = InternationalClubCupJob.DRAW_WEEK;
+
     private final SimulatedWorldSeeder seeder = mock(SimulatedWorldSeeder.class);
     private final InternationalClubCups cups = mock(InternationalClubCups.class);
     private final CompetitionRepository competitions = mock(CompetitionRepository.class);
@@ -50,21 +53,41 @@ class InternationalClubCupJobSeedingTest {
     }
 
     @Test
-    @DisplayName("season 1 seeds the world once, because the qualifying season is the active one")
-    void seasonOneSeedsOnce() {
-        job().run(context(1, 1));
+    @DisplayName("the draw night seeds the world once, for the season whose tables it reads")
+    void theDrawNightSeedsOnce() {
+        job().run(context(5, DRAW_WEEK));
 
-        verify(seeder, times(1)).seedAllSimulated(1);
-        verify(seeder, never()).seedAllSimulated(0);
+        verify(seeder, times(1)).seedAllSimulated(5);
+        verify(seeder, never()).seedAllSimulated(4);
     }
 
     @Test
-    @DisplayName("a later season seeds both, because entry comes off last season's finished tables")
-    void laterSeasonsSeedBoth() {
+    @DisplayName("week 1 is no longer the draw — the field is drawn at the end of the season")
+    void weekOneDoesNotSeed() {
         job().run(context(5, 1));
 
-        verify(seeder).seedAllSimulated(4);
-        verify(seeder).seedAllSimulated(5);
+        verify(seeder, never()).seedAllSimulated(anyInt());
+    }
+
+    /**
+     * The trigger itself, stated as the owner's sentence.
+     *
+     * <p>"week 12 day 7 has the information of who qualified — draw immediately from those teams,
+     * because a tier-2 champion who qualified plays next season's tier-2 Champions Cup and may be promoted
+     * to tier 1 as champion, and to avoid confusion the draw happens at the end of the season."
+     *
+     * <p>Asserted on {@code day()} and {@code DRAW_WEEK} rather than on behaviour, because the behaviour
+     * is covered above and this is the thing that can silently regress: nothing else in the class would
+     * notice the draw moving back to week 1, because a week-1 draw is exactly what it did before.
+     */
+    @Test
+    @DisplayName("the draw runs on week 12 day 7")
+    void theDrawRunsAtTheEndOfTheSeason() {
+        InternationalClubCupJob theJob = job();
+
+        assertEquals(12, DRAW_WEEK, "the last week of a twelve-week season");
+        assertEquals(7, theJob.day(), "and its last day");
+        assertEquals(12, DRAW_WEEK, "not week 1, which is when it used to run");
     }
 
     @Test

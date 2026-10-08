@@ -7,6 +7,7 @@ import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.PromotionRule;
 import org.example.footballmanager.newLogic.model.RuleType;
+import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.PromotionRuleRepository;
@@ -21,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Locale;
 import java.util.Set;
@@ -300,6 +303,7 @@ public class PyramidBuilder {
     private int fillStaticDivision(Competition league, Country country, int seasonYear, int tier,
                                    Set<String> existingNames) {
         List<Team> made = new ArrayList<>();
+        List<Team> fresh = new ArrayList<>();
         for (int index = 0; index < CLUBS_PER_DIVISION; index++) {
             String name = clubName(country, league, index);
             Team team = existingNames.contains(name.toLowerCase(Locale.ROOT))
@@ -313,9 +317,27 @@ public class PyramidBuilder {
                 team.setHumanControlled(false);
                 team.setReputation(reputationFor(tier));
                 team.setBudget(2_000_000.0 + (6 - tier) * 1_500_000.0);
-                team = teams.save(team);
+                // **Saved in one batch, not one at a time.** This was `teams.save(team)` per club, so the
+                // static world issued 14,260 individual INSERTs, each with its own flush — one round trip
+                // per club to build a pyramid. Same rows, one call.
+                fresh.add(team);
             }
             made.add(team);
+        }
+        if (!fresh.isEmpty()) {
+            // saveAll returns managed copies carrying the generated ids, so `made` is rebuilt from them by
+            // name — a name is unique inside a division — to keep the original slot order. The standing
+            // table below sorts by reputation and then by name, and every club in a static division has
+            // the *same* reputation, so this order is the order the table is written in.
+            List<Team> saved = teams.saveAll(fresh);
+            Map<String, Team> savedByName = new HashMap<>();
+            saved.forEach(team -> savedByName.put(team.getName(), team));
+            List<Team> ordered = new ArrayList<>(made.size());
+            for (Team team : made) {
+                Team persisted = savedByName.get(team.getName());
+                ordered.add(persisted != null ? persisted : team);
+            }
+            made = ordered;
         }
 
         seasons.ensureEntriesForSeasonCompetition(league, seasonYear);
@@ -325,19 +347,41 @@ public class PyramidBuilder {
         made.sort(Comparator.comparingDouble((Team t) -> t.getReputation() == null ? 0 : t.getReputation())
                 .reversed()
                 .thenComparing(Team::getName));
+
+        // **One read instead of two per club.** This loop used to ask for the season competition and then
+        // for the club's entry on every single club: two queries per club, ten per division, and the
+        // season competition is the same row every time. Across the static world that is 48 × 31 × 10 =
+        // 14,880 divisions-clubs, so ~30,000 queries to write 14,260 standing rows — and the whole
+        // "Seed other nations" button took over an hour.
+        //
+        // Same rows written, same order, same values: the season competition once, its entries once,
+        // indexed by team id, mutated in place and handed to a single saveAll.
+        SeasonCompetition sc = seasonCompetitions.findByCompetitionAndSeasonYear(league, seasonYear)
+                .orElseThrow();
+        Map<Long, CompetitionEntry> entryByTeam = new HashMap<>();
+        for (CompetitionEntry entry : entries.findBySeasonCompetition(sc)) {
+            if (entry.getTeam() != null && entry.getTeam().getId() != null) {
+                entryByTeam.putIfAbsent(entry.getTeam().getId(), entry);
+            }
+        }
+
+        List<CompetitionEntry> standing = new ArrayList<>(made.size());
         for (int position = 1; position <= made.size(); position++) {
-            CompetitionEntry entry = entries.findBySeasonCompetitionAndTeam(
-                            seasonCompetitions.findByCompetitionAndSeasonYear(league, seasonYear)
-                                    .orElseThrow(),
-                            made.get(position - 1))
-                    .orElseThrow();
+            CompetitionEntry entry = entryByTeam.get(made.get(position - 1).getId());
+            if (entry == null) {
+                // A club with no entry means ensureEntriesForSeasonCompetition did not create one, and
+                // silently skipping it would leave a division whose table cannot be read for qualification.
+                throw new IllegalStateException("No season entry for " + made.get(position - 1).getName()
+                        + " in " + league.getName() + " season " + seasonYear);
+            }
             entry.setPosition(position);
             entry.setWins(0);
             entry.setDraws(0);
             entry.setLosses(0);
             entry.setPoints(0);
-            entries.save(entry);
+            standing.add(entry);
         }
+        entries.saveAll(standing);
         return made.size();
     }
 
