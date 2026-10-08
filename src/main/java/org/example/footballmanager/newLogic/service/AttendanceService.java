@@ -145,8 +145,10 @@ public class AttendanceService {
         homeBase *= SupporterMoodService.attendanceEffect(home.getSupporterMood());
 
         // --- price ---
-        double price = stadium != null && stadium.getTicketPrice() != null
-                ? stadium.getTicketPrice() : REFERENCE_PRICE;
+        // The demand price is the ground's average seat price across its eight sections, so pricing the
+        // cheap end and the premium end apart moves the crowd — which is the point of pricing them
+        // apart. A ground whose sections were never built falls back to its own standard price.
+        double price = stadium != null ? admission.demandPrice(stadium) : REFERENCE_PRICE;
         double priceEffect = Math.pow(price / REFERENCE_PRICE, PRICE_ELASTICITY);
 
         // A cheap ticket pulls more; an expensive one puts off the casual supporter first, so the

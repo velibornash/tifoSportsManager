@@ -333,6 +333,10 @@ manager profile through the `User.footballTeam` link.
 The current dashboard can show club milestones: top scorer, top assist, biggest win, heaviest loss and
 attendance. These are derived from persisted match and crowd data and may be empty in a new world.
 
+The ground is built from the club profile's **Open Stadium View**: eight sections, each with a seating
+type, seats to add, a roof over that section only, and its own ticket price beside a recommendation. Work
+is **quoted first** — price and the weeks that stand holds nobody — and only a *Yes* spends. See §10.3.
+
 ### 6.2 Tactics and match influence
 
 The tactical editor persists a `TeamTacticsProfile` and role rules. `TacticsRulesProvider` loads the
@@ -897,10 +901,34 @@ bankruptcy and retirement consequences remain product gaps.
 
 ### 10.3 Staff, stadium and supporters
 
-Staff directory and sponsor data are exposed from the club management area. Stadium settings, image
-upload, attendance and pitch maintenance are available through separate endpoints and views. Supporter
+Staff directory and sponsor data are exposed from the club management area. Supporter
 mood/expectation logic exists in the service layer; the board tracks remaining work where the value is
 not yet fully connected to a visible management consequence.
+
+#### The ground is eight sections, not one number
+
+`StadiumSection` is the build-out model (owner, 2026-10-08): four sides and four corners, each with its
+own seating type (`STANDING`, `BENCHES`, `SEATS`, `HEATED`), its own capacity, its own optional **roof**, its
+own ticket price and the recommended one, and the season/week it reopens after work.
+
+- `StadiumSectionService` owns it. `quote` answers **price and weeks closed** and spends nothing;
+  `build` spends and closes that one section; `setPrice` prices one section.
+- `Stadium.capacity` is **recomputed as the sum of the eight**, `seatQuality` as the capacity-weighted
+  comfort of what was built, `roof` as "all eight hold seats and are covered". Those columns are derived,
+  so nothing else writes them — the whole-ground `expand` / `roof` / `seats` actions were removed rather
+  than left dormant.
+- Laying out the eight is the migration, done lazily on first read: a legacy ground keeps every seat,
+  divided across the eight. Nothing runs at boot.
+- `AdmissionService.priceLadder` is the ground's sellable blocks, cheapest first, taken from the club's own
+  sections; a section nobody priced sells at the ground's standard price. The three derived ticket tiers
+  remain the fallback for a ground that was never laid out. `demandPrice` (the capacity-weighted average)
+  is what `AttendanceService` runs its price elasticity against, so attendance moves with the eight prices.
+- `StadiumBuildService` is now only the shared `costPerSeat` basis and the free colouring.
+- The page is reached from the club profile ("Open Stadium View"): eight rows, each with its closure week,
+  its price and its recommendation, then quote → yes/no.
+
+There is **no demolition**: a section built as a terrace cannot be rebuilt as heated seats, and the quote
+says so.
 
 ## 11. API surface
 
@@ -932,7 +960,7 @@ that every route has a current screen.
 | `UserProfileController` | `/users` | public manager profiles and display name |
 | `StatsController` | `/stats` | aggregate scoring/statistics views |
 | `FinanceController`, `StaffDirectoryController` | `/api/teams/{id}` | finance/staff payloads |
-| `StadiumController`, `StadiumSettingsController` | `/stadiums`, `/api/teams/{id}/stadium` | stadium and image settings |
+| `StadiumController`, `StadiumSettingsController` | `/stadiums`, `/api/teams/{id}/stadium` | stadium and image settings, and the eight sections: `/sections/quote`, `/sections/build`, `/sections/price` |
 | `FriendlyController` | `/api/season/friendlies` | friendly invitations and requests |
 | `Zox*` controllers | `/api/zox`, `/zox` | match preview, reports and ZOX screens |
 | simulation controllers | `/api/proposal`, `/proposal/api`, `/api/sim` | proposal simulation, replay and substitutions |

@@ -613,3 +613,34 @@ recent-match:hover .result-badge {
     background:transparent;
     cursor:pointer;
 }
+
+/* The eight sections: one row per stand, with its own price and its own build form. */
+.stadium-section-list{ display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+.stadium-section{
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;
+    padding:10px 12px;
+}
+.stadium-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.stadium-section-head strong{ font-size:.95rem; color:#e8eefb; }
+.stadium-section-controls{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:8px; }
+.stadium-section-price{ display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:#c7d2e4; }
+.stadium-section-price input{
+    width:96px; padding:6px 8px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px; background:transparent; color:#e8eefb;
+}
+.stadium-section-form{
+    margin-top:10px; padding-top:10px;
+    border-top:1px solid rgba(255,255,255,.08);
+    display:flex; flex-direction:column; gap:10px;
+}
+.stadium-section-field{ display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:#c7d2e4; }
+.stadium-section-field select,
+.stadium-section-field input[type="number"]{
+    padding:6px 8px; max-width:220px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px; background:transparent; color:#e8eefb;
+}
+.stadium-section-field--check{ flex-direction:row; align-items:center; gap:8px; }
+.stadium-section-quote{ margin-top:4px; }

@@ -1,5 +1,103 @@
 # kanbanProgress.md — the append-only log
 
+## P2-STAD-1 — the ground is built one section at a time (owner, 2026-10-08)
+
+> **svaka od 4 strana i svaki od 4 uglova su isti zahtevi: tip sedista, kapacitet koji se dogradjuje,
+> krov samo za tu tribinu; proracun: cena + koliko vremena se NECE moci koristiti tribina; svaka
+> tribina se ceni odvojeno uz preporuku; ukupan kapacitet je zbir svih osam**
+
+Built on top of the uncommitted `StadiumSection`/`StandPosition`/`SeatingType` drafts. What the drafts
+got wrong, and what the browser and the database found on top of them, is below.
+
+### The model
+
+`StadiumSection`: position, seating type, capacity, roof, ticket price, recommended price, and the
+season/week it reopens. One row per ground per section, unique on `(stadium_id, position)`.
+
+`Stadium` keeps its own columns but no longer owns them: `capacity` is recomputed as the sum of the
+eight, `seatQuality` as the capacity-weighted comfort of what was built (a column the world builder set
+and **nothing read** — that was the giveaway), and `roof` as "all eight hold seats and are covered".
+
+### Laying out the eight *is* the migration
+
+There is no separate migration step and boot still writes nothing. The first time anyone asks a ground for
+its sections:
+
+- a ground **with** a capacity is a legacy ground: divided across the eight, remainder handed out, the
+  seating type read from its seat quality, and its existing whole-ground roof applied to all eight
+  because that is what a whole-ground roof meant;
+- a ground **without** one starts with eight empty sections, because there is nothing to divide and the
+  manager is the one who chooses;
+- prices are left `null`, so the ground keeps selling on its own ticket tiers and **no existing club's gate
+  income moves because a table appeared**.
+
+Chosen for this: equal shares with a remainder rather than inventing a shape. A real ground's corners are
+smaller than its sides; this one is not modelled, and a manager can re-balance it by building.
+
+### Two doors removed rather than left dormant
+
+`StadiumBuildService` owned `expand`, `expansionQuote`, `improveSeats`, `seatQuote` and `buildRoof` — five
+routes that wrote `Stadium.capacity` or `Stadium.roof` directly. Left in place they are a second way for
+the total and the eight to disagree, which is the defect the owner's own spec removes. They are gone; the
+class keeps the shared `costPerSeat` basis and the free colouring. The authorization test that asserted "a
+refused build still put a roof on a rival's ground" was rewritten onto the new routes and gained the two
+that had no guard before: **quote** and **price**.
+
+### The quote, and the money
+
+`POST /sections/quote` — cost, work cost, roof cost, **weeks closed**, the week it reopens, the section
+and ground capacity after, the ceiling, and the recommended price. Nothing is spent.
+`POST /sections/build` — spends it, closes that one section, opens a new section at its recommended price.
+`POST /sections/price` — one section's own price, refusal for a negative or missing one.
+
+`AdmissionService.priceLadder` is now the ground's sellable blocks cheapest-first, read from the club's
+own sections and scaled to the home 80% (the away sector is a fifth of the ground whoever sits in it), with
+the three derived tiers as the fallback for a ground that was never laid out. `demandPrice` is the
+capacity-weighted average and is what `AttendanceService` runs its elasticity against.
+
+### What the browser and the database found that no test had
+
+| Found | Fixed |
+|---|---|
+| The picture upload was wired **inside the colour handler** and read `mainContent`, a variable that does not exist in that module | Saving a colour threw a `ReferenceError` before the colours were sent; the upload control was never attached. Both have their own wiring. |
+| A refusal appeared in a note at the bottom of the panel | The form looked inert. Refusals print where the reader is looking. |
+| A build finished and the page said nothing | The message was written into the panel the reload then replaced. Kept across the reload now. |
+| An unpriced section showed an empty price box beside "Recommended 20" | It sells at the ground's standard price; the box shows that and the row says so. |
+| **Unpriced sections were dropped from the ladder** — found on the real database after pricing one section of a laid-out ground | A manager who set one premium price silently stopped selling the six they never touched. An unpriced section now sells at the standard price. |
+
+That last one is the reason the guard exists. It failed **145,000 vs 40,000** when the filter was put back,
+which is the size of the revenue hole.
+
+### Two guards proved by breaking the code
+
+- Roof priced on the seats already standing: `theRoofIsPricedOnWhatItCovers` fails (15,000 instead of 120,000).
+- Section ladder ignoring its own prices: three of the pricing tests fail.
+
+### Also fixed by an existing test going red
+
+The tier fallback was scaled to the home sector **twice** — the blocks are already sized out of `homeCap`
+and I applied the home share to them again. `AdmissionServiceTest.fullGroundBeatsTheHeadlinePrice` caught
+it: a full house came out worth 17.89 a head instead of beating the headline price. Left in, that quietly
+made every full ground in the game worth less than it should.
+
+### Verified against the real database, then put back
+
+`stadium_section` and `club_honour` created in `sokker_db`. A ground laid out from 15,339 kept every seat
+across the eight; a build took it to 16,339, cost EUR 205,588.50, closed the north section for 3 weeks
+and left the total equal to the sum. The page was driven in a real browser: quote → **Yes, build it** →
+1,200 seats and a note. All demo changes were reverted afterwards (both grounds back to 30,983 and
+15,339 with their budgets restored).
+
+### Not done here
+
+- **P2-TROPHY-1's UI row.** Backend is committed; the Club page still does not render the medals.
+- **No demolition.** A section built as a terrace cannot become heated seats. There is no demolish or
+  downgrade model in this game and the quote says so rather than quietly rebuilding it.
+- **Equal-ranking positions still share a rank** where totals tie — the older stable-coin requirement is
+  still open.
+
+---
+
 ## P0-ELEC-1 — registration opens in week 12 of the previous season (owner, 2026-10-07)
 
 > **prijave su moguce od pocetka week 12 iz prolse sezone pa do proglasenja u week 1**

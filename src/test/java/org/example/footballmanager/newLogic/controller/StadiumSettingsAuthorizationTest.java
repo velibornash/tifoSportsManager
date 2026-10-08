@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * reasoning was never applied to the four routes beside it.
  *
  * <ul>
- *   <li>{@code POST /build} — expand, improve seats, or put a roof on. <b>Costs money.</b></li>
+ *   <li>{@code POST /sections/build} — build one stand out. <b>Costs money.</b></li>
  *   <li>{@code POST /training-facilities/{facility}/upgrade} — a level of gym. <b>Costs money.</b></li>
  *   <li>{@code POST /maintenance} — the weekly pitch budget. <b>Costs money.</b></li>
  *   <li>{@code POST /tickets} — the face value of every tier, i.e. gate revenue</li>
@@ -55,6 +55,9 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
     @Autowired
     TeamRepository teams;
 
+    @Autowired
+    org.example.footballmanager.newLogic.repository.StadiumSectionRepository sectionRepository;
+
     private Team myClub;
     private Team rivalClub;
 
@@ -68,11 +71,11 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
     /**
      * A ground, and a budget that can actually afford things.
      *
-     * <p><b>The budget is load-bearing, and finding out why cost a confusing failure.</b>
-     * {@code StadiumBuildService.buildRoof} <i>refuses</i> when the roof costs more than the club has, and
-     * the controller wraps that refusal in a 200 — deliberately, with a comment saying so. So an
-     * under-funded fixture produced a <b>200 that built nothing</b>, and a test asserting "200 then the
-     * ground has a roof" failed on the second half for a reason that had nothing to do with authorization.
+     * <p><b>The budget is load-bearing, and finding out why cost a confusing failure.</b> The build
+     * services <i>refuse</i> when the work costs more than the club has, and the controller wraps that
+     * refusal in a 200 — deliberately, with a comment saying so. So an under-funded fixture produced a
+     * <b>200 that built nothing</b>, and a test asserting "200 then the ground has a roof" failed on the
+     * second half for a reason that had nothing to do with authorization.
      *
      * <p>That is this repository's standing failure in miniature: a green status is not evidence. The money
      * assertions here read the stored ground back rather than trusting the status, which is the only reason
@@ -85,6 +88,9 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
         ground.setCapacity(20_000);
         ground.setTicketPrice(20.0);
         ground.setPitchQuality(80.0);
+        // Seat quality is what a legacy ground's sections are laid out from, and 14 is ordinary seats,
+        // so the fixture's "build the north stand" case is building on SEATS and not against a terrace.
+        ground.setSeatQuality(14);
         ground.setPitchCondition(80);
         ground.setMaintenanceRemaining(0);
         club.setStadium(ground);
@@ -101,11 +107,11 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
     }
 
     @Test
-    @DisplayName("an anonymous caller cannot build a ground")
+    @DisplayName("an anonymous caller cannot build a section")
     void anAnonymousCallerCannotBuild() throws Exception {
-        assertRefused(mockMvc.perform(post("/api/teams/{teamId}/stadium/build", rivalClub.getId())
+        assertRefused(mockMvc.perform(post("/api/teams/{teamId}/stadium/sections/build", rivalClub.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"action\":\"roof\"}"))
+                        .content(aSectionBuild()))
                 .andReturn().getResponse().getStatus());
     }
 
@@ -130,32 +136,40 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("a manager cannot put a roof on a rival's ground")
+    @DisplayName("a manager cannot build a section on a rival's ground")
     void aManagerCannotBuildOnARivalsGround() throws Exception {
-        mockMvc.perform(post("/api/teams/{teamId}/stadium/build", rivalClub.getId())
+        int capacityBefore = groundOf(rivalClub).getCapacity();
+
+        mockMvc.perform(post("/api/teams/{teamId}/stadium/sections/build", rivalClub.getId())
                         .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"action\":\"roof\"}"))
+                        .content(aSectionBuild()))
                 .andExpect(status().isForbidden());
 
-        assertTrue(!groundOf(rivalClub).isRoof(),
-                "a refused build still put a roof on a rival's ground");
+        assertEquals(capacityBefore, groundOf(rivalClub).getCapacity(),
+                "a refused build still added seats to a rival's ground");
     }
 
     @Test
     @Transactional
-    @DisplayName("a manager cannot expand a rival's ground")
-    void aManagerCannotExpandARivalsGround() throws Exception {
-        int capacityBefore = groundOf(rivalClub).getCapacity();
-
-        mockMvc.perform(post("/api/teams/{teamId}/stadium/build", rivalClub.getId())
+    @DisplayName("a manager cannot quote a rival's ground either")
+    void aManagerCannotQuoteARivalsGround() throws Exception {
+        mockMvc.perform(post("/api/teams/{teamId}/stadium/sections/quote", rivalClub.getId())
                         .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"action\":\"expand\",\"seats\":5000}"))
+                        .content(aSectionBuild()))
                 .andExpect(status().isForbidden());
+    }
 
-        assertEquals(capacityBefore, groundOf(rivalClub).getCapacity(),
-                "a refused expansion still added seats to a rival's ground");
+    @Test
+    @Transactional
+    @DisplayName("a manager cannot re-price a rival's section")
+    void aManagerCannotSetARivalsSectionPrice() throws Exception {
+        mockMvc.perform(post("/api/teams/{teamId}/stadium/sections/price", rivalClub.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"position\":\"NORTH\",\"price\":999}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -228,16 +242,20 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
      */
     @Test
     @Transactional
-    @DisplayName("a manager can still build his own ground")
+    @DisplayName("a manager can still build his own section")
     void aManagerCanStillBuildHisOwnGround() throws Exception {
-        mockMvc.perform(post("/api/teams/{teamId}/stadium/build", myClub.getId())
+        mockMvc.perform(post("/api/teams/{teamId}/stadium/sections/build", myClub.getId())
                         .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"action\":\"roof\"}"))
+                        .content(aSectionBuild()))
                 .andExpect(status().isOk());
 
-        assertTrue(groundOf(myClub).isRoof(),
-                "his own build reported success and the ground has no roof");
+        Stadium ground = groundOf(myClub);
+        assertEquals(3000, northSectionOf(myClub).getCapacity(),
+                "his own build reported success and the section did not gain its 500 seats "
+                        + "(it started with a fifth of the ground's existing 20,000)");
+        assertEquals(ground.getCapacity(), 20_000 + 500,
+                "and the ground total moved by exactly what was built, because it is the sum of the eight");
     }
 
     @Test
@@ -282,6 +300,22 @@ class StadiumSettingsAuthorizationTest extends BaseTest {
      */
     private Stadium groundOf(Team club) {
         return teams.findById(club.getId()).orElseThrow().getStadium();
+    }
+
+    /**
+     * The north section as the database holds it, not as the fixture is holding it — the same
+     * discipline as {@link #groundOf(Team)}, and for the same reason: a 200 that wrote to a different
+     * copy of the row would otherwise pass.
+     */
+    private org.example.footballmanager.newLogic.model.StadiumSection northSectionOf(Team club) {
+        Stadium ground = groundOf(club);
+        return sectionRepository.findByStadiumIdAndPosition(ground.getId(),
+                org.example.footballmanager.newLogic.model.StandPosition.NORTH).orElseThrow();
+    }
+
+    /** A roofed, 500-seat north stand: cheap enough for the fixture budget, and a visible change. */
+    private static String aSectionBuild() {
+        return "{\"position\":\"NORTH\",\"seatingType\":\"SEATS\",\"capacityToAdd\":500,\"roof\":true}";
     }
 
     private static void assertRefused(int code) {

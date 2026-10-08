@@ -2326,6 +2326,51 @@ result by the gap as well counted the opponent **twice**.
 
 ---
 
+## 🏟️ P2-STAD-1 — the ground is built one section at a time — owner, 2026-10-08
+
+> **nastavi sa stadionom, svaka od 4 strane sveta/tribine i svaki od 4 uglova su isti zahtevi:**
+> **izabere tip sedista, kapacitet koji se dogradjuje, i krov samo za odredjenu tribinu; dobije se
+> **proracun: cena + koliko vremena se NECE moci koristiti tribina**; svaka tribina se ceni odvojeno,
+> uz preporuku; ukupan kapacitet je zbir svih osam.**
+
+- [x] **`StadiumSection` + `StandPosition` + `SeatingType`.** Four sides, four corners, eight rows per
+      ground, unique on `(stadium_id, position)`. Laying them out is the migration: a legacy ground keeps
+      **every seat**, divided across the eight with the remainder handed out, and its seat quality read
+      back as the type it amounts to. A ground with no capacity starts empty — the manager chooses.
+- [x] **The quote comes before the money.** `POST /sections/quote` returns cost, **weeks closed**, the
+      week the stand reopens, both capacities after, and the recommended price. Nothing is spent. The page
+      shows it, and only **Yes, build it** spends.
+- [x] **A roof is one section's.** Priced on the seats it *ends up covering*, so a roof over fresh seats
+      is a bigger roof. It adds weeks to the closure, and heated seats under it add another.
+- [x] **One number, one place.** `Stadium.capacity` is the **sum of the eight**; `seatQuality` is the
+      capacity-weighted comfort of what was built; `roof` is true only when all eight hold seats and are
+      covered. The whole-ground expand/roof/seat actions were **removed**, not left dormant — two doors
+      that can write the capacity are two ways for it and the sections to disagree.
+- [x] **Eight prices that reach money.** `AdmissionService.priceLadder` is the ground's sellable blocks,
+      cheapest first, taken from the club's own sections; a section nobody priced sells at the ground's
+      standard price. `AttendanceService` runs its price elasticity off `demandPrice`, the capacity-weighted
+      average. Ticket tiers remain as the fallback for a ground that has never been laid out.
+- [x] **The page**, reached from Club profile → *Open Stadium View*: eight rows with capacity, seating,
+      roof, closure week, their own price and its recommendation, then quote → yes/no.
+- [x] **Verified in a browser against the real database**, and the demo data reverted afterwards:
+      `stadium_section` and `club_honour` exist in `sokker_db`; a build moved a real ground 15,339 →
+      16,339 and took EUR 205,588.50 off the budget; the section closed for 3 weeks; the ground total
+      stayed the sum of the eight.
+- [x] **Two guards proved by breaking the code**, not by a green tick: pricing the roof on the seats
+      already standing, and dropping unpriced sections from the ladder. Both were reverted after failing.
+
+### Found on the way, and fixed here
+
+| Found | What it was |
+|---|---|
+| The picture upload was wired **inside the colour handler** and read `mainContent`, which does not exist in that module. | Saving a colour threw a `ReferenceError` before the colours were ever sent, and the upload control was never attached at all. Both now have their own wiring. |
+| A refusal showed up in a note at the **bottom** of the panel. | The form looked like nothing had happened. Refusals are now printed where the reader is looking. |
+| A build finished and the page said **nothing**. | The message was written into the panel that the reload then replaced. It is kept across the reload now. |
+| An unpriced section showed an **empty price box** next to "Recommended 20". | It sells at the ground's standard price, so that is what the box shows, and the row says so. |
+| The tier fallback was scaled to the home sector **twice** (found by an existing test turning red). | A full house came out worth less than the same crowd with fewer cheap seats. |
+
+---
+
 ## 🌍 P2-MINE — from the owner, 2026-10-07 (queue behind the current run)
 
 > **prvo nastavi to da zavrsis a onda dodaj i ovo u kanban pa da preuzmes posle**
@@ -2336,13 +2381,11 @@ answers are not written down anywhere in the codebase yet.
 
 | Card | What the owner asked | What has to be decided first |
 |---|---|---|
-| **P2-STAD-1** | **Stadium works need a stand, a cost, and a yes/no.** | 🔍 **Spec settled, build pending.** You decided: 4 stands (N/E/S/W) + 4 corners, each built individually with its own price. **The attendance half of your spec already exists** — `AttendanceService` computes demand from home reputation, home success/form, away reputation/success, occasion, pitch condition and **price elasticity**, split home/away. What it does **not** have is stands: the stadium is one block of capacity, so there is no per-stand price to quote and no stand to choose. Remaining build: (a) a stand model on `Stadium`, (b) a quote endpoint that prices work on a chosen stand and **returns** it, (c) a confirm endpoint that spends. | `StadiumBuildService` prices seats/roof/upgrades on a 1–20 scale and has **no stand concept** — the ground is one block of capacity, so there is nothing to pick a stand *for*, the quote cannot differ per stand, and spending is one `POST /build` that commits. A real implementation needs: (a) a stand model (add a `stands` list, or replace a single `capacity` with per-stand seats), (b) a quote endpoint that prices work on a chosen stand and **returns** it, and (c) a confirm endpoint that spends. Until (a) exists, "choose your stand" has no object to choose. |
+| **P2-STAD-1** | **Stadium works need a stand, a cost, and a yes/no.** | ✅ **Built and seen in the database.** Each of the four sides and four corners is its own `StadiumSection`: a **seating type** (standing / benches / seats / heated), **seats to add**, and a **roof over that section only**. `POST /sections/quote` returns the price and **how many weeks that stand holds nobody** without spending; `POST /sections/build` spends it and closes that one section; `POST /sections/price` prices a section on its own, with a recommendation beside it. **Total capacity is the sum of the eight**, and `seatQuality` is now the capacity-weighted comfort of what was built instead of a number the world builder set and nothing read. | Was: one capacity, one price, one roof, and a `POST /build` that spent the budget on the click and reported the closure afterwards. Two doors that could write `Stadium.capacity` would have let the total and the sections disagree, so the whole-ground expand/roof/seat actions were **removed** rather than left dormant; `StadiumBuildService` keeps only the shared per-seat cost and the free colouring. Laying out the eight **is** the migration: a legacy ground keeps every seat, divided across the eight, and keeps selling on its own tiers until a manager prices a section, so no existing club's gate income moves because a table appeared. |
 | **P2-TRAIN-1** | **Can training facilities be repaired, and how does that affect training?** | ✅ **Answered — they cannot be repaired, because there is no damage model.** They can be **upgraded**, three facility types, per-level cost and weekly upkeep, and upgrade level directly multiplies training growth via `TrainingProgressionService.facilityFactor` → `Stadium.trainingFactorFor(skill)`. No repair feature exists. |
 | **P2-TROPHY-1** | **Trophies on the Club page, inside milestones** — medal colour (gold/silver/bronze), competition and season beneath. | ✅ **Backend done.** `ClubHonour` + `HonourService` derive every medal from results — league positions 1/2/3 → gold/silver/bronze from the final table, cup final winner gold / loser silver / third-place winner bronze. Your rule recorded. **Remaining: wire the milestones tab UI to render it.** |
 
-**Order once the current run clears:** P2-TRAIN-1 is a question and should be answered first because it
-may not become a task at all; P2-TROPHY-1 may turn out to need a new table; P2-STAD-1 is the most
-self-contained of the three.
+**Order:** P2-TRAIN-1 and P2-STAD-1 are done. **P2-TROPHY-1 has its backend and still needs its UI row.**
 
 ---
 

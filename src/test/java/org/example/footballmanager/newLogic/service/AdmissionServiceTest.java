@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AdmissionServiceTest {
 
-    private final AdmissionService admission = new AdmissionService(null);
+    private final AdmissionService admission = new AdmissionService(null, null);
 
     private static Stadium stadium(int capacity, double standardPrice) {
         Stadium s = new Stadium();

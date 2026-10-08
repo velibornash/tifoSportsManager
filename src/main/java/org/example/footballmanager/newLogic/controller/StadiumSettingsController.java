@@ -9,9 +9,14 @@ import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.service.AdmissionService;
 import org.example.footballmanager.newLogic.service.AdmissionService.TicketType;
 import org.example.footballmanager.newLogic.service.PitchMaintenanceService;
+import org.example.footballmanager.newLogic.service.SeasonService;
+import org.example.footballmanager.newLogic.service.StadiumSectionService;
+import org.example.footballmanager.newLogic.model.SeatingType;
+import org.example.footballmanager.newLogic.model.StandPosition;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.OptionalDouble;
@@ -27,11 +32,10 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
- * Stadium controls: ticket prices, the maintenance programme, and a projection of what the current
- * settings would bring on a home fixture.
+ * Stadium controls: the eight sections a ground is built from, ticket prices, the maintenance programme,
+ * and a projection of what the current settings would bring on a home fixture.
  *
  * <p>All lookups are by team id. Team names are not unique and two clubs may share one, so a name is
  * a label and never an identifier.
@@ -45,9 +49,11 @@ public class StadiumSettingsController {
     private final AdmissionService admission;
     private final TrainingFacilityService facilities;
     private final org.example.footballmanager.newLogic.service.StadiumBuildService build;
+    private final StadiumSectionService sectionService;
     private final PitchMaintenanceService pitch;
     private final org.example.footballmanager.newLogic.service.StadiumImageService stadiumImages;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
+    private final SeasonService seasonService;
 
     /**
      * Uploads the club's stadium picture (owner, 2026-09-28).
@@ -133,20 +139,17 @@ public class StadiumSettingsController {
     }
 
     /**
-     * What the current settings would produce on a home fixture — so a manager can see the effect
-     * of a price change before committing to it, instead of discovering it a week later.
-     */
-    /**
-     * Builds the ground out: more seats, better seats, or a roof.
+     * What work on one section would cost, and how long that section would be unusable. <b>Nothing is
+     * spent here.</b>
      *
-     * <p>One endpoint with an {@code action} rather than three, because they are the same decision
-     * from the manager's side — "spend on the ground" — and they all cost money and all have a
-     * ceiling. Each refuses with a reason the page can show, rather than a 500.
+     * <p>The owner's two questions, asked before the decision: the price, and the number of weeks the
+     * stand holds nobody. Answering them on one endpoint is the whole point — the old page took the
+     * money on the click and told you afterwards.
      */
-    @PostMapping("/build")
-    public ResponseEntity<?> buildGround(@PathVariable Long teamId,
-                                         @RequestBody(required = false) Map<String, Object> body,
-                                         @AuthenticationPrincipal User principal) {
+    @PostMapping("/sections/quote")
+    public ResponseEntity<?> quoteSection(@PathVariable Long teamId,
+                                          @RequestBody(required = false) Map<String, Object> body,
+                                          @AuthenticationPrincipal User principal) {
         if (!mayManage(principal, teamId)) {
             return notYourClub();
         }
@@ -155,20 +158,53 @@ public class StadiumSettingsController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
         }
         Map<String, Object> in = body == null ? Map.of() : body;
-        String action = String.valueOf(in.getOrDefault("action", "")).toLowerCase(Locale.ROOT);
+        StandPosition position = parsePosition(in.get("position"));
+        SeatingType type = parseSeatingType(in.get("seatingType"));
+        return ResponseEntity.ok(sectionService.quote(team.getStadium(), position, type,
+                intOf(in.get("capacityToAdd"), 0), boolOf(in.get("roof"), false), weekOf()));
+    }
 
-        Object result = switch (action) {
-            case "expand" -> build.expand(team, intOf(in.get("seats"), 1000));
-            case "seats" -> build.improveSeats(team);
-            case "roof" -> build.buildRoof(team);
-            default -> Map.of("refused", true,
-                    "error", "Unknown action '" + action + "'. Use expand, seats or roof.");
-        };
-        if (result instanceof Map<?, ?> map && Boolean.TRUE.equals(map.get("refused"))) {
-            // A refusal is a normal answer to a question the manager asked, not a server fault.
-            return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+    /** Confirms the quote: spends the money and closes that one section for the weeks it needs. */
+    @PostMapping("/sections/build")
+    public ResponseEntity<?> buildSection(@PathVariable Long teamId,
+                                          @RequestBody(required = false) Map<String, Object> body,
+                                          @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
         }
-        return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium"), "result", result));
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        Map<String, Object> in = body == null ? Map.of() : body;
+        Map<String, Object> result = sectionService.build(team,
+                parsePosition(in.get("position")),
+                parseSeatingType(in.get("seatingType")),
+                intOf(in.get("capacityToAdd"), 0),
+                boolOf(in.get("roof"), false),
+                seasonOf(), weekOf());
+        return ResponseEntity.ok(Map.of(
+                "result", result,
+                "sections", sectionService.sectionViews(team.getStadium()),
+                "stadium", view(team).get("stadium")));
+    }
+
+    /** One section's own ticket price, which is the owner's per-stand pricing decision. */
+    @PostMapping("/sections/price")
+    public ResponseEntity<?> priceSection(@PathVariable Long teamId,
+                                          @RequestBody(required = false) Map<String, Object> body,
+                                          @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        Map<String, Object> in = body == null ? Map.of() : body;
+        Object price = in.get("price");
+        Double value = price instanceof Number n ? n.doubleValue() : null;
+        return ResponseEntity.ok(sectionService.setPrice(team, parsePosition(in.get("position")), value));
     }
 
     /** Repaints the ground. Free, and validated. */
@@ -222,6 +258,50 @@ public class StadiumSettingsController {
         }
     }
 
+    private static boolean boolOf(Object value, boolean fallback) {
+        if (value instanceof Boolean b) return b;
+        if (value == null) return fallback;
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    /**
+     * A stand name, or null so the service refuses with "pick one of the four sides or four corners".
+     *
+     * <p>Built from the enum rather than checked against a written list, so a stand cannot be added
+     * without being accepted here.
+     */
+    private static StandPosition parsePosition(Object value) {
+        if (value == null) return null;
+        try {
+            return StandPosition.valueOf(String.valueOf(value).trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static SeatingType parseSeatingType(Object value) {
+        if (value == null) return null;
+        try {
+            return SeatingType.valueOf(String.valueOf(value).trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private int seasonOf() {
+        return seasonService.getOrCreateClock().getCurrentSeason() == null
+                ? 1 : seasonService.getOrCreateClock().getCurrentSeason();
+    }
+
+    private int weekOf() {
+        Integer week = seasonService.getOrCreateClock().getCurrentWeek();
+        return week == null ? 1 : week;
+    }
+
+    /**
+     * What the current settings would produce on a home fixture — so a manager can see the effect
+     * of a price change before committing to it, instead of discovering it a week later.
+     */
     @GetMapping("/projection")
     public ResponseEntity<Map<String, Object>> project(@PathVariable Long teamId) {
         Team team = teamRepository.findById(teamId).orElse(null);
@@ -242,6 +322,10 @@ public class StadiumSettingsController {
             out.put("stadium", null);
             return out;
         }
+        // The eight sections first: reading them is what lays out a legacy ground and recomputes its
+        // capacity, seat quality and roof flag. Everything below then reports the recomputed values
+        // rather than whatever the columns happened to hold before this request.
+        List<Map<String, Object>> sections = sectionService.sectionViews(s);
         Map<String, Object> stadium = new LinkedHashMap<>();
         stadium.put("id", s.getId());
         stadium.put("name", s.getName());
@@ -275,10 +359,12 @@ public class StadiumSettingsController {
         stadium.put("seatQuality", s.getSeatQuality() == null ? 10 : s.getSeatQuality());
         stadium.put("roof", s.isRoof());
         stadium.put("expandableTo", s.getExpandableTo());
-        // What the next step costs, so the page can show a price instead of only failing on click.
-        stadium.put("expansionQuote", build.expansionQuote(team, 1000));
-        stadium.put("seatQuote", build.seatQuote(team));
-        stadium.put("roofCost", s.isRoof() ? 0 : build.roofCost(s));
+        // The eight sections, each with its own capacity, seating type, roof, price and recommendation —
+        // this is the whole build-out model now, so the page has one place to read it from.
+        stadium.put("sections", sections);
+        stadium.put("seatingTypes", Arrays.stream(SeatingType.values())
+                .map(t -> Map.of("name", t.name(), "label", t.label()))
+                .toList());
         stadium.put("budget", team.getBudget());
         out.put("trainingFacilities", facilities.levels(team));
         out.put("weeklyTrainingUpkeep", facilities.weeklyUpkeep(team));
