@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.TransferRepository;
+import org.example.footballmanager.newLogic.repository.LoanRepository;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.example.commonmanager.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,6 +56,7 @@ class TransferServicePriceGuardTest {
     private final NegotiationService negotiation = mock(NegotiationService.class);
 
     private SquadRegistrationService registration;
+    private LoanService loanService;
     private TransferRepository transferRepository;
     private PlayerRepository playerRepository;
     private TeamRepository teamRepository;
@@ -72,7 +74,8 @@ class TransferServicePriceGuardTest {
         teamRepository = mock(TeamRepository.class);
         // Real, not a mock: this class is about the price floor, and a mocked squad rule would let a
         // test pass on a transfer the product would refuse. A 30-player club answers "yes" for free.
-        registration = new SquadRegistrationService(playerRepository);
+        registration = new SquadRegistrationService(playerRepository, mock(LoanRepository.class));
+        loanService = mock(LoanService.class);
 
         service = new TransferService(
                 transferRepository,
@@ -85,7 +88,8 @@ class TransferServicePriceGuardTest {
                 negotiation,
                 mock(TransferListingFeeService.class),
                 mock(ListingObjectionService.class),
-                registration
+                registration,
+                loanService
         );
 
         seller = new Team();

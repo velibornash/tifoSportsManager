@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.repository.LoanRepository;
 import org.example.footballmanager.newLogic.model.Junior;
 import org.example.footballmanager.newLogic.model.JuniorStatus;
 import org.example.footballmanager.newLogic.model.Position;
@@ -63,7 +64,7 @@ class YouthAcademyGraduationTest {
                                 mock(org.example.commonmanager.repository.UserRepository.class))),
                 // Real, over the same mock the service saves through. The promotion cap reads it, and a
                 // stubbed rule would let a test pass on a promotion the product would refuse.
-                new SquadRegistrationService(players));
+                new SquadRegistrationService(players, mock(LoanRepository.class)));
         // The academy draws from a plain Random, so seed it deterministically and make the seed
         // reachable. Without this the distribution tests could only assert on averages.
         Field random = findField(YouthAcademyService.class, "random");

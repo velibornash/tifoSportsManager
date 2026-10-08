@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.repository.TransferRepository;
+import org.example.footballmanager.newLogic.repository.LoanRepository;
 import org.example.footballmanager.newLogic.util.players.SquadNumberAssigner;
 import org.example.commonmanager.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -79,10 +80,11 @@ class TransferMarketSquadReadCountTest {
                                      NegotiationService negotiation,
                                      TransferListingFeeService listingFees,
                                      ListingObjectionService listingObjections,
-                                     SquadRegistrationService registration) {
+                                     SquadRegistrationService registration,
+                                     LoanService loanService) {
             super(transferRepository, playerRepository, teamRepository, userRepository, assigner,
                     windows, clubNeedService, negotiation, listingFees, listingObjections,
-                    registration);
+                    registration, loanService);
         }
 
         @Override
@@ -174,7 +176,8 @@ class TransferMarketSquadReadCountTest {
                 mock(NegotiationService.class),
                 mock(TransferListingFeeService.class),
                 mock(ListingObjectionService.class),
-                new SquadRegistrationService(playerRepository));
+                new SquadRegistrationService(playerRepository, mock(LoanRepository.class)),
+                mock(LoanService.class));
     }
 
     private long findByTeamIdCalls() {

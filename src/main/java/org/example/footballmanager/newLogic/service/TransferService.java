@@ -46,6 +46,7 @@ public class TransferService {
     private final TransferListingFeeService listingFees;
     private final ListingObjectionService listingObjections;
     private final SquadRegistrationService squadRegistration;
+    private final LoanService loanService;
 
 
     private final TransferRepository transferRepository;
@@ -65,12 +66,14 @@ public class TransferService {
                            NegotiationService negotiation,
                            TransferListingFeeService listingFees,
                            ListingObjectionService listingObjections,
-                           SquadRegistrationService squadRegistration) {
+                           SquadRegistrationService squadRegistration,
+                           LoanService loanService) {
         this.clubNeeds = clubNeeds;
         this.negotiation = negotiation;
         this.listingFees = listingFees;
         this.listingObjections = listingObjections;
         this.squadRegistration = squadRegistration;
+        this.loanService = loanService;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -98,9 +101,28 @@ public class TransferService {
     public Transfer listPlayerForTransfer(Long playerId, double askingPrice) {
         Player player = playerRepository.findById(playerId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
+        requireNotOnLoan(playerId, "put up for transfer");
 
         Team sellerTeam = requirePlayerTeam(player);
         return listPlayerForTransferEntity(player, sellerTeam.getId(), askingPrice);
+    }
+
+    /**
+     * A player on loan cannot be traded (owner, 2026-10-08 — by extension of "everything else stays with
+     * the club that owns him").
+     *
+     * <p>This is not tidiness. {@code Player.team} stays on the club that owns a loanee, so
+     * {@code requirePlayerTeam} would name <b>the lender</b> as the seller: a buyer would complete the
+     * purchase, the fee would go to the club he is not playing for, and the borrowing club would keep
+     * fielding a player who no longer belongs to it. The guard has to be here rather than at the call
+     * sites, because there are four ways into this class and every one of them would otherwise be wrong.
+     */
+    private void requireNotOnLoan(Long playerId, String what) {
+        if (loanService.isOnLoan(playerId)) {
+            throw new ApiException(HttpStatus.CONFLICT, "PLAYER_ON_LOAN",
+                    "He is on loan, so he cannot be " + what + ". Ask the club he is on loan with to "
+                            + "terminate the loan first.");
+        }
     }
 
     @Transactional
@@ -713,6 +735,11 @@ public TransferDTO resolveListingObjection(Long playerId, ObjectionResolution re
             throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_BUDGET",
                     "Your club does not have enough budget for this transfer.");
         }
+
+        // Same guard on the buying side, and it matters even more here: this club would own a player
+        // whose contract is with somebody else, while the club he actually plays for still has him in
+        // its squad and in its wage bill.
+        requireNotOnLoan(player.getId(), "bought");
 
         // The squad limit, on the path that actually moves players between clubs (owner, 2026-10-08).
         //

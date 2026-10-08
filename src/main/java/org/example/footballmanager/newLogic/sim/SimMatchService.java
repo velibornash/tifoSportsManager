@@ -69,6 +69,7 @@ public class SimMatchService {
     private final org.example.footballmanager.newLogic.util.LazySquadGenerator lazySquadGenerator;
     private final MatchPlayerStatsRepository matchPlayerStatsRepository;
     private final PlayerRepository playerRepository;
+    private final org.example.footballmanager.newLogic.service.SquadRegistrationService squadRegistration;
     private final StaffMemberRepository staffMemberRepository;
     private final AttendanceService attendanceService;
     private final ObjectMapper objectMapper;
@@ -171,8 +172,10 @@ public class SimMatchService {
         // No usable lineup template → build the XI from the team's real DB
         // players (position-sorted fallback) so real names/ids reach the sim,
         // the detail view and MatchPlayerStats even without a saved lineup.
+        // Owned plus loaned in. Without the union a club whose manager saved no lineup fields a
+        // fallback XI that does not contain the player he went to the trouble of borrowing.
         List<org.example.footballmanager.newLogic.model.Player> squad =
-                playerRepository.findByTeamId(team.getId());
+                squadRegistration.availablePlayers(team.getId());
         if (squad == null || squad.size() < 11) return null;
         return RealSquadFactory.buildSquadFromPlayers(squad, side,
                 coachFactorFor(team) * cohesionFactorFor(team), formationOf(null, team));

@@ -73,6 +73,7 @@ public class PlayerContractService {
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
     private final CompetitionRepository competitions;
     private final SquadRegistrationService squadRegistration;
+    private final LoanService loanService;
 
     public PlayerContractService(PlayerRepository players,
                                  PlayerContractRepository contracts,
@@ -80,7 +81,8 @@ public class PlayerContractService {
                                  org.example.footballmanager.newLogic.repository.TeamRepository teams,
                                  org.example.footballmanager.newLogic.repository.GameClockRepository clocks,
                                  CompetitionRepository competitions,
-                                 SquadRegistrationService squadRegistration) {
+                                 SquadRegistrationService squadRegistration,
+                                 LoanService loanService) {
         this.players = players;
         this.contracts = contracts;
         this.budgets = budgets;
@@ -88,6 +90,7 @@ public class PlayerContractService {
         this.clocks = clocks;
         this.competitions = competitions;
         this.squadRegistration = squadRegistration;
+        this.loanService = loanService;
     }
 
 
@@ -151,6 +154,13 @@ public class PlayerContractService {
                 return Outcome.refused("He is under contract with a release clause of "
                         + round2(existing.getReleaseClause()) + ", which has not been met.");
             }
+        }
+
+        // A player on loan belongs to somebody else. Signing him would leave a contract here while the
+        // club that owns him keeps paying him and keeps him in its squad.
+        if (loanService.isOnLoan(playerId)) {
+            return Outcome.refused("He is on loan. A loan has to be terminated before anyone can sign "
+                    + "him.");
         }
 
         // A full squad is a refusal, not a silent over-registration. Counted in players, not

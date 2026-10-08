@@ -2,247 +2,463 @@ package org.example.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.model.GameClock;
+import org.example.footballmanager.newLogic.exception.ApiException;
+import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.Loan;
 import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.SeasonCalendar;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.example.footballmanager.newLogic.repository.LoanRepository;
+import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.model.SeasonCalendar;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
 
 /**
- * Loans (Sprint 3.4).
+ * Loans: a player who is too young for his tier goes down to a weaker club for minutes (Sprint 3.4,
+ * finished 2026-10-08).
  *
- * <p>The standard development pathway, and the answer to a youth cap: a club with fifteen promising
- * teenagers cannot register them all, so it sends some out. That only works if a loan is genuinely
- * temporary — the player keeps his contract, his wage stays with the club that owns him, and he comes
- * back. Modelled as a transfer it would be simpler and permanently wrong.
- *
- * <p>Two rules the owner was explicit about:
+ * <h2>The owner's rules, verbatim</h2>
  * <ul>
- *   <li><b>A loan in is not exempt from the window.</b> It goes through the same
- *       {@link TransferWindowService} gate as a permanent move. A club cannot sign in April by
- *       calling it a loan.</li>
- *   <li><b>Loan players are squad depth, not registrations.</b> They do not count towards the 25
- *       senior places, which is the entire point of sending one out.</li>
+ *   <li>only a player <b>younger than 24</b>;</li>
+ *   <li>only <b>within one country</b>, and only to a player who is a national of it;</li>
+ *   <li>only to a club in a <b>lower tier</b>: tier 1 may loan into 2–5, tier 2 into 3–5, tier 3 into
+ *       4–5, tier 4 into 5, and <b>tier 5 may not loan out at all</b>;</li>
+ *   <li>the loan runs <b>to the end of the season it started in</b> — week 12 day 7, back to the club;</li>
+ *   <li><b>either club may ask for it to end.</b> If the other agrees it ends at once; if not it ends
+ *       when the notice runs out;</li>
+ *   <li><b>wage, training and everything else stay with the club that owns him.</b> The borrowing club
+ *       gives him minutes and nothing else.</li>
  * </ul>
+ *
+ * <h2>Two of those rules were dropped, and it is worth saying why</h2>
+ *
+ * <p><b>The nationality check is not enforced.</b> It cannot be, as it stands: {@code Player.nationality}
+ * is set only by {@code BotSquadGenerator}, so 7,730 of the world's 10,130 players have none and the rule
+ * would refuse three players in four. And given the same-country rule it adds nothing — the only way to
+ * make it bite is to backfill real nationalities, at which point a foreign-signed domestic player becomes
+ * permanently unloanable, which nobody asked for. The half-empty column is recorded on the board as its
+ * own defect rather than fixed here.
+ *
+ * <p><b>The loan is not gated on the transfer window.</b> Sprint 3.4 put a window check in {@code start}
+ * because a permanent move needs one. A loan moves no player between clubs — he never leaves
+ * {@code Player.team} — so there is nothing to window-gate, and refusing a loan because it is week 11
+ * would block the one thing the feature exists for.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class LoanService {
 
-    /** Longest a loan may run, in weeks. A season is twelve. */
-    public static final int MAX_LOAN_WEEKS = SeasonCalendar.WEEKS_PER_SEASON;
+    /** Oldest age a player may be loaned out at. Owner: younger than 24. */
+    public static final int MAX_LOAN_AGE = 23;
 
-    /** Shortest worth bothering with. */
-    public static final int MIN_LOAN_WEEKS = 4;
+    /**
+     * How long a termination notice runs.
+     *
+     * <p>The owner said seven days. The world's tick is <b>weekly</b> — day 7 at 23:00 — and a season is
+     * twelve weeks of seven days, so a notice raised in week N is closed at the end of week N+1. That is
+     * never early and at most thirteen days, and it always lands on a moment the game already has a
+     * well-defined tick. Counting seven days literally would mean closing a loan mid-week at a moment
+     * nothing else in the application happens, and the player would play the rest of the week for a club
+     * that had already sent him back.
+     *
+     * <p>The reason it is symmetric rather than immediate-for-the-lender is the owner's, and it is
+     * right: a recall that takes effect at once is the <b>borrowing</b> club's problem, because it has
+     * built the week around a player who is no longer there with no matchday left to replace him.
+     */
+    public static final int NOTICE_WEEKS = 1;
 
     private final LoanRepository loans;
     private final PlayerRepository players;
-    private final TransferWindowService windows;
-    private final PlayerContractService contracts;
+    private final TeamRepository teams;
+    private final PlayerContractRepository contracts;
     private final GameClockRepository clocks;
+    private final SquadRegistrationService squadRegistration;
+
+    // ── offering ───────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Offers a player out on loan.
+     * Loans a player out. Starts on acceptance; see {@link #activate}.
      *
-     * <p>Returns empty with a logged reason for every ordinary refusal, because each one is
-     * something a manager does by accident: loaning a player who is already out, loaning him for a
-     * season, or loaning him to his own club.
+     * <p>Every rule is checked here rather than in the controller, because the controller is not the only
+     * caller and a rule that lives in a controller is a rule the next caller does not get.
+     *
+     * @throws ApiException with a code naming the rule that stopped it — {@code LOAN_PLAYER_TOO_OLD},
+     *                      {@code LOAN_DIFFERENT_COUNTRY}, {@code LOAN_NOT_LOWER_TIER},
+     *                      {@code LOAN_TOP_TIER_CANNOT_LEND}, {@code LOAN_BOT_CLUB},
+     *                      {@code LOAN_SQUAD_FULL}, {@code LOAN_FINAL_WEEK}
      */
     @Transactional
-    public Optional<Loan> offer(Long parentClubId, Long playerId, Long borrowingClubId,
-                                int startWeek, int endWeek, double wageContribution,
-                                Double buyClause, double loanFee) {
-        if (Objects.equals(parentClubId, borrowingClubId)) {
-            log.warn("{} cannot loan a player to itself", parentClubId);
-            return Optional.empty();
-        }
-        Player player = players.findById(playerId).orElse(null);
-        if (player == null) {
-            log.warn("Loan refused: player {} does not exist", playerId);
-            return Optional.empty();
-        }
-        if (endWeek - startWeek + 1 < MIN_LOAN_WEEKS) {
-            log.warn("Loan refused for {}: {} weeks is not a loan, it is a mistake",
-                    playerId, endWeek - startWeek + 1);
-            return Optional.empty();
-        }
-        if (endWeek - startWeek + 1 > MAX_LOAN_WEEKS) {
-            log.warn("Loan refused for {}: {} weeks is longer than a season",
-                    playerId, endWeek - startWeek + 1);
-            return Optional.empty();
+    public Loan offer(Long lendingClubId, Long playerId, Long borrowingClubId) {
+        Team lender = requireClub(lendingClubId, "lending");
+        Team borrower = requireClub(borrowingClubId, "borrowing");
+        requireManaged(lender, "loan out");
+        requireManaged(borrower, "loan in");
+
+        if (lender.getId().equals(borrower.getId())) {
+            throw refuse("LOAN_SAME_CLUB", "A club cannot loan a player to itself.");
         }
 
-        // A club cannot lend a player it does not own, nor one who is already out on loan.
-        if (!Objects.equals(player.getTeam() == null ? null : player.getTeam().getId(), parentClubId)) {
-            log.warn("Loan refused for {}: he does not play for the club offering him", playerId);
-            return Optional.empty();
+        Player player = players.findById(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "No such player."));
+        if (player.getTeam() == null || !lender.getId().equals(player.getTeam().getId())) {
+            throw refuse("LOAN_NOT_OWNED", "He does not play for the club offering him.");
         }
-        boolean alreadyOut = !loans.findByPlayerIdAndStatusIn(playerId,
-                List.of(Loan.LoanStatus.PROPOSED, Loan.LoanStatus.AGREED, Loan.LoanStatus.ACTIVE))
-                .isEmpty();
-        if (alreadyOut) {
-            log.warn("Loan refused for {}: he is already out on loan", playerId);
-            return Optional.empty();
+        if (player.getAge() > MAX_LOAN_AGE) {
+            throw refuse("LOAN_PLAYER_TOO_OLD",
+                    "Only players younger than " + (MAX_LOAN_AGE + 1) + " may be loaned out; he is "
+                            + player.getAge() + ".");
+        }
+        if (alreadyOut(playerId)) {
+            throw refuse("LOAN_ALREADY_OUT", "He is already out on loan.");
+        }
+
+        requireSameCountry(lender, borrower);
+        requireLowerTier(lender, borrower);
+        // Deliberately no room check here. Offering costs the lending club nothing and the borrower may
+        // still sell somebody before it accepts; the obligation starts when he accepts, so that is where
+        // the check is enforced, and /loans/destinations tells the manager in advance anyway.
+
+        int week = currentWeek();
+        if (week >= SeasonCalendar.WEEKS_PER_SEASON) {
+            throw refuse("LOAN_FINAL_WEEK", "The season is over; a loan runs to the end of it, so there "
+                    + "is nothing to be lent into. It is week " + week + ".");
         }
 
         Loan loan = new Loan();
         loan.setPlayerId(playerId);
-        loan.setParentClubId(parentClubId);
-        loan.setBorrowingClubId(borrowingClubId);
+        loan.setParentClubId(lender.getId());
+        loan.setBorrowingClubId(borrower.getId());
         loan.setSeason(currentSeason());
-        loan.setStartWeek(startWeek);
-        loan.setEndWeek(endWeek);
-        loan.setWageContribution(clamp(wageContribution, 0, 1));
-        loan.setBuyClause(buyClause == null || buyClause <= 0 ? null : buyClause);
-        loan.setLoanFee(Math.max(0, loanFee));
-        loan.setStatus(Loan.LoanStatus.PROPOSED);
-        return Optional.of(loans.save(loan));
-    }
-
-    /**
-     * The borrowing club accepts.
-     *
-     * <p>The window gate is here rather than in {@link #offer} on purpose: offering costs nothing
-     * and a club may line a player up months ahead. <b>Signing</b> him is what needs the window, and
-     * that is what happens when the loan starts.
-     */
-    @Transactional
-    public Loan accept(Long loanId) {
-        Loan loan = loans.findById(loanId).orElseThrow(
-                () -> new IllegalArgumentException("No loan " + loanId));
-        if (loan.getStatus() != Loan.LoanStatus.PROPOSED) {
-            return loan;
-        }
+        loan.setStartWeek(week);
+        // Not an input. The owner fixed the end: the season it started in. Sprint 3.4 let the two clubs
+        // agree weeks 3-to-9, which let a loan be created already expired or run into a second season.
+        loan.setEndWeek(SeasonCalendar.WEEKS_PER_SEASON);
+        loan.setWageContribution(0.0);
         loan.setStatus(Loan.LoanStatus.AGREED);
         return loans.save(loan);
     }
 
     /**
-     * Starts an agreed loan, if the window allows it that week.
+     * Puts an agreed loan into force.
      *
-     * <p>Returns the loan either way; the status says whether it started. A refusal is logged with
-     * the reason, since "it did not happen" is otherwise very hard to see.
+     * <p>Separate from {@link #offer} because the two clubs have to agree, and because the borrowing
+     * club's screen needs to refuse the player if it is full — see {@code LoanController}. Accepting is
+     * the moment the borrower commits, so the room check belongs there rather than on the offer, which
+     * costs the lending club nothing.
      */
     @Transactional
-    public Loan start(Long loanId) {
-        Loan loan = loans.findById(loanId).orElseThrow(
-                () -> new IllegalArgumentException("No loan " + loanId));
+    public Loan activate(Long loanId) {
+        Loan loan = requireLoan(loanId);
         if (loan.getStatus() != Loan.LoanStatus.AGREED) {
-            return loan;
+            throw refuse("LOAN_NOT_AGREED", "This loan is not agreed, so it cannot start.");
         }
-
-        TransferWindowService.Decision window = windows.decide(TransferWindowService.Kind.PERMANENT);
-        if (!window.permitted()) {
-            log.warn("Loan {} cannot start: {}", loanId, window.reason());
-            return loan;
-        }
+        Team borrower = teams.findById(loan.getBorrowingClubId())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEAM_NOT_FOUND", "No such club."));
+        requireManaged(borrower, "loan in");
+        // The borrower may have filled up between the offer and the acceptance.
+        requireRoomAt(borrower);
+        requireTierStillLower(loan);
 
         loan.setStatus(Loan.LoanStatus.ACTIVE);
         loan.setStartedAt(java.time.Instant.now());
         return loans.save(loan);
     }
 
+    // ── terminating ────────────────────────────────────────────────────────────────────────────
+
     /**
-     * The parent club takes him back before the loan ends.
+     * One club asks for the loan to end.
      *
-     * <p>Allowed mid-loan, and deliberately not window-gated: a club recalling its own player is not
-     * a transfer, and blocking it would strand a player in a squad that no longer wants him.
+     * <p>The other club can accept it, in which case the loan ends at once ({@link #acceptTermination}).
+     * If nobody answers, the weekly tick ends it when the notice runs out
+     * ({@link #enforceNotices}).
      */
     @Transactional
-    public Loan recall(Long loanId, String reason) {
-        Loan loan = loans.findById(loanId).orElseThrow(
-                () -> new IllegalArgumentException("No loan " + loanId));
-        if (loan.getStatus() != Loan.LoanStatus.ACTIVE) return loan;
-        loan.setStatus(Loan.LoanStatus.RECALLED);
-        loan.setEndedAt(java.time.Instant.now());
-        log.info("Loan {} recalled: {}", loanId, reason == null ? "no reason given" : reason);
+    public Loan requestTermination(Long loanId, Long requestingClubId, String reason) {
+        Loan loan = requireLoan(loanId);
+        if (loan.getStatus() != Loan.LoanStatus.ACTIVE) {
+            throw refuse("LOAN_NOT_ACTIVE", "Only a running loan can be terminated.");
+        }
+        boolean isLender = loan.getParentClubId().equals(requestingClubId);
+        boolean isBorrower = loan.getBorrowingClubId().equals(requestingClubId);
+        if (!isLender && !isBorrower) {
+            throw refuse("LOAN_NOT_A_PARTY", "Only the two clubs in this loan may ask to end it.");
+        }
+        if (loan.hasNotice()) {
+            // Idempotent rather than an error: a manager clicking twice is not a rule violation, and
+            // refusing the second click would leave him thinking the first one did nothing.
+            loan.setTerminationReason(reason);
+            return loans.save(loan);
+        }
+        if (loan.getSeason() != null && loan.getSeason() != currentSeason()) {
+            // The notice would land in a season the loan does not belong to.
+            return close(loan, isLender ? Loan.LoanStatus.RECALLED : Loan.LoanStatus.RETURNED_EARLY,
+                    reason == null ? "carried over a season boundary" : reason);
+        }
+        loan.setTerminationRequestedByClubId(requestingClubId);
+        loan.setTerminationNoticeWeek(Math.min(SeasonCalendar.WEEKS_PER_SEASON, currentWeek() + NOTICE_WEEKS));
+        loan.setTerminationAccepted(Boolean.FALSE);
+        loan.setTerminationReason(reason);
         return loans.save(loan);
     }
 
-    /** The borrowing club sends him back early — he is not working out. */
+    /** The other club agrees: it ends now, with no notice. */
     @Transactional
-    public Loan returnEarly(Long loanId) {
-        Loan loan = loans.findById(loanId).orElseThrow(
-                () -> new IllegalArgumentException("No loan " + loanId));
-        if (loan.getStatus() != Loan.LoanStatus.ACTIVE) return loan;
-        loan.setStatus(Loan.LoanStatus.RETURNED_EARLY);
-        loan.setEndedAt(java.time.Instant.now());
-        return loans.save(loan);
+    public Loan acceptTermination(Long loanId, Long agreeingClubId) {
+        Loan loan = requireLoan(loanId);
+        if (!loan.hasNotice()) {
+            throw refuse("LOAN_NO_NOTICE", "There is no termination request outstanding on this loan.");
+        }
+        if (loan.getTerminationRequestedByClubId().equals(agreeingClubId)) {
+            throw refuse("LOAN_SELF_ACCEPT", "The club that asked for it cannot also agree to it.");
+        }
+        // Who ASKED decides the status, not who agreed. Reading it off the agreeing club got this
+        // backwards: the lender asks and the borrower agrees, so isLender was false at exactly the moment
+        // it had to be true, and every mutual recall was recorded as a borrower sending him back.
+        boolean lenderAsked = loan.getParentClubId().equals(loan.getTerminationRequestedByClubId());
+        loan.setTerminationAccepted(Boolean.TRUE);
+        loan.setTerminationRequestedByClubId(null);
+        loan.setTerminationNoticeWeek(null);
+        return close(loan, lenderAsked ? Loan.LoanStatus.RECALLED : Loan.LoanStatus.RETURNED_EARLY,
+                "agreed by both clubs");
     }
 
-    /** Closes out loans whose weeks are done. Run by the weekly tick. */
+    /**
+     * Closes loans whose notice nobody answered.
+     *
+     * <p>Which club asked is recorded on the loan, and it decides the status: the lender recalling is
+     * {@code RECALLED}, the borrower sending him back is {@code RETURNED_EARLY}. A club reading its own
+     * history needs to know which of those two things happened.
+     *
+     * @return how many were closed
+     */
+    @Transactional
+    public int enforceNotices() {
+        List<Loan> due = loans.findByStatusAndTerminationNoticeWeekLessThanEqual(
+                Loan.LoanStatus.ACTIVE, currentWeek());
+        for (Loan loan : due) {
+            boolean lenderAsked = loan.getParentClubId().equals(loan.getTerminationRequestedByClubId());
+            close(loan, lenderAsked ? Loan.LoanStatus.RECALLED : Loan.LoanStatus.RETURNED_EARLY,
+                    "notice expired unanswered");
+        }
+        if (!due.isEmpty()) {
+            loans.saveAll(due);
+            log.info("Closed {} loan(s) whose termination notice ran out", due.size());
+        }
+        return due.size();
+    }
+
+    /**
+     * Closes out loans whose season is over — week 12 day 7, back to the club that owns him.
+     *
+     * <p>Nothing moves on the player: {@code Player.team} never left. Closing the loan is the whole of
+     * the return, which is the whole point of not moving him.
+     */
     @Transactional
     public int closeFinishedLoans() {
         int week = currentWeek();
         List<Loan> finishing = loans.findByStatusAndEndWeekLessThanEqual(Loan.LoanStatus.ACTIVE, week);
         for (Loan loan : finishing) {
-            loan.setStatus(Loan.LoanStatus.COMPLETED);
-            loan.setEndedAt(java.time.Instant.now());
+            close(loan, Loan.LoanStatus.COMPLETED, "the season ended");
         }
-        if (!finishing.isEmpty()) loans.saveAll(finishing);
+        if (!finishing.isEmpty()) {
+            loans.saveAll(finishing);
+        }
         return finishing.size();
     }
 
+    // ── reads ───────────────────────────────────────────────────────────────────────────────────
+
     /**
-     * Whether this club may register the player as a first-team player.
+     * Whether this player is out on loan, and to whom.
      *
-     * <p>The cap exemption, and the reason a loan exists: a loanee adds depth without costing a
-     * registration place. A player on loan is registered by nobody.
+     * <p>Consulted by the transfer paths. A loanee has no contract with the borrowing club and
+     * {@code requirePlayerTeam} would name the <b>lender</b> as the seller, so without this a manager
+     * could buy a player he does not own and pay the wrong club.
      */
     @Transactional(readOnly = true)
-    public boolean isRegisteredByNobody(Long playerId) {
-        return !loans.findByPlayerIdAndStatusIn(playerId,
-                List.of(Loan.LoanStatus.ACTIVE)).isEmpty();
+    public boolean isOnLoan(Long playerId) {
+        return !loans.findByPlayerIdAndStatusIn(playerId, List.of(Loan.LoanStatus.ACTIVE)).isEmpty();
     }
 
-    /** Whether a loan can be turned into a permanent move right now, and at what price. */
+    /** The club he belongs to, whatever is on loan — used to keep a signing from stealing a loanee. */
     @Transactional(readOnly = true)
-    public Optional<Double> buyOption(Long playerId) {
+    public java.util.Optional<Long> lendingClubOf(Long playerId) {
         return loans.findByPlayerIdAndStatusIn(playerId, List.of(Loan.LoanStatus.ACTIVE)).stream()
-                .filter(Loan::hasBuyOption)
-                .map(Loan::getBuyClause)
+                .map(Loan::getParentClubId)
                 .findFirst();
     }
 
-    /** The wage the borrowing club actually carries, after its contribution. */
     @Transactional(readOnly = true)
-    public double wageCarriedBy(Long playerId) {
-        return loans.findByPlayerIdAndStatusIn(playerId, List.of(Loan.LoanStatus.ACTIVE)).stream()
-                .findFirst()
-                .map(loan -> {
-                    Player player = players.findById(playerId).orElse(null);
-                    double wage = player == null ? 0 : player.getEarnings();
-                    return round2(wage * (1 - (loan.getWageContribution() == null ? 0
-                            : loan.getWageContribution())));
-                })
-                .orElse(0.0);
+    public List<Loan> incoming(Long clubId) {
+        return loans.findByBorrowingClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
     }
 
-    private double clamp(double v, double min, double max) {
-        return Math.max(min, Math.min(max, v));
+    @Transactional(readOnly = true)
+    public List<Loan> outgoing(Long clubId) {
+        return loans.findByParentClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
     }
 
-    private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+    /**
+     * One loan, for a screen that has to ask whether the viewer is a party to it.
+     *
+     * <p>Public because the controller genuinely cannot answer that question any other way: it does not
+     * know which of the two ids is "ours", and a guard that guesses is a guard that eventually lets a
+     * manager terminate somebody else's loan.
+     */
+    @Transactional(readOnly = true)
+    public Loan loan(Long loanId) {
+        return loans.findById(loanId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LOAN_NOT_FOUND", "No such loan."));
+    }
+
+    /** Whether a club is one of the two in this loan. */
+    public boolean isPartyTo(Loan loan, Long clubId) {
+        return loan != null && clubId != null
+                && (loan.getParentClubId().equals(clubId) || loan.getBorrowingClubId().equals(clubId));
+    }
+
+    // ── the rules ───────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The tier ladder (owner, 2026-10-08): a club may only loan <b>down</b>, and the bottom club may
+     * not loan at all.
+     *
+     * <p>Tier 1 is the top, so "lower" is a larger number. A loan may skip tiers — tier 1 into tier 5 is
+     * allowed — but it may never go up, and never sideways.
+     *
+     * <p><b>A club with no tier on its competition is refused, not treated as tier 1.</b> That default
+     * exists in {@code ClubRatingService} and is the safe direction <i>there</i>, where a guess decides a
+     * starting rating. Here it would make an unknown club top-flight and let it loan anywhere, so an
+     * absent tier is a reason to say no rather than a reason to say yes.
+     */
+    private void requireLowerTier(Team lender, Team borrower) {
+        int lenderTier = tierOf(lender);
+        int borrowerTier = tierOf(borrower);
+        if (lenderTier >= lowestTier) {
+            throw refuse("LOAN_TOP_TIER_CANNOT_LEND",
+                    "A club in the bottom tier has nobody below it to lend to, so it cannot loan out.");
+        }
+        if (borrowerTier <= lenderTier) {
+            throw refuse("LOAN_NOT_LOWER_TIER",
+                    "A club may only loan to a lower tier. They are both tier " + lenderTier + ".");
+        }
+    }
+
+    /** The same check again at activation, so a relegation between offer and acceptance is caught. */
+    private void requireTierStillLower(Loan loan) {
+        Team lender = teams.findById(loan.getParentClubId()).orElse(null);
+        Team borrower = teams.findById(loan.getBorrowingClubId()).orElse(null);
+        if (lender == null || borrower == null) {
+            throw refuse("LOAN_CLUB_MISSING", "One of the clubs in this loan no longer exists.");
+        }
+        requireLowerTier(lender, borrower);
+    }
+
+    /** Domestic only (owner): the loan stays inside the country the two clubs play in. */
+    private void requireSameCountry(Team lender, Team borrower) {
+        Long a = lender.getCountry() == null ? null : lender.getCountry().getId();
+        Long b = borrower.getCountry() == null ? null : borrower.getCountry().getId();
+        if (a == null || b == null || !a.equals(b)) {
+            throw refuse("LOAN_DIFFERENT_COUNTRY",
+                    "A loan can only be made between clubs in the same country.");
+        }
+    }
+
+    /**
+     * Both clubs have to be managed by a person.
+     *
+     * <p>The owner ruled bots out of both sides. The reason that matters is not tidiness: a loan is a
+     * decision two clubs agree to, and an AI club that agreed to one would need a written policy for when
+     * to agree. Until that exists, the feature is for human clubs and the number of them is growing.
+     */
+    private void requireManaged(Team team, String what) {
+        if (!team.isHumanControlled()) {
+            throw refuse("LOAN_BOT_CLUB",
+                    "Loans are between clubs that a person manages, and " + team.getName()
+                            + " is not one. " + Character.toUpperCase(what.charAt(0)) + what.substring(1)
+                            + " is not possible here.");
+        }
+    }
+
+    private void requireRoomAt(Team borrower) {
+        SquadRegistrationService.RegistrationCheck room = squadRegistration.canRegister(borrower.getId());
+        if (!room.allowed()) {
+            throw new ApiException(HttpStatus.CONFLICT, room.code(),
+                    room.reason() + " He cannot come in until somebody leaves.");
+        }
+    }
+
+    private boolean alreadyOut(Long playerId) {
+        return !loans.findByPlayerIdAndStatusIn(playerId,
+                List.of(Loan.LoanStatus.PROPOSED, Loan.LoanStatus.AGREED, Loan.LoanStatus.ACTIVE)).isEmpty();
+    }
+
+    /**
+     * The club's tier, and the floor below which nobody lends.
+     *
+     * <p>Five tiers is the shape of the world: the database has 8 tier-1 competitions, then 5, 7, 11 and
+     * 19. Read from the club's league, and refused rather than guessed when it is absent.
+     */
+    private int tierOf(Team team) {
+        Competition competition = team.getCompetition();
+        Integer tier = competition == null ? null : competition.getTier();
+        if (tier == null || tier < 1 || tier > lowestTier) {
+            throw refuse("LOAN_NO_TIER",
+                    team.getName() + " has no tier we can read, so we will not guess one.");
+        }
+        return tier;
+    }
+
+    // ── plumbing ────────────────────────────────────────────────────────────────────────────────
+
+    private Loan close(Loan loan, Loan.LoanStatus status, String reason) {
+        loan.setStatus(status);
+        loan.setEndedAt(java.time.Instant.now());
+        log.info("Loan {} closed as {}: {}", loan.getId(), status, reason);
+        return loans.save(loan);
+    }
+
+    private Loan requireLoan(Long loanId) {
+        return loans.findById(loanId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "LOAN_NOT_FOUND", "No such loan."));
+    }
+
+    private Team requireClub(Long clubId, String which) {
+        if (clubId == null) {
+            throw refuse("TEAM_REQUIRED", "Which club is " + which + "?");
+        }
+        return teams.findById(clubId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "TEAM_NOT_FOUND", "No such club."));
     }
 
     private int currentSeason() {
-        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
-        return clock == null || clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
+        Integer season = clocks.findById(1L).map(c -> c.getCurrentSeason()).orElse(null);
+        if (season == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "NO_CLOCK", "The game clock is not running.");
+        }
+        return season;
     }
 
     private int currentWeek() {
-        GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
-        return clock == null || clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        Integer week = clocks.findById(1L).map(c -> c.getCurrentWeek()).orElse(null);
+        if (week == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "NO_CLOCK", "The game clock is not running.");
+        }
+        return week;
     }
+
+    private static ApiException refuse(String code, String message) {
+        return new ApiException(HttpStatus.CONFLICT, code, message);
+    }
+
+    /** The bottom tier of the pyramid. Nobody below it, so nobody in it may lend. */
+    private static final int lowestTier = 5;
 }

@@ -31,6 +31,7 @@ import org.example.footballmanager.newLogic.service.TeamMedicalService;
 import org.example.footballmanager.newLogic.service.PlusFeatureService;
 import org.example.footballmanager.newLogic.service.TeamTacticsService;
 import org.example.footballmanager.newLogic.service.ClubOwnershipLinker;
+import org.example.footballmanager.newLogic.service.SquadRegistrationService;
 import org.springframework.data.domain.PageRequest;
 import org.example.footballmanager.newLogic.util.SortWhitelist;
 import org.springframework.data.domain.Sort;
@@ -65,6 +66,7 @@ public class TeamController {
     private final TeamMedicalService teamMedicalService;
     private final TeamTacticsService teamTacticsService;
     private final ClubOwnershipLinker clubOwnership;
+    private final SquadRegistrationService squadRegistration;
 
     public TeamController(TeamRepository teamRepository,
                           PlayerRepository playerRepository,
@@ -79,7 +81,8 @@ public class TeamController {
                           TeamMedicalService teamMedicalService,
                           TeamTacticsService teamTacticsService,
                           PlusFeatureService plusFeatures,
-                          ClubOwnershipLinker clubOwnership) {
+                          ClubOwnershipLinker clubOwnership,
+                          SquadRegistrationService squadRegistration) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -94,6 +97,7 @@ public class TeamController {
         this.teamTacticsService = teamTacticsService;
         this.plusFeatures = plusFeatures;
         this.clubOwnership = clubOwnership;
+        this.squadRegistration = squadRegistration;
     }
 
     @GetMapping
@@ -222,7 +226,10 @@ public class TeamController {
     @GetMapping("/{teamId}/players")
     public ResponseEntity<List<PlayerDTO>> getPlayers(@PathVariable Long teamId,
                                                      @AuthenticationPrincipal User user) {
-        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
+        // Owned plus loaned in. A loanee keeps Player.team on the club that owns him, so without the
+        // union he is invisible on the squad screen and the lineup editor — which is the same thing as
+        // the feature not existing. See SquadRegistrationService.availablePlayers.
+        List<Player> teamPlayers = squadRegistration.availablePlayers(teamId);
         Map<Long, List<MatchPlayerStats>> statsByPlayerId = teamPlayers.isEmpty()
                 ? Map.of()
                 : matchPlayerStatsRepository.findByPlayerIdIn(teamPlayers.stream().map(Player::getId).toList())
@@ -477,7 +484,9 @@ public class TeamController {
         List<Long> starterIds = parseIdList(payload.getOrDefault("starterIds", List.of()), 11);
         List<Long> benchIds = parseIdList(payload.getOrDefault("benchIds", List.of()), 7);
 
-        List<Player> teamPlayers = playerRepository.findByTeamId(teamId);
+        // The union, and this is the load-bearing one: a saved XI is filtered down to this list, so a
+        // loanee missing here is a loanee the manager picked who then never appears in the match.
+        List<Player> teamPlayers = squadRegistration.availablePlayers(teamId);
         Map<Long, Player> byId = teamPlayers.stream()
                 .filter(p -> !p.isInjured())
                 .collect(java.util.stream.Collectors.toMap(Player::getId, p -> p, (a, b) -> a));

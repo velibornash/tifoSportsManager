@@ -88,10 +88,15 @@ public class WeekRolloverJob implements DayJob {
         seasons.applyWeekMaintenance();
 
         int loansClosed = loans.closeFinishedLoans();
+        // Termination notices that nobody agreed to. Same tick, same club-by-club sweep, and it has to be
+        // here: a notice raised in week N is due at the end of week N+1, and this job is the only moment
+        // in the week where anything like this happens.
+        int noticesEnforced = loans.enforceNotices();
         int lapsed = friendlyRequests.expireStaleRequests();
-        if (loansClosed > 0 || lapsed > 0) {
-            log.info("Week {} season {}: {} loans finished, {} friendly requests lapsed.",
-                    week, seasonYear, loansClosed, lapsed);
+        if (loansClosed > 0 || noticesEnforced > 0 || lapsed > 0) {
+            log.info("Week {} season {}: {} loans finished, {} loan notices enforced, "
+                            + "{} friendly requests lapsed.",
+                    week, seasonYear, loansClosed, noticesEnforced, lapsed);
         }
 
         if (week == 2) {
