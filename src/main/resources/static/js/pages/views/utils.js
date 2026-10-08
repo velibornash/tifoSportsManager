@@ -186,6 +186,7 @@ export function buildMilestoneBoardHtml(milestones) {
     const biggestWin = milestones?.biggestWin || null;
     const biggestLoss = milestones?.biggestLoss || null;
     const attendance = milestones?.attendance || null;
+    const trophies = Array.isArray(milestones?.trophies) ? milestones.trophies : [];
 
     return `
         <div class="fm-milestone-grid">
@@ -217,8 +218,30 @@ export function buildMilestoneBoardHtml(milestones) {
                     : (attendance?.insight || 'Crowd data will appear once played fixtures start filing gates.'),
                 'attendance'
             )}
+            ${buildHonoursCardHtml(trophies)}
         </div>`;
 }
+
+/** The medals a club has won: a colour, the competition, and the season (owner, 2026-10-08). */
+function buildHonoursCardHtml(trophies) {
+    const medals = trophies.filter(t => MEDAL_ORDER.includes(t?.medal));
+    const body = medals.length === 0
+        ? '<div class="fm-milestone-meta">No medals yet.</div>'
+        : `<ul class="fm-honours">${medals.map(t => `
+            <li class="fm-honour fm-honour--${htmlEscape(String(t.medal).toLowerCase())}">
+                <span class="fm-honour-medal" aria-hidden="true"></span>
+                <span class="fm-honour-name">${htmlEscape(t.competitionName || 'Competition')}</span>
+                <span class="fm-honour-season">Season ${htmlEscape(String(t.seasonYear ?? '—'))}</span>
+            </li>`).join('')}</ul>`;
+    return `
+        <article class="fm-milestone-card fm-milestone-card--honours">
+            <div class="fm-milestone-kicker">Honours</div>
+            ${body}
+        </article>`;
+}
+
+/** Gold before silver before bronze is the display order; the list arrives sorted by the repository. */
+const MEDAL_ORDER = ['GOLD', 'SILVER', 'BRONZE'];
 
 export function formatDateTimeLabel(value) {
     if (!value) return '-';

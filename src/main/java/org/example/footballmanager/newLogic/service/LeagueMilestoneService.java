@@ -29,6 +29,7 @@ public class LeagueMilestoneService {
     private final MatchRepository matchRepository;
     private final GoalEventRepository goalEventRepository;
     private final PlayerRepository playerRepository;
+    private final HonourService honours;
 
     private final Map<Long, String> clubNames = new HashMap<>();
     private final Map<Long, Set<Long>> clubPlayerIds = new HashMap<>();
@@ -94,6 +95,16 @@ public class LeagueMilestoneService {
                 .biggestWin(resolveBiggestWin(playedMatches, team))
                 .biggestLoss(resolveBiggestLoss(playedMatches, team))
                 .attendance(resolveAttendanceMilestone(playedMatches, team))
+                // Honours are a club's whole history, not this season's: a title won in season 1 is still
+                // on the board in season 6. Read from the stored rows rather than re-derived, because the
+                // derivation rewrites a whole season and a page load must not trigger one.
+                .trophies(honours.honoursOf(team).stream()
+                        .map(h -> LeagueMilestonesDTO.TrophyMilestoneDTO.builder()
+                                .competitionName(h.getCompetitionName())
+                                .seasonYear(h.getSeasonYear())
+                                .medal(h.getMedal().name())
+                                .build())
+                        .toList())
                 .build();
     }
 

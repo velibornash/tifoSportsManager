@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -155,6 +156,38 @@ class HonourServiceTest extends BaseTest {
         t.setName("T " + UUID.randomUUID().toString().substring(0, 6));
         t.setFormation("4-3-3");
         return teams.save(t);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("the read side returns what the derivation wrote, newest season first")
+    void honoursAreReadBack() {
+        Competition league = aLeague();
+        Team champion = aTeam(), runnerUp = aTeam();
+        SeasonCompetition first = aSeasonCompetition(league, 1);
+        SeasonCompetition second = aSeasonCompetition(league, 2);
+        join(first, champion, 1);
+        join(first, runnerUp, 2);
+        join(second, champion, 1);
+
+        honours.derive(1);
+        honours.derive(2);
+
+        List<ClubHonour> read = honours.honoursOf(champion);
+
+        assertEquals(2, read.size(), "one medal per season won: " + read);
+        assertEquals(2, read.get(0).getSeasonYear(),
+                "newest season first, so the board reads top-down");
+        assertEquals(ClubHonour.Medal.GOLD, read.get(0).getMedal());
+        assertTrue(read.stream().allMatch(h -> h.getTeam().getId().equals(champion.getId())),
+                "and only this club's medals come back");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("a club that has won nothing reads as an empty list, not as an error")
+    void aClubWithNoHonoursIsEmpty() {
+        assertTrue(honours.honoursOf(aTeam()).isEmpty());
     }
 
     private void join(SeasonCompetition sc, Team team, int position) {

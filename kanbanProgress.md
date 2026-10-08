@@ -394,6 +394,49 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🏆 P2-TROPHY-1 — the medals reach the Club page (2026-10-08)
+
+The medals had been derived and stored for two commits and **nothing sent them to a screen**. The Club
+page looked complete throughout — five milestone cards, all populated — and the trophy row was simply
+absent. A payload nobody renders is the same defect class as four services with no caller.
+
+**The seam.** `GET /teams/{id}/milestones` is what the Club page reads, so the medals went on **that**
+payload: `LeagueMilestonesDTO.trophies`, filled by `LeagueMilestoneService.buildTeamMilestones` from
+`HonourService.honoursOf`. One builder, so the Club page and `StatsController` are both covered by one
+assertion rather than two routes.
+
+**A club's whole history, not this season's.** A title won in season 1 is still on the board in season 6,
+so the read is the stored rows and not a re-derivation — the derivation rewrites a whole season and a page
+load must not trigger one. Newest season first.
+
+**Honours are a club's, not a league's.** `buildLeagueMilestones` deliberately leaves `trophies` empty: a
+competition's milestone board is not a club's trophy cabinet. And an empty list for a club that has won
+nothing, so the page is not left deciding what empty means.
+
+**The render.** A medal, the competition, the season — gold/silver/bronze each with its own colour, and the
+CSS in the same component sheet the rest of the board uses.
+
+### Two guards, both proved by breaking them
+
+| Broke | Went red |
+|---|---|
+| the payload stops carrying `trophies` | `medalsReachThePayload`, `noMedalsIsAnEmptyList` |
+| the markup stops reading `trophies` and stops naming the competition and season | `theBoardReadsTrophies`, `theRowNamesWhatWasWonAndWhen` |
+
+The render guard reads `utils.js` as text, because the failure it guards **cannot be seen from Java**: the
+data arrives, the page renders, and the medal row is simply not there. Same reason `SidebarBindingTest` and
+`TrainingViewNoShadowedDeclarationsTest` exist.
+
+### Two mistakes of mine, both caught by running it
+
+- The payload edit did not apply on the first attempt — a string match on the wrong variable name — and the
+  builder compiled fine without it. Only the test that asserts the field is non-null noticed. A `null` there
+  is exactly what a page then has to guess at.
+- Both new tests created their `SeasonCompetition` **inside** each `join(...)` call, writing the same
+  `(competition, season)` row twice and tripping the unique index.
+
+---
+
 ## 🔴 P0-CUPS — the draw happens at the end of the season it qualifies from (2026-10-08)
 
 > *"week 12 day 7 ima informacije koji su se timovi kvalifikovali, napraviti odmah zreb od tih timova

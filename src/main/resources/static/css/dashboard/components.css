@@ -644,3 +644,16 @@ recent-match:hover .result-badge {
 }
 .stadium-section-field--check{ flex-direction:row; align-items:center; gap:8px; }
 .stadium-section-quote{ margin-top:4px; }
+
+/* Honours: a medal, the competition it was won in, and the season. */
+.fm-honours{ list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.fm-honour{ display:flex; align-items:center; gap:8px; font-size:.85rem; color:#c7d2e4; }
+.fm-honour-medal{
+    width:14px; height:14px; flex:0 0 14px; border-radius:50%;
+    box-shadow:inset 0 -2px 3px rgba(0,0,0,.35);
+}
+.fm-honour--gold .fm-honour-medal{ background:linear-gradient(145deg,#f7e08a,#c9992b); }
+.fm-honour--silver .fm-honour-medal{ background:linear-gradient(145deg,#eef1f5,#9aa4b2); }
+.fm-honour--bronze .fm-honour-medal{ background:linear-gradient(145deg,#e0a877,#96603a); }
+.fm-honour-name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fm-honour-season{ color:#8b98ad; font-size:.78rem; }

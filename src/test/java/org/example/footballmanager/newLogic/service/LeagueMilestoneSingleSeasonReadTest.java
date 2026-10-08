@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -40,7 +41,12 @@ class LeagueMilestoneSingleSeasonReadTest {
     private final PlayerRepository players = mock(PlayerRepository.class);
 
     private LeagueMilestoneService service() {
-        return new LeagueMilestoneService(matches, goals, players);
+        // The honours collaborator is mocked and left empty: this class is about how many times the match
+        // and goal tables are read, and a mock is what makes that measurable. Its own read path is proved
+        // in HonourServiceTest and the payload shape in ClubMilestonesCarryHonoursTest.
+        HonourService honours = mock(HonourService.class);
+        when(honours.honoursOf(any())).thenReturn(List.of());
+        return new LeagueMilestoneService(matches, goals, players, honours);
     }
 
     private Team aClub() {

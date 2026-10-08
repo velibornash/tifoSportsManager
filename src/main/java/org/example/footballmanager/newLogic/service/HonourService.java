@@ -53,6 +53,21 @@ public class HonourService {
     private final MatchFixtureRepository fixtures;
     private final ClubHonourRepository honours;
 
+    /**
+     * What this club has won, newest season first, gold before silver before bronze.
+     *
+     * <p>The read side of {@link #derive(int)}, and the only thing the Club page needs. It returns stored
+     * rows rather than re-deriving: the derivation is a season-wide rewrite, and a page load must not
+     * trigger one.
+     */
+    @Transactional(readOnly = true)
+    public List<ClubHonour> honoursOf(Team team) {
+        if (team == null || team.getId() == null) {
+            return List.of();
+        }
+        return honours.findByTeamIdOrderBySeasonYearDescMedal(team.getId());
+    }
+
     public HonourService(SeasonCompetitionRepository seasons,
                          CompetitionEntryRepository entries,
                          MatchFixtureRepository fixtures,

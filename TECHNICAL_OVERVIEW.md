@@ -330,8 +330,18 @@ The club area reads and updates the first team, lineup template, formations, tac
 finances, training, medical state, juniors and transfer activity. Club and league rows expose the
 manager profile through the `User.footballTeam` link.
 
-The current dashboard can show club milestones: top scorer, top assist, biggest win, heaviest loss and
-attendance. These are derived from persisted match and crowd data and may be empty in a new world.
+The current dashboard can show club milestones: top scorer, top assist, biggest win, heaviest loss,
+attendance and **honours**. These are derived from persisted match and crowd data and may be empty in a new
+world.
+
+**Honours** (P2-TROPHY-1) are stored, not derived on read: `ClubHonour` rows written by
+`HonourService.derive(season)` — league 1/2/3 → gold/silver/bronze from the final table, cup final winner
+gold, final loser silver, third-place winner bronze, and **no bronze at all in a cup without a
+third-place match**. `derive` runs inside `RankingPointsRebuildService` after every matchday batch, so the
+table fills without anyone pressing anything. `HonourService.honoursOf` is the read side, the medals ride
+on `LeagueMilestonesDTO.trophies` — the payload the Club page already reads — and `buildMilestoneBoardHtml`
+draws a coloured medal with its competition and season. A club that has won nothing gets an empty list and
+the sentence "No medals yet."; the league-wide milestone read deliberately has none.
 
 The ground is built from the club profile's **Open Stadium View**: eight sections, each with a seating
 type, seats to add, a roof over that section only, and its own ticket price beside a recommendation. Work
