@@ -394,6 +394,38 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## ⚠️ P0-RANK-WIRE — the live matchday proof, still owed (2026-10-08)
+
+**Not done, and recorded as not done.** The wiring is committed and its guard is proved; what is missing is
+the one thing a test cannot substitute for — the tables filling in a real world.
+
+**What is established.**
+
+- `sokker_db` is seeded: **14,723 clubs, 14,620 season entries, 1,463 divisions**, all 46 nations built.
+  That was the blocker for everything else.
+- **26 league matches are played** in the real database (week 1, day 3), written by a running application.
+- `club_season_ranking_points`, `country_season_ranking_points` and `club_honour` are all still **empty**.
+
+**What that does and does not mean.** It is not proof the wiring is wrong. The 26 matches were played by the
+**other agent's** application instance, whose build I could not confirm contains `4f8830b`. Two attempts to
+verify with my own instance both ended with the JVM killed — **exit 137, SIGKILL** — while other agents were
+starting and stopping the application on the same port and the same machine. The owner's instruction at the
+time was that other agents need the application, so the verification stopped rather than fighting for it.
+
+**How to finish it in about two minutes**, on a running instance that includes `4f8830b`:
+
+1. advance the clock to the next league matchday — **week 1, day 7, hour 20** (day 3 hour 20 is already
+   behind us, and those matches were played by a build I could not identify);
+2. read `select count(*) from club_season_ranking_points;` — non-zero means the rebuild ran after the
+   batch, and `select count(*) from club_honour;` says whether a finished competition produced medals;
+3. `grep "Ranking after the batch"` in the log, which prints every counter and the elapsed milliseconds.
+
+**Also worth knowing:** the clock is the slow part of this. One `advance day` still walks all ~1,500
+divisions, and an hour-advance of 12 took minutes on a seeded world. The seeding fixes made the *world
+build* fast and visible; they did not touch the clock.
+
+---
+
 ## 🔧 SeasonCalendarTest — three red tests that were stale, not broken (2026-10-08)
 
 The last item off the list, and the smallest. Three failures, all of them **the same thing**: the tests still

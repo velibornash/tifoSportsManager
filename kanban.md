@@ -2357,9 +2357,12 @@ code path would ever have filled them.
       rebuild, and `AsyncSimulationRunnerRebuildsRankingTest` asserts the *caller* — because the first
       version of the rebuild test **passed with the hook deleted**, which is the very defect it was written
       to catch.
-- [ ] **Not yet seen in a live matchday.** Blocked on the clock: one `advance day` on this world
-      reconciles season entries for 48 countries one division at a time (~22 minutes, measured), and the
-      matchday job only fires on day 3. See the P1 note below.
+- [ ] **Still not seen in a live matchday**, and the reason is recorded rather than guessed. The world is
+      seeded (14,723 clubs) and **26 league matches are played in `sokker_db`** — but by the other agent's
+      instance, whose build could not be confirmed to include this commit. Two attempts to verify with my
+      own instance were killed (exit 137) while other agents cycled the same port. **Two minutes of work to
+      finish**: advance to week 1 day 7 hour 20, then read `club_season_ranking_points` and `club_honour`.
+      The full procedure is in `kanbanProgress.md`.
 
 ### The two small items from the same sweep, closed 2026-10-08
 
