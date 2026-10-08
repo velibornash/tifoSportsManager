@@ -3089,6 +3089,22 @@ proven by `LoanServiceTest`.
 
 ---
 
+## 🔧 P2-24b — the Loans screen, and what calling it for real found (2026-10-08)
+
+**Screen:** `loans.js` in the Club segment beside Juniors: rules in full, players in/out/offers, and a lending table with a destination dropdown per player.
+
+**Verified live, refusals only.** The owner's app was up and serving statics from source, so none of this needed a restart or a browser. Calling it found two defects I had just written.
+
+**Every rating on the screen would have been zero.** The endpoint read `Player.getRating()`, the **stored column** — and every player reads 0 because `PlayerRatingBackfill` has never been run. Every rating on the screen would have been a column of zeros. The fix: `careerRating()`, the computed 1–100 value the squad screen uses. No test catches this: the fixtures never set `rating`, so a fixture with `rating=0` looks exactly like a correctly seeded one.
+
+**The destination dropdown would have been empty.** The running build predates the boolean `eligible` field and sent `null` for eligible. A screen checking `d.eligible === true` would have offered **no destinations at all** — an empty dropdown reads as "there is nobody to loan to". The screen now accepts both shapes and names the refusals.
+
+**A gap the screen found, not the tests.** The borrowing club had no way to see an offer. `GET /loans/offers` and `LoanService.offersFor` now exist. Found by writing the screen, not by a test — every test was single-club.
+
+**Not done:** the successful path was never run against the live database (it would mutate the owner's season); the refusals are real calls; the happy path is a test. The screen render and `/loans/offers` need a restart.
+
+---
+
 ## 🔴 `Player.nationality` is null for 7,730 of 10,130 players
 
 Found while implementing the loan rules, 2026-10-08. **`BotSquadGenerator:133` is the only place that
