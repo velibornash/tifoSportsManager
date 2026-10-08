@@ -129,8 +129,18 @@ public class InternationalClubCupJob implements DayJob {
             // Simulated clubs are deliberately playerless until a competition needs them. Qualification
             // needs their static tables first, so finish that world step before reading the field. Both
             // seasons matter: entry comes from last season, while the active season owns the fixtures.
-            simulatedWorldSeeder.seedAllSimulated(Math.max(1, season - 1));
-            simulatedWorldSeeder.seedAllSimulated(season);
+            //
+            // **The two calls are the same call in season 1.** qualifyingSeason clamps at 1 because there
+            // is no season 0, so `seedAllSimulated(Math.max(1, 0))` and `seedAllSimulated(1)` are the same
+            // world build asked for twice — and this job fires on every hour of week 1, so the world's
+            // static half was being built twice per tick, which is why a day advance on an unseeded world
+            // took twenty minutes and looked like a hang. The javadoc above already promised that running
+            // this job twice in one week changes nothing; this is where it was not true.
+            int qualifying = qualifyingSeason(season);
+            simulatedWorldSeeder.seedAllSimulated(qualifying);
+            if (qualifying != season) {
+                simulatedWorldSeeder.seedAllSimulated(season);
+            }
             drawEveryGroupStage(season);
         } else if (isKnockoutWeek(week)) {
             walkEveryBracket(season, week);

@@ -2362,11 +2362,20 @@ code path would ever have filled them.
 
 ### Found alongside it, not fixed here
 
-- **Advancing a single day takes minutes.** Measured while waiting for a matchday: **659 divisions
-  reconciled in 10 minutes**, each logging *"0 removed, 10 added"* — so a day advance is not only slow, it
-  **deletes and re-inserts every club's season entry on every single day**. At 48 countries × 31
-  divisions a full pass is ~1,500 divisions and roughly 22 minutes. Nothing to do with this change, and it
-  is why the P1 performance category is a priority rather than a background concern.
+- **Advancing a single day takes minutes, and the cause is this job, not the clock.** Measured while
+  waiting for a matchday: **659 divisions reconciled in 10 minutes**, each logging *"0 removed, 10
+  added"* — a day advance is not only slow, it **deletes and re-inserts every club's season entry on every
+  day**. The reason is `InternationalClubCupJob`, which runs on **every hour of week 1** and calls
+  `seedAllSimulated` **twice for the same season** — `qualifyingSeason` clamps at 1, so in season 1
+  `Math.max(1, season - 1)` and `season` are the same world build asked for twice. A world whose simulated
+  half does not exist yet pays that build twice per tick, which is why one `advance day` ran past twenty
+  minutes with the clock never moving and read as a hang. The class's own javadoc already promised *"running
+  this job twice in one week changes nothing"*.
+  **Fixed** — the second seeding is skipped when the qualifying season is the active one. **Not yet
+  timed**, because another session is mid-edit in this repository and the build will not compile.
+  **Still open:** the world is being built implicitly inside a day advance, when there is already a
+  **Seed other nations** button for exactly that. Whether that belongs in a matchday job is an owner
+  decision, not a performance tweak.
 
 ---
 

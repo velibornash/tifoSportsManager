@@ -1,5 +1,53 @@
 # kanbanProgress.md — the append-only log
 
+## 🔴 P0-CLOCK — week 1 built the world's static half twice per tick (2026-10-08)
+
+Found while waiting for a live matchday to verify the ranking rebuild, and the reason that verification
+stalled: **one `advance day` on this world ran past twenty minutes with the clock never moving.**
+
+### It is not the clock
+
+`InternationalClubCupJob` fires on **every hour of week 1** and called:
+
+```java
+simulatedWorldSeeder.seedAllSimulated(Math.max(1, season - 1));
+simulatedWorldSeeder.seedAllSimulated(season);
+```
+
+In season 1 those are the **same call** — `qualifyingSeason` clamps at 1 because there is no season 0, which
+is correct for deciding who qualified and wrong for deciding what to build. So the simulated world's static
+half was being built **twice per tick**, on a world where it does not exist yet (406 teams, 31 league
+competitions — the full static world is ~14,880 clubs across 48 countries × 31 divisions).
+
+The visible symptom was the `SeasonService` log repeating *"0 removed, 10 added"* for 659 divisions in ten
+minutes: each division deleted its ten entries and put them back, once per pass, twice per tick.
+
+The class's own javadoc already promised *"running this job twice in one week changes nothing"* — true of
+the draw, false of the seeding. And the existing `theJobIsIdempotent` test passes against the broken code,
+because it counts **fixtures** and the fixtures were never what doubled.
+
+### Fixed, and the guard is asserted through the seeder
+
+The second seeding is skipped when the qualifying season is the active one. `InternationalClubCupJobSeedingTest`
+verifies the *seeder* calls rather than the fixtures, which is the whole difference; putting the duplicate
+call back turns `seasonOneSeedsOnce` red.
+
+### Not timed, and why
+
+Another session is mid-edit in this repository — `YouthAcademyService`, `TalentRange`,
+`GraduationRespectsTheSquadTest` and others are being changed by something else, and the module does not
+currently compile. So the wall-clock improvement is **reasoned, not measured**: the removed pass is the
+entire seeding cost of a tick on an unbuilt world, so the duplicate is gone, and the first build still takes
+minutes. That distinction is worth keeping — this is not "the day advance is fast now".
+
+### Still an owner decision
+
+The world is being built implicitly inside a matchday job, and there is already a **Seed other nations**
+button for exactly that work. Whether it belongs there is a design question, not a performance tweak, and it
+is recorded on the board rather than decided here.
+
+---
+
 ## 🔴 P0-RANK-TIE — level totals shared a position, settled by the alphabet (2026-10-08)
 
 The owner's standing rule, previously unmet: **equal totals get distinct positions, never a shared rank
