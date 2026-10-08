@@ -171,18 +171,31 @@ public class AdminController {
     }
 
     /**
-     * Runs the international club-cup draw job for the active season and week.
+     * Draws the international club-cup group stage for the season that has just finished.
      *
-     * <p>This is deliberately the job itself, with the same scheduled day and hour, rather than a
-     * second repair implementation. The job decides whether the current week is the group draw or a
-     * knockout draw and remains safe to repeat because existing fixtures are skipped.
+     * <p>This is deliberately the job itself rather than a second repair implementation, and it is called
+     * on <b>the draw's own week and day</b> — week 12, day 7 — rather than on "whatever week it happens to
+     * be". It used to pass the current week and a hardcoded day 1, which was two things wrong at once: the
+     * job only reads the week, so on any other week the button answered 200 and drew nothing, and the day
+     * in the request was a number the job never looks at.
+     *
+     * <p>So the button now does what its label says at any point in the year: it draws the field for the
+     * season named, qualifying off that season's finished tables and creating next season's competition.
+     * Repeating it is safe, because a cup whose group stage already exists is skipped.
      */
     @PostMapping("/international-club-cups/redraw")
     public ResponseEntity<Map<String, Object>> redrawInternationalClubCups() {
         int season = seasonService.getActiveSeasonYear();
-        int week = seasonService.getCurrentWeek();
-        internationalClubCupJob.run(new JobContext(season, week, 1, 8));
-        return ResponseEntity.ok(Map.of("season", season, "week", week, "job", InternationalClubCupJob.KEY));
+        int drawWeek = InternationalClubCupJob.DRAW_WEEK;
+        internationalClubCupJob.run(
+                new JobContext(season, drawWeek, InternationalClubCupJob.DRAW_DAY, 8));
+        return ResponseEntity.ok(Map.of(
+                "season", season,
+                "qualifiedFromSeason", season,
+                "drawnForSeason", season + 1,
+                "week", drawWeek,
+                "day", InternationalClubCupJob.DRAW_DAY,
+                "job", InternationalClubCupJob.KEY));
     }
 
 /**

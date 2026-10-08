@@ -2361,6 +2361,13 @@ code path would ever have filled them.
       reconciles season entries for 48 countries one division at a time (~22 minutes, measured), and the
       matchday job only fires on day 3. See the P1 note below.
 
+### The two small items from the same sweep, closed 2026-10-08
+
+| Item | Was | Now |
+|---|---|---|
+| **International club-cup Draw** guessed its week and day | `POST /admin/international-club-cups/redraw` passed **the current week** and a hardcoded **day 1**, while the job draws on week 12 day 7. The job only reads the week, so on any other week the button answered **200 and drew nothing** — and the day in the request was a number nothing looked at. | It draws on the job's **own** `DRAW_WEEK`/`DRAW_DAY`, so the button does what its label says at any point in the year, and the response names the season qualified from and the season drawn for. |
+| **National warm-up** was unreachable | Three finished endpoints (`/slot`, `/opponents`, `POST /`) since 2026-10-06 with **no frontend caller anywhere**. No manager could see the slot, name an opponent, or ask for a match. | A panel on both national-team tabs: the slot **read from `/slot`** rather than restated in the page, the opponent list, a request button that shows the endpoint's own 409 explanation, and both lists — asked and asked of. Written as **optional**: the owner said a warm-up is not compulsory, so the panel says what not playing costs, which is nothing. Read only on the two NT tabs. |
+
 ### Found alongside it, not fixed here
 
 - **Advancing a single day takes minutes, and the cause is this job, not the clock.** Owner, 2026-10-08:

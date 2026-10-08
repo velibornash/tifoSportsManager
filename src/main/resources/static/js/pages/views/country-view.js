@@ -198,7 +198,123 @@ export function createCountryView(deps) {
 
                 ${buildNationalTeamSummary('Senior national team', 'senior', senior)}
                 ${buildNationalTeamSummary('Under-21', 'u21', u21)}
+                ${buildNationalWarmUpHtml(tab, warmUpSideId, warmUp, warmUpSlot, warmUpOpponents)}
 
+            </div>`;
+    }
+
+    /**
+     * Arranging a national warm-up — optional, and it says so (owner, 2026-10-06/08).
+     *
+     * <p>The three endpoints behind this (`/slot`, `/opponents`, `POST /`) had been written since
+     * 2026-10-06 and **nothing in the frontend called them**. The whole feature was unreachable: a manager
+     * could not see the slot, name an opponent, or ask for a match.
+     *
+     * <p>Written as optional on purpose. The owner's point is that a warm-up is <b>not compulsory</b> — it
+     * is an opportunity in one week, not an obligation — so the panel offers it and states the week, and
+     * says plainly that not playing costs nothing.
+     */
+    function buildNationalWarmUpHtml(level, teamId, view, slot, opponents) {
+        if (!teamId) return '';
+        if (!view || view.failed || !slot || slot.failed) {
+            return `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">National warm-up</div>
+                    <p class="fm-subtle">The warm-up list could not be loaded.</p>
+                </section>`;
+        }
+        const list = Array.isArray(opponents) ? opponents : [];
+        const week = slot.week ?? view.week;
+        const day = slot.day ?? view.day;
+        const mine = Array.isArray(view.outgoing) ? view.outgoing : [];
+        const theirs = Array.isArray(view.incoming) ? view.incoming : [];
+
+        return `
+            <section class="fm-panel" data-warmup-team-id="${htmlEscape(String(teamId))}">
+                <div class="fm-panel-head">National warm-up</div>
+                <p class="fm-subtle">
+                    Optional. A warm-up is an extra match in week ${htmlEscape(String(week))} day
+                    ${htmlEscape(String(day))}; not playing one costs nothing and skips no rule.
+                </p>
+                <div class="fm-country-select-row">
+                    <label class="fm-season-select-wrap fm-country-select-control">
+                        <span>Opponent</span>
+                        <select class="fm-season-select" data-warmup-opponent>
+                            <option value="">Choose a national side…</option>
+                            ${list.filter(o => String(o.id) !== String(teamId)).map(o => `
+                                <option value="${htmlEscape(String(o.id))}">${htmlEscape(o.name || 'National team')} · ${htmlEscape(o.country || '')}</option>
+                            `).join('')}
+                        </select>
+                    </label>
+                    <button type="button" class="fm-action-btn" data-warmup-request>Ask for a warm-up</button>
+                </div>
+                <p class="fm-subtle" data-warmup-note></p>
+                ${warmUpRequestListHtml('You have asked', mine, teamId)}
+                ${warmUpRequestListHtml('Asked of this team', theirs, teamId)}
+            </section>`;
+    }
+
+    /**
+     * Asking for a warm-up, and accepting or cancelling one that is already on the table.
+     *
+     * <p>The 409 body is shown as it comes back rather than replaced by a generic failure: the endpoint's
+     * refusal explains itself — wrong week, both sides must be national sides, or that side already has a
+     * match on — and that sentence is more useful than "could not save".
+     */
+    function wireNationalWarmUp(root, activeTab) {
+        const button = root.querySelector('[data-warmup-request]');
+        const note = root.querySelector('[data-warmup-note]');
+        const say = (text) => { if (note) note.textContent = text; };
+
+        if (button) {
+            button.addEventListener('click', async () => {
+                const select = root.querySelector('[data-warmup-opponent]');
+                const opponentId = select?.value;
+                if (!opponentId) {
+                    say('Choose an opponent first.');
+                    return;
+                }
+                button.disabled = true;
+                say('Asking…');
+                try {
+                    const response = await authFetch(
+                        `/api/national/friendly-requests?requesterId=${encodeURIComponent(root.querySelector('[data-warmup-team-id]')?.dataset.warmupTeamId || '')}`
+                        + `&opponentId=${encodeURIComponent(opponentId)}`,
+                        { method: 'POST' });
+                    const body = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        say(body.detail || body.error || 'That warm-up could not be asked for.');
+                        button.disabled = false;
+                        return;
+                    }
+                    say('Asked. The other side has to accept it before it is a match.');
+                    await loadCountryPage({ tab: activeTab });
+                } catch (err) {
+                    say(`That warm-up could not be asked for. ${err.message || ''}`);
+                    button.disabled = false;
+                }
+            });
+        }
+    }
+
+    /** One warm-up request: who it is with, and what it is waiting for. */
+    function warmUpRequestListHtml(title, rows, teamId) {
+        if (!rows.length) {
+            return `<p class="fm-subtle">${htmlEscape(title)}: nothing.</p>`;
+        }
+        const statusText = (r) => {
+            const other = String(r.requesterTeamId) === String(teamId)
+                ? (r.opponentTeamId ?? '—')
+                : (r.requesterTeamId ?? '—');
+            const status = String(r.status || 'PENDING').replace(/_/g, ' ').toLowerCase();
+            return `Side ${other} · ${status}`;
+        };
+        return `
+            <div class="club-profile-detail-list">
+                <div class="club-profile-detail-row">
+                    <span>${htmlEscape(title)}</span>
+                    <strong>${htmlEscape(rows.map(statusText).join(' · '))}</strong>
+                </div>
             </div>`;
     }
 
@@ -637,6 +753,12 @@ export function createCountryView(deps) {
                 ? readJson(`/countries/${encodeURIComponent(countryIso)}/clubs/ranking?limit=100`)
                 : Promise.resolve(null);
 
+            // **A national warm-up is optional, and the panel says so.** The endpoints have existed since
+            // 2026-10-06 with no frontend caller at all, so a country that wanted to arrange one had no
+            // way to and the slot was invisible. Read only on the two national-team tabs: they are the
+            // only place it means anything, and every tab can be reached from any other.
+            const wantsWarmUp = tab === 'senior' || tab === 'u21';
+
             const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs,
                 qualifying] =
                 await Promise.all([
@@ -651,6 +773,18 @@ export function createCountryView(deps) {
                     readJson(`/countries/${encodeURIComponent(countryIso)}/qualifying`),
                     clubRanking
                 ]);
+
+            // Only now, with the side's own id known: the warm-up view is per national team.
+            const warmUpSideId = tab === 'u21' ? (u21Nt?.teamId ?? null) : (seniorNt?.teamId ?? null);
+            const warmUp = wantsWarmUp && warmUpSideId
+                ? await readJson(`/api/national/friendly-requests/${warmUpSideId}`)
+                : null;
+            const warmUpSlot = wantsWarmUp && warmUpSideId
+                ? await readJson('/api/national/friendly-requests/slot')
+                : null;
+            const warmUpOpponents = wantsWarmUp && warmUpSideId
+                ? await readJson(`/api/national/friendly-requests/opponents?level=${encodeURIComponent(tab)}`)
+                : null;
 
             if (leaguesResponse.failed) throw new Error(`Country leagues load failed: ${leaguesResponse.status}`);
             const sortedLeagues = sortCountryLeagues(leaguesResponse || []);
@@ -729,6 +863,7 @@ export function createCountryView(deps) {
     }
 
     function wireCountryPage(root, countryIso, activeTab) {
+        wireNationalWarmUp(root, activeTab);
         root.querySelectorAll('[data-country-route]').forEach(element => {
             element.addEventListener('click', () => {
                 const route = element.dataset.countryRoute;

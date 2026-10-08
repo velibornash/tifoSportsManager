@@ -394,6 +394,48 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 P2-CUPS-DRAW + P2-NT-WARMUP — two features that existed and could not be reached (2026-10-08)
+
+Two items from the same sweep, and both were the **same defect class** as the ranking services: finished code
+that nothing could reach.
+
+### The admin Draw button answered 200 and drew nothing
+
+`POST /admin/international-club-cups/redraw` ran the job with **the current week** and a hardcoded
+**day 1** — while the job had just been moved to drawing on **week 12, day 7**. `run()` only reads the
+season and the week, so:
+
+- on any week other than the draw week the job fell through to its "neither draw nor knockout" branch, and
+  the response said `200 {"week": 7}`;
+- the `1` in the context was a number **no code looked at**, so the request described a moment the job was
+  never at.
+
+It now draws on the job's own `DRAW_WEEK` and `DRAW_DAY`, so the button does what its label says at any
+point in the year, and the response names both seasons: qualified from 5, drawn for 6.
+
+### The national warm-up had three endpoints and no screen
+
+`/slot`, `/opponents` and `POST /` were written on 2026-10-06 and **nothing in the frontend called any of
+them**. A manager could not see the week, name an opponent, or ask for a match; the country page looked
+complete without it.
+
+The panel reads the slot **from the server** rather than restating week 6 day 1 in the markup — the whole
+reason `/slot` exists — shows both lists (asked and asked of), and surfaces the endpoint's own 409
+sentence, which explains the three real reasons a request is refused and is more useful than "could not
+save".
+
+**Optional, in words.** The owner's position is that a warm-up is not compulsory, so the panel says what
+not playing costs, which is nothing and skips no rule. A panel that merely offers a button reads as an
+obligation nobody explained.
+
+Read only on the two national-team tabs: they are the only place it means anything, and every tab can be
+reached from any other.
+
+**Guards**, proved by breaking them: renaming the endpoint turns three of the four red, including the one
+that says the panel must read the slot and the one that says it must read as optional.
+
+---
+
 ## 🏆 P2-TROPHY-1 — the medals reach the Club page (2026-10-08)
 
 The medals had been derived and stored for two commits and **nothing sent them to a screen**. The Club
