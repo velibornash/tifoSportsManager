@@ -19,33 +19,40 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P2-6 — a capped intake produces capped graduates.
+ * Where the squad limit applies to the academy, and where it deliberately does not.
  *
- * <p>Graduation was unconditional: every ACTIVE junior aged twenty in the entire world was turned into
- * a senior {@code Player} in one loop. {@code PlayerContractService.canRegister} could not stop it,
- * because graduation creates no contract and {@code canRegister} counts contracts — so a graduate was
- * invisible to the 25-senior cap, and then drew a wage for a full season before the backfill noticed.
- * A club's academy was an unlimited source of free players.
+ * <p><b>This class changed its mind on 2026-10-08, and that is the point of keeping it.</b> It used to
+ * assert that a full club resolved only as many expired juniors as it had places for and released the
+ * rest. That guard was real — graduation creates no {@code PlayerContract}, and the old cap counted
+ * contracts, so an academy genuinely was an unlimited source of players — but it answered the wrong
+ * question. It stopped a club destroying its own asset, and paid the club nothing for the players it
+ * had spent a season developing.
  *
- * <p><b>What is guaranteed here:</b>
+ * <p>The owner's ruling: <i>"svi idu na TL i klub zaradjuje od prodaje"</i> — they all go on the market
+ * and the club earns from the sale. So:
  *
  * <ul>
- *   <li><b>The squad is the cap.</b> A club with no senior places releases the graduate instead of
- *       creating a twenty-sixth senior. That is the football answer, and it makes P2-7 bite: a club
- *       that refuses to let players go fills its own squad and blocks its own academy.</li>
- *   <li><b>Room is counted down per club as it is used</b>, so five due juniors and two places promote
- *       exactly two — not five and an overflow discovered later.</li>
- *   <li><b>Intake capacity bounds output.</b> The 10-junior cap is now a named constant, and the
- *       board's criterion — a capped intake produces capped graduates — is asserted end to end.</li>
- *   <li><b>An academy graduate is treated as a youth.</b> This is the defect P2-3 introduced and this
- *       task carries: a graduate has no contract, so the objection service fell back to a position
- *       switch that made a seventeen-year-old a STARTER (reluctance 0.75), rolling a near-41%
- *       objection on a player's first day.</li>
+ *   <li><b>The forced paths do not check the room.</b> A tenure expiry and a school closure list every
+ *       prospect, and the club may sit above 30 until they are sold. Being over the cap blocks signing
+ *       and promotion; it does not block selling.</li>
+ *   <li><b>The voluntary paths do check it.</b> A manager's own Promote or Transfer List is refused on a
+ *       full squad, and a refused promotion leaves the junior untouched so the decision is still
+ *       available. That is where the guard moved to, and it is now enforced by
+ *       {@link SquadRegistrationService}, which counts players rather than contracts.</li>
+ *   <li><b>An academy graduate is treated as a youth</b> by the listing objection service. This is the
+ *       defect P2-3 introduced and it is unrelated to the cap: a graduate has no contract, so the
+ *       service fell back to a position switch mapping {@code MID -> STARTER}, which made a
+ *       seventeen-year-old a STARTER at reluctance 0.75 and rolled a near-41% objection on a player's
+ *       first day.</li>
  * </ul>
+ *
+ * <p>The file name is kept because the P2-6 finding it records was real and is worth remembering; only
+ * the answer changed.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -57,6 +64,7 @@ class GraduationRespectsTheSquadTest {
     @Autowired YouthAcademyService academy;
     @Autowired ListingObjectionService objections;
     @Autowired PlayerContractService contracts;
+    @Autowired SquadRegistrationService registration;
 
     private Team aClub(String name) {
         Team t = new Team();
@@ -117,89 +125,87 @@ class GraduationRespectsTheSquadTest {
     }
 
     /**
-     * The cap itself: five expired juniors, two places, two resolved and listed.
+     * Owner, 2026-10-08: <i>"svi idu na TL i klub zaradjuje od prodaje"</i>.
      *
-     * <p>Filled with real senior players rather than a mocked count, because the count is the thing
-     * under test.
+     * <p><b>This test used to assert the opposite.</b> It asserted that a club with two places left and
+     * five expired juniors resolved exactly two and released three, and that the squad could never grow
+     * past its limit. That was the P2-6 guard, and it was protecting the club from its own academy — at
+     * the cost of destroying a player it had paid a season of upkeep to develop, and taking nothing for
+     * him. The owner reversed it: every prospect goes on the market and the club earns the fee.
+     *
+     * <p>So the club <b>may</b> now sit above {@link SquadRegistrationService#MAX_CLUB_SQUAD} after a
+     * season turn. Being over the cap blocks signing and promotion; it does not block selling. The way
+     * out is the market, which is where the value came from.
      */
     @Test
-    @DisplayName("a club resolves only as many expired juniors as it has senior places for")
-    void aFullClubCannotResolveEveryone() {
+    @DisplayName("every expired junior is listed, however full the squad already is")
+    void everyExpiredJuniorIsListed() {
         Team club = aClub("FullClub");
-        int room = 2;
-        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD - room; i++) {
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD; i++) {
             aSenior(club, "Senior " + i);
         }
+        assertEquals(SquadRegistrationService.MAX_CLUB_SQUAD, squadSize(club), "precondition: a full squad");
         for (int i = 0; i < 5; i++) {
             anExpiredJunior(club, "Graduate " + i, 8 + i);
         }
-        long before = squadSize(club);
 
         academy.graduateExpiredJuniors(2);
 
-        assertEquals(before + room, squadSize(club),
-                "the squad may not grow past " + PlayerContractService.MAX_SENIOR_SQUAD
-                        + "; expiry was previously unconditional");
-        assertTrue(squadSize(club) <= PlayerContractService.MAX_SENIOR_SQUAD,
-                "and never past it, however many juniors came through the window");
-
-        long released = juniors.findByStatus(JuniorStatus.RELEASED).stream()
-                .filter(j -> club.getId().equals(j.getTeam() == null ? null : j.getTeam().getId()))
-                .count();
-        assertEquals(3, released,
-                "the other three leave the club rather than occupy a place it cannot give them");
-    }
-
-    /** Room is consumed as it is used, not checked once and forgotten. */
-    @Test
-    @DisplayName("room is counted down per club, so one club's overspill cannot take another's")
-    void roomIsCountedDownPerClub() {
-        final Team roomy = aClub("RoomyClub");
-        final Team full = aClub("BlockedClub");
-        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD; i++) {
-            aSenior(full, "Filler " + i);
-        }
-        for (int i = 0; i < 3; i++) {
-            anExpiredJunior(roomy, "Roomy " + i, 9 + i);
-            anExpiredJunior(full, "Blocked " + i, 9 + i);
-        }
-
-        academy.graduateExpiredJuniors(3);
-
-        assertEquals(3, squadSize(roomy),
-                "a club with a full squad of its own does not stop another club graduating");
-        assertEquals(PlayerContractService.MAX_SENIOR_SQUAD, squadSize(full),
-                "and the full club is held at its limit");
+        assertEquals(SquadRegistrationService.MAX_CLUB_SQUAD + 5, squadSize(club),
+                "all five go on the market; the squad is allowed to exceed the cap and shrink by selling");
+        assertEquals(5, juniors.findByStatus(JuniorStatus.TRANSFER_LISTED).stream()
+                        .filter(j -> club.getId().equals(j.getTeam() == null ? null : j.getTeam().getId()))
+                        .count(),
+                "and none of them is thrown away");
     }
 
     /**
-     * The board's criterion, end to end.
+     * The guard did not move, it changed address.
      *
-     * <p>Fourteen expired juniors is a state the product cannot reach — intake stops at ten, so at most
-     * ten can be ACTIVE and overdue at once. The fixture builds it anyway, on purpose: the sweep reads
-     * junior rows directly, and fixtures and the seeder insert them without passing through intake, so
-     * a pass that promoted fourteen first-team players out of a ten-place academy would be relying on
-     * an invariant it does not itself enforce.
+     * <p>The owner's rule is that a manager cannot promote a junior into a full squad. That is a
+     * <b>voluntary</b> decision, so it is refused — and refusing it must leave the junior exactly as he
+     * was, or a manager who pressed the button would have consumed his one decision for nothing.
      */
     @Test
-    @DisplayName("a capped intake cannot produce more seniors than it could hold")
-    void aCappedIntakeProducesCappedSeniors() {
-        Team club = aClub("CappedClub");
-        assertEquals(10, YouthAcademyService.MAX_ACTIVE_JUNIORS,
-                "the academy's own capacity, named rather than an inline literal");
-        for (int i = 0; i < YouthAcademyService.MAX_ACTIVE_JUNIORS + 4; i++) {
-            anExpiredJunior(club, "Expired " + i, 7 + (i % 5));
+    @DisplayName("a manager cannot promote into a full squad, and a refused promotion changes nothing")
+    void promotionIntoAFullSquadIsRefused() {
+        Team club = aClub("NoRoomClub");
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD; i++) {
+            aSenior(club, "Senior " + i);
         }
+        Junior junior = anExpiredJunior(club, "No room", 9);
+        junior.setArrivalSeasonNumber(1);
         long before = squadSize(club);
 
-        academy.graduateExpiredJuniors(4);
+        var refused = org.junit.jupiter.api.Assertions.assertThrows(
+                org.example.footballmanager.newLogic.exception.ApiException.class,
+                () -> academy.promoteJunior(junior.getId(), 2, 1, false),
+                "a full squad must refuse the promotion");
 
-        long produced = squadSize(club) - before;
-        assertTrue(produced <= YouthAcademyService.MAX_ACTIVE_JUNIORS,
-                "fourteen expired juniors produced " + produced + " seniors; an academy of ten "
-                        + "cannot manufacture fourteen first-team players");
-        assertTrue(produced <= PlayerContractService.MAX_SENIOR_SQUAD - before,
-                "and never past the senior squad limit either");
+        assertEquals("SQUAD_FULL", refused.getCode());
+        assertEquals(JuniorStatus.ACTIVE, juniors.findById(junior.getId()).orElseThrow().getStatus(),
+                "the junior is untouched, so the decision is still available next week");
+        assertEquals(before, squadSize(club), "and no player was created");
+    }
+
+    /** The counterpart: one place freed, and the same promotion now goes through. */
+    @Test
+    @DisplayName("freeing one place lets the promotion through")
+    void aFreedPlaceLetsThePromotionThrough() {
+        Team club = aClub("OneRoomClub");
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD - 1; i++) {
+            aSenior(club, "Senior " + i);
+        }
+        Junior junior = anExpiredJunior(club, "One place", 9);
+
+        assertEquals(SquadRegistrationService.MAX_CLUB_SQUAD - 1, squadSize(club),
+                "precondition: one place short of the limit");
+        assertTrue(registration.canRegister(club.getId()).allowed(),
+                "and one place is genuinely available");
+        academy.promoteJunior(junior.getId(), 2, 1, false);
+
+        assertEquals(JuniorStatus.PROMOTED, juniors.findById(junior.getId()).orElseThrow().getStatus());
+        assertEquals(SquadRegistrationService.MAX_CLUB_SQUAD, squadSize(club));
     }
 
     /**

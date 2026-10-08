@@ -41,11 +41,6 @@ import java.util.Objects;
 @Service
 public class PlayerContractService {
 
-    /** Max senior players a club may register. */
-    public static final int MAX_SENIOR_SQUAD = 25;
-    /** Max academy players a club may register. */
-    public static final int MAX_YOUTH_SQUAD = 8;
-
     /** Contracts shorter than this are refused, as they are in the real world. */
     private static final int MIN_CONTRACT_MONTHS = 6;
     private static final int MAX_CONTRACT_MONTHS = 60;
@@ -77,19 +72,22 @@ public class PlayerContractService {
     private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
     private final org.example.footballmanager.newLogic.repository.GameClockRepository clocks;
     private final CompetitionRepository competitions;
+    private final SquadRegistrationService squadRegistration;
 
     public PlayerContractService(PlayerRepository players,
                                  PlayerContractRepository contracts,
                                  TransferBudgetService budgets,
                                  org.example.footballmanager.newLogic.repository.TeamRepository teams,
                                  org.example.footballmanager.newLogic.repository.GameClockRepository clocks,
-                                 CompetitionRepository competitions) {
+                                 CompetitionRepository competitions,
+                                 SquadRegistrationService squadRegistration) {
         this.players = players;
         this.contracts = contracts;
         this.budgets = budgets;
         this.teams = teams;
         this.clocks = clocks;
         this.competitions = competitions;
+        this.squadRegistration = squadRegistration;
     }
 
 
@@ -155,8 +153,10 @@ public class PlayerContractService {
             }
         }
 
-        // A full squad is a refusal, not a silent over-registration.
-        RegistrationCheck room = canRegister(teamId, squadRole);
+        // A full squad is a refusal, not a silent over-registration. Counted in players, not
+        // contracts — see SquadRegistrationService for why the old contract count let 40-man squads
+        // through.
+        SquadRegistrationService.RegistrationCheck room = squadRegistration.canRegister(teamId);
         if (!room.allowed()) {
             return Outcome.refused(room.reason());
         }
@@ -338,33 +338,6 @@ public class PlayerContractService {
         return RenewalOutcome.renewed(contract);
     }
 
-    // ---------------------------------------------------------------- registration
-
-    /**
-     * Whether a club may register another player, and if not, which rule stops it.
-     *
-     * <p>Checked on signing rather than after, so a club cannot quietly build a 40-man squad.
-     */
-    @Transactional(readOnly = true)
-    public RegistrationCheck canRegister(Long teamId, SquadRole role) {
-        List<PlayerContract> current = contracts.findByTeamId(teamId);
-        boolean senior = role == null || role.isSenior();
-        int used = (int) current.stream()
-                .filter(c -> (c.getSquadRole() == null || c.getSquadRole().isSenior()) == senior)
-                .count();
-        int limit = senior ? MAX_SENIOR_SQUAD : MAX_YOUTH_SQUAD;
-
-        if (used >= limit) {
-            return new RegistrationCheck(false, senior ? "SQUAD_FULL" : "YOUTH_SQUAD_FULL",
-                    senior ? "A club may register " + MAX_SENIOR_SQUAD + " senior players and it "
-                            + "already has " + used + "."
-                            : "A club may register " + MAX_YOUTH_SQUAD + " academy players and it "
-                            + "already has " + used + ".");
-        }
-        return new RegistrationCheck(true, "OK",
-                (limit - used) + " places left in the " + (senior ? "senior" : "academy") + " squad.");
-    }
-
     // ---------------------------------------------------------------- release
 
     /** Mutual termination: the player leaves, the contract goes, and any compensation is settled. */
@@ -450,7 +423,4 @@ public class PlayerContractService {
             return Math.round(v * 100.0) / 100.0;
         }
     }
-
-    /** Whether a squad has room, and why not. */
-    public record RegistrationCheck(boolean allowed, String code, String reason) { }
 }

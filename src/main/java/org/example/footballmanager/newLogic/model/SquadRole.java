@@ -6,6 +6,12 @@ package org.example.footballmanager.newLogic.model;
  * <p>This is not decoration: it decides what happens at a contract negotiation and what a wage
  * demand looks like. A 22-year-old prospect on a long contract and a 34-year-old starter both
  * "under contract", but only one of them is a negotiation.
+ *
+ * <p><b>It is no longer part of any squad limit</b> (owner, 2026-10-08). {@code isSenior()} used to
+ * split a club's registrations into 25 senior and 8 academy players, which meant the limit a club was
+ * held to depended on how the last contract backfill had classified a nineteen-year-old — on age and
+ * value, both of which move. There is now one number, {@code SquadRegistrationService.MAX_CLUB_SQUAD},
+ * counted in players, and this enum decides pay and reluctance only.
  */
 public enum SquadRole {
 
@@ -58,10 +64,5 @@ public enum SquadRole {
             case PROSPECT -> 0.30;
             case YOUTH -> 0.12;
         };
-    }
-
-    /** Whether this role counts against the senior squad limit. */
-    public boolean isSenior() {
-        return this != YOUTH;
     }
 }

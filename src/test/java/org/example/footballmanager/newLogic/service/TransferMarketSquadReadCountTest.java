@@ -78,9 +78,11 @@ class TransferMarketSquadReadCountTest {
                                      ClubNeedService clubNeedService,
                                      NegotiationService negotiation,
                                      TransferListingFeeService listingFees,
-                                     ListingObjectionService listingObjections) {
+                                     ListingObjectionService listingObjections,
+                                     SquadRegistrationService registration) {
             super(transferRepository, playerRepository, teamRepository, userRepository, assigner,
-                    windows, clubNeedService, negotiation, listingFees, listingObjections);
+                    windows, clubNeedService, negotiation, listingFees, listingObjections,
+                    registration);
         }
 
         @Override
@@ -171,7 +173,8 @@ class TransferMarketSquadReadCountTest {
                 new ClubNeedService(playerRepository, contracts),
                 mock(NegotiationService.class),
                 mock(TransferListingFeeService.class),
-                mock(ListingObjectionService.class));
+                mock(ListingObjectionService.class),
+                new SquadRegistrationService(playerRepository));
     }
 
     private long findByTeamIdCalls() {

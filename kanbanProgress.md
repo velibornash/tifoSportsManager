@@ -1,5 +1,120 @@
 # kanbanProgress.md — the append-only log
 
+## 🟢 P2-23 — one squad limit, counted in players (2026-10-08)
+
+Owner rule, in his words: clubs (not NT) have **MAX 30 players**, seniors and juniors and loanees all
+count, and **a club with no free place cannot bring in a player from the transfer list nor promote a
+junior** until it has freed one.
+
+### The answer to his question, first
+
+He asked whether the 25-player limit existed for a regular club the way it does for the national team.
+**It did not, in any of the three ways that mattered.**
+
+| | NT | Club, before |
+|---|---|---|
+| Constant | `NationalTeamService.SQUAD_SIZE = 25` | `MAX_SENIOR_SQUAD = 25` **and** `MAX_YOUTH_SQUAD = 8` |
+| Counted | **players** | **contracts** |
+| Split | none | `SquadRole.isSenior()`, inferred from age and value |
+| Enforced on | adding a player to the squad | **one** path: signing a free agent |
+
+So the club limit was 33 in two buckets, measured in the wrong unit, and applied on the only route a
+manager walks least often.
+
+### Three defects, and the second is the serious one
+
+**1. It counted contracts.** A `Player` with no contract is invisible to it. Three real paths create
+exactly that: a player made from an academy junior (`createSeniorFromJunior` writes no contract, and the
+next season's backfill is a year away), and every player between creation and their backfill.
+
+**2. It was enforced on one path out of three.** `canRegister` had exactly one caller,
+`PlayerContractService.sign`. `TransferService.completeTransfer` checked the price floor and the budget
+and **nothing else** — no squad size. The market, which is the main way a manager adds anybody, was
+uncapped. This was the answer to his question, and it was the reason to make the rule one number counted
+in players rather than to merely move the 25.
+
+**3. The split made the limit unstable.** 25 senior plus 8 academy is 33, and which bucket a player fell
+into came from `inferRole` — age and value, both of which move. A nineteen-year-old worth 400k became
+`PROSPECT`, which `isSenior()` counts as senior. The limit a club was held to depended on how the last
+backfill had classified him.
+
+### Two owner decisions taken first
+
+**Does an academy Junior occupy one of the 30?** No. This one was derivable and I did not ask: his second
+sentence — *cannot promote a junior until they free a place* — is only meaningful if promotion is what
+adds the player. If prospects counted, promotion would be net-zero and could never be blocked.
+
+**A club's academy can expire up to 10 prospects against a 30 cap. What happens?**
+*"svi idu na TL i klub zaradjuje od prodaje"* — all of them go on the transfer list and the club earns
+from the sale.
+
+That reverses the P2-6 guard I had kept in the previous commit, and it is the better rule. The old guard
+stopped a club destroying its own asset: pay a season of upkeep for a prospect, then throw him away
+because the squad was full, and get nothing for him. A listed prospect is inventory, not a squad place.
+
+The consequence, stated rather than discovered later: **a club can sit above 30 after a season turn.**
+Being over the cap blocks signing and promotion; it does not block selling. The exit is the market.
+
+### Where the cap now lives
+
+`SquadRegistrationService`, its own class, because the rule had three callers in three domains and had
+been living inside one of them for no reason. `MAX_CLUB_SQUAD = 30`, counting `Player` rows.
+
+Enforced on every path that moves a player **into** a club: `PlayerContractService.sign`,
+`TransferService.completeTransfer` (new), and the three voluntary academy routes. Not enforced on the
+forced ones — tenure expiry and school closure.
+
+### One build result worth recording
+
+**`mvn test-compile` reported BUILD SUCCESS while three test classes were calling methods that no longer
+existed.** The incremental compiler did not recompile them because their sources had not changed — only
+the main classes had. A green build, proving nothing.
+
+This is the third time in this project that a green status has meant nothing, and it is the plainest
+version yet: nothing was measured, and the only reason it looked fine is that the build did less work
+than I assumed. `mvn clean test-compile` reported the truth immediately. **Every verification from here
+uses `clean`.**
+
+### Verification
+
+158 green over the transfer, contract, squad and academy classes: `PlayerContractServiceTest` 19,
+`TalentRangeTest` 22, `JuniorDecisionWindowTest` 10, `JuniorTenureClockTest` 7, `TransferServicePriceGuardTest`
+14, `GraduationRespectsTheSquadTest` 4, `PlayersRetireTest` 5, plus ten more classes.
+
+**Three mutations, all caught:**
+
+| Mutation | Caught by |
+|---|---|
+| The new check removed from `completeTransfer` | `aFullClubCannotBuy`, `aRefusedTransferSettlesNothing` — "Expected ApiException to be thrown, but nothing was thrown" |
+| The count changed back to not-counting-players | `aContractlessPlayerStillCounts` — *"the 30th player exists, contract or not, so the squad is full"*, and `squadLimitIsEnforced`, `youthPlayersShareTheOneLimit` |
+| The check removed from the academy promotion routes | `promotionIntoAFullSquadIsRefused` |
+
+The second is the interesting one: it is the only mutation that reproduces the *original* bug rather
+than the new one, and it turns red on a test written specifically about a player with no contract.
+
+### Two notes against myself
+
+**A precondition I wrote backwards.** `aFreedPlaceLetsThePromotionThrough` asserted
+`assertFalse(canRegister(...).allowed())` at 29 players — where `canRegister` is *allowed*. The
+assertion was nonsense and the failure was mine, not the code's. It now asserts the squad size and the
+check separately.
+
+**Test doubles that would have hidden the bug.** Three test classes construct `TransferService` or
+`YouthAcademyService` by hand. Each got a **real** `SquadRegistrationService` over the same mocked
+repository rather than a mocked rule — a stubbed "yes there is room" would have let all three pass
+against the uncapped transfer path, which is the precise defect being closed. Two already did mock the
+squad rule implicitly, by not having one at all.
+
+### Not done
+
+**Loans.** The rule says loanees count toward the 30 and loans do not exist yet. When they land they get
+`Player.team` on the borrowing club like any other player and are counted for free — but a loan that sets
+`team` to the *parent* club would not be. Worth saying out loud when the spec arrives.
+
+**`PlayerController.createPlayer` is uncapped** and stays that way: it is the endpoint the seeders use.
+
+---
+
 ## 🟢 P2-22 — the youth academy gets one clear cycle (2026-10-08)
 
 Owner instruction, in short: the Juniors screen and promotion-with-reveal were fine; what was missing was

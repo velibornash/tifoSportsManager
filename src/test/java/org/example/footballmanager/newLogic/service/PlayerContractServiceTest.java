@@ -89,6 +89,7 @@ class PlayerContractServiceTest {
     @Autowired PlayerRepository players;
     @Autowired PlayerContractRepository contracts;
     @Autowired PlayerContractService service;
+    @Autowired SquadRegistrationService registration;
     @Autowired ContractBackfillService backfill;
     @Autowired org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository ledger;
     @Autowired CompetitionRepository competitions;
@@ -259,34 +260,75 @@ class PlayerContractServiceTest {
         assertTrue(fair.renewed(), "meeting the demand must renew");
     }
 
+    /**
+     * Owner, 2026-10-08: one limit, 30 players, counted in players.
+     *
+     * <p>Replaces two tests that asserted 25 seniors plus a separate 8 academy players — 33 in total,
+     * split by an attribute inferred from age and value. The split meant a club was over its limit or
+     * not depending on how the last backfill happened to classify a nineteen-year-old.
+     *
+     * <p>The fillers go in through {@code assignToClub}, which is what actually creates the contract,
+     * so this still measures the real thing. What it no longer proves is anything about contracts:
+     * the rule counts {@code Player} rows, and {@link SquadRegistrationService} is the class under
+     * test for that.
+     */
     @Test
-    @DisplayName("a club cannot register an unlimited squad")
-    void squadLimitsAreEnforced() {
+    @DisplayName("a club cannot exceed 30 players")
+    void squadLimitIsEnforced() {
         Team club = aClub("Full");
-        assertTrue(service.canRegister(club.getId(), SquadRole.STARTER).allowed());
+        assertTrue(registration.canRegister(club.getId()).allowed());
 
-        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD; i++) {
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD; i++) {
             Player p = aPlayer(club, "Filler" + i, 24, 500_000, 2_000);
             service.assignToClub(p, club, 3, SquadRole.ROTATION);
         }
-        PlayerContractService.RegistrationCheck blocked =
-                service.canRegister(club.getId(), SquadRole.STARTER);
-        assertFalse(blocked.allowed(), "a 40-man squad must not be possible");
+        SquadRegistrationService.RegistrationCheck blocked = registration.canRegister(club.getId());
+        assertFalse(blocked.allowed(), "a 31-man squad must not be possible");
         assertEquals("SQUAD_FULL", blocked.code());
         assertNotNull(blocked.reason());
     }
 
+    /**
+     * The old rule's real defect, pinned: a player with no contract counts.
+     *
+     * <p>Twenty-nine players with contracts, and one with none — which is what every academy graduate
+     * is until the next season's backfill. The contract-counting cap could not see that thirty-first
+     * player and would have told the manager he had room.
+     */
     @Test
-    @DisplayName("academy players have their own limit")
-    void youthLimitIsSeparate() {
-        Team club = aClub("Youth");
-        for (int i = 0; i < PlayerContractService.MAX_YOUTH_SQUAD; i++) {
-            Player p = aPlayer(club, "Young" + i, 18, 50_000, 500);
+    @DisplayName("a player with no contract still occupies a place in the squad")
+    void aContractlessPlayerStillCounts() {
+        Team club = aClub("Contractless");
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD - 1; i++) {
+            Player p = aPlayer(club, "Contracted " + i, 24, 500_000, 2_000);
+            service.assignToClub(p, club, 3, SquadRole.ROTATION);
+        }
+        // A junior's worth of player: created at the club, never given a contract.
+        Player graduate = aPlayer(club, "Graduate", 20, 120_000, 400);
+        assertTrue(contracts.findByPlayerId(graduate.getId()).isEmpty(),
+                "precondition: he really has no contract");
+
+        assertFalse(registration.canRegister(club.getId()).allowed(),
+                "the 30th player exists, contract or not, so the squad is full");
+    }
+
+    /**
+     * Seniors and youth players share the thirty, which is the rule now: there is one bucket.
+     */
+    @Test
+    @DisplayName("academy players take places out of the same thirty")
+    void youthPlayersShareTheOneLimit() {
+        Team club = aClub("Mixed");
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD - 4; i++) {
+            Player p = aPlayer(club, "Senior " + i, 24, 500_000, 2_000);
+            service.assignToClub(p, club, 3, SquadRole.ROTATION);
+        }
+        for (int i = 0; i < 4; i++) {
+            Player p = aPlayer(club, "Young " + i, 18, 50_000, 500);
             service.assignToClub(p, club, 3, SquadRole.YOUTH);
         }
-        assertFalse(service.canRegister(club.getId(), SquadRole.YOUTH).allowed());
-        assertTrue(service.canRegister(club.getId(), SquadRole.STARTER).allowed(),
-                "a full academy must not block a senior signing");
+        assertFalse(registration.canRegister(club.getId()).allowed(),
+                "26 seniors plus 4 academy players is thirty, and there is no separate academy limit");
     }
 
     @Test
@@ -421,7 +463,7 @@ class PlayerContractServiceTest {
     void aFullSquadTurnsSigningsAway() {
         Team club = aClub("Full");
         Team other = aClub("Filler");
-        for (int i = 0; i < PlayerContractService.MAX_SENIOR_SQUAD; i++) {
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD; i++) {
             Player existing = aPlayer(other, "Filler " + i, 24, 500_000, 1_000);
             service.assignToClub(existing, club, 3, SquadRole.STARTER);
         }

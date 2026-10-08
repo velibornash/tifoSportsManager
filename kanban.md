@@ -2955,6 +2955,66 @@ and no dot on screen.
 
 ---
 
+## ✅ P2-23 — one squad limit, counted in players (owner, 2026-10-08)
+
+**Owner rule: a club has 30 players. Seniors, youth players and — when loans exist — loanees all count
+against the same 30. A full club cannot sign from the transfer list and cannot promote a junior until it
+has freed a place.**
+
+### What it replaces
+
+| | Before | Now |
+|---|---|---|
+| Limits | 25 senior **and** 8 academy = **33** | **30**, one bucket |
+| Counted | `PlayerContract` **rows** | `Player` **rows** |
+| Split by | `SquadRole.isSenior()`, inferred from age and value | nothing |
+| Enforced on | signing a free agent — **one path** | signing, **buying from the market**, junior promotion |
+
+### The two defects it fixes
+
+**It counted the wrong thing.** A `Player` with no contract was invisible to it, and several real paths
+create exactly that: a player made from an academy junior, and every player in the world between
+creation and the next season's contract backfill. `PlayerContractServiceTest.aContractlessPlayerStillCounts`
+pins this — twenty-nine contracted players plus one graduate was thirty, and the old rule said there was
+room.
+
+**It was in the wrong place, which is the larger one.** `canRegister` was called from exactly one place:
+`PlayerContractService.sign`. **Buying from the transfer list never consulted it at all.** So the market —
+the main way a manager adds anybody — was entirely uncapped, and a club could buy its way to fifty
+players. `completeTransfer` checked the price floor and the budget and nothing else. Three mutations are
+recorded below; removing the new check turns `aFullClubCannotBuy` and `aRefusedTransferSettlesNothing`
+red.
+
+**Both limits now read the same way.** `SquadRegistrationService.MAX_CLUB_SQUAD` and
+`NationalTeamService.SQUAD_SIZE` are both 25-or-30 numbers counted in players, so they can be read side
+by side. The asymmetry between the NT rule and the club rule — which existed because one counted players
+and the other counted contracts — is gone.
+
+### Kept deliberately
+
+**No room check on the forced academy paths.** Tenure expiry and school closure list every prospect, and
+the club may sit above 30 until they are sold. Owner's words: *"svi idu na TL i klub zaradjuje od
+prodaje."* Being over the cap blocks signing and promotion; **it does not block selling**. The way out is
+the market, which is where the value came from. This reverses the P2-6 guard recorded in
+`GraduationRespectsTheSquadTest`, and that class keeps its name and its reasoning because the finding was
+real.
+
+**Academy `Junior` rows are not players.** They do not occupy one of the 30 — which is what makes
+"cannot promote until you free a spot" mean anything, since promotion is what adds the player.
+
+### Dead code removed
+
+`SquadRole.isSenior()` and `PlayerRepository.countSquadSizesByTeamIds` had no callers left once the
+two-bucket split and the expiry-pass room check were both gone. Deleted rather than kept as helpers
+nothing calls; the reasoning survives in `SquadRegistrationService`'s javadoc.
+
+### Not enforced
+
+`PlayerController.createPlayer` still adds players freely. It is the fixture endpoint the seeders use to
+build 14,880 clubs, and capping it would make world construction order-dependent. **Noted, not changed.**
+
+---
+
 ## ✅ P2-22 — the youth academy gets one clear cycle (owner, 2026-10-08)
 
 **The owner's complaint was not a bug.** The Juniors screen worked; what was missing was a rule a

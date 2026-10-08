@@ -60,7 +60,10 @@ class YouthAcademyGraduationTest {
                 mock(TransferService.class), numbers, mock(StaffMemberRepository.class),
                 new PlusFeatureService(mock(TeamRepository.class),
                         new ClubOwnershipLinker(mock(TeamRepository.class),
-                                mock(org.example.commonmanager.repository.UserRepository.class))));
+                                mock(org.example.commonmanager.repository.UserRepository.class))),
+                // Real, over the same mock the service saves through. The promotion cap reads it, and a
+                // stubbed rule would let a test pass on a promotion the product would refuse.
+                new SquadRegistrationService(players));
         // The academy draws from a plain Random, so seed it deterministically and make the seed
         // reachable. Without this the distribution tests could only assert on averages.
         Field random = findField(YouthAcademyService.class, "random");

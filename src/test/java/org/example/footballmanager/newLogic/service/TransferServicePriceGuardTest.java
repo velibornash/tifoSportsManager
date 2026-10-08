@@ -54,6 +54,7 @@ class TransferServicePriceGuardTest {
      */
     private final NegotiationService negotiation = mock(NegotiationService.class);
 
+    private SquadRegistrationService registration;
     private TransferRepository transferRepository;
     private PlayerRepository playerRepository;
     private TeamRepository teamRepository;
@@ -69,6 +70,9 @@ class TransferServicePriceGuardTest {
         transferRepository = mock(TransferRepository.class);
         playerRepository = mock(PlayerRepository.class);
         teamRepository = mock(TeamRepository.class);
+        // Real, not a mock: this class is about the price floor, and a mocked squad rule would let a
+        // test pass on a transfer the product would refuse. A 30-player club answers "yes" for free.
+        registration = new SquadRegistrationService(playerRepository);
 
         service = new TransferService(
                 transferRepository,
@@ -80,7 +84,8 @@ class TransferServicePriceGuardTest {
                 new ClubNeedService(playerRepository, mock(PlayerContractRepository.class)),
                 negotiation,
                 mock(TransferListingFeeService.class),
-                mock(ListingObjectionService.class)
+                mock(ListingObjectionService.class),
+                registration
         );
 
         seller = new Team();
@@ -116,6 +121,85 @@ class TransferServicePriceGuardTest {
         when(teamRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
         when(transferRepository.save(any(Transfer.class))).thenAnswer(inv -> inv.getArgument(0));
         when(playerRepository.save(any(Player.class))).thenAnswer(inv -> inv.getArgument(0));
+        // Default: a buyer with room. Every price test below needs to reach the price logic rather
+        // than stop at the squad limit, and a buyer at 30 players would mask the thing under test.
+        when(playerRepository.findByTeamId(BUYER_ID)).thenReturn(java.util.List.of());
+    }
+
+    // ------------------------------------------------------------ the squad limit on this path
+
+    /**
+     * The path that moves players between clubs never checked squad size at all (owner, 2026-10-08).
+     *
+     * <p>The 25-player cap lived in {@code PlayerContractService} and was consulted only by
+     * {@code sign()}. Buying from the transfer list — the main way a manager adds anybody — read the
+     * budget and the price and nothing else, so a club could buy its way to fifty players. This is the
+     * test that would have caught it, and it is a pure unit test against the same collaborators the
+     * price tests use.
+     */
+    @Test
+    @DisplayName("S0.2: a club with 30 players cannot buy another one")
+    void aFullClubCannotBuy() {
+        when(playerRepository.findByTeamId(BUYER_ID)).thenReturn(fullSquad());
+
+        ApiException ex = capture(() -> service.buyListedPlayer(PLAYER_ID, BUYER_ID, ASKING));
+
+        assertEquals("SQUAD_FULL", ex.getCode());
+        assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+        assertTrue(ex.getMessage().contains("30"),
+                "the message must state the limit, got: " + ex.getMessage());
+    }
+
+    /** And it must refuse <b>before</b> anything moves: the player stays where he is. */
+    @Test
+    @DisplayName("S0.2: a refused transfer settles nothing")
+    void aRefusedTransferSettlesNothing() {
+        when(playerRepository.findByTeamId(BUYER_ID)).thenReturn(fullSquad());
+
+        capture(() -> service.buyListedPlayer(PLAYER_ID, BUYER_ID, ASKING));
+
+        verify(negotiation, never()).settle(any(), any(), any(Double.class), any(Double.class), any());
+    }
+
+    /** One place short is not one too many: the same purchase goes through. */
+    @Test
+    @DisplayName("S0.2: one place short of the limit, the purchase goes through")
+    void onePlaceShortStillBuys() {
+        when(playerRepository.findByTeamId(BUYER_ID)).thenReturn(fullSquad(1));
+
+        service.buyListedPlayer(PLAYER_ID, BUYER_ID, ASKING);
+
+        verify(negotiation).settle(eq(90L), any(), eq(ASKING), any(Double.class), any());
+    }
+
+    /**
+     * A player on the transfer list still occupies a place until he is bought.
+     *
+     * <p>Counting contracts, the old rule could not see a listed player at all, because a player made
+     * from an academy junior has no contract until the next season's backfill.
+     */
+    @Test
+    @DisplayName("S0.2: the count is players, so a listed player occupies a place")
+    void theCountIsPlayersNotContracts() {
+        assertEquals(SquadRegistrationService.MAX_CLUB_SQUAD, fullSquad().size(),
+                "the fixture is exactly at the limit");
+        assertEquals(30, SquadRegistrationService.MAX_CLUB_SQUAD,
+                "owner, 2026-10-08: thirty players, one bucket for seniors and youth alike");
+    }
+
+    private java.util.List<Player> fullSquad() {
+        return fullSquad(0);
+    }
+
+    private java.util.List<Player> fullSquad(int shortBy) {
+        java.util.List<Player> squad = new java.util.ArrayList<>();
+        for (int i = 0; i < SquadRegistrationService.MAX_CLUB_SQUAD - shortBy; i++) {
+            Player p = new Player();
+            p.setId(9000L + i);
+            p.setName("Squad " + i);
+            squad.add(p);
+        }
+        return squad;
     }
 
     private ApiException capture(Runnable action) {

@@ -45,6 +45,7 @@ public class TransferService {
     private final NegotiationService negotiation;
     private final TransferListingFeeService listingFees;
     private final ListingObjectionService listingObjections;
+    private final SquadRegistrationService squadRegistration;
 
 
     private final TransferRepository transferRepository;
@@ -63,11 +64,13 @@ public class TransferService {
                            ClubNeedService clubNeeds,
                            NegotiationService negotiation,
                            TransferListingFeeService listingFees,
-                           ListingObjectionService listingObjections) {
+                           ListingObjectionService listingObjections,
+                           SquadRegistrationService squadRegistration) {
         this.clubNeeds = clubNeeds;
         this.negotiation = negotiation;
         this.listingFees = listingFees;
         this.listingObjections = listingObjections;
+        this.squadRegistration = squadRegistration;
         this.transferRepository = transferRepository;
         this.playerRepository = playerRepository;
         this.teamRepository = teamRepository;
@@ -710,6 +713,16 @@ public TransferDTO resolveListingObjection(Long playerId, ObjectionResolution re
             throw new ApiException(HttpStatus.CONFLICT, "INSUFFICIENT_BUDGET",
                     "Your club does not have enough budget for this transfer.");
         }
+
+        // The squad limit, on the path that actually moves players between clubs (owner, 2026-10-08).
+        //
+        // This check was simply absent. The 25-player cap lived in PlayerContractService and was
+        // consulted only by sign(), so buying from the transfer list -- the main way a manager adds
+        // anybody -- never looked at squad size at all, and a club could buy its way to fifty.
+        //
+        // Deliberately after the budget check and before settle(): a refusal must not change any
+        // state, and settle() is the line after which the player has moved.
+        squadRegistration.requireRoom(buyerTeam.getId(), "buying " + player.getName());
 
         if (transfer == null || transfer.getId() == null) {
             throw new ApiException(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND", "This transfer no longer exists.");

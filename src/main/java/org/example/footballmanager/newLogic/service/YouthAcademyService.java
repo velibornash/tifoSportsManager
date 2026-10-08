@@ -33,6 +33,7 @@ public class YouthAcademyService {
     private final SquadNumberAssigner squadNumberAssigner;
     private final StaffMemberRepository staffMemberRepository;
     private final PlusFeatureService plusFeatures;
+    private final SquadRegistrationService squadRegistration;
     private final Random random = new Random();
 
     @Transactional
@@ -143,13 +144,21 @@ public class YouthAcademyService {
      * club spent a season developing should be worth something to somebody. He is built as a senior,
      * listed at his own estimated value, and another manager decides.
      *
-     * <p><b>The squad cap still has teeth</b> (P2-6, kept deliberately). Graduation creates no
-     * {@code PlayerContract} and {@code canRegister} counts contracts, so a graduate is invisible to
-     * the 25-senior cap — an academy would otherwise be an unlimited source of players. Room is
-     * therefore counted down per club here, and a junior whose club has no place for him is
-     * <b>released</b> rather than listed, because listing him would put a twenty-sixth player in a
-     * twenty-five-man squad. He is still better off than the version where a failed promotion left
-     * him {@code ACTIVE} past twenty forever.
+     * <p><b>No room check here, and that is the owner's decision</b> (2026-10-08): <i>"svi idu na TL i
+     * klub zaradjuje od prodaje"</i> — they all go on the transfer list and the club earns from the
+     * sale. An academy that capped its output would be an academy that destroys its own asset: the
+     * club pays a season of upkeep for a prospect and then throws him away because the squad was
+     * full, and gets nothing for him. A listed prospect is inventory, not a squad place.
+     *
+     * <p>So a club can sit above {@link SquadRegistrationService#MAX_CLUB_SQUAD} after a season turn.
+     * That is the deliberate consequence: being over the cap blocks <b>signing</b> and
+     * <b>promotion</b>, and it does not block <b>selling</b>. The way out is the market, which is the
+     * same place the value came from.
+     *
+     * <p>The P2-6 concern this replaced was real — graduation creates no {@code PlayerContract}, and
+     * the old cap counted contracts, so an academy really was an unlimited source of players. It is
+     * now answered at the other end: {@link SquadRegistrationService} counts players, and it is
+     * consulted on every path that <i>adds</i> one a manager chose.
      */
     @Transactional
     public int graduateExpiredJuniors(int seasonNumber) {
@@ -159,16 +168,8 @@ public class YouthAcademyService {
                 JuniorStatus.ACTIVE, seasonNumber);
         if (expired == null || expired.isEmpty()) return 0;
 
-        Map<Long, Integer> squadSizes = squadSizesOf(expired);
-
         int listed = 0;
         int released = 0;
-        // Room is counted down per club as its juniors are resolved, so a club with six expired
-        // juniors and two places resolves exactly two rather than all six and discovers the overflow
-        // later. The countdown is merge(clubId, -1, Integer::sum): a remapping function of
-        // (a, b) -> a returns the OLD value, so the room never shrank and a squad of twenty-eight got
-        // through until the test below caught it.
-        Map<Long, Integer> roomLeft = new HashMap<>();
         for (Junior junior : expired) {
             Long clubId = junior.getTeam() == null ? null : junior.getTeam().getId();
             if (clubId == null) {
@@ -178,24 +179,6 @@ public class YouthAcademyService {
                 released++;
                 continue;
             }
-            if (roomLeft.computeIfAbsent(clubId, id -> {
-                // Bounded twice: by the senior places the club has free, and by the academy's own
-                // capacity. The second bound is unreachable through intake — which stops at
-                // MAX_ACTIVE_JUNIORS — but the sweep reads rows directly, and fixtures and the
-                // seeder insert juniors without going through it. A pass that can resolve more
-                // juniors than the academy holds is relying on an invariant it does not enforce.
-                int seniorRoom = Math.max(0, PlayerContractService.MAX_SENIOR_SQUAD
-                        - squadSizes.getOrDefault(id, 0));
-                return Math.min(MAX_ACTIVE_JUNIORS, seniorRoom);
-            }) <= 0) {
-                log.info("Season {}: {} released {} — no senior places left at his club",
-                        seasonNumber, junior.getName(), PlayerContractService.MAX_SENIOR_SQUAD);
-                releaseUnplaced(junior);
-                released++;
-                continue;
-            }
-            roomLeft.merge(clubId, -1, Integer::sum);
-
             try {
                 PromotionBuild build = createSeniorFromJunior(junior);
                 transferService.listPlayerForTransfer(build.player.getId(), build.player.getPlayerValue());
@@ -215,33 +198,10 @@ public class YouthAcademyService {
                     seasonNumber, listed);
         }
         if (released > 0) {
-            log.info("Season {}: released {} expired junior(s) with no senior place at their club",
+            log.info("Season {}: released {} expired junior(s) with no club to list them through",
                     seasonNumber, released);
         }
         return listed;
-    }
-
-    /**
-     * How many senior players each of these clubs already has, in one query.
-     *
-     * <p>Counted from {@code Team.players} rather than from contracts, because a graduate has no
-     * contract — that is the whole reason {@code canRegister} could not see him. One grouped query for
-     * the world instead of one count per club: at 14,880 clubs the per-club version would be 14,880
-     * round-trips inside the season rollover.
-     */
-    private Map<Long, Integer> squadSizesOf(List<Junior> juniors) {
-        Set<Long> clubIds = juniors.stream()
-                .map(j -> j.getTeam() == null ? null : j.getTeam().getId())
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (clubIds.isEmpty()) {
-            return Map.of();
-        }
-        Map<Long, Integer> sizes = new HashMap<>();
-        for (Object[] row : playerRepository.countSquadSizesByTeamIds(clubIds)) {
-            sizes.put((Long) row[0], ((Number) row[1]).intValue());
-        }
-        return sizes;
     }
 
     /** He leaves the club rather than occupy a place it cannot give him. */
@@ -510,6 +470,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
     public JuniorAcademyItemDTO promoteJunior(Long juniorId, int currentSeason, int currentWeek,
                                              boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
+        requireSquadRoom(junior, "promoting " + junior.getName());
         PromotionBuild build = createSeniorFromJunior(junior);
         Player player = build.player;
         junior.setStatus(JuniorStatus.PROMOTED);
@@ -518,10 +479,28 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         return toDto(junior, canSeeTalent, youthCoachDevelopment(junior.getTeam()), currentSeason, currentWeek);
     }
 
+    /**
+     * The squad limit, asked of a manager's own decision (owner, 2026-10-08).
+     *
+     * <p>"If they have a full number of players they cannot bring in players from the transfer list nor
+     * promote a junior until they free a spot." Promotion creates a {@code Player}, so it is an
+     * addition like any other and takes the same {@code MAX_CLUB_SQUAD}.
+     *
+     * <p><b>Not asked on the forced paths</b> — the tenure expiry and a school closure. Those list
+     * everyone whatever the room, because the club gets the fee, and a cap there would make the club
+     * destroy a player it paid a season to develop.
+     */
+    private void requireSquadRoom(Junior junior, String what) {
+        Long clubId = junior == null || junior.getTeam() == null ? null : junior.getTeam().getId();
+        if (clubId == null) return;
+        squadRegistration.requireRoom(clubId, what);
+    }
+
     @Transactional
     public JuniorPromotionResultDTO promoteJuniorWithReveal(Long juniorId, int currentSeason, int currentWeek,
                                                             boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
+        requireSquadRoom(junior, "promoting " + junior.getName());
         PromotionBuild build = createSeniorFromJunior(junior);
         junior.setStatus(JuniorStatus.PROMOTED);
         junior.setPromotedPlayer(build.player);
@@ -548,6 +527,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
     public JuniorAcademyItemDTO transferListJunior(Long juniorId, int currentSeason, int currentWeek,
                                                    boolean canSeeTalent) {
         Junior junior = loadDecisionJunior(juniorId, currentSeason, currentWeek);
+        requireSquadRoom(junior, "transfer-listing " + junior.getName());
         PromotionBuild build = createSeniorFromJunior(junior);
         Player player = build.player;
         transferService.listPlayerForTransfer(player.getId(), player.getPlayerValue());

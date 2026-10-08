@@ -50,6 +50,7 @@ class PlayersRetireTest {
     @Autowired org.example.footballmanager.newLogic.repository.PlayerContractRepository contracts;
     @Autowired RetirementService retirement;
     @Autowired PlayerContractService contractService;
+    @Autowired SquadRegistrationService registration;
     @Autowired org.example.footballmanager.newLogic.repository.LineupRepository lineups;
     @Autowired org.springframework.transaction.PlatformTransactionManager txManager;
 
@@ -146,10 +147,11 @@ class PlayersRetireTest {
 
         var contract = contracts.findByPlayerId(playerId).orElseThrow();
         assertEquals(null, contract.getTeam(),
-                "the contract ends too, or he would occupy one of the 25 senior registration slots "
-                        + "for ever and the club could never replace him");
-        assertTrue(contractService.canRegister(club.getId(), SquadRole.STARTER).allowed(),
-                "and the slot is genuinely free again");
+                "the contract ends too, so he does not linger on the books");
+        // Counted in players since 2026-10-08, so the freed place is proved by the player's team being
+        // null rather than by a contract count. Team.players is the membership, and it is what the cap reads.
+        assertTrue(registration.canRegister(club.getId()).allowed(),
+                "and the place is genuinely free again");
     }
 
     /** The same sweep twice must not double-count or resurrect anything. */
