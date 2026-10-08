@@ -1,0 +1,355 @@
+export function createLoansFeature(deps) {
+    const {
+        authFetch,
+        escapeHtml,
+        buildClubActionsHtml,
+        loadPlayer,
+    } = deps;
+
+    /**
+     * The API explains itself, and its explanation is the feature.
+     *
+     * <p>Every refusal here names a rule — "a club may only loan to a lower tier", "only players younger
+     * than 24" — because those sentences are what the owner asked for. Swallowing them into "Action
+     * failed" would throw away the only useful thing on the wire and leave the manager guessing which of
+     * five rules he broke. The same reason and the same shape as the junior school panel.
+     */
+    async function failureMessage(res, fallback) {
+        let msg = fallback;
+        try {
+            const text = await res.text();
+            if (text) {
+                try {
+                    const payload = JSON.parse(text);
+                    msg = payload.message || payload.error || text;
+                } catch (e) {
+                    msg = text;
+                }
+            }
+        } catch (e) { /* the body is gone; the fallback is all there is */ }
+        return msg;
+    }
+
+    function tierLabel(team) {
+        if (team.tier == null) return 'no tier';
+        return `Tier ${team.tier}`;
+    }
+
+    /**
+     * Destination options, split so the screen cannot offer a button that will be refused.
+     *
+     * <p>The server returns every club with a reason when it is ineligible, so the refusals are shown
+     * rather than hidden: a manager who cannot loan to anybody needs to read *why* — "every club in your
+     * country is a tier below yours and has room" is a completely different screen from "no club in your
+     * country is a tier below yours", and only one of them is a bug.
+     */
+    /**
+     * Whether the server said this club can be loaned to.
+     *
+     * <p>Accepts `true` and `null` as eligible, because both are in flight: the current contract sends
+     * a boolean and a separate `reason`, while the build that was running when this screen was written
+     * sent `null` for eligible and the reason string in the same field. Guessing wrong here does not
+     * throw — it silently offers no destinations at all, which reads as "there is nobody to loan to"
+     * and is the least useful possible answer.
+     */
+    function isEligible(d) {
+        return d.eligible === true || d.eligible === null;
+    }
+
+    function ineligibilityReason(d) {
+        if (d.reason) return d.reason;
+        return typeof d.eligible === 'string' ? d.eligible : null;
+    }
+
+    function destinationOptions(destinations) {
+        const eligible = destinations.filter(isEligible);
+        if (!eligible.length) {
+            return `<option value="">No eligible club</option>`;
+        }
+        return eligible.map(d =>
+            `<option value="${d.teamId}">${escapeHtml(d.name)} — ${escapeHtml(tierLabel(d))}</option>`
+        ).join('');
+    }
+
+    /** Why the rest could not be loaned to, in the server's words. The rules are one message. */
+    function refusalSummary(destinations) {
+        const blocked = destinations.filter(d => !isEligible(d));
+        if (!blocked.length) return '';
+        const reasons = [...new Set(blocked.map(ineligibilityReason).filter(Boolean))];
+        const count = `${blocked.length} club${blocked.length === 1 ? '' : 's'}`;
+        if (!reasons.length) return '';
+        return `<p class="fm-subtle academy-panel-copy">${count} could not be loaned to: `
+            + `${escapeHtml(reasons.join('; '))}.</p>`;
+    }
+
+    function loanRow(loan, side) {
+        // side: 'in' = this club borrowed him, 'out' = this club lent him
+        const actions = [];
+        if (side === 'out') {
+            actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Request return</button>`);
+        } else if (loan.noticeOutstanding) {
+            // The other club has asked for this loan to end. Accepting ends it at once; leaving it alone
+            // means it ends a week later anyway, so the button is "yes" and the copy says what happens
+            // if they do nothing.
+            actions.push(`<button class="mini-btn" data-loan-action="accept-termination" data-loan-id="${loan.loanId}">Accept return</button>`);
+        } else {
+            actions.push(`<button class="mini-btn" data-loan-action="terminate" data-loan-id="${loan.loanId}">Send him back</button>`);
+        }
+        return `
+            <tr>
+                <td class="sq-name">
+                    <span class="sq-player-link" data-open-player="${loan.playerId}">${escapeHtml(loan.playerName || '—')}</span>
+                </td>
+                <td>${loan.playerId}</td>
+                <td>${escapeHtml(side === 'out' ? `To #${loan.borrowingClubId}` : `From #${loan.lendingClubId}`)}</td>
+                <td>${escapeHtml(loan.status || '—')}</td>
+                <td>S${loan.season ?? '—'} W${loan.startWeek ?? '—'} → ${escapeHtml(loan.returnsAt || '')}</td>
+                <td>${loan.noticeOutstanding
+                    ? `<span class="academy-status-pill" style="--academy-status:#f5b041;">Notice — ends week ${loan.noticeWeek}</span>`
+                    : '<span class="fm-subtle">—</span>'}</td>
+                <td><div class="academy-action-cell">${actions.join('')}</div></td>
+            </tr>`;
+    }
+
+    function section(title, count, bodyHtml, description, emptyText) {
+        return `
+            <section class="fm-panel academy-panel">
+                <div class="fm-panel-head">
+                    <div>
+                        <h3>${title}</h3>
+                        ${description ? `<p class="fm-subtle academy-panel-copy">${description}</p>` : ''}
+                    </div>
+                    <span class="fm-panel-action">${count}</span>
+                </div>
+                ${bodyHtml || `<div class="fm-empty">${escapeHtml(emptyText)}</div>`}
+            </section>`;
+    }
+
+    function loanTable(loans, side) {
+        if (!loans.length) return '';
+        return `
+            <div class="fm-squad-wrap">
+                <table class="fm-squad academy-squad">
+                    <thead>
+                        <tr>
+                            <th class="sq-name">Player</th>
+                            <th>Id</th>
+                            <th>Club</th>
+                            <th>Status</th>
+                            <th>Runs</th>
+                            <th>Notice</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${loans.map(l => loanRow(l, side)).join('')}</tbody>
+                </table>
+            </div>`;
+    }
+
+    async function loadLoans() {
+        const mainContent = document.getElementById("main-content");
+
+        // Rules first and on their own: it is the one call that cannot fail for an ordinary reason, and
+        // the copy the whole screen is built on. If it fails, everything else would too, so there is
+        // nothing gained by racing them.
+        let rules;
+        try {
+            const res = await authFetch('/loans/rules');
+            if (!res.ok) throw new Error('rules');
+            rules = await res.json();
+        } catch (e) {
+            mainContent.innerHTML = `<div class="fm-page fm-page--club">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main"><div>
+                        <div class="fm-eyebrow">Loans</div>
+                        <h2>Loans</h2>
+                        <p class="fm-subtle">Could not load the loan rules.</p>
+                    </div>${buildClubActionsHtml('loans')}</div>
+                </section>
+                <section class="fm-panel"><div class="fm-empty">Could not load loan data.</div></section>
+            </div>`;
+            return;
+        }
+
+        const [outgoing, incoming, offers, available, destinations] = await Promise.all([
+            authFetch('/loans/outgoing').then(r => r.json()).catch(() => []),
+            authFetch('/loans/incoming').then(r => r.json()).catch(() => []),
+            authFetch('/loans/offers').then(r => r.json()).catch(() => []),
+            authFetch('/loans/available').then(r => r.json()).catch(() => []),
+            authFetch('/loans/destinations').then(r => r.json()).catch(() => []),
+        ]);
+
+        const loanable = (available || []).filter(p => p.loanable);
+        const notLoanable = (available || []).filter(p => !p.loanable);
+        const eligibleCount = (destinations || []).filter(isEligible).length;
+
+        const lendRows = loanable.map(p => `
+            <tr>
+                <td class="sq-name">${escapeHtml(p.name)}</td>
+                <td>${p.age}</td>
+                <td>${escapeHtml(p.position || '—')}</td>
+                <td>${p.rating}</td>
+                <td>
+                    <div class="fm-season-select-wrap">
+                        <select class="fm-season-select" data-loan-destination-for="${p.playerId}">
+                            ${destinationOptions(destinations || [])}
+                        </select>
+                    </div>
+                </td>
+                <td>
+                    <div class="academy-action-cell">
+                        <button class="mini-btn" data-loan-action="offer"
+                                data-loan-player="${p.playerId}"
+                                ${eligibleCount ? '' : 'disabled'}>Lend out</button>
+                    </div>
+                </td>
+            </tr>`).join('');
+
+        mainContent.innerHTML = `<div class="fm-page fm-page--club fm-page--loans">
+            <section class="fm-panel fm-club-hero academy-hero">
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                <div class="fm-club-hero-main">
+                    <div>
+                        <div class="fm-eyebrow">Club overview</div>
+                        <h2>Loans</h2>
+                        <p class="fm-subtle">A player too young for this tier goes down to a weaker club for minutes, and comes back at the end of the season.</p>
+                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.ageRule || '')} ${escapeHtml(rules.tierLadder || '')}</p>
+                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.wage || '')}</p>
+                        <p class="fm-subtle academy-hero-copy">${escapeHtml(rules.runsTo || '')}</p>
+                        <p class="fm-subtle academy-hero-copy">Ending a loan: either club can ask. If the other agrees it ends at once; if nobody answers it ends after ${escapeHtml(String(rules.noticeWeeks ?? 1))} week(s).</p>
+                    </div>
+                    ${buildClubActionsHtml('loans')}
+                </div>
+                <div class="fm-medical-stat-grid academy-summary-grid">
+                    <div><strong>${outgoing.length}</strong><span>Out</span></div>
+                    <div><strong>${incoming.length}</strong><span>In</span></div>
+                    <div><strong>${offers.length}</strong><span>Offers</span></div>
+                    <div><strong>${loanable.length}</strong><span>Loanable</span></div>
+                </div>
+            </section>
+
+            ${section('Players loaned in', incoming.length,
+                loanTable(incoming, 'in'),
+                'They play for this club and count against its thirty. The wage and the training stay with the club that owns them.',
+                'Nobody is on loan to this club.')}
+
+            ${section('Players loaned out', outgoing.length,
+                loanTable(outgoing, 'out'),
+                'Still this club\'s players: still in its thirty, still on its wage bill, still trained by its coaches. They just cannot be picked for this club.',
+                'This club has nobody out on loan.')}
+
+            ${offers.length ? section('Offers to take a player on', offers.length,
+                loanTable(offers, 'in'),
+                'Accepting ends the question of room — the refusal happens at the moment you accept, not when the offer is made.',
+                'No offers.') : ''}
+
+            ${section('Lend a player out', loanable.length, lendRows ? `
+                <div class="fm-squad-wrap">
+                    <table class="fm-squad academy-squad">
+                        <thead>
+                            <tr>
+                                <th class="sq-name">Player</th>
+                                <th>Age</th>
+                                <th>Pos</th>
+                                <th>Rating</th>
+                                <th>Destination</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>${lendRows}</tbody>
+                    </table>
+                </div>
+                ${refusalSummary(destinations || [])}
+                ${notLoanable.length ? `<p class="fm-subtle academy-panel-copy">Not loanable: `
+                    + `${notLoanable.map(p => `${escapeHtml(p.name)} (${escapeHtml(p.reason || 'no')})`).join('; ')}.</p>` : ''}
+            ` : '', '', 'Nobody here can be loaned out.')}
+
+            <p class="fm-subtle academy-footnote">A loan cannot be made in the final week of the season, and
+                a full squad cannot take anybody on — free a place first.</p>
+        </div>`;
+
+        wireActions(mainContent);
+        mainContent.querySelectorAll('[data-open-player]').forEach(link => {
+            link.addEventListener('click', async () => {
+                const playerId = Number(link.getAttribute('data-open-player'));
+                if (playerId) await loadPlayer(playerId, 'loans');
+            });
+        });
+    }
+
+    function wireActions(mainContent) {
+        mainContent.querySelectorAll('[data-loan-action]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const action = btn.getAttribute('data-loan-action');
+                const loanId = Number(btn.getAttribute('data-loan-id'));
+
+                if (action === 'offer') {
+                    const playerId = Number(btn.getAttribute('data-loan-player'));
+                    const select = mainContent.querySelector(`[data-loan-destination-for="${playerId}"]`);
+                    const destinationId = select ? Number(select.value) : NaN;
+                    if (!playerId || !destinationId) {
+                        alert('Choose a club first.');
+                        return;
+                    }
+                    if (!window.confirm('Lend this player out until the end of the season?\n\n'
+                        + 'He stays yours — the wage and the training are still charged to this club — '
+                        + 'but the other club plays him, and he still counts against your thirty.')) return;
+
+                    btn.disabled = true;
+                    const res = await authFetch('/loans', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ playerId, borrowingClubId: destinationId }),
+                    });
+                    if (!res.ok) {
+                        alert(await failureMessage(res, 'Could not lend him out.'));
+                        btn.disabled = false;
+                        return;
+                    }
+                    // The offer is created and the other club has to answer it, so the screen must not
+                    // pretend it is running yet.
+                    await loadLoans();
+                    return;
+                }
+
+                if (!loanId) return;
+
+                if (action === 'terminate') {
+                    const reason = window.prompt(
+                        'Why? (optional)\n\nThe other club can agree and end it now, or the loan ends after '
+                        + 'a week either way.',
+                        '');
+                    if (reason === null) return;
+                    btn.disabled = true;
+                    const res = await authFetch(`/loans/${loanId}/terminate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: reason || '' }),
+                    });
+                    if (!res.ok) {
+                        alert(await failureMessage(res, 'Could not request that.'));
+                        btn.disabled = false;
+                        return;
+                    }
+                    await loadLoans();
+                    return;
+                }
+
+                if (action === 'accept-termination') {
+                    if (!window.confirm('End this loan now?')) return;
+                    btn.disabled = true;
+                    const res = await authFetch(`/loans/${loanId}/accept-termination`, { method: 'POST' });
+                    if (!res.ok) {
+                        alert(await failureMessage(res, 'Could not accept.'));
+                        btn.disabled = false;
+                        return;
+                    }
+                    await loadLoans();
+                }
+            });
+        });
+    }
+
+    return { loadLoans };
+}

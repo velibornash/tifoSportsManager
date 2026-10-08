@@ -455,6 +455,9 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'Club Profile', page: 'profile' },
         { label: 'Medical Center', page: 'medicalCenter' },
         { label: 'Juniors', page: 'juniors' },
+        // Loans is a Club concern in the same way Juniors is: it moves this club's players and this
+        // club's places, so it belongs on the club row rather than on the transfer screen.
+        { label: 'Loans', page: 'loans' },
         { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
         { label: 'Tactic Editor', page: 'tacticEditor', currentPages: ['tacticEditor'] },
         { label: 'Staff', page: 'staff' },

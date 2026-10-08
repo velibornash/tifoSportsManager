@@ -57,10 +57,16 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
     List<Long> findActiveLoanedOutPlayerIds(@Param("clubId") Long clubId,
                                             @Param("status") Loan.LoanStatus status);
 
-    /** The same question answered as loans, for a screen that wants the terms and not just the man. */
-    List<Loan> findByBorrowingClubIdAndStatus(Long borrowingClubId, Loan.LoanStatus status);
-
     List<Loan> findByParentClubIdAndStatus(Long parentClubId, Loan.LoanStatus status);
+
+    /**
+     * Offers this club has been made and has not yet answered.
+     *
+     * <p>Without it a loan is a one-way street: the lending club offers, and the borrowing club has no
+     * screen on which the offer could appear, so the only way to answer one is to know its id. The
+     * lending club's screen is not enough — the two clubs are two different managers.
+     */
+    List<Loan> findByBorrowingClubIdAndStatus(Long borrowingClubId, Loan.LoanStatus status);
 
     /** Notices whose week has arrived, so the tick can close loans nobody agreed to end early. */
     List<Loan> findByStatusAndTerminationNoticeWeekLessThanEqual(Loan.LoanStatus status, Integer week);

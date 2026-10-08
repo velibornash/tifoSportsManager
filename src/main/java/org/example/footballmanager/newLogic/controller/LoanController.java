@@ -101,8 +101,12 @@ public class LoanController {
             row.put("country", candidate.getCountry() == null ? null : candidate.getCountry().getName());
             row.put("tier", candidate.getCompetition() == null ? null : candidate.getCompetition().getTier());
             // Every rule evaluated here is a rule LoanService.offer enforces, and the screen has to be
-            // able to say no for the same reasons or it will offer a button that 409s.
-            row.put("eligible", eligibility(lender, candidate));
+            // able to say no for the same reasons or it will offer a button that 409s. The reason is
+            // sent as a sentence rather than a flag because "no club in your country is a lower tier" and
+            // "no club has room" are different problems and only one of them is a bug.
+            String reason = eligibility(lender, candidate);
+            row.put("eligible", reason == null);
+            row.put("reason", reason);
             out.add(row);
         }
         return out;
@@ -133,7 +137,12 @@ public class LoanController {
             row.put("name", p.getName());
             row.put("age", p.getAge());
             row.put("position", p.getPosition() == null ? null : p.getPosition().name());
-            row.put("rating", p.getRating());
+            // careerRating(), not the column. Found by calling this endpoint against the owner's live
+            // database: every row on the club reads rating = 0, because PlayerRatingBackfill has not
+            // been run over this world and the column is stale. Player.getRating() is the storage
+            // column; careerRating() is the computed 1-100 value the squad screen and the OVR formula
+            // both use, and it is the one a manager can act on when choosing who to send out.
+            row.put("rating", p.careerRating());
             row.put("loanable", p.getAge() <= LoanService.MAX_LOAN_AGE && !loanService.isOnLoan(p.getId()));
             if (p.getAge() > LoanService.MAX_LOAN_AGE) {
                 row.put("reason", "Older than " + (LoanService.MAX_LOAN_AGE + 1) + ".");
@@ -143,6 +152,12 @@ public class LoanController {
             out.add(row);
         }
         return out;
+    }
+
+    /** Offers made to this club that nobody has accepted yet. */
+    @GetMapping("/offers")
+    public List<Map<String, Object>> offers(@AuthenticationPrincipal User principal) {
+        return describe(loanService.offersFor(requireOwnClub(principal)));
     }
 
     @GetMapping("/incoming")

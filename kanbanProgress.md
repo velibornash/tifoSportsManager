@@ -94,7 +94,64 @@ wrong.
 
 ### Not done
 
-**No UI.** `/loans/**` is complete and unreachable from a screen.
+**The successful path was never run against the owner's live database.** The refusals were — see below
+— but offering a player for real writes rows into his season, and that is his game. `LoanServiceTest`
+covers offer, activate and terminate.
+
+---
+
+## 🟢 P2-24b — the Loans screen, and what calling it for real found (2026-10-08)
+
+### The screen
+
+`loans.js` in the Club segment beside Juniors: rules in full at the top, players in, players out,
+offers to accept, and a lending table with a destination dropdown per player. Wired through `loadPage`,
+`buildClubActionsHtml` and the mobile accordion.
+
+Two button labels because the rule is symmetric — **Request return** for the lender, **Send him back**
+for the borrower — and **Accept return** when the other club has already asked.
+
+### I called the running application, and it found a bug I had just written
+
+The owner's app was up and serving statics from source, so none of this needed a restart or a browser:
+
+```
+GET  /loans/rules        200
+GET  /loans/available    200
+GET  /loans/destinations 200
+POST /loans  (24-year-old)  409 LOAN_PLAYER_TOO_OLD  "Only players younger than 24; he is 24."
+POST /loans  (bot club)     409 LOAN_BOT_CLUB  "...ZFK Tamis Vranje is not one."
+```
+
+**`/loans/available` returned `rating: 0` for every player.** The endpoint read
+`Player.getRating()`, which is the **stored column**; the real value is `careerRating()`, a computed
+1-100 method, and `PlayerRatingBackfill` has plainly never been run over this world — all 13 of the
+owner's players are at 0. Every rating on the screen would have been a column of zeros.
+
+**Two tests would not have caught this**, and the reason is worth keeping: they build their players
+through their own fixtures, and a fixture that never sets `rating` looks exactly like a correctly seeded
+one. This is the same shape as P2-6 and the nineteen-year-old band — a defect that exists in the world
+and not in the fixture.
+
+### A second defect, from the same call
+
+`/loans/destinations` returned `eligible: null` for an eligible club, because the running build predates
+the change that made it a boolean — `null` in that field *was* the "eligible" answer. A screen testing
+`d.eligible === true` would have offered **no destinations at all**, and an empty dropdown reads as
+"there is nobody to loan to", which is the least useful thing the page could say. The screen accepts
+both shapes and says which.
+
+### A gap the screen exposed, not the tests
+
+**The borrowing club had no way to see an offer.** `offer` created an AGREED loan and the destination
+club's only route to it was knowing its id, so the feature only worked for a club lending to itself.
+`GET /loans/offers` and `LoanService.offersFor` now exist. Found by writing the screen — every loan test
+was single-club.
+
+### Still unverified
+
+`/loans/offers` and the screen render both need a restart; both were written after the running build.
+The refusals above are real calls; the happy path is a test.
 
 ### Blocked on, not caused by, parallel work
 

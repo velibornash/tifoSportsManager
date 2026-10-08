@@ -3018,9 +3018,40 @@ all. `LoaneeCannotBeTradedTest` exists because of that, and because the failure 
 `requirePlayerTeam` resolves the **lender** as the seller, so a buyer would pay the wrong club and the
 borrower would carry on fielding a player sold out from under it.
 
-### Not done
+### The screen
 
-**No UI.** The whole feature is reachable over HTTP (`/loans/**`) and nothing calls it from a screen.
+`loans.js`, in the Club segment beside Juniors: the rules stated in full at the top, players **in**,
+players **out**, offers to accept, and a lending table with a destination dropdown per player. A manager
+who cannot loan to anybody reads **why** — "no club a person manages", "not a lower tier", "a different
+country" — because the server sends the reason and an empty dropdown is the least useful answer.
+
+Two button labels because the rule is symmetric: the lending club reads **Request return**, the
+borrowing club reads **Send him back**. When the other club has asked, the borrowing club reads **Accept
+return**, and the copy says what happens if they do nothing.
+
+### Verified against the running application, not reasoned about
+
+The owner's application was already up and serving statics from source, so this was called for real:
+
+```
+GET  /loans/rules        200  tier ladder, wage rule, "week 12 day 7"
+GET  /loans/available    200  13 players, loanable flags
+GET  /loans/destinations 200  every club with a reason per refusal
+POST /loans  (24-year-old)      409 LOAN_PLAYER_TOO_OLD — "Only players younger than 24; he is 24."
+POST /loans  (bot club)         409 LOAN_BOT_CLUB — "…ŽFK Tamiš Vranje is not one."
+```
+
+**And this found a defect I had written.** The lending table showed `Player.getRating()`, which is the
+**stored column** — and every row on the owner's club reads `0`, because `PlayerRatingBackfill` has not
+been run over this world. Every rating on the screen would have shown zero. It now reads
+`careerRating()`, the computed 1–100 value the squad screen uses.
+
+### Not verified
+
+`/loans/offers` and the screen render need a restart; both were written after the running build. The
+**successful** path — offer, accept, terminate — was deliberately not exercised against the owner's live
+game, because that writes rows into his season. The refusals above are real; the happy path is only
+proven by `LoanServiceTest`.
 
 ---
 

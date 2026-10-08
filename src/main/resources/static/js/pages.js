@@ -3,6 +3,7 @@ import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
 import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { createAcademyFeature } from './pages/features/academy.js';
+import { createLoansFeature } from './pages/features/loans.js';
 import { createTeamFeature } from './pages/features/team.js';
 import { createMatchesFeature } from './pages/features/matches.js';
 import { createClubManagementFeature } from './pages/features/club-management.js';
@@ -328,6 +329,12 @@ function buildPageNavState(page, options = {}) {
         // The junior school panel is priced in money.
         formatBudget,
     });
+    const loansFeature = createLoansFeature({
+        authFetch,
+        escapeHtml,
+        buildClubActionsHtml,
+        loadPlayer: (...args) => loadPlayer(...args),
+    });
     const teamFeature = createTeamFeature({
         authFetch,
         getTeamId: () => currentUserTeamId,
@@ -512,6 +519,10 @@ function buildPageNavState(page, options = {}) {
 
                 case "juniors":
                     await loadJuniors();
+                    break;
+
+                case "loans":
+                    await loadLoans();
                     break;
                 case "medicalCenter":
                     await loadMedicalCenter();
@@ -1189,6 +1200,9 @@ function buildPageNavState(page, options = {}) {
     async function loadJuniors() {
         return academyFeature.loadJuniors();
     }
+    async function loadLoans() {
+        return loansFeature.loadLoans();
+    }
     async function loadStaff() {
         return clubManagementFeature.loadStaff();
     }
@@ -1292,6 +1306,7 @@ function buildPageNavState(page, options = {}) {
     window.loadFirstTeam = loadFirstTeam;
     window.loadResults = loadResults;
     window.loadJuniors = loadJuniors;
+    window.loadLoans = loadLoans;
     window.loadFormations = loadFormations;
     window.loadTacticEditor = loadTacticEditor;
     window.loadStaff = loadStaff;

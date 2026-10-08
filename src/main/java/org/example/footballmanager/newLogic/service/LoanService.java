@@ -301,6 +301,18 @@ public class LoanService {
         return loans.findByBorrowingClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
     }
 
+    /**
+     * Offers made to this club that it has not answered yet.
+     *
+     * <p>A loan needs two managers, and this is the borrowing club's half of the conversation. It was
+     * missing: the offer was created and the destination club had no way to see it, so the feature only
+     * worked for a club lending to itself.
+     */
+    @Transactional(readOnly = true)
+    public List<Loan> offersFor(Long clubId) {
+        return loans.findByBorrowingClubIdAndStatus(clubId, Loan.LoanStatus.AGREED);
+    }
+
     @Transactional(readOnly = true)
     public List<Loan> outgoing(Long clubId) {
         return loans.findByParentClubIdAndStatus(clubId, Loan.LoanStatus.ACTIVE);
