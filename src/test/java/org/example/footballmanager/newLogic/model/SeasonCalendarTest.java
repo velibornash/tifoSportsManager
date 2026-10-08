@@ -89,38 +89,69 @@ class SeasonCalendarTest {
         // Written out longhand rather than derived, on purpose: a test that recomputes the table
         // from the same constant it is checking proves nothing. This is the owner's instruction
         // transcribed, and it is the thing a change has to keep matching.
-        assertEquals("r1", slotLabel(1, 1));
-        assertEquals("r2", slotLabel(1, 2));
-        assertEquals("r3", slotLabel(2, 1));
-        assertEquals("r4", slotLabel(2, 2));
-        assertEquals("r5", slotLabel(3, 1));
-        assertEquals("r6", slotLabel(3, 2));
-        assertEquals("r7", slotLabel(4, 1));
-        assertEquals("r8", slotLabel(4, 2));
+        //
+        // **Four slots per week, not two** (owner rule 2026-10-06): day 1, day 3, day 5, day 7. This
+        // transcription was written when a week had two slots, so every league round below sat at
+        // slot 1 or 2 and the friendly slots were not mentioned at all — which meant the table it
+        // claimed to pin verbatim was not the table in the code, and three tests in this class said so.
+        // The rounds are now at slots 2 and 4, with friendly opportunities at 1 and 3.
+        assertEquals("FRIENDLY", slotLabel(1, 1));
+        assertEquals("r1", slotLabel(1, 2));
+        assertEquals("FRIENDLY", slotLabel(1, 3));
+        assertEquals("r2", slotLabel(1, 4));
+        assertEquals("r3", slotLabel(2, 2));
+        assertEquals("r4", slotLabel(2, 4));
+        assertEquals("r5", slotLabel(3, 2));
+        assertEquals("r6", slotLabel(3, 4));
+        assertEquals("r7", slotLabel(4, 2));
+        assertEquals("r8", slotLabel(4, 4));
 
         // Round 10 used to be week 6's second slot. The owner moved it into week 5 so that week 6
         // could be left entirely to national-team qualifiers, which is why the first half now ends
         // on round 10 in a single week and the mid-season window opens the moment that round is done.
-        assertEquals("r9", slotLabel(5, 1));
-        assertEquals("r10", slotLabel(5, 2));
-        assertEquals("FRIENDLY", slotLabel(6, 1));
-        assertEquals("FRIENDLY", slotLabel(6, 2));
+        assertEquals("r9", slotLabel(5, 2));
+        assertEquals("r10", slotLabel(5, 4));
+        // Week 6 is four friendly slots: no league at all, and the qualifiers are not built yet.
+        for (int slot = 1; slot <= SeasonCalendar.SLOTS_PER_WEEK; slot++) {
+            assertEquals("FRIENDLY", slotLabel(6, slot), "week 6 slot " + slot);
+        }
 
-        assertEquals("r11", slotLabel(7, 1));
-        assertEquals("r12", slotLabel(7, 2));
-        assertEquals("r13", slotLabel(8, 1));
-        assertEquals("r14", slotLabel(8, 2));
-        assertEquals("r15", slotLabel(9, 1));
-        assertEquals("r16", slotLabel(9, 2));
-        assertEquals("r17", slotLabel(10, 1));
-        assertEquals("r18", slotLabel(10, 2));
+        assertEquals("r11", slotLabel(7, 2));
+        assertEquals("r12", slotLabel(7, 4));
+        assertEquals("r13", slotLabel(8, 2));
+        assertEquals("r14", slotLabel(8, 4));
+        assertEquals("r15", slotLabel(9, 2));
+        assertEquals("r16", slotLabel(9, 4));
+        assertEquals("r17", slotLabel(10, 2));
+        assertEquals("r18", slotLabel(10, 4));
 
-        // Week 11: the playoff takes Thursday, so only the clubs not in it may play then.
-        assertEquals("FRIENDLY_IF_NOT_IN_PLAYOFF", slotLabel(11, 1));
-        assertEquals("FRIENDLY", slotLabel(11, 2));
-        // The break is two friendlies and nothing else.
-        assertEquals("FRIENDLY", slotLabel(12, 1));
-        assertEquals("FRIENDLY", slotLabel(12, 2));
+        // Week 11: the playoff takes day 3, so only the clubs not in it may play then.
+        assertEquals("FRIENDLY", slotLabel(11, 1));
+        assertEquals("FRIENDLY_IF_NOT_IN_PLAYOFF", slotLabel(11, 2));
+        assertEquals("FRIENDLY", slotLabel(11, 3));
+        assertEquals("FRIENDLY", slotLabel(11, 4));
+        // The break is four friendly slots and nothing else.
+        for (int slot = 1; slot <= SeasonCalendar.SLOTS_PER_WEEK; slot++) {
+            assertEquals("FRIENDLY", slotLabel(12, slot), "week 12 slot " + slot);
+        }
+    }
+
+    /**
+     * The slots are the four match days, and that is what the whole table is written against.
+     *
+     * <p>Stated here because the transcription above silently assumed something else for a long time:
+     * if a "slot" were a weekday rather than a day number, moving a fixture would move the season.
+     */
+    @Test
+    @DisplayName("the four slots are day 1, day 3, day 5 and day 7 of the week")
+    void slotsAreFourMatchDays() {
+        assertEquals(4, SeasonCalendar.SLOTS_PER_WEEK);
+        assertEquals(1, SeasonCalendar.dayForSlot(1));
+        assertEquals(3, SeasonCalendar.dayForSlot(2));
+        assertEquals(5, SeasonCalendar.dayForSlot(3));
+        assertEquals(7, SeasonCalendar.dayForSlot(4));
+        assertEquals(-1, SeasonCalendar.dayForSlot(0), "slot 0 is not a day of the week");
+        assertEquals(-1, SeasonCalendar.dayForSlot(5), "and neither is slot 5");
     }
 
     /** A short, readable label for a slot, for the assertions above. */
@@ -163,27 +194,33 @@ class SeasonCalendarTest {
     }
 
     @Test
-    @DisplayName("friendly slots appear in weeks 5, 6, 11 and 12 and nowhere else")
+    @DisplayName("friendly slots appear wherever a week has no league round")
     void friendlySlots() {
-        assertEquals(0, SeasonCalendar.friendlySlots(1));
-        assertEquals(0, SeasonCalendar.friendlySlots(5), "week 5 is two league rounds now");
-        assertEquals(2, SeasonCalendar.friendlySlots(6), "week 6 is two friendly slots now");
-        assertEquals(0, SeasonCalendar.friendlySlots(7));
-        // Week 11 offers two, but a club in the playoff only keeps one of them.
-        assertEquals(2, SeasonCalendar.friendlySlots(11, false));
-        assertEquals(1, SeasonCalendar.friendlySlots(11, true));
-        assertEquals(2, SeasonCalendar.friendlySlots(12));
+        // Every league week still offers two — day 1 and day 5 — because a friendly is an option, not
+        // an obligation, and the owner's four-slot week leaves room for it beside two rounds.
+        assertEquals(2, SeasonCalendar.friendlySlots(1));
+        assertEquals(2, SeasonCalendar.friendlySlots(5), "week 5 is two league rounds and still two friendlies");
+        assertEquals(4, SeasonCalendar.friendlySlots(6), "week 6 is four friendly slots now");
+        assertEquals(2, SeasonCalendar.friendlySlots(7));
+        // Week 11 offers four, but a club in the playoff loses the day-3 slot to it.
+        assertEquals(4, SeasonCalendar.friendlySlots(11, false));
+        assertEquals(3, SeasonCalendar.friendlySlots(11, true));
+        assertEquals(4, SeasonCalendar.friendlySlots(12));
     }
 
     @Test
-    @DisplayName("a club's fixtures fit inside its two weekly slots")
+    @DisplayName("a club's fixtures fit inside the slots its week has")
     void fixturesFitTheWeek() {
         for (int week = 1; week <= SeasonCalendar.WEEKS_PER_SEASON; week++) {
             for (boolean inPlayoff : new boolean[] { false, true }) {
                 int total = SeasonCalendar.matchesIn(week)
                         + SeasonCalendar.friendlySlots(week, inPlayoff);
-                assertTrue(total <= 2,
-                        "week " + week + " would need " + total + " matches; only two slots exist");
+                // Four, because that is how many match moments a week has (owner rule 2026-10-06).
+                // This said two, which is the bound from before the four-slot week — and it failed for
+                // the two weeks that are nothing but friendlies, which is the calendar working.
+                assertTrue(total <= SeasonCalendar.SLOTS_PER_WEEK,
+                        "week " + week + " would need " + total + " matches; only "
+                                + SeasonCalendar.SLOTS_PER_WEEK + " slots exist");
             }
         }
     }

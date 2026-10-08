@@ -2368,6 +2368,30 @@ code path would ever have filled them.
 | **International club-cup Draw** guessed its week and day | `POST /admin/international-club-cups/redraw` passed **the current week** and a hardcoded **day 1**, while the job draws on week 12 day 7. The job only reads the week, so on any other week the button answered **200 and drew nothing** — and the day in the request was a number nothing looked at. | It draws on the job's **own** `DRAW_WEEK`/`DRAW_DAY`, so the button does what its label says at any point in the year, and the response names the season qualified from and the season drawn for. |
 | **National warm-up** was unreachable | Three finished endpoints (`/slot`, `/opponents`, `POST /`) since 2026-10-06 with **no frontend caller anywhere**. No manager could see the slot, name an opponent, or ask for a match. | A panel on both national-team tabs: the slot **read from `/slot`** rather than restated in the page, the opponent list, a request button that shows the endpoint's own 409 explanation, and both lists — asked and asked of. Written as **optional**: the owner said a warm-up is not compulsory, so the panel says what not playing costs, which is nothing. Read only on the two NT tabs. |
 
+### SeasonCalendarTest — three failures that were stale, not broken (closed 2026-10-08)
+
+All three were red long before this work and all three were the same thing: **the tests still described a
+two-slot week.** The owner moved a week to **four match moments — day 1, 3, 5 and 7** (2026-10-06), and
+these three were never updated.
+
+| Test | Was asserting | Now |
+|---|---|---|
+| `theOwnersTableVerbatim` | rounds 1-18 at slots 1 and 2, with the friendly slots unmentioned | the full four-slot table, transcribed slot by slot, plus a new test that the four slots **are** days 1/3/5/7 |
+| `friendlySlots` | 0 in a league week, 2 in week 6 | 2 in a league week (days 1 and 5), **4** in weeks 6 and 12, 4 or 3 in week 11 depending on the playoff |
+| `fixturesFitTheWeek` | a week holds at most **2** matches | at most `SLOTS_PER_WEEK` |
+
+The second one is the interesting failure: it asserted `friendlySlots(1) == 0`, and the answer is now 2 —
+because a friendly is an **option, not an obligation**, and the four-slot week deliberately leaves room
+for one beside two league rounds. The test was not wrong about the calendar; it was describing the previous
+one. The third was failing on exactly the two weeks that are **nothing but friendlies**, which is the
+calendar working as designed.
+
+None of the three was a production defect. The code was right and the transcription had drifted — so the
+fix is to the tests, and `theOwnersTableVerbatim` now says in its own comment why it is transcribed by hand
+instead of derived.
+
+**Guard checked:** moving round 1 back to the two-slot position turns it red.
+
 ### Found alongside it, not fixed here
 
 - **Advancing a single day takes minutes, and the cause is this job, not the clock.** Owner, 2026-10-08:

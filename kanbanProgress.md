@@ -394,6 +394,32 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔧 SeasonCalendarTest — three red tests that were stale, not broken (2026-10-08)
+
+The last item off the list, and the smallest. Three failures, all of them **the same thing**: the tests still
+described a **two-slot week**. The owner moved a week to **four match moments — day 1, 3, 5 and 7**
+(2026-10-06) and these three were never updated, so they had been red for a long time.
+
+| Test | Was asserting | Reality |
+|---|---|---|
+| `theOwnersTableVerbatim` | rounds at slots 1 and 2, friendly slots unmentioned | rounds at slots **2 and 4**, friendly at 1 and 3 |
+| `friendlySlots` | `friendlySlots(1) == 0` | **2** — a friendly is an option, and the four-slot week leaves room for one beside two rounds |
+| `fixturesFitTheWeek` | a week holds at most 2 matches | at most **`SLOTS_PER_WEEK`** |
+
+The second is the one worth keeping. The test asserted that a league week offers **no** friendly slots, and
+the reason it was ever true is that the week had no room. Give the week a fourth moment and the answer
+changes — because the design says a friendly is an option, not an obligation, and the owner's new week has
+space for it. **The test was not wrong; it was describing the previous calendar.**
+
+The third was failing on precisely the two weeks that are **nothing but friendlies** — weeks 6 and 12 — which
+is the calendar working, not breaking.
+
+No production code changed. The transcription now pins all four slots and says why it is written by hand, and
+a new test states that the four slots *are* days 1/3/5/7 — the assumption the old transcription made without
+saying. Moving round 1 back to its two-slot position turns it red.
+
+---
+
 ## 🔴 P2-CUPS-DRAW + P2-NT-WARMUP — two features that existed and could not be reached (2026-10-08)
 
 Two items from the same sweep, and both were the **same defect class** as the ranking services: finished code
