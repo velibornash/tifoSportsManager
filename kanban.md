@@ -2326,6 +2326,43 @@ result by the gap as well counted the opponent **twice**.
 
 ---
 
+## 🔴 P0-RANK-WIRE — the ranking points and the medals are built but nothing computes them — found 2026-10-08
+
+> Found while wiring the trophy UI. **Not a defect report: a green tick over an empty table.**
+
+`ClubRankingPointsService.recompute()`, `NationalRankingPointsService.recompute()`,
+`AchievementBonusService` and `HonourService.derive()` have **no caller anywhere in `src/main`**. Their
+tests are green because the tests call them.
+
+What that means in a live world:
+
+| Feature | Reads | Writes | In a real game |
+|---|---|---|---|
+| Country and club **ranking lists** | `ClubSeasonRankingPoints`, `CountrySeasonRankingPoints` (`CountryController`, `RankingPointsReader`) | the recompute above | **empty tables** — the lists the owner asked for rank nothing |
+| **Achievement bonuses** (qualification, phase, trophy) | the same ledgers | `AchievementBonusService` | never applied |
+| **Medals** (P2-TROPHY-1) | `club_honour` | `HonourService.derive` | never derived, so a trophy UI would render an empty row forever |
+
+**Evidence, not inference:** `AsyncSimulationRunner` — the batch boundary every matchday ends at —
+recomputes **club Elo only** (`rateClubs()` → `ClubRatingService.recomputeDurably()`). Nothing else. And
+`sokker_db` holds 0 played matches and 0 rows in all three tables, so this is not merely a world with no
+history: no code path would fill them.
+
+**Also noted:** `SimMatchService.persist` calls `nationalRatingService.recompute()` per match, which the
+Elo path deliberately avoids doing per match (see `rateClubs()`). Whatever hooks the ranking recompute must
+follow the same discipline — one replay per batch, own transaction, cannot fail the matchday.
+
+**Why this is P0 and not a P2 task:** it is the owner's own explicit demand — *"JEDAN JEDINI REJTING
+SISTEM"* — and the system exists on paper only. Everything downstream of the ranking tables is reading an
+empty ledger.
+
+**Open question for the owner before it is wired:** where the replay runs. The cost is the same shape as the
+Elo replay that already runs after every batch, and it grows with the world rather than with the batch, so
+the options are (a) after every matchday batch, like Elo; (b) once at week rollover; (c) both, with the
+matchday run limited to the competitions that just finished. **Not measured yet** — this world has no played
+matches to measure against, and a baseline is only comparable to a baseline measured the same way.
+
+---
+
 ## 🏟️ P2-STAD-1 — the ground is built one section at a time — owner, 2026-10-08
 
 > **nastavi sa stadionom, svaka od 4 strane sveta/tribine i svaki od 4 uglova su isti zahtevi:**
@@ -2383,7 +2420,7 @@ answers are not written down anywhere in the codebase yet.
 |---|---|---|
 | **P2-STAD-1** | **Stadium works need a stand, a cost, and a yes/no.** | ✅ **Built and seen in the database.** Each of the four sides and four corners is its own `StadiumSection`: a **seating type** (standing / benches / seats / heated), **seats to add**, and a **roof over that section only**. `POST /sections/quote` returns the price and **how many weeks that stand holds nobody** without spending; `POST /sections/build` spends it and closes that one section; `POST /sections/price` prices a section on its own, with a recommendation beside it. **Total capacity is the sum of the eight**, and `seatQuality` is now the capacity-weighted comfort of what was built instead of a number the world builder set and nothing read. | Was: one capacity, one price, one roof, and a `POST /build` that spent the budget on the click and reported the closure afterwards. Two doors that could write `Stadium.capacity` would have let the total and the sections disagree, so the whole-ground expand/roof/seat actions were **removed** rather than left dormant; `StadiumBuildService` keeps only the shared per-seat cost and the free colouring. Laying out the eight **is** the migration: a legacy ground keeps every seat, divided across the eight, and keeps selling on its own tiers until a manager prices a section, so no existing club's gate income moves because a table appeared. |
 | **P2-TRAIN-1** | **Can training facilities be repaired, and how does that affect training?** | ✅ **Answered — they cannot be repaired, because there is no damage model.** They can be **upgraded**, three facility types, per-level cost and weekly upkeep, and upgrade level directly multiplies training growth via `TrainingProgressionService.facilityFactor` → `Stadium.trainingFactorFor(skill)`. No repair feature exists. |
-| **P2-TROPHY-1** | **Trophies on the Club page, inside milestones** — medal colour (gold/silver/bronze), competition and season beneath. | ✅ **Backend done.** `ClubHonour` + `HonourService` derive every medal from results — league positions 1/2/3 → gold/silver/bronze from the final table, cup final winner gold / loser silver / third-place winner bronze. Your rule recorded. **Remaining: wire the milestones tab UI to render it.** |
+| **P2-TROPHY-1** | **Trophies on the Club page, inside milestones** — medal colour (gold/silver/bronze), competition and season beneath. | 🟡 **Backend written, never run — and now recorded as 🔴 P0-RANK-WIRE.** `ClubHonour` + `HonourService` derive every medal from results and their tests pass, but `derive()` has **no caller in `src/main`**, so `club_honour` is empty in a live game. Rendering the UI now would show an empty row forever. **Sequence: fix the wiring first, then the UI row.** |
 
 **Order:** P2-TRAIN-1 and P2-STAD-1 are done. **P2-TROPHY-1 has its backend and still needs its UI row.**
 

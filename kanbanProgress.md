@@ -1,5 +1,24 @@
 # kanbanProgress.md — the append-only log
 
+## 🔴 P0-RANK-WIRE — the ranking points and the medals compute nothing (found 2026-10-08)
+
+Found while starting the trophy UI. `ClubRankingPointsService.recompute()`,
+`NationalRankingPointsService.recompute()`, `AchievementBonusService` and `HonourService.derive()` have
+**no caller in `src/main`**. Their own tests call them, which is why they are green.
+
+`AsyncSimulationRunner.rateClubs()` — the batch boundary every matchday ends at — recomputes **club Elo
+only**. `sokker_db` confirms it is not merely an empty world: 0 played matches, and 0 rows in
+`club_season_ranking_points`, `country_season_ranking_points` and `club_honour`.
+
+So the ranking lists the owner asked for sort an empty ledger, the achievement bonuses are never applied,
+and a trophy UI built now would render an empty row forever. Not started: wiring it, because where the
+replay runs is an owner decision (per matchday batch like Elo, at week rollover, or both) and the cost has
+never been measured — there are no played matches to measure against.
+
+Recorded rather than fixed here, and P2-TROPHY-1's UI is explicitly sequenced behind it.
+
+---
+
 ## P2-STAD-1 — the ground is built one section at a time (owner, 2026-10-08)
 
 > **svaka od 4 strana i svaki od 4 uglova su isti zahtevi: tip sedista, kapacitet koji se dogradjuje,
