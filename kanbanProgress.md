@@ -451,6 +451,54 @@ academy screen has not been rendered at 430px or on a desktop after this change.
 
 ---
 
+## 🔴 P0-CLOCK-BUTTON — Advance Week was dead: `LazyInitializationException` (2026-10-08)
+
+Found because the verification could not get the clock to move, then read out of the **running
+application's own log**, which is the most direct evidence this repository has ever produced:
+
+```text
+ERROR GlobalApiExceptionHandler : Unhandled exception during POST /simulation/week/advance:
+  could not initialize proxy [Team#1] - no Session
+  at SimulationController.advanceWeek(SimulationController.java:290)
+      Team$HibernateProxy.getCompetition(Unknown Source)
+```
+
+**Advance Week answered 500 and did nothing.** The button the whole game is driven from.
+
+### The defect
+
+`SimulationController.advanceWeek` has **no `@Transactional`**, so `user.getFootballTeam()` is a detached
+team and `userTeam.getCompetition()` is a lazy proxy with no session to open. Two hops of laziness to
+produce one string — the name of the league — and that string was only used to filter a fixture list.
+
+### Fixed as a value, not as an entity
+
+`SeasonService.competitionIdOf(teamId)` and `competitionNameOf(teamId)` read it inside a read-only
+transaction. A controller now asks **what league is this club in** and gets an answer, instead of holding a
+lazy object and hoping a session outlives the method.
+
+### The second copy of the same bug, one line below
+
+The fixture filter compared `f.getCompetition().getName()` to that string. `MatchFixture.competition` is
+**also** `FetchType.LAZY`, so it was the same defect on a repository-returned entity — surviving only
+because the repository call happened to leave a session open. It now compares competition **ids**, which
+also removes two spellings of one league name from being compared as strings.
+
+### The guard, and why its first version was wrong
+
+`SeasonServiceCompetitionNameReadTest` reads the controller's source and asserts `advanceWeek` calls
+`SeasonService` and does not walk `getCompetition()`.
+
+**My first version banned the walk from the whole controller and failed** — against a walk that is
+perfectly fine: `prepareCurrentRound` is annotated `@Transactional`, so its lazy read has a session. A
+guard that bans a correct pattern teaches the next person to work around the guard rather than the defect,
+so it is now scoped to the one method with no transaction around it. That is recorded here because the
+wrong guard was the more interesting failure.
+
+Putting the original walk back turns it red.
+
+---
+
 ## ⚠️ P0-RANK-WIRE — the live matchday proof, still owed (2026-10-08)
 
 **Not done, and recorded as not done.** The wiring is committed and its guard is proved; what is missing is
@@ -468,6 +516,10 @@ the one thing a test cannot substitute for — the tables filling in a real worl
 verify with my own instance both ended with the JVM killed — **exit 137, SIGKILL** — while other agents were
 starting and stopping the application on the same port and the same machine. The owner's instruction at the
 time was that other agents need the application, so the verification stopped rather than fighting for it.
+
+**The clock would not move because the button was dead.** `POST /simulation/week/advance` was throwing
+`LazyInitializationException` and answering 500 — see P0-CLOCK-BUTTON above, now fixed. That is why the
+advances below appeared to do nothing: they were not failing loudly, they were failing quietly.
 
 **How to finish it in about two minutes**, on a running instance that includes `4f8830b`:
 

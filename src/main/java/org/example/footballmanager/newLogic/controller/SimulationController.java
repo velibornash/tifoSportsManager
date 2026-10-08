@@ -276,6 +276,17 @@ public class SimulationController {
         return ResponseEntity.ok(buildFallbackFeed(user));
     }
 
+    /**
+     * A competition's id without opening its proxy.
+     *
+     * <p>{@code getId()} on a lazy proxy does not need a session when the id is already known, but calling
+     * it on an uninitialised proxy in a detached graph is not something to rely on, so the id is taken
+     * from the entity's own reference and compared as a value.
+     */
+    private static Long idOf(Competition competition) {
+        return competition == null ? null : competition.getId();
+    }
+
     @PostMapping("/week/advance")
     public ResponseEntity<Map<String, Object>> advanceWeek(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();
@@ -284,17 +295,24 @@ public class SimulationController {
         int seasonYear = clock.getCurrentSeason() != null ? clock.getCurrentSeason() : DEFAULT_SEASON_YEAR;
 
         // Only check user's league fixtures — other leagues can continue in background
-        // The user's own team entity, not a name resolved back to one - see resolveUserTeam.
-        Team userTeam = resolveUserTeam(user);
-        String userLeagueName = null;
-        if (userTeam != null && userTeam.getCompetition() != null) {
-            userLeagueName = userTeam.getCompetition().getName();
-        }
+        // The user's own team **id**, not a name resolved back to one - see resolveUserTeam.
+        //
+        // And the league name is read as a scalar inside SeasonService rather than by walking
+        // userTeam.getCompetition() from here. This controller method has no transaction around it, so
+        // that walk threw LazyInitializationException on Team#1 and Advance Week answered 500 while
+        // doing nothing at all. See SeasonService.competitionNameOf.
+        Long userTeamId = resolveUserTeamId(user);
+        Long userLeagueId = seasonService.competitionIdOf(userTeamId);
         List<MatchFixture> allFixturesForWeek = matchFixtureRepository.findBySeasonYearAndWeekNumberAndDayNumber(seasonYear, currentWeek, currentDay);
-        String finalUserLeagueName = userLeagueName;
-        List<MatchFixture> userFixturesForWeek = userLeagueName != null
+        List<MatchFixture> userFixturesForWeek = userLeagueId != null
                 ? allFixturesForWeek.stream()
-                    .filter(f -> f.getCompetition() != null && Objects.equals(f.getCompetition().getName(), finalUserLeagueName))
+                    // **The competition id, compared as a value.** This walked
+                    // f.getCompetition().getName() on a lazy proxy from a method with no transaction —
+                    // the same defect that killed the read two lines above it, and it only survived
+                    // because the repository call happened to leave a session open. Two names compared by
+                    // string is also two spellings of the same league waiting to disagree.
+                    .filter(f -> f.getCompetition() != null
+                            && Objects.equals(idOf(f.getCompetition()), userLeagueId))
                     .toList()
                 : allFixturesForWeek;
         long unplayedCount = userFixturesForWeek.stream().filter(f -> !f.isPlayed()).count();

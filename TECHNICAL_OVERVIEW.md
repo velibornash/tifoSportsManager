@@ -445,7 +445,13 @@ the session.
 
 `GameClockService` advances hour, day, week and season. The calendar is a twelve-week season, with
 season day values counted from 1. `LeagueSlotSchedule` maps the league rounds to calendar slots; a
-ten-club double round robin has 18 rounds and two league slots per week in the current model.
+ten-club double round robin has 18 rounds, and a week has **four** match moments — day 1, 3, 5 and 7
+(owner rule 2026-10-06) — of which two carry the league rounds and the other two are friendly
+**opportunities**, since a friendly is something a club asks for rather than something it is handed.
+
+> This section previously said *two* league slots per week. That was the 2-slot week, and it had
+> propagated into `SeasonCalendarTest`, which was red on three tests for exactly this reason — closed
+> 2026-10-08.
 
 The four ordinary matchday jobs currently use these slots:
 
@@ -843,6 +849,17 @@ pattern is the same one `NationalGroupTieBreak` uses for a group table, and for 
 re-rolled per read is a table that reorders itself while nobody is watching.
 
 ## 9. Match simulation and persistence
+
+#### Reading a lazy entity outside a transaction is a live defect, not a style note
+
+`POST /simulation/week/advance` returned **500 and did nothing** until 2026-10-08, because the controller
+method has no `@Transactional` and read `userTeam.getCompetition().getName()` — a lazy proxy with no
+session. Two hops of laziness for one string.
+
+The rule this leaves behind: **ask a service for the value, not for the entity.** `SeasonService`
+exposes `competitionIdOf(teamId)` and `competitionNameOf(teamId)`, which read inside a read-only
+transaction. `SeasonServiceCompetitionNameReadTest` guards the one method that had no transaction around
+it — scoped deliberately, because `prepareCurrentRound` *is* transactional and its lazy read is correct.
 
 ### 9.1 One live fixture path
 

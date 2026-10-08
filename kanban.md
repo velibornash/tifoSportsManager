@@ -2371,6 +2371,28 @@ code path would ever have filled them.
 | **International club-cup Draw** guessed its week and day | `POST /admin/international-club-cups/redraw` passed **the current week** and a hardcoded **day 1**, while the job draws on week 12 day 7. The job only reads the week, so on any other week the button answered **200 and drew nothing** — and the day in the request was a number nothing looked at. | It draws on the job's **own** `DRAW_WEEK`/`DRAW_DAY`, so the button does what its label says at any point in the year, and the response names the season qualified from and the season drawn for. |
 | **National warm-up** was unreachable | Three finished endpoints (`/slot`, `/opponents`, `POST /`) since 2026-10-06 with **no frontend caller anywhere**. No manager could see the slot, name an opponent, or ask for a match. | A panel on both national-team tabs: the slot **read from `/slot`** rather than restated in the page, the opponent list, a request button that shows the endpoint's own 409 explanation, and both lists — asked and asked of. Written as **optional**: the owner said a warm-up is not compulsory, so the panel says what not playing costs, which is nothing. Read only on the two NT tabs. |
 
+### 🔴 Advance Week was dead — found in the running app's log (closed 2026-10-08)
+
+`POST /simulation/week/advance` answered **500 and did nothing**, and it is the button the whole game is
+driven from:
+
+```text
+Unhandled exception during POST /simulation/week/advance:
+  could not initialize proxy [Team#1] - no Session
+  at SimulationController.advanceWeek(SimulationController.java:290)
+```
+
+- [x] **The cause:** the method has no `@Transactional`, so `userTeam.getCompetition().getName()` walks a
+      lazy proxy with no session — two hops of laziness for one string.
+- [x] **Fixed as a value:** `SeasonService.competitionIdOf` / `competitionNameOf` read it in a read-only
+      transaction, and the controller asks for the league rather than holding a lazy object.
+- [x] **The second copy, one line below,** which the first fix had to drag out: the fixture filter walked
+      `f.getCompetition()` too. `MatchFixture.competition` is also `LAZY`, so it survived only because a
+      repository call happened to leave a session open. Now compares competition **ids**.
+- [x] **Guard scoped to the one broken method.** My first version banned the walk from the whole controller
+      and failed against `prepareCurrentRound`, which *is* `@Transactional` and is therefore correct. A
+      guard that bans a correct pattern teaches people to work around the guard.
+
 ### SeasonCalendarTest — three failures that were stale, not broken (closed 2026-10-08)
 
 All three were red long before this work and all three were the same thing: **the tests still described a

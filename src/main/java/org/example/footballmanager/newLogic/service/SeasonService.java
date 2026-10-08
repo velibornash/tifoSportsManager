@@ -114,6 +114,39 @@ public class SeasonService {
         return clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
     }
 
+    /**
+     * The name of the competition a club plays in, or null.
+     *
+     * <p><b>Added because a controller walked a lazy proxy and died (2026-10-08).</b>
+     * {@code POST /simulation/week/advance} read {@code user.getFootballTeam().getCompetition().getName()}
+     * from a controller method with no transaction around it, so the session that loaded the team was
+     * already closed and the read threw {@code LazyInitializationException: Team#1 - no Session}. The
+     * effect was that <b>Advance Week — the button the whole game is driven from — returned a 500 and
+     * did nothing.</b>
+     *
+     * <p>Two hops of laziness for one string. Read as a scalar inside a transaction instead, so no
+     * caller has to remember to hold a session open to ask what league a club is in.
+     */
+    @Transactional(readOnly = true)
+    public Long competitionIdOf(Long teamId) {
+        if (teamId == null) {
+            return null;
+        }
+        return teamRepository.findById(teamId)
+                .map(team -> team.getCompetition() == null ? null : team.getCompetition().getId())
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
+    public String competitionNameOf(Long teamId) {
+        if (teamId == null) {
+            return null;
+        }
+        return teamRepository.findById(teamId)
+                .map(team -> team.getCompetition() == null ? null : team.getCompetition().getName())
+                .orElse(null);
+    }
+
     public int getCurrentWeek() {
         return getOrCreateClock().getCurrentWeek();
     }
