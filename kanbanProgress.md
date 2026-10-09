@@ -1,5 +1,107 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-16b — three unreachable admin actions, and a fourth nobody recorded (2026-10-09)
+
+### The gap, measured rather than believed
+
+Three finished endpoints had a handler in `handleTool` and **no button anywhere**. A fourth finished
+endpoint had neither a button nor a handler, and was on no board anywhere.
+
+| Action | Endpoint | Before |
+|---|---|---|
+| `national-tournaments` | `POST /admin/national-tournaments` (`AdminController:157`) | handler at `:186`, no button |
+| `national-ratings-reset` | `POST /admin/national-ratings/reset` (`:256`) | handler at `:210`, no button |
+| `national-ratings-violations` | `GET /admin/national-ratings/**violations**` | handler at `:218`, no button, **path does not exist** |
+| — | `POST /admin/national-tournaments/**advance**` (`:168`) | **nothing. Not recorded anywhere.** |
+
+`advance()`'s javadoc: *"the manual counterpart to the week-12 draw job, for a tournament that stalled and
+should not wait for the clock to be nudged."* **A stalled World Cup required a developer.**
+
+### The third handler was broken twice, and the second half is worse than the first
+
+```js
+const v = await res.json();
+alert('National rating violations: ' + (v.violations || v.length || 'none'));
+```
+
+`offenders()` returns `List<String>` under `offenders`, alongside `startingRating`. So `v.violations` is
+undefined, `v.length` on an object is undefined, and it printed **"none"** with offenders on the board.
+
+**A diagnostic that reports all clear while the data disagrees is worse than no diagnostic, because it gets
+trusted.** It also used `alert`, so a list could only be read by dismissing it. It renders on the panel now —
+a table with the two ratings in their own cells, and the count in words.
+
+### A duplicate the guard found, which I had written
+
+I added `seed-national-tournaments` and left the orphan `national-tournaments` in place: **two handlers, one
+endpoint, one of them dead.** The guard named it on its **first run**, before I had finished the task.
+
+That is the argument for writing the guard before declaring the work done rather than after, and it is the
+second time in this session that a check written before the fix found something the reading had passed over.
+
+### The guard, and why it asserts both directions
+
+`AdminActionsAreReachableTest`, 4 tests, scanning the shipped file:
+
+- **handled but not rendered** — unreachable code that looks finished. This was the bug.
+- **rendered but not handled** — a button whose action falls through `handleTool`, does nothing on click,
+  and is indistinguishable from a working one.
+
+`HANDLED_ELSEWHERE` names the six actions legitimately dispatched elsewhere, **each with where it lives.**
+A wildcard would be how the next orphan hides.
+
+### A guard that matched its own javadoc
+
+The path assertion is `assertFalse(source.contains("/admin/national-ratings/violations"))`. The handler's
+comment **quotes that exact string** in order to explain why it is wrong — so fixing the code turned the
+test red.
+
+`P0-RANK-4` already lost a day to this: its "no head-to-head term" guard failed on `RankingPointsEngine`'s
+own documentation, and the fix there was to strip comments rather than delete the explanation. **A guard
+that breaks when somebody documents why a defect was fixed is a guard that gets deleted to let the
+documentation land.** The scanner now strips comments and keeps string literals, so a real path in code is
+still caught.
+
+### Also found: `Tool groups: 4`, with seven panels on screen
+
+Counted from the rendered markup with a Tools-scoped selector, because the Jobs tab has panels too. Same
+drift as the academy limit hardcoded four times in `academy.js` — **a number nobody recomputes is a number
+nobody can trust.**
+
+And `runRepair` gained an `after` hook. Its default refresh is the world-integrity readout: right for a
+world repair, **meaningless for a ratings reset.** A button that refreshes a panel it did not change is a
+panel that lies about being current.
+
+### What landed
+
+- A new **National teams** panel (badge *Competitions*) with five cards. `Re-draw national competitions`
+  **moved into it** from World integrity: the four actions acting on one subject were split across two
+  panels, and only one of them was reachable.
+- `Advance tournament rounds` → `/advance`.
+- Violation handler on `/offenders`, reading `body.offenders`, rendered.
+- `Reset national ratings` wired, with copy that says what it destroys.
+- Copy on the re-draw that states the deletion **and** the refusal — the old sentence promised the exact
+  opposite of what `forceRedraw()` does.
+
+### Verification — 41 green across six admin classes, and four mutations
+
+| Mutation | Caught by |
+|---|---|
+| Remove the "Advance tournament rounds" card | `handledActionsAreRendered` — *"handled but no button renders them: [advance-national-tournaments]"* |
+| Restore `/admin/national-ratings/violations` | `theViolationHandlerCallsTheRealPath` — *"the handler calls a path that does not exist"* |
+| Restore `<strong>4</strong>` | `theToolGroupCountIsDerived` |
+| Point a real button at an action nothing handles | **both** directions — `[national-ratings-violations]` orphaned and `[ratings-legendary-rebuild]` dead |
+
+**The fourth mutation was mis-applied first.** My pattern assumed the action string was
+`read-rating-violations`; it is `national-ratings-violations`, so the edit silently did nothing and the
+suite came back green. A green result from a mutation that never applied is the exact trap this repository
+keeps recording, and it is why the redo asserts the mutation applied before running the test.
+
+### Not verified in a browser
+
+Markup and handlers. `node --check` parses, 41 admin tests green, four mutations caught — **and nobody has
+pressed the five new buttons.** The national-teams panel needs a click-through before it is called done.
+
 ## ✅ T1-13 — the represented-country page was a live `ReferenceError` (2026-10-09)
 
 ### What the board said, and what was true

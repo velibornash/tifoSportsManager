@@ -337,8 +337,103 @@ on module execution and endpoint calls.
 | `playerStats` / `teamStats` routing | Needs verification against the intended screens. `stats-view.js` team stats was **deleted** on owner decision, so the route may now point at nothing |
 | Two classes styled but never emitted | `fm-qualifying-table tr.is-current-club` has a blue rule and **nothing emits it** — the manager's own club is not marked in the qualifying tables. `is-highlighted`, used by represented-country group tables, is **not defined in the stylesheet at all** |
 | `admin-view.js` unreachable handlers | `national-tournaments`, `national-ratings-reset`, `national-ratings-violations` have no button. **The third calls an endpoint that does not exist**; the real one is `/admin/national-ratings/offenders` |
-| Re-draw confirmation copy | Says *"Existing fixtures are left alone"* and does not mention that it **deletes every unplayed qualifying and tournament fixture** and refuses once a tie has been played |
-| Friendly invite action | The club-side button is not rendered even though the request service exists |
+| Re-draw confirmation copy | Says *"Existing fixtures are left alone"* and does not mention that it **deletes every unplayed qualifying and tournament fixture** and refuses once a tie has been played. **Partly closed — see T-REST-16a** |
+| Friendly invite action | **The board's claim was false.** `friendly-panel.js` emits `data-friendly-invite`/`-panel`/`-form`/`-search` and `club-view.js` wires all four; all five endpoints have callers. The real defect is in the unreachable `fixture-view.loadFriendlies` — see **T1-10** |
+| Three unrendered admin handlers | **DONE.** See **T-REST-16b** |
+| `Tool groups: 4` | **DONE.** It was 4 with seven panels on screen; now counted from the markup |
+
+## T-REST-16b — ✅ DONE 2026-10-09 — three unreachable admin actions, and a fourth nobody recorded
+
+**`AdminActionsAreReachableTest`, 4 tests. The guard is the deliverable; the buttons were the easy part.**
+
+### What was unreachable
+
+| Action | Endpoint | State before |
+|---|---|---|
+| `national-tournaments` | `POST /admin/national-tournaments` (`AdminController:157`) | Handler at `:186`, **no button** |
+| `national-ratings-reset` | `POST /admin/national-ratings/reset` (`:256`) | Handler at `:210`, **no button** |
+| `national-ratings-violations` | `GET /admin/national-ratings/**violations**` | Handler at `:218`, **no button, and the path does not exist** |
+| — | `POST /admin/national-tournaments/**advance**` (`:168`) | **No handler and no button. Recorded nowhere.** |
+
+`advance()`'s own javadoc calls it *"the manual counterpart to the week-12 draw job, for a tournament that
+stalled and should not wait for the clock to be nudged."* **A stalled World Cup currently requires a
+developer.**
+
+### The third handler was broken twice, and the second half is worse
+
+`v.violations || v.length || 'none'` against a response shaped `{ startingRating, offenders: [...] }` —
+**both terms undefined, so it printed "none" with offenders on the board.** A diagnostic that reports all
+clear while the data says otherwise is worse than none, because it is trusted.
+
+It also used `alert`, so a list could only be read by dismissing it. It renders now, as a table with the
+two ratings in their own cells and the count in words.
+
+### A duplicate the guard found that I had written
+
+I added `seed-national-tournaments` and **left the orphan `national-tournaments` in place** — two handlers,
+one endpoint, one of them dead. The guard named it on its first run. That is the argument for writing the
+guard before finishing the task.
+
+### The guard
+
+Asserts **both directions**, because they are different defects:
+
+- **handled but not rendered** — the bug above; unreachable code that looks finished
+- **rendered but not handled** — a button whose action falls through `handleTool`, does nothing when
+  clicked, and looks exactly like a working one
+
+`HANDLED_ELSEWHERE` names the six actions legitimately dispatched elsewhere, each with where it lives.
+**A wildcard is how the next orphan hides.**
+
+**The first version of the path guard matched its own javadoc.** The handler's comment quotes the wrong
+path in order to explain why it is wrong, so fixing the code broke the test. Fixed by stripping comments
+before scanning — P0-RANK-4 lost a day to precisely this, and a guard that breaks when somebody documents
+why a defect was fixed is a guard that gets deleted to let the documentation land.
+
+### Also
+
+`Tool groups: 4` **with seven panels on screen.** Now counted from the rendered markup with a Tools-scoped
+selector, because the Jobs tab has panels too. Same drift as the academy limit hardcoded four times in
+`academy.js`: a number nobody recomputes.
+
+`runRepair` gained an `after` hook — its default refresh is the world-integrity readout, right for a world
+repair and **meaningless for a ratings reset.** A button that refreshes a panel it did not change is a
+panel that lies about being current.
+
+**Landed:**
+- [x] New **National teams** panel (badge *Competitions*), five cards, and `Re-draw national competitions`
+      **moved into it** from World integrity — the four actions that act on one subject were split across
+      two panels and only one was reachable
+- [x] `Advance tournament rounds` wired to `/advance`
+- [x] Violation handler on the real path, reading the real field, rendered
+- [x] `national-ratings-reset` wired, copy saying what it destroys
+- [x] `Tool groups` counted from the markup
+- [x] **Proven able to fail:** 4 mutations — remove a card, restore the wrong path, restore the literal
+      count, point a button at nothing. **The orphan the guard found was not one of them; it was there
+      when the guard first ran.**
+
+**Not verified in a browser.** Markup and handlers; `node --check` parses and 41 admin tests are green,
+but nobody has pressed the five new buttons.
+
+---
+
+## T-REST-16a — 🟡 The re-draw confirmations
+
+**The national one is now honest**, rewritten in T-REST-16b's new panel. It used to say *"Existing fixtures
+are left alone"*; `forceRedraw()` calls `clearUnplayed` on both levels' qualifiers and tournaments and
+**deletes every unplayed fixture for the season**, and `refuseIfQualifyingStarted` throws once a qualifying
+tie has a result. The copy now says both.
+
+**Still open:** the international one carries the same *"Existing fixtures are left alone"* sentence. It
+runs `InternationalClubCupJob` with its own `DRAW_WEEK`/`DRAW_DAY`, and the job has idempotency guards, **so
+the sentence is probably true — and it must be verified against the guards rather than edited on a guess.**
+
+**Exit criteria:**
+- [ ] Read `InternationalClubCupJob`'s draw path; establish whether a second run can change anything
+- [ ] If it can: say what it does. If it cannot: the copy may stand, with a comment saying why
+- [ ] A test that no admin confirmation promises a button leaves existing data alone
+
+---
 
 ## T-REST-17 — 🟡 `Replay failure` — a fixture with no teams is counted as simulated
 

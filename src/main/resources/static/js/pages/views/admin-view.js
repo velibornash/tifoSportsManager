@@ -107,7 +107,15 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
      * result the server sent - including "nothing to do", which is a normal outcome and not a
      * failure.
      */
-    async function runRepair(button, { confirmText, path, successNote }) {
+    /**
+     * Runs one POST, behind a confirmation, and reports what came back.
+     *
+     * <p>`after` exists because the default refresh is the world-integrity readout, which is right for
+     * a world repair and meaningless for a national-ratings reset — a button that refreshes a panel
+     * it did not change is a panel that lies about being current. A caller that changed something else
+     * names what to re-read.
+     */
+    async function runRepair(button, { confirmText, path, successNote, after }) {
         if (!window.confirm(confirmText)) return;
         button.disabled = true;
         const original = button.textContent;
@@ -116,7 +124,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             const res = await authFetch(path, { method: 'POST' });
             const body = await res.json().catch(() => ({}));
             if (!res.ok) {
-                window.alert(`Failed: ${body.error || res.status}`);
+                window.alert(`Failed: ${body.error || body.message || res.status}`);
                 return;
             }
             const detail = Object.entries(body)
@@ -129,7 +137,56 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         } finally {
             button.textContent = original;
             button.disabled = false;
-            await showWorldIntegrity();
+            if (after) await after();
+            else await showWorldIntegrity();
+        }
+    }
+
+    /**
+     * Reads which countries are not on the starting national rating, and says so on the panel.
+     *
+     * <p>Read-only, so it asks no question and takes nothing. Rendered rather than alerted because the
+     * answer is a list: a list behind an "OK" button has to be read, dismissed and remembered, and the
+     * count is the part that matters — "no country is off the starting rating" is a finding, and so is
+     * "eleven are".
+     */
+    async function showNationalRatingOffenders(button) {
+        const box = document.getElementById('fm-nt-ratings');
+        if (!box) return;
+        const original = button?.textContent;
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Reading...';
+        }
+        try {
+            const res = await authFetch('/admin/national-ratings/offenders');
+            if (!res.ok) throw new Error(`status ${res.status}`);
+            const body = await res.json();
+            const offenders = Array.isArray(body.offenders) ? body.offenders : [];
+            const starting = body.startingRating;
+            box.innerHTML = offenders.length === 0
+                ? `<p class="fm-subtle">Every country is on the starting rating${starting ? ` (${escapeHtml(starting)})` : ''}. Nothing to reset.</p>`
+                : `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
+                       <thead><tr><th>Country</th><th>Senior</th><th>U-21</th></tr></thead>
+                       <tbody>${offenders.map(line => {
+                           // "Germany: senior 1612, u21 1488" -> three cells, so the two numbers are
+                           // readable rather than being one string an admin has to parse.
+                           const [name, senior, u21] = String(line).split(/:\s*|,\s*u21\s*/);
+                           return `<tr>
+                               <td>${escapeHtml(name || line)}</td>
+                               <td>${escapeHtml(senior || '—')}</td>
+                               <td>${escapeHtml(u21 || '—')}</td>
+                           </tr>`;
+                       }).join('')}</tbody>
+                   </table></div>
+                   <p class="fm-subtle">${offenders.length} of them are off the starting rating${starting ? ` (${escapeHtml(starting)})` : ''}.</p>`;
+        } catch (err) {
+            box.innerHTML = `<p class="fm-subtle">Could not read the national ratings: ${escapeHtml(err.message)}</p>`;
+        } finally {
+            if (button) {
+                button.textContent = original;
+                button.disabled = false;
+            }
         }
     }
 
@@ -183,11 +240,43 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             });
             return;
         }
-        if (action === 'national-tournaments') {
+        /**
+         * Draws the national-team qualifying groups for both levels, creating the four competitions
+         * if they are missing.
+         *
+         * <p>Idempotent: `ensureGroupStage` draws only what is not already drawn, so pressing this on a
+         * world whose groups exist reports zero rather than dealing a second set.
+         *
+         * <p>This replaces a handler called `national-tournaments`, which had never had a button and
+         * posted to the same endpoint. Two handlers for one endpoint is one of them dead, and the
+         * orphan is indistinguishable from the live one by reading it.
+         */
+        if (action === 'seed-national-tournaments') {
             await runRepair(button, {
-                confirmText: 'Draw the national tournament fixtures?',
+                confirmText: 'Draw the national-team qualifying groups?\n\n'
+                    + 'Creates the four competitions if they are missing, then draws the qualifying groups '
+                    + 'for the senior and U-21 sides. Groups that are already drawn are left alone, so this '
+                    + 'is safe to press on a world that already has them.',
                 path: '/admin/national-tournaments',
-                successNote: 'National tournament fixtures drawn'
+                successNote: 'National qualifying groups drawn'
+            });
+            return;
+        }
+        /**
+         * Draws whatever the tournament results so far allow — the round of 16 once the groups are
+         * decided, the quarter-finals once the round of 16 is played, and so on.
+         *
+         * <p>The manual counterpart to the week-12 draw job, for a tournament that stalled and should not
+         * wait for the clock to be nudged. It never touches qualifying, so it cannot invalidate a group.
+         */
+        if (action === 'advance-national-tournaments') {
+            await runRepair(button, {
+                confirmText: 'Draw the next tournament round?\n\n'
+                    + 'Draws whatever the results so far allow, a round at a time, for both the senior and '
+                    + 'U-21 tournaments. Rounds that are already drawn are left alone.\n\n'
+                    + 'If nothing is drawn, every group is still undecided or the tournament has finished.',
+                path: '/admin/national-tournaments/advance',
+                successNote: 'Tournament round drawn'
             });
             return;
         }
@@ -209,17 +298,30 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         }
         if (action === 'national-ratings-reset') {
             await runRepair(button, {
-                confirmText: 'Reset all national ratings to 1500?',
+                confirmText: 'Reset every national rating to 1500?\n\n'
+                    + 'This throws away every rating the national sides earned from real results, for all '
+                    + 'countries, both levels. It is how you undo a ratings replay that went wrong.',
                 path: '/admin/national-ratings/reset',
-                successNote: 'National ratings reset to 1500'
+                successNote: 'National ratings reset to the starting rating',
+                after: () => showNationalRatingOffenders(button)
             });
             return;
         }
+        /**
+         * Which countries are not on the starting rating.
+         *
+         * <p><b>This handler read a path that does not exist and then read the answer in a shape the
+         * real response does not have.</b> It asked `/admin/national-ratings/violations` — the route is
+         * `/admin/national-ratings/offenders` — and then read `v.violations || v.length || 'none'`. The
+         * endpoint returns `{ startingRating, offenders: [...] }`, so `v.violations` is undefined and
+         * `v.length` on an object is undefined: it printed <b>"none"</b> with offenders on the board.
+         * A diagnostic that reports all clear while the data says otherwise is worse than none.
+         *
+         * <p>It also used `alert`, so a list could only ever be read by dismissing it. It renders on
+         * the panel now, and it is read-only — it changes nothing, which is why it asks no question.
+         */
         if (action === 'national-ratings-violations') {
-            await authFetch('/admin/national-ratings/violations').then(async res => {
-                if (!res.ok) alert('Could not read violations');
-                else { const v = await res.json(); alert('National rating violations: ' + (v.violations || v.length || 'none')); }
-            });
+            await showNationalRatingOffenders(button);
             return;
         }
         if (action === 'refresh-jobs') {
@@ -878,7 +980,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         <div class="fm-stat-card"><span>Role</span><strong>${getSessionRole() || 'ADMIN'}</strong></div>
                         <div class="fm-stat-card"><span>Signed in as</span><strong>${getUsername?.() || 'Manager'}</strong></div>
                         <div class="fm-stat-card"><span>Current club</span><strong>${getTeamName?.() || 'Unassigned'}</strong></div>
-                        <div class="fm-stat-card"><span>Tool groups</span><strong>4</strong></div>
+                        <div class="fm-stat-card"><span>Tool groups</span><strong data-admin-tool-groups>—</strong></div>
                     </div>
                     <nav class="fm-admin-tabs" role="tablist" aria-label="Admin sections">
                         <button type="button" class="fm-admin-tab is-active" role="tab"
@@ -1018,12 +1120,67 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             label: 'Re-draw international cups',
                             variant: ''
                         })}
+                    </div>
+                </section>
+
+                <!--
+                    National-team competitions, in one panel.
+
+                    These four actions were scattered and invisible: three had handlers and no button, and
+                    the fourth had a finished endpoint that nothing called at all. Grouping them here is
+                    not decoration - "Re-draw national competitions" sat in World integrity, so the four
+                    actions that act on the same subject were split across two panels, and only one of
+                    the four was reachable. The draw job runs itself on the clock; these are the manual
+                    counterparts, for a world that needs building now or a tournament that has stalled.
+                -->
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>National teams</h3>
+                            <p class="fm-subtle">The World Cup and U-21 World Cup, for senior and U-21. The
+                                draw job runs these on the clock — week 1 day 1 for the qualifying groups,
+                                week 12 for the knockouts. These buttons are the manual counterpart, for a
+                                world that has to be built now or a tournament that has stalled.</p>
+                        </div>
+                        <span class="fm-panel-action">Competitions</span>
+                    </div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Draw national competitions',
+                            body: 'Creates the four competitions if they are missing and draws the qualifying groups for senior and U-21. Groups that are already drawn are left alone.',
+                            action: 'seed-national-tournaments',
+                            label: 'Draw national competitions',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Advance tournament rounds',
+                            body: 'Draws whatever the results so far allow — the round of 16 once the groups are decided, the quarter-finals once the round of 16 is played. Never touches qualifying.',
+                            action: 'advance-national-tournaments',
+                            label: 'Advance tournament rounds',
+                            variant: ''
+                        })}
                         ${toolCard({
                             title: 'Re-draw national competitions',
-                            body: 'Runs the scheduled national-team draw job for senior and U-21 qualifying groups and knockout rounds. Existing fixtures are untouched.',
+                            body: 'Deals the qualifying groups again from scratch. It DELETES every unplayed qualifying and knockout fixture for the season, and it refuses once any qualifying tie has been played.',
                             action: 'redraw-national-tournaments',
-                            label: 'Re-draw national competitions',
+                            label: 'Re-draw national competitions'
+                        })}
+                    </div>
+                    <div id="fm-nt-ratings"><p class="fm-subtle">The starting rating is what every country
+                        begins on. Resetting discards every rating the sides earned from real results.</p></div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Read rating violations',
+                            body: 'Lists every country whose national rating is not the starting rating, for both levels. Read-only.',
+                            action: 'national-ratings-violations',
+                            label: 'Read rating violations',
                             variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Reset national ratings',
+                            body: 'Puts every country back on the starting rating, for both levels. Destroys every rating earned from real results.',
+                            action: 'national-ratings-reset',
+                            label: 'Reset national ratings'
                         })}
                     </div>
                 </section>
@@ -1091,6 +1248,15 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             </div>`;
 
         wireAdminTabs();
+
+        // Counted from the rendered markup, not written down. It said "4" and there were seven panels
+        // before this panel was added — the same drift as the academy limit that was hardcoded four
+        // times in academy.js. A number nobody recomputes is a number nobody can trust.
+        const toolGroups = mainContent.querySelectorAll('[data-admin-panel="tools"] > .fm-panel');
+        mainContent.querySelectorAll('[data-admin-tool-groups]').forEach((cell) => {
+            cell.textContent = String(toolGroups.length);
+        });
+
         void showCountryActivation();
         void showUserManagement();
         void showRegistrationQueue();
