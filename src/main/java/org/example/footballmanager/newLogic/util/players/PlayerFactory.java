@@ -332,6 +332,10 @@ public class PlayerFactory {
         p.setTalent((20.0 - (discipline + form)) / 2.0);
         p.setPosition(position);
         p.setSquadNumber(squadNumber);
+        // T-REST-12: derive nationality from team's country
+        if (team != null && team.getCountry() != null && team.getCountry().getIsoCode() != null) {
+            p.setNationality(team.getCountry().getIsoCode());
+        }
 
         Skills s = new Skills();
         s.setStamina(stamina);

@@ -226,6 +226,8 @@ The ranking rebuild service itself works: it calls the four services in the corr
 transaction. The test passes (wiring verified) but the live verification requires a full
 season of LEAGUE matches on the real PostgreSQL database.
 
+## ✅ T-REST-12 — Player.nationality null for 7,730 of 10,130 players fixed (2026-10-09)
+
 ## ✅ T-REST-3 — supporterMood drift verified end to end (2026-10-09)
 
 ## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)

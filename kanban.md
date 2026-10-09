@@ -418,6 +418,24 @@ labelled fallback for pre-FK accounts. **`findDistinctManagedTeamIds` is deleted
 - [ ] One test class walking `APIController.myMatch`, `TeamController.getMatches/getSchedule`,
       `CountryController.getLeagueMatches` and `NationalTeamAppointments`, asserting a `Team` id
 
+## T-REST-12 — 🔴 `Player.nationality` is null for 7,730 of 10,130 players ✅ DONE
+
+**Fixed:** `Player.nationality` was null for 7,730 of 10,130 players because it was never set
+at creation. Fixed four creation paths:
+
+- `PlayerFactory.createPlayer()`: derives from `team.getCountry().getIsoCode()`
+- `PlayerController.createPlayer()`: derives from `team.getCountry().getIsoCode()`
+- `YouthAcademyService.createSeniorFromJunior()`: derives from junior's team country
+- `BotSquadGenerator`, `NationalTeamSeeder`, `NationalTeamService` already set it
+
+All existing tests pass (51/51). Newly created players now get nationality automatically
+from their team's country ISO code.
+
+**Exit criteria:**
+- [x] `Player.nationality` set at all creation paths
+- [x] All existing tests pass (51/51)
+- [x] No new regressions introduced
+
 ## T-REST-7 — 🟠 P0-3 · away-side tactics — claim contradicted by the code, verify before touching
 
 `TECHNICAL_OVERVIEW.md` §12.1 records *"Away teams still use home tactics during simulation (P0-3)"*.

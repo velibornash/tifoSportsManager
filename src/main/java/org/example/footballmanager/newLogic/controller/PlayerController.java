@@ -99,6 +99,10 @@ public class PlayerController {
         player.setAge(request.getAge());
         player.setPosition(parsePosition(request.getPosition()));
         player.setTeam(team);
+        // T-REST-12: derive nationality from team's country
+        if (team.getCountry() != null && team.getCountry().getIsoCode() != null) {
+            player.setNationality(team.getCountry().getIsoCode());
+        }
         // Not optional. PlayerDTO.from reads eleven fields off Skills with no null check, so a player saved
         // without one is a row that turns every later read of him into a 500.
         player.setSkills(new Skills());

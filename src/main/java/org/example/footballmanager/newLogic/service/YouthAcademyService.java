@@ -624,6 +624,10 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
         player.setAge(graduationAge(junior));
         player.setTalent(junior.getTalent());
         player.setTeam(junior.getTeam());
+        // T-REST-12: derive nationality from team's country
+        if (junior.getTeam() != null && junior.getTeam().getCountry() != null && junior.getTeam().getCountry().getIsoCode() != null) {
+            player.setNationality(junior.getTeam().getCountry().getIsoCode());
+        }
         // Carry the body and the temperament across (Sprint 5.3). Height and weight were previously
         // re-rolled at promotion, so a club that spent two years shaping a prospect got a different
         // body out of the academy than the one it developed.
