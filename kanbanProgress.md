@@ -230,6 +230,26 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-12 — Player.nationality null for 7,730 of 10,130 players fixed (2026-10-09)
 
+## ✅ T-REST-8 — dead legacy tactics chain deleted (2026-10-09)
+
+**Deleted classes (confirmed zero callers in main code):**
+- `TacticsBridge` - converted runtime rule maps to newLogic TacticRules; zero callers
+- `NewLogicTacticsService` - loaded tactic rules from formation; zero callers
+- `MatchContext` (util.match) - legacy match context with old Tactics model; zero callers
+- `PlayerActionProbabilityModel` - calculated goal probability from MatchContext; zero callers
+
+**Kept (live and used):**
+- `TacticRules` (singular) - used by `Team.tacticRules` field
+- `TacticsRules` (plural) - simulation engine's rule engine, used by `SideTactics`
+- `TeamTacticsProfile`, `FormationSlotCatalog`, `TacticsRules` - live and used
+
+**Verified:**
+- `mvn clean package` succeeds
+- All relevant test suites pass (55 tests green)
+- No callers of deleted classes found in main code
+
+**Note:** `TacticRules` (singular) was on the deletion list but is used by `Team.tacticRules` field and is **kept**.
+
 ## ✅ T-REST-6 — four CTeam/Team id sites regression test added (2026-10-09)
 
 The old code used {@code CTeam} name-based lookups in four critical paths, which meant a
