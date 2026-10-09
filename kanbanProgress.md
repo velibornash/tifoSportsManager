@@ -1,5 +1,93 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-4 / T0-BE-4 — the substitution screen, and a contract that could not be wired (2026-10-09)
+
+### The owner's question: is there a direct fixture ↔ match link?
+
+**One-directional, and unconstrained.** `MatchFixture.playedMatch` is a real FK column (`played_match_id`),
+written once by `SimMatchService:356` in the same block that sets `played = true`. `Match` has **no**
+back-reference to its fixture — only copied values (the calendar day, the cup group code), because a table
+rebuilt from played matches must not re-read every fixture.
+
+Three ambiguities followed, and the owner asked for none of them:
+
+| | Before | Now |
+|---|---|---|
+| Two fixtures could point at one match | **no constraint at all** | `unique = true` + `uk_match_fixture_played_match` |
+| Every result-by-fixture read was a scan | **no index** | `ix_match_fixture_played_match` |
+| A match with no fixture | real state — an exhibition is simulated inline and never had one | unchanged, and documented |
+
+**Why unique is the load-bearing half:** without it, the result of one game can read as the result of
+another. P0-PREV-1, -2 and -3 each recorded *"a fixture is not a match, and only the `playedMatch` knows
+which one this is"*, and `ZoxApiController` carries the scar of a guess that resolved a dashboard link to
+somebody else's played match. So: **one played match belongs to at most one fixture**, which is what makes
+"the plan for this fixture is read by exactly one simulation" a fact rather than an assumption.
+
+### The plan was keyed to the wrong moment in the lifecycle
+
+`SubstitutionPlan` was keyed by `matchId` — so it could only be created once a `Match` row existed, **after
+the simulation that consumes it had already run.** All four of its tests passed. It was not broken; it was
+keyed to a moment the feature is not about. The owner's rule closes substitutions **an hour before
+kickoff**, which is before any match exists.
+
+Re-keyed to `fixtureId`, unique, with the engine reading by the fixture it is about to simulate — a lookup
+it gets for free because `SimMatchService.simulate(fixture, ...)` already holds it.
+
+### The contract could not be wired. It was a shape, not a wiring mistake.
+
+`ConditionalSubstitutionRules` had **ten green unit tests and zero production callers.** Two reasons, and
+neither was an oversight:
+
+1. `conditionalSubs` was **private with no accessor**.
+2. `SimMatchRunner.run` **constructed and simulated inside one call** — so there was no point at which a
+   plan could be attached. The engine evaluated `conditionalSubs.onTick()` on every tick of every match
+   against a list that was always empty.
+
+`SimMatchRunner.build(...)` now splits build from simulate, so a caller can hold the orchestrator before it
+runs. **All five `run` overloads are untouched**, so every launcher, diagnostic and exporter still produces
+the same football.
+
+**Every existing test built the object itself and called `add()` directly.** That is why ten green tests
+proved nothing about reachability, and it is the same reason `SubstitutionPlanController` had four tests and
+no delete test.
+
+### A route that was always a 500
+
+`DELETE /api/sim/matches/{id}/substitution-plan` threw
+`InvalidDataAccessApiUsageException: No EntityManager with actual transaction available` — a derived
+`deleteByMatchId` needs a transaction and the controller had none.
+
+It survived because the four tests tested an unknown id, a round trip, a replace and an empty plan, **and
+none of them deleted anything.** A route with no test is a route that was never pressed. Now
+`@Transactional`, covered, and refused inside the cutoff for the same reason a save is.
+
+### Verification
+
+**24 green** across five classes. Mutations, all watched:
+
+| Mutation | Caught by |
+|---|---|
+| Remove `add()` and change **nothing else** | `ConditionalSubstitutionFiresInAMatchTest` — *"a rule attached before the first tick must change the match… which is the exact defect this feature had for three sprints behind ten green unit tests"* |
+| Drop `unique` from `played_match_id` | `oneMatchPerFixtureIsEnforcedInTheSchema` |
+| Drop the index | same |
+| Remove the accessor | compile failure — **the test cannot exist without it** |
+
+**A process failure worth recording.** I mutated this test four times and twice believed a restore that had
+not happened: `git checkout` on an **untracked** file fails silently, and a backup taken *after* a mutation
+preserves the mutation. Both times the "green" I saw was a file I had not intended to be testing. The rule
+that follows is the one this repository already records — **assert the mutation applied before running the
+test** — and it is now in the script rather than in my head.
+
+### Not verified
+
+- **The live database.** The Postgres server was down, so `uk_match_fixture_played_match` was **not**
+  checked against `sokker_db`. Declared after reading the only writer, which cannot set it twice. Run before
+  the next app start:
+  `SELECT played_match_id FROM match_fixture WHERE played_match_id IS NOT NULL GROUP BY played_match_id HAVING count(*) > 1;`
+- **The browser.** The panel has never been rendered by anyone.
+- **Server-side rule validation.** A rule naming a player who is not in the XI is refused by the *engine*
+  at minute 60 with a `VoidReason` that nothing reads back. Filed as **T1-16**.
+
 ## ✅ T-REST-16a — one confirmation lied, one was true, and I fixed half of the first (2026-10-09)
 
 ### The international copy is TRUE — verified, not assumed

@@ -1,5 +1,6 @@
 // pages/views/fixture-view.js
 import { htmlEscape, formatDateTimeLabel } from './utils.js';
+import { createSubstitutionPlanView } from './substitution-plan-view.js';
 
 export function createFixtureView(deps) {
     const {
@@ -9,6 +10,8 @@ export function createFixtureView(deps) {
         buildClubActionsHtml, loadMatch, matchesFeature, loadLeagueTeam,
         renderFixturesView, renderMatches
     } = deps;
+
+    const substitutionPlanView = createSubstitutionPlanView({ authFetch, getTeamId });
 
     /**
      * Wires the venue and competition links on the fixture detail.
@@ -227,8 +230,10 @@ export function createFixtureView(deps) {
                         </div>
                     </section>
                 </div>
+                <div id="fm-substitution-plan"></div>
             </div>`;
             bindFixtureDetailLinks(mainContent);
+            void mountSubstitutionPlan(mainContent, fixtureId, teamId, fixture);
         } catch (err) {
             console.error("Error loading fixture:", err);
             mainContent.innerHTML = `
@@ -246,6 +251,28 @@ export function createFixtureView(deps) {
                     </section>
                     <section class="fm-panel"><div class="fm-empty">Error loading fixture: ${htmlEscape(err.message)}</div></section>
                 </div>`;
+        }
+    }
+
+    /**
+     * Loads the substitution plan into the fixture page.
+     *
+     * <p><b>Only for a fixture the manager is playing, and only before it is played.</b> The plan is the
+     * home club's instruction and the engine reads it for the home side; putting it on a fixture page for
+     * an away club, or on one that already has a result, would offer a control that has no meaning.
+     *
+     * <p>Failures are swallowed on purpose. The fixture page is a working screen and the plan is one
+     * panel on it — a plan that will not load must not take the fixture detail down with it.
+     */
+    async function mountSubstitutionPlan(mainContent, fixtureId, teamId, fixture) {
+        const host = mainContent.querySelector('#fm-substitution-plan');
+        if (!host) return;
+        const isHome = Number(fixture?.homeTeamId) === Number(teamId);
+        if (fixture?.played || !isHome) return;
+        try {
+            await substitutionPlanView.loadPlan(fixtureId, host, teamId);
+        } catch (err) {
+            console.warn('Could not load the substitution plan:', err);
         }
     }
 

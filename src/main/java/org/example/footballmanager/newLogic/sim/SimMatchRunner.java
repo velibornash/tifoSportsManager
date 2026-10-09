@@ -82,6 +82,29 @@ public final class SimMatchRunner {
                                         List<Player> homeSquad, List<Player> awaySquad,
                                         List<Player> homeBench, List<Player> awayBench,
                                         org.example.footballmanager.newLogic.sim.tactics.SideTactics tactics) {
+        MatchOrchestrator orchestrator = build(homeName, awayName,
+                homeSquad, awaySquad, homeBench, awayBench, tactics);
+        orchestrator.simulate(ticks);
+        return orchestrator;
+    }
+
+    /**
+     * Builds the orchestrator <b>without simulating it</b>, so a caller can hand it work to do before
+     * the first tick.
+     *
+     * <p>This exists for the conditional substitution plan. {@link #run} simulates inside itself and
+     * returns a finished match, so a manager's rules — which the engine evaluates from the first tick —
+     * had nowhere to be attached. That is the whole reason the contract had ten green unit tests and no
+     * production caller: not a wiring mistake, but a shape that made wiring impossible.
+     *
+     * <p>Splitting build from simulate keeps all five {@code run} overloads exactly as they were. Every
+     * launcher, diagnostic and exporter still goes through {@code run} and still produces the same
+     * football.
+     */
+    public static MatchOrchestrator build(String homeName, String awayName,
+                                          List<Player> homeSquad, List<Player> awaySquad,
+                                          List<Player> homeBench, List<Player> awayBench,
+                                          org.example.footballmanager.newLogic.sim.tactics.SideTactics tactics) {
         MatchState state = new MatchState();
         boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
         boolean awayReal = awaySquad != null && awaySquad.size() >= 11;
@@ -102,7 +125,6 @@ public final class SimMatchRunner {
             state.setRoundPaceSkill(p.getId(), (int) Math.round(p.getSkills().pace()));
         }
 
-        orchestrator.simulate(ticks);
         return orchestrator;
     }
 }

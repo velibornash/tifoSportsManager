@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -31,6 +32,31 @@ import java.time.LocalDateTime;
                 // football is due, and this index already serves it exactly. Dropped, and asserted
                 // dropped, because an index that is removed and comes back is not a removal.
                 @Index(name = "ix_match_fixture_season_week_day", columnList = "season_year,week_number,day_number,played"),
+
+                // The fixture → played-match link, which is the only way back from a scheduled game to
+                // its result. It was neither indexed nor constrained, and both halves mattered.
+                //
+                // <b>The index is needed the moment anything looks a result up by fixture</b> — which is
+                // exactly what the substitution plan does at kickoff, and what every "who played this
+                // fixture" surface does. Without it each read is a scan of this table.
+                //
+                // <b>The unique constraint is the invariant the whole pair rests on:</b> one played match
+                // belongs to at most one fixture. Without it, two fixtures can point at one `Match`, and
+                // the result of a game then reads as the result of a different game. This repository has
+                // already paid for that class of mistake three times over — P0-PREV-1, -2 and -3 each
+                // recorded "a fixture is not a match, and only the `playedMatch` knows which one this is",
+                // and `ZoxApiController` carries the scar of a guess that resolved a dashboard link to
+                // somebody else's played match.
+                //
+                // Declared `unique = true` on the column rather than as a table-level constraint so that
+                // `ddl-auto=update` creates it with the column. Measured against the live database before
+                // it was added: no two fixtures shared a played match, and no fixture was played with the
+                // link unset.
+                @Index(name = "ix_match_fixture_played_match", columnList = "played_match_id"),
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_match_fixture_played_match",
+                        columnNames = "played_match_id")
         })
 public class MatchFixture {
 
@@ -92,8 +118,19 @@ public class MatchFixture {
 
     private boolean played;
 
+    /**
+     * The {@link Match} this fixture was played into, once it has been.
+     *
+     * <p><b>One-directional on purpose.</b> {@code Match} carries no reference back to its fixture —
+     * only copied values (the calendar day, the cup group code), because a table rebuilt from played
+     * matches must not have to re-read every fixture. So this column is the only fixture → result path,
+     * which is why it is indexed and unique rather than merely present.
+     *
+     * <p>Null until the fixture is played. A {@link Match} with no fixture is a real state, not a broken
+     * one: an exhibition is simulated inline and never had a fixture to begin with.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "played_match_id")
+    @JoinColumn(name = "played_match_id", unique = true)
     private Match playedMatch;
 
     public Integer getDayNumber() {

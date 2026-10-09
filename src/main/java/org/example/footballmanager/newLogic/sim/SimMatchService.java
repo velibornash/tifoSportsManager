@@ -61,6 +61,8 @@ public class SimMatchService {
 
     private final MatchRepository matchRepository;
     private final MatchFixtureRepository matchFixtureRepository;
+    /** The manager's conditional substitution plan, keyed by fixture. Null-safe in wiring-free tests. */
+    private final org.example.footballmanager.newLogic.repository.SubstitutionPlanRepository substitutionPlans;
     private final CompetitionEntryRepository competitionEntryRepository;
     private final SeasonService seasonService;
     private final org.example.footballmanager.newLogic.service.MoraleService moraleService;
@@ -136,11 +138,22 @@ public class SimMatchService {
         // No mirror is applied here and none is needed: the editor has a single frame, every club's grid is
         // stored in it, and TacticalPerspectiveTransformer applies the mirror once at lookup, keyed on the
         // side asking. Selecting the right object per side is the whole of the fix.
-        var orchestrator = SimMatchRunner.run(homeName, awayName, SimMatchRunner.FULL_MATCH_TICKS,
+        // **The manager's conditional substitutions, attached before the first tick.**
+        //
+        // Built rather than run, so the plan can be handed to the engine before it starts ticking.
+        // `MatchOrchestrator` evaluated `conditionalSubs.onTick()` on every tick of every match against
+        // a list that was always empty, because nothing could put anything in it: the rules holder was
+        // private and the orchestrator was constructed and simulated inside one static call. Ten unit
+        // tests were green throughout — they built the object themselves and called add() directly.
+        var orchestrator = SimMatchRunner.build(homeName, awayName,
                 homeSquad, awaySquad, homeBench, awayBench,
                 new org.example.footballmanager.newLogic.sim.tactics.SideTactics(
                         tacticsRules.forTeam(homeTeam.getId()),
                         tacticsRules.forTeam(awayTeam.getId())));
+
+        applySubstitutionPlan(fixture, orchestrator);
+
+        orchestrator.simulate(SimMatchRunner.FULL_MATCH_TICKS);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         persistMatchCondition(orchestrator.getState());
         // Whatever happens next, the next match is a competitive one unless it says otherwise.
@@ -152,6 +165,43 @@ public class SimMatchService {
         }
         return new SimMatchOutcome(outcome, replayId, fixture.getHomeTeam(), fixture.getAwayTeam(),
                 orchestrator.getRecorder().getSnapshots());
+    }
+
+    /**
+     * Reads the manager's substitution plan for this fixture and hands it to the engine.
+     *
+     * <p><b>Never throws.</b> A plan is an instruction, and a malformed one must not cost the manager
+     * his match. Anything unreadable is logged and the match is simulated with no rules, which is exactly
+     * what happens when no plan was ever set — so a broken plan degrades to the default rather than
+     * failing the fixture.
+     *
+     * <p>Keyed by fixture, so this is the one simulation that reads it. {@code MatchFixture.playedMatch}
+     * is a unique indexed column and {@code SimMatchService.persist} sets it in the same block that sets
+     * {@code played = true}, so there is exactly one match per fixture and no way to read the wrong one.
+     */
+    private void applySubstitutionPlan(MatchFixture fixture,
+                                       org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator orchestrator) {
+        if (fixture == null || fixture.getId() == null || substitutionPlans == null) return;
+        try {
+            var plan = substitutionPlans.findByFixtureId(fixture.getId()).orElse(null);
+            if (plan == null || plan.getRulesJson() == null || plan.getRulesJson().isBlank()) return;
+
+            org.example.footballmanager.newLogic.sim.engine.ConditionalSubstitutionRules.Rule[] rules =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                            plan.getRulesJson(),
+                            org.example.footballmanager.newLogic.sim.engine.ConditionalSubstitutionRules.Rule[].class);
+
+            for (var rule : rules) {
+                if (rule == null) continue;
+                // A rule with no trigger minute can never fire, and one naming nobody is the engine's
+                // choice rather than the manager's. Both are legal; neither is worth a log line.
+                orchestrator.conditionalSubstitutions().add(rule);
+            }
+            log.info("Substitution plan for fixture {}: {} rule(s) attached.", fixture.getId(), rules.length);
+        } catch (Exception e) {
+            log.warn("Could not read the substitution plan for fixture {}; simulating with none. {}",
+                    fixture.getId(), e.getMessage());
+        }
     }
 
     private List<Player> loadRealSquad(Team team, String side) {

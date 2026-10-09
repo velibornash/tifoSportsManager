@@ -600,30 +600,85 @@ Max three tactics per match.
 - [ ] **Proven able to fail:** assert the per-match XI differs from the template and that the template still
       wins on a fixture with none
 
-### T0-BE-4 · Conditional substitutions — load the plan into the engine
+### T0-BE-4 · ✅ DONE 2026-10-09 — conditional substitutions: the contract becomes reachable
 
-**What exists:** the engine contract is **fully built and unit-tested** — `ConditionalSubstitutionRules`
-with `Rule(triggerMinute, condition LOSING/DRAWING/LEADING/ANYTIME, playerOnId, playerOffId, status)`, and
-`MatchOrchestrator.java:654` already calls `conditionalSubs.onTick()` in the substitution precedence
-chain. `SubstitutionPlan` is a persisted model and `SubstitutionPlanController` is a working REST API.
+**`ConditionalSubstitutionRules` had ten green unit tests and zero production callers. Not a wiring
+mistake — a shape that made wiring impossible.**
 
-**What is missing:** `conditionalSubs.add()` is **never called from production.** The persisted plan is
-never loaded. The rules list is empty every match.
+**What existed:** the rules holder with `Rule(triggerMinute, condition, playerOnId, playerOffId, status)`,
+`MatchOrchestrator:654` calling `conditionalSubs.onTick()` every tick, a persisted `SubstitutionPlan`, and a
+working REST API. And two things that made it unreachable:
+
+1. **`conditionalSubs` was private with no accessor.**
+2. **`SimMatchRunner.run` constructed *and* simulated inside one call**, so there was no moment at which a
+   plan could be attached. The engine evaluated an always-empty list on every tick of every match.
+
+**What landed**
+- [x] `MatchOrchestrator.conditionalSubstitutions()` — the accessor
+- [x] `SimMatchRunner.build(...)` splits build from simulate. **All five `run` overloads untouched**, so
+      every launcher, diagnostic and exporter still produces the same football
+- [x] `SimMatchService.applySubstitutionPlan` loads by fixture, **never throws** — a malformed plan degrades
+      to the default rather than costing the manager his match
+- [x] Plan re-keyed **`matchId` → `fixtureId`** (see below)
+- [x] Closes one hour before kickoff, refusing with `PLAN_CLOSED` and a reason
+- [x] **Proven able to fail:** removing the `add()` and changing nothing else turns
+      `ConditionalSubstitutionFiresInAMatchTest` red with the defect named in the message
+
+**The key was wrong, not buggy.** The plan was keyed by `matchId`, so it could only be created once a
+`Match` row existed — **after the simulation that consumes it**. All four old tests passed. The owner's rule
+closes substitutions an hour *before* kickoff, which is before any match exists.
+
+#### The fixture ↔ match correlation, since the owner required no ambiguity
+
+| | Before | Now |
+|---|---|---|
+| Direction | `MatchFixture.playedMatch` → `Match`. **One-way.** `Match` has no back-reference, only copied values | Unchanged, deliberately |
+| Constraint | **none** — two fixtures could point at one match | `unique = true` + `uk_match_fixture_played_match` |
+| Index | **none** — every result-by-fixture read was a scan | `ix_match_fixture_played_match` |
+
+**Why unique is the load-bearing part:** without it the result of a game can read as the result of a
+different game. P0-PREV-1/-2/-3 each recorded *"a fixture is not a match, and only the `playedMatch` knows
+which one this is"*, and `ZoxApiController` carries the scar of a guess that resolved a dashboard link to
+somebody else's played match. One played match now belongs to at most one fixture, so a plan written against
+a fixture is read by exactly one simulation — the one for that fixture.
+
+**Live-database check owed:** the Postgres server was down, so the constraint was **not** verified against
+`sokker_db`. Declared after reading the only writer (`SimMatchService:356`, in the same block that sets
+`played = true`), which cannot set it twice for one fixture. **Verify before the next app start:**
+`SELECT played_match_id FROM match_fixture WHERE played_match_id IS NOT NULL GROUP BY played_match_id HAVING count(*) > 1;`
+
+**Not done:** a rule naming a player who is not in the XI is still refused by the **engine** at minute 60,
+with a `VoidReason`, rather than at save time. The screen's bench dropdown prevents it for the player-on
+side; the server does not yet validate. Filed as **T1-16**.
+
+---
+
+## T1-16 · 🟡 A substitution rule naming the wrong player is only refused at minute 60
+
+**Found while building T0-UI-4, and it is the honest remainder of that task.**
+
+The screen's dropdowns mean a manager cannot name somebody who is not in the squad through the UI. The
+**API** can: `PUT /api/sim/fixtures/{id}/substitution-plan` takes `playerOnId` and `playerOffId` as strings
+and writes whatever it is given.
+
+The engine catches it — `ConditionalSubstitutionRules.VoidReason` has `PLAYER_UNAVAILABLE`,
+`PLAYER_ALREADY_ON_PITCH`, `EMPTY_BENCH`, `NO_SUBS_LEFT`, `NO_WINDOWS_LEFT` — and the rule is marked `VOID`
+with a reason. **But that happens during the match**, and the manager has no way to see it, because nothing
+reads `rule.voidReason` back.
+
+So the current state is: a typo becomes a silently dead rule, discovered never.
 
 **Tasks**
-1. `SimMatchService` reads the plan and calls `add()` per rule **before** the orchestrator runs.
-2. Validate on write: the named player is on the bench, the named player off is in the XI, the condition is
-   one the engine has.
-3. Rule status lifecycle: a plan edited after kickoff does not mutate a running match.
-4. Injury auto-sub already exists (`SubstitutionService.onTickInjuriesOnly()`) and needs **no change** — the
-   owner's rule "automatic if a player is injured and there is at least one player on the bench" is
-   already the behaviour.
+- [ ] Validate on save: the named player is in the squad, the named player off is in the XI, the condition
+      is one the engine has, and the minute is in range
+- [ ] Refuse the save with the reason, rather than accepting a rule that cannot fire
+- [ ] Surface `voidReason` after the match, so a manager can see which of his instructions were honoured
+      and which were not
 
 **Exit criteria**
-- [ ] A saved plan reaches the engine and fires — **proven by a match that ends with a substitution the
-      manager asked for and did not get**
-- [ ] A rule naming a player who is not in that XI is refused at save time, not at minute 60
-- [ ] **Proven able to fail:** deleting the `add()` loop turns the integration test red
+- [ ] A rule naming a player who is not in the squad is refused at save time, with the reason
+- [ ] A post-match screen reports each rule as fired or void, and why
+- [ ] **Proven able to fail:** posting an unknown `playerOnId` returns 400 and not 200
 
 ### T0-BE-5 · Day 6 — form and morale
 
@@ -905,16 +960,29 @@ player cannot be selected.
 - [ ] The fixture screen shows which XI is in force — per-match or template
 - [ ] 430px pass
 
-### T0-UI-4 · Substitution conditions
+### T0-UI-4 · ✅ DONE 2026-10-09 — the substitution screen
 
-The engine contract is built; this is the screen that feeds it.
+`substitution-plan-view.js`, mounted on the **fixture** page.
 
-- [ ] Per-rule: minute, condition, player on, player off
-- [ ] The bench is a dropdown, so a rule cannot name someone who is not there
-- [ ] A plain-words summary of every rule, because a condition set is easy to get wrong and hard to read
-- [ ] **Injury auto-sub is stated as automatic**, since it is already the behaviour
-- [ ] Editing after kickoff is refused, with the reason
-- [ ] 430px pass
+- [x] Per-rule: minute · condition · player on · player off
+- [x] **The bench is a dropdown.** The failure this prevents is concrete: a rule naming a player who is
+      not in the match cannot fire, and the engine's only report of that is a `VoidReason` the manager
+      never sees until after the game
+- [x] **A plain-words summary of every rule** — *"From minute 60, if losing: Player X on, the engine picks
+      who comes off."* A condition set is easy to get wrong and hard to read back
+- [x] **Injury auto-sub stated as automatic**, since `SubstitutionService.onTickInjuriesOnly()` already is
+- [x] **Closes an hour before kickoff**, and the screen disables itself from the server's own `editable`
+- [x] Refuses a sixth rule with the reason — five subs and three windows are engine limits
+- [x] **Mounted only for a fixture the manager's club is playing at home, and only before it is played.**
+      The plan is the home club's instruction; offering it on an away fixture, or on one with a result,
+      is a control with no meaning
+- [x] 430px — the remove control drops under the sentence rather than squeezing it
+- [ ] **Not verified in a browser**, and the panel has never been rendered by anyone
+
+**Found while testing it: `DELETE /substitution-plan` was always a 500.** `deleteByMatchId` is a derived
+delete and needs a transaction, which the controller had not. It survived because the four tests that
+existed tested an unknown id, a round trip, a replace and an empty plan — **and none of them deleted
+anything.** A route with no test is a route that was never pressed. Now `@Transactional`, and covered.
 
 ### T0-UI-5 · Live match panel, or honest copy
 

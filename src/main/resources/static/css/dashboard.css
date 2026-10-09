@@ -5705,3 +5705,43 @@ body {
 .forum-topic-row:has(.message-thread-preview) .forum-topic-title {
     margin-bottom: 2px;
 }
+
+/* ── Substitution conditions (T0-UI-4, owner 2026-10-09) ────────────────────────────────────────────────
+ *
+ * One row per rule, each written as a sentence rather than as a summary of four dropdowns. A condition
+ * set is easy to get wrong and hard to read back, so the sentence is the thing a manager checks against
+ * their own intention.
+ */
+
+.fm-list {
+    list-style: none;
+    margin: 0 0 14px;
+    padding: 0;
+}
+
+.fm-substitution-rule {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fm-substitution-rule:last-child {
+    border-bottom: none;
+}
+
+.fm-substitution-rule > span {
+    min-width: 0;
+}
+
+/* Below 430px the button drops under the sentence rather than squeezing it. The sentence is the content;
+ * the remove control is the action, and it is the one that can move. */
+@media (max-width: 430px) {
+    .fm-substitution-rule {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+}

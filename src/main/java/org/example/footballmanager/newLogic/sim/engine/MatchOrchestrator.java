@@ -234,6 +234,20 @@ public class MatchOrchestrator {
     public ProposalStatsCollector getStats() { return stats; }
     public MatchState getState() { return state; }
 
+    /**
+     * The manager's conditional substitution rules, so they can be attached before the first tick.
+     *
+     * <p>This rules holder used to be private with no accessor, and the orchestrator was built and
+     * simulated inside a single static call — so there was <b>no point at which a plan could be
+     * attached</b>. The engine evaluated {@code conditionalSubs.onTick()} every tick of every match,
+     * against a list that was always empty. Ten unit tests were green the whole time, because the tests
+     * built the object themselves and called {@code add()} directly.
+     *
+     * <p>Wiring it therefore needed two changes and neither was the obvious one: this accessor, and
+     * {@link SimMatchRunner#build} so a caller can hold the orchestrator before it runs.
+     */
+    public ConditionalSubstitutionRules conditionalSubstitutions() { return conditionalSubs; }
+
 
     /**
      * One tick of goal celebration, then the kickoff.
