@@ -75,9 +75,93 @@ reliable way to ship a broken guard.
 
 ### Not done
 
-- **The browser pass.** Everything above is code and a mutation. The owner's original screen has not been
-  reopened, and by this repository's own rule that is not the same as fixed.
-- **`sokker_db` was not running**, so the `played_match_id` duplicate query from `1ed5033` is still unrun.
+- ~~The browser pass.~~ **Done — see the verification section below.**
+
+---
+
+## ✅ Verification, 2026-10-09 — the defect reproduced on the owner's own screen, and the fix ends it
+
+Both items left open are now closed. `sokker_db` was up, and the browser pass was run against the
+owner's own account on his own data.
+
+### The collision is not theoretical. It is his exact fixture.
+
+The two id spaces overlap, and the numbers line up on the very fixture he reported:
+
+```
+fixture 6: OFK Omladinac v SK Teleoptik City      <- what he clicked
+match   6: GFK Bor 1945 v SK Kragujevac           <- what he was shown
+```
+
+**21 of 21** unplayed fixtures whose id happens to collide with a match would have leaked. Not one
+fixture, and not a rare edge: every single one of them.
+
+### The database checks, from `1ed5033`, now actually run
+
+| Query | Result |
+|---|---|
+| Two fixtures claiming one `played_match_id` | **0 rows** — the unique index holds |
+| `played_match_id` pointing at no `Match` | **0 rows** |
+| Played `Match` with no fixture | **0 rows** |
+| Fixtures / with a match / distinct matches | 5,444 / 26 / 26 |
+
+26 fixtures, 26 distinct matches, no collisions. The constraint added in `1ed5033` is correct against
+real data.
+
+### The endpoint, live
+
+`GET /matches/by-fixture/6` → `playedMatchId: null`, and `id` stays **6**, the fixture's own id. A
+played fixture returns its real link: fixture 93 → match 8, fixture 94 → match 9, fixture 95 → match
+10. It follows `playedMatch` and nothing else.
+
+Fixture 1 and match 1 share id 1 by coincidence of two sequences, which is exactly why "is this
+already the right id?" is not a question that can be answered by looking at the number.
+
+### The defect reproduced in a browser, in full
+
+Logged in as **velibor@example.com**, whose club **is OFK Omladinac**, opened the dashboard and
+clicked **Next Match**. With the fix reverted in the served copy:
+
+- the page fired `/matches/by-fixture/6`, **`/match-stats/lineups/6`** and `/api/zox/fixture-preview/6`
+- the Lineups tab rendered **GFK Bor 1945** and **SK Kragujevac** — full squads, ratings, cards and 90
+  minutes each, under OFK Omladinac v SK Teleoptik City
+
+Note the wrong request fires in the **eager `Promise.all` on page load**, before any tab is pressed.
+Pressing Lineups was not what caused it; the screen was already fetching another fixture's data while
+it sat on the Preview tab.
+
+### The fix, same screen, same click
+
+| | Pre-fix | Post-fix |
+|---|---|---|
+| Match-only requests | `/match-stats/lineups/6` | **none** |
+| Foreign teams on the page | GFK Bor 1945, SK Kragujevac | **none** — only the fixture's own two clubs |
+| The five buttons | enabled | **all `disabled`**, greyed out |
+
+### And no regression on the normal path
+
+A **played** fixture (id 1) still resolves and loads: buttons enabled, `/match-stats/lineups/1`
+fetched, and Stats shows real engine numbers — Possession 44% / 56%, Shots 12 / 18, Shots on target
+3 / 6. The fix gates on a real condition and does not gate the happy path.
+
+### Two process notes
+
+**The first browser run proved nothing, and looked like it proved something.** The server serves
+`target/classes`, not `src/main/resources` — so editing the source file changed nothing in the
+browser, and the "clean" result I got first was the already-fixed copy answering. I only found it
+because the defect *failed* to reproduce when it should have. Had the first run been the one I
+trusted, I would have reported a browser pass that never happened. **`mvn spring-boot:run` does not
+copy static resources after startup; a browser pass must edit or rebuild what is actually served.**
+
+I also had to restore the source file afterwards — the A/B left the defect in it. `git checkout`
+against the commit brought it back, and `git status` confirms only the pre-existing
+`ProposalStatsCollector.java` differs.
+
+### One honest limit
+
+The defence is **entirely client-side.** `GET /match-stats/lineups/6` still returns GFK Bor 1945's
+lineups, and that is correct — it *is* match 6. The endpoint cannot know the caller meant a fixture.
+Hardening it would mean a fixture-aware route, and that belongs in the API work, not in this fix.
 
 ## ✅ T1-14 — the router carried four unreachable routes and named a fifth wrongly (2026-10-09)
 

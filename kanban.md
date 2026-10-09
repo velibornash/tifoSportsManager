@@ -171,13 +171,35 @@ Three mutations, each caught by a named test: the two original raw-id calls, the
 id, and — deliberately — replacing the resolution with a `^[0-9]+$` shape check, which the guard rejects
 because **both id spaces are numeric and a shape check guards nothing.**
 
+### Verification — 2026-10-09, against `sokker_db` and the owner's own screen
+
+The collision is the owner's exact fixture, and it is not rare:
+
+```
+fixture 6: OFK Omladinac v SK Teleoptik City      <- what he clicked
+match   6: GFK Bor 1945 v SK Kragujevac           <- what he was shown
+```
+
+**21 of 21** colliding unplayed fixtures leaked. Reproduced in a browser on his own account: the page
+fired `/match-stats/lineups/6` and rendered GFK Bor 1945 and SK Kragujevac's full squads, ratings,
+cards and 90 minutes under his own fixture. After the fix the same click makes **no** match-only
+request, renders **no** foreign team, and shows the five buttons `disabled`. A played fixture still
+resolves and loads real stats — no regression.
+
+`played_match_id`: **0** duplicates, **0** dangling references, **0** orphan matches. 5,444 fixtures,
+26 played, 26 distinct.
+
+**One limit:** the defence is entirely client-side. `/match-stats/lineups/6` still returns match 6's
+lineups, correctly — the endpoint cannot know a fixture id was meant. A fixture-aware route belongs
+in the API work.
+
 **Exit criteria:**
 - [x] `playedMatchId` on the DTO, null for an unplayed fixture
 - [x] No match-only endpoint reachable with a fixture id, in either file
 - [x] Buttons that need a played match are disabled, not merely erroring
 - [x] Guards proven able to fail against three mutations
-- [ ] **Observed in the browser** — the OFK Omladinac fixture showing no foreign lineups
-- [ ] Confirmed against `sokker_db` that no fixture shares a `played_match_id`
+- [x] **Observed in the browser** — defect reproduced pre-fix, absent post-fix
+- [x] Confirmed against `sokker_db` that no fixture shares a `played_match_id`
 
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
