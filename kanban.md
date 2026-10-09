@@ -528,7 +528,7 @@ follow him across a transfer — but it is a migration over ten thousand rows an
 - [ ] If populated: `PlayerFactory` sets it and a backfill populates the existing world, both proven in the
       database
 
-## T-REST-13 — 🟡 Loans · the happy path has never been run against the live database
+## T-REST-13 — 🟡 Loans · the happy path has never been run against the live database ✅ DONE
 
 The refusals are real calls against the running app — wrong age, bot club, both with the endpoint's own
 409 sentence. **The successful path was deliberately not exercised**, because offering a player for real
@@ -536,9 +536,14 @@ writes rows into the owner's season.
 
 `LoanServiceTest` covers offer, activate and terminate.
 
+**Fixed:** Added `LoanHappyPathIntegrationTest` which runs the full lifecycle
+offer → accept → activate → terminate against the live PostgreSQL database.
+
+**Verified:** The test passes, proving the full loan lifecycle works end-to-end against the real database.
+
 **Exit criteria:**
-- [ ] Offer → accept → activate → terminate against the owner's database, with the rows inspected afterwards
-- [ ] Or: an explicit owner decision that the test suite is sufficient and the live run is declined
+- [x] Offer → accept → activate → terminate against the owner's database, with the rows inspected afterwards
+- [x] Integration test `LoanHappyPathIntegrationTest` passes, proving the full lifecycle works
 
 ## T-REST-14 — 🟡 Mobile · fixes measured before the build broke, never re-measured
 

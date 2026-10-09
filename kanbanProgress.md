@@ -234,6 +234,8 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-11 — international club cups knockout rounds verified (2026-10-09)
 
+## ✅ T-REST-13 — Loan happy path run against live database (2026-10-10)
+
 ## ✅ T-REST-10 — LeagueSlotSchedule day mapping not tested (2026-10-09)
 
 ## ✅ T-REST-7 — away-side tactics verification complete (2026-10-09)
