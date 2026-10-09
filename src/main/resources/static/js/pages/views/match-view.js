@@ -225,17 +225,35 @@ export function createMatchView(deps) {
                 const awayInsights = Array.isArray(previewPayload?.awayInsights) ? previewPayload.awayInsights : [];
                 const homeAbsentees = Array.isArray(previewPayload?.homeAbsentees) ? previewPayload.homeAbsentees : [];
                 const awayAbsentees = Array.isArray(previewPayload?.awayAbsentees) ? previewPayload.awayAbsentees : [];
+                // Defined here because the six fields below use it, and `const` is not hoisted: a
+                // helper declared 40 lines further down is a ReferenceError, not a late binding.
+                const numberOr = (value, fallback) => (value === null || value === undefined ? fallback : Number(value));
+
                 const homeWin = Number(previewPayload?.homeWinProbability ?? 0) * 100;
                 const draw = Number(previewPayload?.drawProbability ?? 0) * 100;
                 const awayWin = Number(previewPayload?.awayWinProbability ?? 0) * 100;
                 const expectedHomeGoals = Number(previewPayload?.expectedHomeGoals ?? 0);
                 const expectedAwayGoals = Number(previewPayload?.expectedAwayGoals ?? 0);
-                const homeFormationFitness = Number(previewPayload?.homeFormationFitness ?? 0);
-                const awayFormationFitness = Number(previewPayload?.awayFormationFitness ?? 0);
-                const homeBenchQuality = Number(previewPayload?.homeBenchQuality ?? 0);
-                const awayBenchQuality = Number(previewPayload?.awayBenchQuality ?? 0);
-                const homeAvailabilityScore = Number(previewPayload?.homeAvailabilityScore ?? 0);
-                const awayAvailabilityScore = Number(previewPayload?.awayAvailabilityScore ?? 0);
+                // `null` means "not knowable before a match", and `MatchPreviewService` sends exactly
+                // that for formation fitness, bench quality and availability. It must survive to the
+                // renderer, because `pct`/`fixed1`/`withUnit` below are written to turn null into
+                // nothing at all - and then the row reads "Not known yet".
+                //
+                // This used to be `Number(x ?? 0)`, which collapsed the null to a real 0 three lines
+                // before the helpers could see it. Every guard downstream then had nothing to guard:
+                // `pct(0)` is "0", not null, so `pct(x) === null ? '' : ...` printed
+                // **"Availability 0% vs 0%"** and **"0.0 bench"** on a fixture that has not happened.
+                //
+                // A 0-0 that was never played is not the same as a 0-0 that was. Same argument as the
+                // null score in MatchDTO, and it cost the same way.
+                //
+                // `numberOr(value, null)` keeps the null and still coerces a real number.
+                const homeFormationFitness = numberOr(previewPayload?.homeFormationFitness, null);
+                const awayFormationFitness = numberOr(previewPayload?.awayFormationFitness, null);
+                const homeBenchQuality = numberOr(previewPayload?.homeBenchQuality, null);
+                const awayBenchQuality = numberOr(previewPayload?.awayBenchQuality, null);
+                const homeAvailabilityScore = numberOr(previewPayload?.homeAvailabilityScore, null);
+                const awayAvailabilityScore = numberOr(previewPayload?.awayAvailabilityScore, null);
                 const analysis = htmlEscape(String(previewPayload?.analysisText || ''));
                 const playedOnce = previewPayload?.played !== false;
 
@@ -262,7 +280,18 @@ export function createMatchView(deps) {
                 const pct = value => (value === null || value === undefined ? null : Number(value).toFixed(0));
                 const fixed1 = value => (value === null || value === undefined ? null : Number(value).toFixed(1));
                 const withUnit = (value, unit) => (value === null ? '' : `${value}${unit}`);
-                const numberOr = (value, fallback) => (value === null || value === undefined ? fallback : Number(value));
+
+                // A fraction rendered as a percentage, and null-safe about it. Declared here, after
+                // `pct`, because it calls `pct` and `const` is not hoisted.
+                //
+                // `pct(homeFormationFitness * 100)` was the original line, and it carries the same defect
+                // as the `?? 0` one level up: in JavaScript **`null * 100 === 0`**, so the null became a
+                // real 0 during the arithmetic and `pct` was handed a number it was perfectly happy to
+                // print. That is why fixing the `?? 0` removed "0.0 bench" and left "0%" and "0% fit"
+                // still standing - the same defect one operator further along.
+                //
+                // The multiply must happen only once there is something to multiply.
+                const pctOfFraction = value => (value === null || value === undefined ? null : pct(value * 100));
 
                 infoDiv.innerHTML = `
                     <div class="fm-mpv">
@@ -275,7 +304,7 @@ export function createMatchView(deps) {
                             <section class="fm-mpv-card fm-mpv-card--home">
                                 <h4 class="fm-mpv-label">Home edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(homeTeamName)}</div>
-                                <div class="fm-mpv-sub">${[withUnit(pct(homeFormationFitness * 100), '%'), withUnit(fixed1(homeBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
+                                <div class="fm-mpv-sub">${[withUnit(pctOfFraction(homeFormationFitness), '%'), withUnit(fixed1(homeBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
                             </section>
                             <section class="fm-mpv-card fm-mpv-card--pred">
                                 <h4 class="fm-mpv-label">Prediction</h4>
@@ -288,7 +317,7 @@ export function createMatchView(deps) {
                             <section class="fm-mpv-card fm-mpv-card--away">
                                 <h4 class="fm-mpv-label">Away edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(awayTeamName)}</div>
-                                <div class="fm-mpv-sub">${[withUnit(pct(awayFormationFitness * 100), '%'), withUnit(fixed1(awayBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
+                                <div class="fm-mpv-sub">${[withUnit(pctOfFraction(awayFormationFitness), '%'), withUnit(fixed1(awayBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
                             </section>
                         </div>
 
@@ -299,13 +328,13 @@ export function createMatchView(deps) {
                                     <div>
                                         <div class="fm-mpv-sub">${htmlEscape(homeTeamName)}</div>
                                         <strong>${htmlEscape(String(previewPayload?.homeFormation || '–'))}</strong>
-                                        <div class="fm-mpv-sub">${withUnit(pct(homeFormationFitness * 100), '% fit')}</div>
+                                        <div class="fm-mpv-sub">${withUnit(pctOfFraction(homeFormationFitness), '% fit')}</div>
                                         <div class="fm-mpv-sub">${withUnit(fixed1(homeBenchQuality), ' bench')}</div>
                                     </div>
                                     <div class="fm-mpv-vs-right">
                                         <div class="fm-mpv-sub">${htmlEscape(awayTeamName)}</div>
                                         <strong>${htmlEscape(String(previewPayload?.awayFormation || '–'))}</strong>
-                                        <div class="fm-mpv-sub">${withUnit(pct(awayFormationFitness * 100), '% fit')}</div>
+                                        <div class="fm-mpv-sub">${withUnit(pctOfFraction(awayFormationFitness), '% fit')}</div>
                                         <div class="fm-mpv-sub">${withUnit(fixed1(awayBenchQuality), ' bench')}</div>
                                     </div>
                                 </div>
@@ -316,7 +345,28 @@ export function createMatchView(deps) {
                             <section class="fm-mpv-card">
                                 <h4 class="fm-mpv-label">Why this prediction</h4>
                                 <ul class="fm-mpv-list">${predictionReasons.map(reason => `<li>${htmlEscape(String(reason))}</li>`).join('')}</ul>
-                                <div class="fm-mpv-sub">${previewPayload?.analysisText ? analysis : ''}</div>
+                                <!-- analysisText is deliberately NOT rendered here.
+
+                                     MatchPreviewService.reasonsFor already appends prediction.analysis()
+                                     to the reasons list, and analysisText is that same string. Rendering
+                                     both put "Away edge · OVR 38:82 - form 7.1:4.6" on the card twice, under
+                                     two different headings, which read as two separate findings.
+
+                                     The list is the single source for this card. analysisText stays in the
+                                     payload because the standalone ZOX page renders the list only and has no
+                                     other use for it - removing it from the API would break that page for no
+                                     gain.
+
+                                     NOTE, and this cost a browser session to find: no backticks in here.
+                                     This comment sits inside a JavaScript template literal, so a single
+                                     backtick terminates the literal early and the whole module fails to
+                                     parse with "Unexpected identifier". node --check does NOT catch it -
+                                     it passes as a CommonJS script and fails only as an ES module, which
+                                     is why every source-scan guard in this repository stayed green while
+                                     the app was broken. See ModuleBackticksInTemplateTest. -->
+                                <div class="fm-mpv-sub fm-mpv-sub--faint">${
+                                    analysis && !predictionReasons.includes(analysis) ? analysis : ''
+                                }</div>
                             </section>
                         </div>
 

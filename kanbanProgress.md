@@ -163,6 +163,85 @@ The defence is **entirely client-side.** `GET /match-stats/lineups/6` still retu
 lineups, and that is correct — it *is* match 6. The endpoint cannot know the caller meant a fixture.
 Hardening it would mean a fixture-aware route, and that belongs in the API work, not in this fix.
 
+## ✅ T-REST-0b — "not knowable yet" was rendered as a confident 0% (2026-10-09)
+
+Same fixture, same session as T-REST-0. The owner saw `0%`, `0.0 bench` and `Availability 0% vs 0%`
+on an unplayed fixture a week out, and was right that it looked wrong.
+
+### The service was right
+
+`MatchPreviewService.preview` sends **null** for eight fields and says why: *"These are not knowable
+before a match, and inventing them is what the original all-null fixture preview was right about."*
+Confirmed live against fixture 6 — all eight arrive as `None`, and the prediction is computed and
+correct (AWAY_WIN, 7/18/75%, xG 1.10:1.84). **A forecast is knowable before a match**; that part of
+the earlier rework was the right call and is untouched.
+
+### Two layers of renderer defect, and the second one hid the fix for the first
+
+| Layer | Line | Effect |
+|---|---|---|
+| 1 | `Number(x ?? 0)` | null → a real 0, three lines before the helpers saw it |
+| 2 | `pct(x * 100)` | **`null * 100 === 0`** — the arithmetic invents the number |
+
+`pct`, `fixed1` and `withUnit` were all written to return empty for null. **Both layers left them with
+nothing to guard.**
+
+Layer 2 is the part worth recording. Fixing layer 1 removed `0.0 bench` and left `0%` and `0% fit`
+standing, and **I nearly called that done** — the guard was green, the build was green. Re-reading the
+screen after the first fix is the only reason it surfaced. Same defect, one operator further along.
+
+### Verified in the browser, on the owner's fixture
+
+Before: `HOME EDGE 0% · 0.0 bench` / `Availability 0% vs 0%`
+After: **`HOME EDGE Not known yet`**, no availability line, no bench figure, analysis listed once.
+
+### The duplicate analysis
+
+`reasonsFor` already appends `prediction.analysis()` to `predictionReasons`; `analysisText` is that
+same string. It printed twice under two headings and read as two findings. Now guarded by
+`!predictionReasons.includes(analysis)` rather than deleted from the payload, because the standalone
+ZOX page renders the list only.
+
+### My own mistake, and it took the whole application down
+
+While fixing the duplicate I wrote a comment **inside a JS template literal** and used backticks in
+it. A backtick terminates a template literal:
+
+```
+... "text" + MatchPreviewService.reasonsFor + " already appends ..."   //   three syntax errors
+```
+
+`match-view.js` stopped parsing. `window.loadMatch` became undefined, `dashboard.js` hit its
+`if (typeof window.loadMatch === 'function')` and fell through **both** branches **without throwing**,
+and the Next Match card became a control that did nothing — on every page, for every manager.
+
+**`node --check match-view.js` passed it.** That parses as a CommonJS script; `.mjs` parses as an ES
+module and failed. Every JavaScript check in this repository used the script form, so **four green
+source-scan guards, a green mutation suite and a green build all reported success while the
+application was broken.** That is `kanban.md`'s "a green status is not evidence", in its purest form,
+caused by me.
+
+It surfaced only because the browser session I had promised to run did not behave as the code predicted
+— `window.loadMatch` was undefined where it should have been a function, and that did not match any
+explanation I had. Chasing it found the parse error.
+
+`ModuleBackticksInTemplateTest` now does two things: rejects a backtick nested inside a template
+literal, and parses **every** shipped module as `.mjs`. It is the first check here that can see a
+module-level syntax error at all. Both parts proven able to fail against the real mutation.
+
+### Mutations
+
+| Mutation | Caught by |
+|---|---|
+| `Number(x ?? 0)` restored | `nullsSurviveToTheRenderer` — names all six fields |
+| `numberOr` moved below its use | `noTemporalDeadZone` — would blank the tab on load |
+| `analysis` printed unconditionally | `theAnalysisIsNotDuplicated` |
+| `pct(x * 100)` restored | `nullsAreNotArithmetic` |
+| backticks reinstated | both tests in `ModuleBackticksInTemplateTest`, naming the line |
+
+That third one — `numberOr` declared after its use — was a crash I introduced with the first fix and
+caught only because I checked ordering. `const` is not hoisted.
+
 ## ✅ T1-14 — the router carried four unreachable routes and named a fifth wrongly (2026-10-09)
 
 ### What the four were

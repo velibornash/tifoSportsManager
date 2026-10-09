@@ -201,6 +201,70 @@ in the API work.
 - [x] **Observed in the browser** — defect reproduced pre-fix, absent post-fix
 - [x] Confirmed against `sokker_db` that no fixture shares a `played_match_id`
 
+## T-REST-0b — 🔴 P0-PREVIEW · the preview turned "not knowable yet" into a confident **0%**
+
+Found by the owner on the same fixture as T-REST-0, 2026-10-09.
+
+### What he saw
+
+```
+HOME EDGE      OFK Omladinac          0% · 0.0 bench
+SQUAD FIT      OFK Omladinac          0% fit      0.0 bench
+Availability 0% vs 0%
+```
+
+### The service was right, twice over
+
+`MatchPreviewService.preview` sends **null** for formation fitness, bench quality, availability,
+position mismatches and play style, and says why in its own comment: *"These are not knowable before a
+match, and inventing them is what the original all-null fixture preview was right about."* Verified
+live — all eight fields arrive as `None`. **The prediction was computed and is correct** (AWAY_WIN,
+7/18/75%, xG 1.10:1.84): a forecast *is* knowable before a match, and withholding it was the earlier
+mistake.
+
+### The defect was the renderer, in two layers
+
+| Layer | Line | Effect |
+|---|---|---|
+| 1 | `Number(previewPayload?.homeBenchQuality ?? 0)` | null collapsed to a real **0** three lines before the display helpers saw it |
+| 2 | `pct(homeFormationFitness * 100)` | **`null * 100 === 0`** — the arithmetic invented the number |
+
+Both helpers that were supposed to prevent this — `pct`, `fixed1`, `withUnit` — return empty for null
+and were written correctly. **Every guard had nothing left to guard.** Layer 2 is why fixing layer 1
+left `0%` and `0% fit` standing, and it was only caught by looking at the screen again after
+believing the first fix had worked.
+
+Fixed with `numberOr(x, null)` and a null-safe `pctOfFraction`. The card now reads **"Not known yet"**.
+
+### Also fixed: the analysis printed twice
+
+`reasonsFor` already appends `prediction.analysis()` to `predictionReasons`, and `analysisText` is
+that same string — so `Away edge · OVR 38:82 · form 7.1:4.6` appeared twice under two headings, and
+read as two separate findings.
+
+### And a mistake of my own that broke the whole application
+
+While fixing the duplicate I wrote a comment **inside a JS template literal** containing backticks.
+A backtick terminates a template literal, so `match-view.js` stopped parsing:
+`SyntaxError: Unexpected identifier`. `window.loadMatch` became undefined, the dashboard's handler
+fell silently through **both** of its branches, and the Next Match card did nothing at all.
+
+**`node --check file.js` passed it**, because that parses as a CommonJS *script*; only `.mjs` fails as
+an ES *module*. Every JavaScript check in this repository used the script form, so **four green
+source-scan guards and a green mutation suite all passed while the app was broken.** The browser pass
+caught it, which is the only reason it did not ship.
+
+`ModuleBackticksInTemplateTest` now scans every shipped module for a nested backtick **and** parses
+each one as `.mjs`. This is the first check in the repository that can see a module-level syntax error.
+
+**Exit criteria:**
+- [x] No `?? 0` on a field the service nulls on purpose
+- [x] No null multiplied on its way to the display (`null * 100 === 0`)
+- [x] The card says "Not known yet" rather than printing a zero — verified in the browser
+- [x] The analysis appears once
+- [x] Guards proven able to fail against four mutations
+- [x] Every shipped ES module parses; a nested backtick fails the suite
+
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
 **The written spec says they do not** — they *"hold their positions until their league is activated"*.
