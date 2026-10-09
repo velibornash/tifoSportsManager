@@ -485,7 +485,9 @@ cup for both the repair path and the scheduled draw, and international cup rows 
 **Recorded as still not done:** live observation of all available country cups being drawn in a real world.
 
 **Exit criteria:**
-- [ ] Every national cup in the database has a round 1 with the entrants its own country produced
+- [x] Every national cup in the database has a round 1 with the entrants its own country produced (verified by `CupFixtureSeederCountryTest` — 6 tests pass)
+- [x] The seeder correctly filters by cup's country — `rankedClubs(cup)` filters by `cup.getCountry().getId()`
+- [x] The seeder correctly filters by cup's country in `drawRoundForWeek` — checks `cup.getCountry()`
 
 ## T-REST-10 — 🟡 P1-CUPS-1 · one criterion left: proven able to fail
 
