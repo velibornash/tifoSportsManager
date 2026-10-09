@@ -518,7 +518,6 @@ window.addEventListener('load', async () => {
         // redirect loop that looks like the app is broken.
         wireNotificationBell();
         startNotificationPolling();
-        console.log('Authenticated user:', user.username, 'Team ID:', currentUserTeamId, 'Team Name:', currentUserTeamName, 'League:', currentUserCompetitionName || currentUserCompetitionId);
 
         loadDashboard();
     } catch (err) {
@@ -862,6 +861,14 @@ async function pollAdminDatabaseJob(loadingPopup) {
     for (let attempt = 0; attempt < 240; attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const response = await authFetch('/admin/database-job/status');
+        if (!response.ok) {
+            // A long rebuild outlives the session that started it, and the admin can press Reset DB
+            // again. Without this, one 500 in the middle of the poll threw out of the loop and left the
+            // loading popup on screen for ever with no way to tell whether the job was still running.
+            updateDatabaseLoadingPopup(loadingPopup, { status: 'error',
+                message: `Lost contact with the server (${response.status}). The job may still be running.` });
+            throw new Error(`Could not read the job status (${response.status}).`);
+        }
         const snapshot = await response.json();
         updateDatabaseLoadingPopup(loadingPopup, snapshot);
 

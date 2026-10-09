@@ -489,6 +489,49 @@ export function buildEmptyState(message) {
 }
 
 /**
+ * Reads a JSON body, or throws with the status in the message.
+ *
+ * <p><b>Why this exists rather than an `if (!response.ok)` at each call site.</b> `authFetch` throws on
+ * every non-2xx, so an unguarded `await response.json()` never reaches the guard that was written for it:
+ * the throw skips it and escapes to whatever called the loader. Six places had exactly that shape, and
+ * five of them reported *"API Error"* — a page that says two words about a 403 saying *"Only the owning
+ * club can accept incoming offers"*.
+ *
+ * <p>Use this where the screen genuinely cannot be drawn without the payload. The message names what
+ * failed, so the page says which panel is empty rather than that the application is broken.
+ */
+export async function readJsonOrThrow(response, label) {
+    if (!response || !response.ok) {
+        throw new Error(`${label} failed (${response ? response.status : 'no response'})`);
+    }
+    return response.json();
+}
+
+/**
+ * Reads a JSON body, or returns a fallback.
+ *
+ * <p>For the loads that fetch several panels at once. A missing country catalogue must not blank a
+ * transfer screen that already has its market rows, and one unreadable leaderboard must not take the
+ * scorers table with it.
+ *
+ * <p>The fallback is returned rather than thrown because <b>some of these panels are legitimately
+ * absent</b> — a competition with nothing played has no milestones, and that is a fact about the world
+ * rather than a failure. Throwing there would replace an honest empty panel with an error card.
+ */
+export async function readJsonOr(response, fallback, label) {
+    if (!response || !response.ok) {
+        console.warn(`${label} unavailable (${response ? response.status : 'no response'}); showing the panel empty.`);
+        return fallback;
+    }
+    try {
+        return await response.json();
+    } catch (err) {
+        console.warn(`${label} returned a body that is not JSON; showing the panel empty.`, err);
+        return fallback;
+    }
+}
+
+/**
  * The player's appearance count and average rating.
  *
  * <p><b>authFetch is not optional and must be passed.</b> It used to be called with one argument from

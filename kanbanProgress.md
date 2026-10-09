@@ -1,5 +1,83 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-10 — every loader checks the response (2026-10-09)
+
+### Why this is correctness and not style
+
+`authFetch` **throws on every non-2xx.** An unguarded `await response.json()` therefore never reaches the
+`if (!response.ok)` guard written for it — the throw skips it and escapes to `pages.js`, the router every
+page goes through, whose last line replaces the page with `buildEmptyState("API Error")`.
+
+**A 403 carrying the sentence *"Only the owning club can accept incoming offers"* and a 500 from an
+unreachable database reached the manager as the same two words.**
+
+### The worst were `Promise.all` groups
+
+| Screen | What one non-2xx did |
+|---|---|
+| **ZOX match view** | preview + statistics + report fetched unchecked — a manager refused the post-match report **also lost the pre-match preview, which he was allowed** |
+| **Transfer centre** | market + overview + squad unchecked — a 403 on the global market **also emptied the list of his own players** |
+| **Statistics** | team directory guarded, the two leaderboards not, in one `Promise.all` |
+
+### Landed
+
+Two shared readers in `utils.js`, so this is one import rather than six copies of a guard:
+
+- `readJsonOrThrow(response, label)` — where the screen cannot be drawn without the payload
+- `readJsonOr(response, fallback, label)` — where one panel failing must not empty the others. **It says
+  which panel went empty**, because a fallback returned without a word is indistinguishable from a
+  competition that genuinely has nothing in it
+
+Fixed: `fixture-view` (upcoming + friendlies), `pages.js` `loadCup` / `loadInternational`, `stats-view`,
+`club-management`, `zox-match-preview`, and the **admin database-job poll** — where one 500 mid-poll threw out
+of the loop and left the loading popup on screen for ever with no way to tell whether the job was still
+running.
+
+**11 debug `console.log` lines removed.** And **`login.js` no longer logs the first 20 characters of the
+JWT** — a token prefix in a browser console is visible to anyone with devtools and to every screen share,
+and it proved nothing, since the page loading is the proof.
+
+### Two board items were already fixed
+
+- **`fetchPlayerRatingSummary`** — recorded as *"called with 1 argument at 2 sites, average rating
+  permanently —"*. It takes `authFetch`, checks `response.ok`, and both call sites pass it.
+- **`matches.js`** — recorded as *"the guard is still unreachable"*. Both loaders catch and render a page
+  saying what failed.
+
+Both were fixed in the P0-PREV work. **Third time this session a board item was stale**, after the six in
+`CurrentStateAnalysis.md`.
+
+### The guard, and three mistakes of mine that made it look green
+
+`LoadersCheckResponseOkTest`, 4 tests, scanning the shipped files — because this repository has **no
+JavaScript test infrastructure at all**. It strips comments before scanning, and excludes `tifo.js` **by
+name with the reason** (that is the text-football mode, a separate product).
+
+**The first version passed against three planted defects.** Three separate errors, and the third is the one
+that matters:
+
+1. **The debug-log window looked the wrong way.** `console.log('Loading X')` sits on the line *above* its
+   `authFetch`; the window scanned upward, read the previous statement, matched nothing and passed.
+   **A window in the wrong direction is not a narrow window — it is no window.**
+2. **Two mutations were not mutations.** I removed `readJsonOr` from two loaders inside a `try`, so the code
+   was still handled and the green was *correct*. A mutation must remove the thing the assertion is about
+   **and nothing already covering it.**
+3. **`git checkout --` on a tracked file reverted the work the previous restore had put back**, and the chain
+   of copies in between preserved the wrong version. Today's `fixture-view` changes were gone when I checked;
+   they are restored. **Third time this session** — the first was `git checkout` on an *untracked* file,
+   which fails silently. The two are the same mistake: believing a restore that had not happened.
+
+**Exit criteria**
+- [x] Every loader in the graphical football UI checks the response, directly or through a shared reader
+- [x] Both directions of a `Promise.all` group degrade independently
+- [x] **Proven able to fail:** a planted unguarded loader and a planted `console.log` each turn it red
+- [ ] **Not verified in a browser**
+
+### Filed, not done
+
+**T1-17 — `tifo.js`, the text-football mode.** Excluded by name, and it carries the same defect class in at
+least four places. Never reviewed.
+
 ## ✅ T0-UI-4 / T0-BE-4 — the substitution screen, and a contract that could not be wired (2026-10-09)
 
 ### The owner's question: is there a direct fixture ↔ match link?

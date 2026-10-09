@@ -57,9 +57,10 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         const data = await response.json();
         clearLastAppError();
         setAuthToken(data.token);
-        console.log('[login.js] Token stored in sessionStorage. Preview:', data.token.substring(0, 20) + '...');
-        console.log('[login.js] sessionStorage token:', sessionStorage.getItem('token') ? 'PRESENT' : 'MISSING');
-        console.log('[login.js] Navigating to /home.html');
+        // These three logged the first 20 characters of the JWT and whether a token was present. A
+        // token prefix in a browser console is visible to anyone with devtools open and to every screen
+        // share, and it buys nothing at runtime: the token's presence is already proven by the page
+        // loading. `setAuthToken` throwing is the only failure worth surfacing, and the catch below does.
         window.location.href = '/home.html';
 
     } catch (err) {

@@ -770,14 +770,12 @@ export function createPlayerView(deps) {
         }
 
         const mainContent = document.getElementById("main-content");
-        console.log(`Loading player for team ${teamId} and player ${playerId}`);
         const [response, ratingSummary, transferStatus, playerMatches] = await Promise.all([
             authFetch(`/teams/${teamId}/players/${playerId}`),
             fetchPlayerRatingSummary(playerId, authFetch),
             fetchPlayerTransferStatus(playerId),
             fetchPlayerMatches(playerId)
         ]);
-        console.log(`Response status: ${response.status}`);
         if (!response.ok) {
             const backTarget = callerPage || "firstTeam";
             mainContent.innerHTML = `<div class="team-card"><p>Player not found.</p><button onclick="loadPage('${backTarget}')">Back</button></div>`;

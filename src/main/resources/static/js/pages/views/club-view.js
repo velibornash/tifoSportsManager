@@ -10,7 +10,6 @@ export function createClubView(deps) {
 
     async function loadClubProfile() {
         const teamId = getTeamId();
-        console.log(`Loading club profile for ${teamId}`);
         const [response, milestones, friendlyWeek, board, mine] = await Promise.all([
             authFetch(`/teams/${teamId}/profile`),
             (async () => {

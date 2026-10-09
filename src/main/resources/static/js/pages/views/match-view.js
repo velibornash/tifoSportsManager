@@ -35,9 +35,7 @@ export function createMatchView(deps) {
         const MATCH_TABS = ['preview', 'goals', 'report'];
         const requestedTab = String(options.initialTab || '').toLowerCase();
         const initialTab = MATCH_TABS.includes(requestedTab) ? requestedTab : 'preview';
-        console.log(`Loading match ID: ${matchId}, caller: ${caller}`);
         if (caller === "undefined") {
-            console.log(`Match not found.`);
             mainContent.innerHTML = `<div class="team-card"><p>Match not found.</p></div>`;
             return;
         }

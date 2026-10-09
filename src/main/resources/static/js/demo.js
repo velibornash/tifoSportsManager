@@ -604,7 +604,6 @@ window.addEventListener('load', async () => {
         const res = await authFetch('/auth/me');
         const user = await res.json();
         currentUserTeamId = user.footballTeamId || user.teamId;
-        console.log('Logged in user:', user.username, 'Team ID:', currentUserTeamId);
     } catch (err) {
         console.error('Failed to load /auth/me:', err);
     }

@@ -208,12 +208,10 @@ export function createLeagueView(deps) {
                 return;
             }
             const backTarget = getCurrentLeagueBackTarget();
-            console.log(`Loading league matches...`);
             const selectedSeason = seasonYear || getLeagueSeasonYear() || getSeasonYear() || null;
             if (deps.setLeagueSeasonYear) deps.setLeagueSeasonYear(selectedSeason ?? undefined);
             const seasonParam = selectedSeason ? `?seasonYear=${selectedSeason}` : "";
             const response = await authFetch(`/countries/leagues/${leagueId}/matches${seasonParam}`);
-            console.log(`Response status: ${response.status}`);
             if (!response.ok) throw new Error("Failed to load league matches");
             const matches = await response.json();
             const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));

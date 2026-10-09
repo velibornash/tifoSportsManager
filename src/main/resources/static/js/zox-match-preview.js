@@ -1,4 +1,5 @@
 import { authFetch } from './auth.js';
+import { readJsonOr } from './pages/views/utils.js';
 
 function getZoxContent() {
     return document.getElementById('zox-content');
@@ -292,10 +293,19 @@ async function initializeZoxDashboard() {
     }
 
     try {
+        // Each read falls back rather than throwing. Three unchecked fetches in one `Promise.all` meant a
+        // single 403 rejected the whole set and replaced the preview, the statistics AND the report with
+        // one error block — so a manager who was not allowed to see the post-match report lost the
+        // pre-match preview as well, which he *was* allowed to see.
+        const [previewResponse, statsResponse, reportResponse] = await Promise.all([
+            authFetch(`/api/zox/match-preview/${matchId}`),
+            authFetch(`/api/zox/match-stats/${matchId}`),
+            authFetch(`/api/zox/post-match-report/${matchId}`)
+        ]);
         const [preview, stats, report] = await Promise.all([
-            authFetch(`/api/zox/match-preview/${matchId}`).then(response => response.json()),
-            authFetch(`/api/zox/match-stats/${matchId}`).then(response => response.json()),
-            authFetch(`/api/zox/post-match-report/${matchId}`).then(response => response.json())
+            readJsonOr(previewResponse, {}, 'The match preview'),
+            readJsonOr(statsResponse, {}, 'The match statistics'),
+            readJsonOr(reportResponse, {}, 'The post-match report')
         ]);
         renderDashboard(preview, stats, report);
     } catch (error) {

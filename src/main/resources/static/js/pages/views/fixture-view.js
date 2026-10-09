@@ -1,5 +1,5 @@
 // pages/views/fixture-view.js
-import { htmlEscape, formatDateTimeLabel } from './utils.js';
+import { htmlEscape, formatDateTimeLabel, readJsonOrThrow } from './utils.js';
 import { createSubstitutionPlanView } from './substitution-plan-view.js';
 
 export function createFixtureView(deps) {
@@ -38,14 +38,38 @@ export function createFixtureView(deps) {
         });
     }
 
+    /**
+     * The club's upcoming matches.
+     *
+     * <p>Was two `console.log` lines and an unguarded `await response.json()`. `authFetch` throws on every
+     * non-2xx, so a 403 here escaped to the router and the manager got the two-word **"API Error"** card —
+     * the same card a 500 from an unreachable database produced, for a page that is simply not allowed to
+     * see this club's schedule.
+     */
     async function loadUpcomingMatches() {
         const teamId = getTeamId();
         if (!teamId) return;
-        console.log(`Loading upcoming matches for ${teamId}`);
-        const response = await authFetch(`/teams/${teamId}/schedule`);
-        console.log(`Response status: ${response.status}`);
-        const matches = await response.json();
-        renderMatches(matches, "Upcoming Matches");
+        try {
+            const response = await authFetch(`/teams/${teamId}/schedule`);
+            const matches = await readJsonOrThrow(response, 'The schedule');
+            renderMatches(matches, "Upcoming Matches");
+        } catch (err) {
+            renderMatchesError('Could not load upcoming matches', err);
+        }
+    }
+
+    /** Says which panel failed and what the server said, rather than replacing the page with "API Error". */
+    function renderMatchesError(what, err) {
+        const mainContent = document.getElementById('main-content');
+        if (!mainContent) return;
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--club">
+                <section class="fm-panel">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <h2>${htmlEscape(what)}</h2>
+                    <p class="fm-subtle">${htmlEscape(err?.message || 'Unknown error')}</p>
+                </section>
+            </div>`;
     }
 
     async function loadFixtures() {
@@ -94,7 +118,6 @@ export function createFixtureView(deps) {
         const mainContent = document.getElementById("main-content");
         const teamId = getTeamId();
         if (!teamId) return;
-        console.log(`Loading fixture ID: ${fixtureId}`);
 
         try {
             const fixture = await findFixtureRow(fixtureId);
@@ -278,11 +301,14 @@ export function createFixtureView(deps) {
 
     async function loadFriendlies() {
         const teamId = getTeamId();
-        console.log(`Loading friendlies for ${teamId}`);
-        const response = await authFetch(`/teams/${teamId}/schedule?matchType=FRIENDLY`);
-        console.log(`Response status: ${response.status}`);
-        const matches = await response.json();
-        renderMatches(matches, "Friendlies");
+        if (!teamId) return;
+        try {
+            const response = await authFetch(`/teams/${teamId}/schedule?matchType=FRIENDLY`);
+            const matches = await readJsonOrThrow(response, 'Friendlies');
+            renderMatches(matches, "Friendlies");
+        } catch (err) {
+            renderMatchesError('Could not load friendlies', err);
+        }
     }
 
     function renderFixtures(fixtures, title, options = {}) {

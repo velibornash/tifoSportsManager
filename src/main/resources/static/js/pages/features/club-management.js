@@ -1,5 +1,6 @@
 import { createStaffDirectoryFeature } from './staff-directory.js';
 import { renderOfferButtons, renderOfferTerms } from '../views/transfer-offer-actions.js';
+import { readJsonOr } from '../views/utils.js';
 
 export function createClubManagementFeature(deps) {
     const {
@@ -389,7 +390,6 @@ export function createClubManagementFeature(deps) {
 
     async function loadTransfers() {
         const teamId = getTeamId();
-        console.log(`Loading transfers for ${teamId}`);
         const mainContent = document.getElementById('main-content');
         try {
             const marketQuery = transferMarketCountry
@@ -401,11 +401,14 @@ export function createClubManagementFeature(deps) {
                 authFetch(`/teams/${encodeURIComponent(teamId)}/players`),
                 authFetch('/countries/catalog')
             ]);
+            // Each read falls back. A 403 on the market alone used to reject the whole `Promise.all`,
+            // so a manager who could see his own players but not the global market lost the players too.
+            // The catalogue is a filter, not data, so an empty one simply offers every country.
             const [transfers, myOverview, players, catalog] = await Promise.all([
-                marketResponse.json(),
-                overviewResponse.json(),
-                playersResponse.json(),
-                catalogResponse.ok ? catalogResponse.json().catch(() => []) : []
+                readJsonOr(marketResponse, [], 'The transfer market'),
+                readJsonOr(overviewResponse, {}, 'Your transfer overview'),
+                readJsonOr(playersResponse, [], 'Your squad'),
+                readJsonOr(catalogResponse, [], 'The country catalogue')
             ]);
             // Only countries with clubs can have anything listed in them, so the filter would
             // otherwise offer 40 entries that are all guaranteed to be empty.

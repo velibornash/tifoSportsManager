@@ -1,5 +1,5 @@
 // pages/views/stats-view.js
-import { htmlEscape } from './utils.js';
+import { htmlEscape, readJsonOr, readJsonOrThrow } from './utils.js';
 
 export function createStatsView(deps) {
     const {
@@ -30,13 +30,22 @@ export function createStatsView(deps) {
             </div>`;
     }
 
+    /**
+     * The club's players.
+     *
+     * <p>Was two `console.log` lines and an unguarded `await response.json()`. `authFetch` throws on every
+     * non-2xx, so a 403 escaped to the router and replaced the page with the two-word **"API Error"** card.
+     */
     async function loadPlayerStats() {
         const teamId = getTeamId();
-        console.log(`Loading player stats for userTeamId ${teamId}`);
-        const response = await authFetch(`/teams/${teamId}/players`);
-        console.log(`Response status: ${response.status}`);
-        const players = await response.json();
-        renderPlayers(players, "Player Stats");
+        if (!teamId) return;
+        try {
+            const response = await authFetch(`/teams/${teamId}/players`);
+            const players = await readJsonOrThrow(response, 'The squad');
+            renderPlayers(players, "Player Stats");
+        } catch (err) {
+            renderPlayers([], "Player Stats", { error: err.message });
+        }
     }
 
     async function loadTopScorersAndAssists(mode = "both") {
@@ -57,9 +66,12 @@ export function createStatsView(deps) {
                 authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
                 authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`)
             ]);
-            const scorers = await scorersRes.json();
-            const assists = await assistsRes.json();
-            const leagueTeams = leagueTeamsRes.ok ? await leagueTeamsRes.json() : [];
+            // The three were inconsistent: the team directory was guarded and the two leaderboards
+            // were not, in one `Promise.all`. A 403 on the scorers threw and took the assists table,
+            // the team directory and the page heading with it.
+            const scorers = await readJsonOr(scorersRes, [], 'Top scorers');
+            const assists = await readJsonOr(assistsRes, [], 'Top assists');
+            const leagueTeams = await readJsonOr(leagueTeamsRes, [], 'The league club list');
             const teamIdByName = new Map();
             leagueTeams.forEach(t => teamIdByName.set(t.name, t.id));
             const playerIdByKey = new Map();

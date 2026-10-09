@@ -1104,12 +1104,77 @@ acceptable** — but this one is a genuine `1 + 14,880` inside the loop, which i
 
 **Exit criteria:** one query for the set, not one per club
 
-## T1-10 · 🟡 Loaders consume JSON without checking `response.ok`
+## T1-10 · ✅ DONE 2026-10-09 — every loader checks the response, and one "API Error" card is gone
 
-Several loaders `await response.json()` before checking the status, so a 404 escapes to the router and a
-page becomes a generic **API Error** card. `pages.js` is the router every page goes through.
+`LoadersCheckResponseOkTest`, 4 tests.
 
-**Exit criteria:** every loader checks `response.ok`, and a grep for the pattern returns nothing
+### Why it matters, stated precisely
+
+`authFetch` **throws on every non-2xx.** So an unguarded `await response.json()` never reaches the
+`if (!response.ok)` guard written for it — the throw skips it and escapes to the router, and `pages.js` is
+the router every page goes through. Its last line replaces the page with a two-word card. So a 403 carrying
+*"Only the owning club can accept incoming offers"* and a 500 from an unreachable database **reached the
+manager as the same two words.**
+
+### The worst of them were `Promise.all` groups, not single loaders
+
+| Screen | What one non-2xx did |
+|---|---|
+| **ZOX match view** | preview + statistics + report fetched unchecked. A manager refused the post-match report **also lost the pre-match preview, which he was allowed** |
+| **Transfer centre** | market + overview + squad unchecked. A 403 on the global market **also emptied the list of his own players** |
+| **Statistics** | team directory guarded, the two leaderboards not — in one `Promise.all` |
+
+### Landed
+
+Two shared readers in `utils.js`, so this is one import and not six copies of a guard:
+
+- **`readJsonOrThrow(response, label)`** — where the screen cannot be drawn without the payload
+- **`readJsonOr(response, fallback, label)`** — where one panel failing must not empty the others, and it
+  **says which panel went empty**, because a fallback returned without a word is indistinguishable from a
+  competition that genuinely has nothing in it
+
+Fixed: `fixture-view` (upcoming + friendlies, plus four `console.log`), `pages.js` `loadCup` /
+`loadInternational`, `stats-view` player stats and the two leaderboards, `club-management`'s transfer
+`Promise.all`, `zox-match-preview`, and the **admin database-job poll**, where one 500 mid-poll threw out of
+the loop and left the loading popup on screen for ever.
+
+**11 debug `console.log` lines removed**, and **`login.js` no longer logs the first 20 characters of the
+JWT** to the console.
+
+### Two board items were already fixed and are recorded as stale
+
+- **`fetchPlayerRatingSummary`** — *"called with 1 argument at 2 sites; average rating permanently —"*. It
+  takes `authFetch`, checks `response.ok`, and both call sites pass it. Fixed in the P0-PREV work.
+- **`matches.js`** — *"the `if (!response.ok)` guard is still unreachable"*. Both loaders now catch and
+  render a page saying what failed.
+
+### The guard, and three mistakes of mine that made it look green
+
+It scans the shipped files, because **this repository has no JavaScript test infrastructure at all** — no
+runner, no `*.test.js`. It strips comments before scanning (P0-RANK-4 lost a day to a guard matching its own
+javadoc) and excludes `tifo.js` **by name with the reason**, since that is the text-football mode.
+
+**My first version of this guard passed against three planted defects.** Three separate errors:
+
+1. **The debug-log window looked the wrong way.** `console.log('Loading X')` sits on the line *above* its
+   `authFetch`; the window scanned *upward*, so it read the previous statement, matched nothing, and passed.
+   **A window in the wrong direction is not a narrow window — it is no window.**
+2. **Two of my mutations were not mutations.** I removed `readJsonOr` from two loaders that were inside a
+   `try`, so the code was still handled and the green was correct. A mutation must remove the thing the
+   assertion is about **and nothing that was already covering it.**
+3. **`git checkout --` on a tracked file reverted the work the previous restore had put back**, and the
+   chain of copies in between preserved the wrong version. Today's `fixture-view` changes were gone when I
+   noticed; they are restored.
+
+**Exit criteria**
+- [x] Every loader in the graphical football UI checks the response, directly or through a shared reader
+- [x] Both directions of a `Promise.all` group degrade independently
+- [x] A guard, with `tifo.js` excluded by name rather than by a wildcard
+- [x] **Proven able to fail:** a planted unguarded loader and a planted `console.log` each turn it red
+- [ ] **Not verified in a browser.** Every one of these pages is markup and fetch behaviour
+
+**`tifo.js` — the text-football mode — is excluded and unreviewed.** It has the same shape in several places.
+A separate card.
 
 ## T1-11 · 🟡 `JobStatusService.report()` reads the whole `job_run` table
 
@@ -1195,6 +1260,19 @@ than adds · one test per combination of qualifying and own-club.
 - [ ] The manager's own club is marked in all three cups across all five tiers
 - [ ] A club that is both qualifying and the viewer's own carries **both** classes
 - [ ] **Proven able to fail:** removing the `teamId` from the payload turns the test red
+
+## T1-17 · 🟡 `tifo.js` — the text-football mode, unreviewed
+
+Excluded from **T1-10** by name, because it is a separate product on its own lobby card, not the
+graphical football UI. **It has at least four unguarded `.json()` calls and the same
+`Loading… / Response status:` debug pairs**, so the defect class T1-10 closed is present there and has never
+been looked at.
+
+**Exit criteria**
+- [ ] The same two shared readers applied, or a decision recorded that the mode is being retired
+- [ ] The same guard applied with the exclusion removed
+
+---
 
 ## T1-14 · 🟡 The `teamStats` / `playerStats` routes point at deleted things
 

@@ -266,7 +266,6 @@ function buildPageNavState(page, options = {}) {
             if (!normalizeLeagueId(activeLeagueId)) {
                 syncUserLeagueContext();
             }
-            console.log("Team ID loaded:", currentUserTeamId, "League:", currentUserCompetitionName || currentUserCompetitionId);
             return currentUserTeamId;
         } catch (err) {
             console.error("Error /auth/me:", err);
@@ -311,7 +310,6 @@ function buildPageNavState(page, options = {}) {
             if (e.target.id === 'back-button' || e.target.closest('#back-button')) {
                 const button = e.target.closest('#back-button');
                 const target = button.dataset.target || 'results';
-                console.log(`Back clicked -> loading: ${target}`);
                 goBackSmart(target);
             }
         });
@@ -1138,20 +1136,31 @@ function buildPageNavState(page, options = {}) {
         renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff });
     }
 
+    /**
+     * A competition's matches, for the two menu entries that read one competition's fixtures.
+     *
+     * <p>Both were two `console.log` lines and an unguarded `await response.json()`. `authFetch` throws on
+     * every non-2xx, so a failure replaced the whole page with the two-word **"API Error"** card — which
+     * is what the manager saw instead of the cup draw he had just clicked a menu item for.
+     */
     async function loadCup() {
-        console.log(`Loading cup matches for ${currentUserTeamId}`);
-        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?competitionType=CUP`);
-        console.log(`Response status: ${response.status}`);
-        const matches = await response.json();
-        renderMatches(matches, "Cup");
+        await loadCompetitionMatches('CUP', "Cup");
     }
 
     async function loadInternational() {
-        console.log(`Loading international matches for ${currentUserTeamId}`);
-        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?competitionType=INTERNATIONAL`);
-        console.log(`Response status: ${response.status}`);
-        const matches = await response.json();
-        renderMatches(matches, "International Matches");
+        await loadCompetitionMatches('INTERNATIONAL', "International Matches");
+    }
+
+    async function loadCompetitionMatches(competitionType, title) {
+        if (!currentUserTeamId) return;
+        try {
+            const response = await authFetch(
+                `/teams/${currentUserTeamId}/schedule?competitionType=${encodeURIComponent(competitionType)}`);
+            if (!response.ok) throw new Error(`${title} load failed (${response.status})`);
+            renderMatches(await response.json(), title);
+        } catch (err) {
+            buildErrorState(err, title);
+        }
     }
 
     async function loadForum() {
