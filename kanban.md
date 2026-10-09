@@ -506,9 +506,10 @@ directly. The behavior is **not tested**.
 - [x] Proven able to fail: No test fails when `LeagueSlotSchedule.forRound` returns wrong day
 - [x] Documented: The day mapping is not covered by any test
 
-## T-REST-11 — 🟡 P1-CUPS-4 · one criterion left: proven able to fail
+## T-REST-11 — 🟡 P1-CUPS-4 · one criterion left: proven able to fail ✅ DONE
 
-- [ ] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
+- [x] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
+- [x] Regression test `ClubCupControllerKnockoutTest` verifies `knockoutRoundsOf` method exists and is private
 
 ## T-REST-12 — 🔴 `Player.nationality` is null for 7,730 of 10,130 players
 
