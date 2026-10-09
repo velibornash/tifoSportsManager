@@ -162,6 +162,19 @@ public class MatchdayJobsConfig {
                 competitions, fixtures, runner);
     }
 
+    /**
+     * The international club cups (Champions, Masters, Challenge across five tiers) play on day 1,
+     * the international slot, not the domestic cup slot (day 5). They are CUP competitions with
+     * INTERNATIONAL scope, so they need their own matchday job on day 1.
+     */
+    @Bean
+    public MatchdayJob internationalClubCupMatchday(CompetitionRepository competitions,
+                                                    MatchFixtureRepository fixtures,
+                                                    AsyncSimulationRunner runner) {
+        return new MatchdayJob("matchday-international-club-cup", CompetitionType.CUP, 1, 20, 40,
+                competitions, fixtures, runner);
+    }
+
     @Bean
     public MatchdayJob leagueMatchdaySecond(CompetitionRepository competitions,
                                             MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {

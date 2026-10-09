@@ -402,9 +402,13 @@ criterion is still open:** a season observed in the database. It needs the app r
 has a finished season behind it.
 
 **Exit criteria:**
+- [x] Cup infrastructure complete: 15 cups (5 tiers × 3 cups) created, draw logic implemented
+- [x] `MatchdayJob` for international club cups on day 1 added (was missing)
 - [ ] A cup drawn from a **finished** table, in the database
 - [ ] Group tables filling as matchdays are played
 - [ ] A knockout round advancing off real group standings
+
+**Status (2026-10-09):** Infrastructure complete — 15 cups created, draw logic implemented, `MatchdayJob` for day 1 added. Live verification (running a full season of continental cups on real PostgreSQL) pending.
 
 ## T-REST-6 — 🟠 P0-20 · four CTeam/Team id sites and the regression test that was never written
 

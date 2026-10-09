@@ -210,6 +210,8 @@ The 52 classes in `newLogic/model/event/` have no table. Match events live only 
 The 52 event classes are **kept** because they are the in-memory representation used during
 simulation and serialized to `Match.eventJson` JSON — that is the actual persistence.
 
+## 🟡 T-REST-5 — continental cups infrastructure complete, live verification pending (2026-10-09)
+
 ## ✅ T-REST-4 — ranking rebuild wiring verified (2026-10-09)
 
 The wiring is committed and the guard test passes. The test creates a country, league competition,
