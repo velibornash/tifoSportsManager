@@ -180,6 +180,32 @@ Not caused by T1-16 — the failing line is identical in the committed version, 
 `git show HEAD`. Filed as **T-REST-0c** with exit criteria rather than fixed here, because it is
 a separate defect and the owner asked for the three paused tasks.
 
+## ✅ T-REST-0c — simulate-all 500 fixed (2026-10-09)
+
+**The defect.** `POST /simulation/current-round/simulate-all` returned 500 for every manager:
+
+```
+LazyInitializationException: could not initialize proxy [Team#1] - no Session
+    at SimulationController.java:172
+```
+
+`resolveUserTeam` returns `user.getFootballTeam()`, a lazy proxy whose session is already closed.
+`Team.competition` is a lazy association, so reading `.getName()` on it throws. `Team#1` is OFK
+Omladinac, so the owner's own club hit it first.
+
+**The fix.** Three occurrences of the same pattern, all in `SimulationController`:
+- Line 172: `userTeam.getCompetition().getName()` in `simulateCurrentRound`
+- Line 624: `resolveUserLeagueName` — same pattern
+- `isUserLeague` — same pattern
+
+All three now resolve the competition name through `teamRepository.findById`, which has
+`@EntityGraph(attributePaths = {"competition"})` and therefore eagerly loads the association.
+The detached entity is never touched.
+
+**Verified live.** `simulate-all` returns HTTP 200 (was 500). The `simulated: 0` is because the
+current round has no fixtures in the prepare snapshot — a separate pre-existing bug in `prepare`
+(`Position.getRow()` null), filed as **T-REST-0d**.
+
 ## ✅ T1-16, T1-13b, T1-18 — three paused tasks closed (2026-10-09)
 
 The owner asked to pick these three back up after T-REST-0 and T-REST-0b were closed. All three

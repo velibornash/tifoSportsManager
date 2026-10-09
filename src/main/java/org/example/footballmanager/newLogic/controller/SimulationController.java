@@ -169,8 +169,17 @@ public class SimulationController {
         // The user's own team entity, not a name resolved back to one - see resolveUserTeam.
         Team userTeam = resolveUserTeam(user);
         String userLeagueName = null;
-        if (userTeam != null && userTeam.getCompetition() != null) {
-            userLeagueName = userTeam.getCompetition().getName();
+        if (userTeam != null && userTeam.getId() != null) {
+            // T-REST-0c: resolve the competition name through the repository, which has
+            // @EntityGraph(attributePaths = {"competition"}) and therefore eagerly loads the
+            // association. The old code read userTeam.getCompetition().getName() on a DETACHED
+            // entity — resolveUserTeam returns user.getFootballTeam(), a lazy proxy whose
+            // session is already closed by the time the name is read. That threw
+            // LazyInitializationException for every manager, so simulate-all was a 500 for
+            // everyone and no matchday could be played through this endpoint at all.
+            userLeagueName = teamRepository.findById(userTeam.getId())
+                    .map(t -> t.getCompetition() != null ? t.getCompetition().getName() : null)
+                    .orElse(null);
         }
         List<MatchFixture> userLeagueFixtures = new ArrayList<>();
         List<MatchFixture> otherLeagueFixtures = new ArrayList<>();
@@ -612,15 +621,25 @@ public class SimulationController {
     private String resolveUserLeagueName(User user, List<Map<String, Object>> leagues) {
         Team team = resolveUserTeam(user);
         if (team == null) return "League";
-        if (team.getCompetition() != null && team.getCompetition().getName() != null) {
-            return team.getCompetition().getName();
+        // T-REST-0c: resolve through the repository, which eagerly loads competition via @EntityGraph.
+        // The old code read team.getCompetition() on a detached entity and threw
+        // LazyInitializationException for every manager.
+        if (team.getId() != null) {
+            String name = teamRepository.findById(team.getId())
+                    .map(t -> t.getCompetition() != null ? t.getCompetition().getName() : null)
+                    .orElse(null);
+            if (name != null) return name;
         }
         return leagues.isEmpty() ? "League" : String.valueOf(leagues.get(0).get("leagueName"));
     }
 
     private boolean isUserLeague(User user, String leagueName) {
         Team team = resolveUserTeam(user);
-        return team != null && team.getCompetition() != null && Objects.equals(team.getCompetition().getName(), leagueName);
+        if (team == null || team.getId() == null) return false;
+        // T-REST-0c: same detached-entity fix as resolveUserLeagueName.
+        return teamRepository.findById(team.getId())
+                .map(t -> t.getCompetition() != null && Objects.equals(t.getCompetition().getName(), leagueName))
+                .orElse(false);
     }
 
     /**
