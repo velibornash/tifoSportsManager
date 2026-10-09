@@ -39,26 +39,59 @@ const NOT_FOUND = { failed: true, status: 404 };
 async function json(payload) { return { ok: true, status: 200, json: async () => payload }; }
 
 const seniorNt = { exists: true, teamId: 7, isSelector: true, squad: [], pool: [], squadLock: {} };
-const view_ = factory({
-    authFetch: async (path) => {
-        if (path.includes('friendly-requests/opponents')) return json([{ id: 9, name: 'Opponent', country: 'X' }]);
-        if (path.includes('friendly-requests/slot')) return json({ week: 6, day: 1 });
-        if (path.match(/friendly-requests\/\d+$/)) return json({ season: 1, week: 6, incoming: [], outgoing: [] });
-        if (path.includes('/national-team')) return json(seniorNt);
-        if (path.includes('/clubs/ranking')) return json({ totalClubs: 2, clubs: [] });
-        if (path.includes('/leagues')) return json([]);
-        if (path.includes('/calendar/week')) return json({ days: [] });
-        if (path.includes('/calendar/season')) return json({ weeks: [] });
-        if (path === '/countries') return json([{ isoCode: 'SRB', name: 'Serbia' }]);
-        return json({});
-    },
-    loadPage: async () => {},
-    loadMatch: async () => {},
-    setActiveLeagueContext: () => {},
-    getCurrentUserCountryIsoCode: () => 'SRB',
-    getActiveLeagueCountryIsoCode: () => 'SRB',
-    getCurrentUserCountryName: () => 'Serbia',
-});
+
+// The manager's own country iso is a variable, not a constant: the represented-country page is only
+// reached when the country being asked about IS the manager's own, so driving it needs a second
+// instance whose own country is a represented one.
+function buildView(iso, name) {
+    return factory({
+        authFetch: async (path) => {
+            if (path.includes('friendly-requests/opponents')) return json([{ id: 9, name: 'Opponent', country: 'X' }]);
+            if (path.includes('friendly-requests/slot')) return json({ week: 6, day: 1 });
+            if (path.match(/friendly-requests\/\d+$/)) return json({ season: 1, week: 6, incoming: [], outgoing: [] });
+            if (path.includes('/national-team')) return json(seniorNt);
+            if (path.includes('/clubs/ranking')) return json({ totalClubs: 2, clubs: [] });
+            if (path.includes('/leagues')) return json([]);
+            if (path.includes('/calendar/week')) return json({ days: [] });
+            if (path.includes('/calendar/season')) return json({ weeks: [] });
+            // Endpoints the represented-country page reads. A ranking list, and a qualifying group
+            // for each of the country's two sides. All three are deliberately populated, so the page
+            // has something to draw and a missing one cannot pass by drawing nothing.
+            if (path.startsWith('/countries/ranking')) {
+                return json([
+                    { isoCode: 'ROU', name: 'Romania', rated: true, position: 12, points: 1504 },
+                    { isoCode: 'SRB', name: 'Serbia', rated: false, position: null, points: 1500 },
+                ]);
+            }
+            if (path.includes('/national-tournaments/senior/QUALIFYING')) {
+                return json({
+                    exists: true, week: 6,
+                    groups: [{
+                        code: 'C',
+                        table: [
+                            { countryIso: 'ROU', teamName: 'Romania', position: 1, played: 3, goalDifference: 4, points: 7 },
+                            { countryIso: 'SRB', teamName: 'Serbia', position: 2, played: 3, goalDifference: 1, points: 5 },
+                        ],
+                        fixtures: [],
+                    }],
+                });
+            }
+            if (path.includes('/national-tournaments/u21/QUALIFYING')) {
+                return json({ exists: false, week: null, groups: [] });
+            }
+            if (path === '/countries') return json([{ isoCode: iso, name }]);
+            return json({});
+        },
+        loadPage: async () => {},
+        loadMatch: async () => {},
+        setActiveLeagueContext: () => {},
+        getCurrentUserCountryIsoCode: () => iso,
+        getActiveLeagueCountryIsoCode: () => iso,
+        getCurrentUserCountryName: () => name,
+    });
+}
+
+const view_ = buildView('SRB', 'Serbia');
 
 const tabs = ['general', 'calendar', 'clubs', 'qualifying', 'senior', 'u21'];
 let failed = 0;
@@ -77,4 +110,37 @@ for (const tab of tabs) {
         console.log(`${tab.padEnd(11)} THREW  ${e.message}`);
     }
 }
+
+// A represented country — a country with national sides and no club pyramid. Twenty-four of the
+// forty-eight countries on the World page are exactly this, and a manager who clicks one reaches it
+// from a national-tournament group table, where every country name is a button. It is a different
+// code path from the six tabs above: it is taken BEFORE the try block, so nothing inside it is
+// caught, and it dispatched to its own function rather than to the tab builders.
+{
+    const represented = buildView('ROU', 'Romania');
+    main.innerHTML = '';
+    try {
+        await represented.loadCountryPage({ tab: 'general', simulatedCountry: 'ROU' });
+        const text = main.innerHTML || '';
+        const rendered = text.includes('Romania');
+        const markedOwnRow = text.includes('is-highlighted');
+        // The mark is asserted, not just reported. A row marked with a class the stylesheet does not
+        // define looks identical to a row marked correctly on screen, so "it emitted something" has
+        // to be a passing condition rather than an observation in the log.
+        const ok = rendered && markedOwnRow;
+        console.log(`represented  ${ok ? 'ok' : 'FAILED'}  ${main.innerHTML.length} chars`
+            + (markedOwnRow ? '  [own row marked]' : '  [own row NOT marked]'));
+        if (!ok) {
+            failed++;
+            if (!rendered) console.log('   -> the page did not name the country: ' + text.slice(0, 160));
+            if (!markedOwnRow) console.log(
+                '   -> the country being viewed is not marked in its own group table, so a manager '
+                + 'reading "who are we drawn with" has to find their own row by name.');
+        }
+    } catch (e) {
+        failed++;
+        console.log(`represented  THREW  ${e.message}`);
+    }
+}
+
 process.exit(failed ? 1 : 0);

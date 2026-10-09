@@ -1,18 +1,22 @@
 # kanban.md — the board
 
-**Read this file first. Then `kanbanProgress.md` for what has already been tried.**
+**Restructured 2026-10-09.** The board was reorganised into four sections. Everything the previous board
+still carried open was moved into **T-REST**; new work from the owner's vision and from
+[`CurrentStateAnalysis.md`](CurrentStateAnalysis.md) went into **T0**, **T1** and **T2**.
 
-Everything still open is here, in three categories:
+| Section | What belongs there |
+|---|---|
+| **T-REST** | Unfinished items carried over from the previous board. **Read this first.** |
+| **T0** | Features we want and have not started. Split into **BE** and **UI**, so the two can be worked and verified separately. |
+| **T1** | Work on features that already exist: incomplete wiring, dead contracts, unverified claims, known bugs. |
+| **T2** | Performance and optimisation. **Every task here must state a measurement, not an opinion.** |
 
-| | Category | What belongs there |
-|---|---|---|
-| **P0** | **Correctness, security, and anything blocked on the owner** | Defects that make the product wrong or unsafe, plus every task waiting on an owner decision. P0 is ordered by *leverage*, not by cluster. |
-| **P1** | **Performance** | Reads and writes that get slower as the world grows. Every task here must state a **measurement**, not an opinion. |
-| **P2** | **Features and visual work** | Anything that can be completed on its own without a decision from anyone. Includes the other sports. |
+Closed work is not on this board. It is in [`kanbanProgress.md`](kanbanProgress.md), one entry per task,
+newest first, each carrying its commit.
 
 ---
 
-# 📌 General information — read before taking any task
+# 🔴 General information — read before taking any task
 
 ## The three rules
 
@@ -27,13 +31,11 @@ database afterwards. Never hand back a half-built world: every seeding path must
 passes the integrity check.
 
 **3. A test that cannot fail proves less than no test.** When you write a guard, **break the code
-deliberately and watch it fail.** Three tests in this repository were green while measuring nothing
-before they were fixed.
+deliberately and watch it fail.** Three tests in this repository were green while measuring nothing.
 
 ## Environment
 
 ```bash
-# The agent shell does NOT inherit the owner's exports. Run this first, every session.
 export JAVA_HOME=/Users/velja/Library/Java/JavaVirtualMachines/corretto-21.0.12/Contents/Home
 export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
 ```
@@ -41,38 +43,32 @@ export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
 | | |
 |---|---|
 | Build | `mvn clean package -DskipTests` |
-| Run locally | `./run-app.sh` — **never** `mvn spring-boot:run` directly |
+| Run locally | `./run-app.sh --app.open-browser=false` — **every shell start must use the flag** |
 | One test class | `mvn test -Dtest=RatingEngineTest` |
 | Local database | PostgreSQL, db `sokker_db`, user `postgres`, password `stojke` |
 | App login | `velibor@example.com` / `A12345!` |
-| Browser launch | `./run-app.sh` pops open a browser on every start. `--app.open-browser=false` opts out; **every shell start must use it** |
 
 **A full `mvn test` takes ~2 h 52 m and needs the application running on `:8080`.** Three Playwright
-classes otherwise hang the entire run — they wait, they do not fail. Budget for it; never start it on
-the way to something else. A full-suite run only counts if it was allowed to finish.
+classes otherwise hang the entire run — they wait, they do not fail. Never start one on the way to
+something else. **Use `mvn clean test-compile`** — an incremental build once reported SUCCESS while three
+test classes called methods that no longer existed.
 
-### PostgreSQL client tools are versioned against the server (found 2026-10-06)
+### PostgreSQL client tools are versioned against the server
 
-`pg_dump` **refuses** to touch a newer server, and on this machine the two do not match: the server is
-**Postgres.app 18.4** and the `pg_dump` first on `PATH` is **Homebrew 16.15**. Anything that shells out
-to `pg_dump` therefore fails every time with *"aborting because of server version mismatch"* — a message
-about versions, not about the thing that was being attempted. `DatabaseBackupService` reads the server's
-major version over JDBC and picks a client that matches, checking Postgres.app's own bundled tools;
-`app.backup.pg-tools` overrides the search. Anything new that shells out to the PostgreSQL tools needs the
-same treatment.
+`pg_dump` refuses to touch a newer server. The server is **Postgres.app 18.4** and the `pg_dump` first on
+`PATH` is **Homebrew 16.15**. `DatabaseBackupService` reads the server's major version over JDBC and picks
+a matching client; `app.backup.pg-tools` overrides the search. Anything new that shells out to the
+PostgreSQL tools needs the same treatment.
 
 ## Working rules
 
-- **Answer in English.** The owner writes in Serbian; every reply, message, commit and code comment is in
-  English. This is not a preference to be revisited.
-- **Commit to `main`** after each task. Stage only the files that task intended to change — check
-  `git status` for untracked files that were already there.
-- **After each task:** update `kanban.md` (mark it done, move it to the log) and `kanbanProgress.md`
-  (append one entry carrying the commit hash), then commit.
+- **Answer in English.** The owner writes in Serbian; every reply, message, commit and code comment is
+  in English.
+- **Commit to `main`** after each task. Stage only the files that task intended to change.
+- **After each task:** update this board and append to `kanbanProgress.md` carrying the commit hash.
 - **Substantive findings go in `kanbanProgress.md` even when the task fails.** A measured dead end is
   worth more than a silent one.
-- **When you find a defect that is not your task: fix it or report it — do not walk past it.** Record it
-  in `kanbanProgress.md` with what it was and whether it is fixed.
+- **When you find a defect that is not your task: fix it or report it — do not walk past it.**
 - **Do not delete a task to make the board look tidy.** Mark it done, or record why it was dropped.
 
 ## Where things live
@@ -83,3356 +79,1046 @@ same treatment.
 | `demo/service/` | **Frozen reference engine.** Not the product path. Do not extend, do not port from |
 | `src/main/resources/static/` | Frontend, vanilla ES6 modules |
 | `archive/` | **Superseded documentation.** History only. Never work from it |
+| `CurrentStateAnalysis.md` | What exists, verified against source. Read before estimating |
 | `TECHNICAL_OVERVIEW.md` | What the system actually is today |
-| `AGENTS.md` | Repo conventions and the working rules above |
+| `userManual.md` | What a manager can do, from the outside |
 
 ## Traps that have cost real time
 
-- **`Team.reputation` is the economy's 0–100 scale, not an Elo.** Eight services read it, four clamp it.
-  Club Elo lives in `eloRating` / `eloPreviousRating` / `eloDelta`. `Country.reputation` is a *different*
-  scale on a column of the same name.
+- **`Team.reputation` is the economy's 0–100 scale, not an Elo.** Club Elo lives in `eloRating` /
+  `eloPreviousRating` / `eloDelta`. **`Country.reputation` is a different scale on a column of the same
+  name.**
 - **`PyramidBuilder` never sets `Team.type`**, so "is this a club?" cannot be answered from that flag. A
   club is anything whose `competition` is a LEAGUE.
-- **A season is twelve weeks counted from 1.** There is no calendar year anywhere. Any code or test
-  passing 2024/2025/2026 as a season value is wrong, even if it is self-consistent and passes.
-- **`use authFetch` for every authenticated frontend call**, and **always check `response.ok`**. Several
-  loaders `await response.json()` without it, so a 404 escapes to the router and the page becomes a
-  generic "API Error" card.
-- **Boot writes nothing.** No seeding, no backfills, no repair. World building happens on admin buttons.
-- **`DummyDataController` is fake data**, hardcoded to team 1, with zero DB access, and five frontend
-  files still fetch it. Awaiting an owner decision. Do not wire it to anything.
-- **A whole table re-read inside a loop is invisible to a clock.** Three instances of one pattern:
-  `TransferService` (`e310856`), `SquadEnvironmentService` and `FriendlyRequestService` (`379cb12`). A
-  collection loaded once and then re-asked per club, because the loop could not see the copy. **48
-  countries is a small table** — the loop costs more than the query does. Count queries, not milliseconds.
-- **`event_json` was 742 KB a match and 98% of it was noise.** `DECISION`, `PASS` and `RECEIVE` are
-  per-tick engine internals that both readers already discarded. It is 17 KB now, and **the full per-tick
-  log lives in a file** written by `SimReplayStore` rather than in the database — see P1-7.
-- **An index can be worthless and then become necessary when the query beside it changes shape.**
-  `match(match_date)` measured as no benefit and was rejected; keyset paging then made it the difference
-  between 206 ms and 0.35 ms a page. "Measured, no benefit" is only true for the query it was measured on.
-- **How ids are passed to a query changes its plan by 80x.** `IN (SELECT ... LIMIT n)` is a Hash Semi Join
-  over a sequential scan; `IN` with n bound values is a bitmap index scan. Same rows, same result,
-  5,020 ms against 44 ms. Do not "simplify" a bound list into a subquery.
-- **`match_tick_states` is dead.** Nothing writes it, nothing reads it, 0 rows, and its only writer has no
-  callers. Do not index it and do not migrate it; deleting it is an owner call.
+- **A season is twelve weeks counted from 1.** There is no calendar year anywhere. Code or tests passing
+  2024/2025/2026 as a season value are wrong, even if self-consistent and passing.
+- **A fixture id and a match id are both small integers over separate tables.** Never infer one from the
+  other. `ZoxApiController` already carries the scar.
+- **Two clubs may share a name.** Never match a team by name — use `User.footballTeam`. Four defects came
+  from that join.
+- **Use `authFetch`** for every authenticated call and **always check `response.ok`**. Several loaders
+  `await response.json()` without it.
+- **Boot writes nothing.** No seeding, no backfills, no repair.
+- **A `ddl-auto=update` column widens; a CHECK constraint never changes.** `nl_notification.kind` was
+  pinned by a CHECK no code maintained, and a new notification kind failed on first real write. The
+  constraint is now rebuilt from the enum at boot.
+- **`WE_HAVE_BALL` and `OPPONENT_HAS_BALL` are identical on purpose.** `mirrorWeHaveBallRules` is an owner
+  decision, not a defect. Do not "fix" the mirroring.
+- **`demo/service/` is frozen.** Reference only.
 
-## Scale — most of P1 exists because of this
+## Scale
 
-48 countries × 31 divisions × 10 clubs ≈ **14,880 clubs**, 96 national sides, a promotion ladder per
-country, three tiers of international club cups. The world grew ~48× in five days and the code that
-schedules it was written for one country.
+48 countries × 31 divisions × 10 clubs ≈ **14,880 clubs**, 96 national sides. Projected **7,440 matches a
+matchday, 89,280 a season**, and `player_zone_load` at 198 rows a match means **17.7M rows a season, 2.8 GB**.
 
-Measured row counts on a **Serbia-only** dev database, for scale:
-
-| Table | Rows (Serbia only) | Notes |
-|---|---:|---|
-| `player_zone_load` | 18,729 | Largest table. **198 rows written per match, one at a time** |
-| `player` | 10,130 | ~300k at full scale |
-| `match_player_stats` | 3,410 | |
-| `match_fixture` | 2,790 | 310 a matchday, 9 matchdays seeded, **7 days apart** |
-| `team` | 406 | 14,880 at full scale |
-| `match` | **155** | **One matchday. Ever.** See below |
-
-### 🔴 The dev database cannot measure a performance task
-
-**`match` holds 155 rows: a single matchday of a single country.** `match_tick_states` holds **0**, and
-that is not a seeding gap — nothing writes it (P1-1).
-
-So the projected figures are **48×**: **7,440 matches a matchday, 89,280 a season**, and
-`player_zone_load` at **198 rows a match** means **17,677,440 rows a season**, 2.8 GB.
-
-**A sequential scan of 155 rows is the correct plan.** An `EXPLAIN` on the dev database cannot show that
-an index helps, cannot show that one does not, and will confidently report "no problem" about a query that
-costs five seconds at full scale. Every index added under P1 was measured in a throwaway `sokker_bench`
-database built to those numbers; the plans are in `kanbanProgress.md`.
-
-**The first attempt at P1-1 got this wrong** — it proposed three indexes, one of which served a query
-with no caller and another of which made the hot daily job 68% slower. The board's own scale table had
-said `player_zone_load` had 18,729 rows and did not mention `match` at all.
+**The dev database cannot measure a performance task.** `match` holds 155 rows: one matchday of one
+country. A sequential scan of 155 rows is the correct plan. Every index added under T2 was measured in a
+throwaway `sokker_bench` database built to those numbers.
 
 ---
 
-# 🔴 P0 — correctness, security, owner decisions
+# 🔴 T-REST — unfinished, carried over
 
-Ordered by leverage. **P0-1 and P0-2 are the two tasks that make everything else safer to do.**
+Everything the previous board carried open. Nothing here is new work; this is the residue.
 
----
+## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
-## 🌍 P0-CUPS — international club cups and the remaining domestic draw decision
+**The written spec says they do not** — they *"hold their positions until their league is activated"*.
+**The code says they do.** `SeasonService.openNewSeasonForEveryCountry()` iterates **every** `LEAGUE`
+competition in the world, filters only on `country != null`, and schedules a double round-robin on each.
+`MatchdayJob` has **no `CountryState` filter**, so those fixtures get played.
 
-**Owner spec 2026-10-06. The international cup path is now wired; live database observation and the
-domestic cup ownership decision remain open.**
-
-Replaces the old **P2-11** entry, which said *"three tiers exist with data but the calendar is thin"* and
-asked for *"every tier plays a full season"*. That description was too kind and, in one respect, wrong:
-there are not three tiers of cups, there are **five tiers × three cups = 15 competitions**, and the reason
-none of them plays is not a thin calendar. It is four defects in sequence, any one of which is fatal.
-
-### The owner's format, restated exactly
-
-**Tiers.** Five, matching `PyramidBuilder.DIVISIONS_PER_TIER = {1,2,4,8,16}` — tier 1 has **one** division
-per country, tier 2 has two, tier 3 four, tier 4 eight, tier 5 sixteen. **A cup belongs to one tier and is
-contested only by that tier's countries.** Tier 1's Champions Cup never meets tier 5's.
-
-**Who enters, per country, per tier.** A country enters each of its tier's cups **once**.
-
-| Cup | Who, per country, per tier | Field | Groups | Through |
-|---|---|---:|---|---|
-| Champions Cup | better of the divisions' **winners** | **48** | 8 × 6 | top **2** |
-| Masters Cup | best **2** of the pool of every 2nd- and 3rd-placed club | **96** | 16 × 6 | winner only |
-| Challenge Cup | best **1** of the pool of every 4th-placed club | **48** | 8 × 6 | top **2** |
-
-Tier 2–5 pool across **all** of that country's divisions in the tier, because each of those is a separate
-mini-table with its own champion, seconds and fourths. A country with sixteen divisions must not enter its
-own cup sixteen times. Tier 1 degenerates to the straightforward case — 2nd and 3rd to the Masters, 4th to
-the Challenge — and **one rule covers both**.
-
-**Calendar.** Group stage is **5 matchdays in weeks 1–5**. Knockouts in **weeks 7–10**, and **the final and
-the third-place play-off share week 10**. **All fifteen cups play on Day 1, 20:45** — the international
-slot. Day 5, 18:00 stays **domestic cup only**.
-
-**Tie-break, everywhere:** points → goal difference → goals scored → **draw**.
-
-**Simulated countries.** For every tier, a `SIMULATED` country sends its bot team, at **average skill 12
-for tier 1 and one lower per tier below** — 12 / 11 / 10 / 9 / 8.
-
-**Screens.** On the **country** side, the qualifying tables must be visible and followable after every
-round, refreshed by a job when leagues update. On the **world** side, a link to each of the three cups,
-with the **tiers as separate tabs** inside each, and on each tab the results, the tables and the bracket.
-
-### What already exists — do not rebuild it
-
-| Piece | Where | State |
-|---|---|---|
-| The 15 competition rows — `type=CUP`, `scope=INTERNATIONAL`, `teamType=CLUB`, `tier=n` | `InternationalClubCups.java:142` | built, created at `DatabaseInitializer:319` |
-| **The tier 2–5 qualification rule**, exactly as specified above | `InternationalClubCups.qualifyFrom():319` | correct — 9 tests green |
-| Field sizes — 48 / 96 / 48 per tier — fall out of the rule | same | correct |
-| **The group stage and the bracket** — 8×6 / 16×6, 5 matchdays, serpentine deal, R16→QF→SF→3rd→final | `InternationalClubCupDraw.java`, 631 lines | written, **12 tests green, zero callers in `src/main`** |
-| The rating ladder 12 → −1 per tier | `PyramidBuilder.TIER_1_SKILL:200` | correct, but carried only on `Team.reputation` — never summed into a squad |
-
-### P0-CUPS-1 — DONE: cup group matches now write their own tables
-
-`MatchType.countsForTable(match)` now includes a cup match with a non-empty `groupCode`, and
-`SimMatchService.persist()` updates the cup's own `SeasonCompetition`. Domestic knockout ties remain
-outside the table path.
-
-`InternationalClubCupDraw.rankingWithin():539` then compares eight entries that are all 0 points / 0
-goals / 0 against. `LeagueTableOrder` falls through to its last key — **team id** — so *"the top two
-advance"* resolves to **the two lowest database ids in the group**. Every group is decided by seed order
-before a ball is kicked, and the same applies to the Masters Cup's group winner.
-
-This is the defect that makes the rest of the block cosmetic, and it was not on the board in any form.
-
-**Exit criteria:**
-- [x] A cup group match writes points, goals scored and goals conceded to the cup's own `SeasonCompetition`
-- [x] `LEAGUE` behaviour is unchanged — a league table reconciles to the same numbers as before
-- [x] A domestic cup tie still does **not** write a table (there is no group stage to write)
-- [x] **Proven able to fail:** the cup group table regression test changes the result and observes the ranking change
-
-### P0-CUPS-2 — DONE: only knockout ties go to penalties
-
-`SimMatchService.isKnockoutTie()` now checks the per-match group marker. Cup and national-tournament group
-matches may finish level; knockout ties still go to penalties. This works for both cup groups and national
-qualifying groups without adding a competition-wide format field.
-
-`MatchFormat` already carries `goesToPenalties()` and has **zero callers anywhere in the application**,
-because neither `Match` nor `Competition` has a format column. Three separate comments in this repository
-state the ordering constraint as **wire `MatchFormat` before wiring a group stage**, and this is that.
-
-**Exit criteria:**
-- [x] A 0-0 **group** match finishes level with no penalty columns written
-- [x] A 0-0 **knockout** match goes to penalties exactly as it does today
-- [x] The per-match group marker is the caller-level discriminator; `MatchFormat` was deleted by owner decision
-
-### P0-CUPS-3 — DONE: simulated-country entrants receive tiered squads
-
-Qualification is one entry per country per cup, so the field is 48 + 96 + 48 = **192 clubs per tier**,
-× 5 tiers = **960 clubs**. **46 of the 48 countries are `SIMULATED`**, and `PyramidBuilder.buildStatic()`
-writes divisions, ratings and a standing table and deliberately **no players and no fixtures**.
-
-`SimMatchService.simulate()` only generates squads when *exactly one side is human*
-(`LazySquadGenerator.isHumanInvolved`). Both sides bot → `loadRealSquad()` returns `null` →
-`SimTeamFactory.addTeam()` builds **synthetic placeholder players**. The Champions Cup would be decided by
-22 unnamed stand-ins and the owner's 12/−1-per-tier ladder would be **invisible**, because a synthetic
-squad has no rating to average.
-
-**Owner decision 2026-10-06: only `SIMULATED` countries' clubs get a generated squad.** Active countries'
-clubs already have real squads from `PyramidBuilder.build()`, so the rule is a no-op for them. Note that a
-cup tie between an active club and a simulated one therefore mixes a real squad with a generated one —
-which is exactly what `LazySquadGenerator` already does for a human against a bot, so the machinery exists.
-
-`BotSquadGenerator` generates 25 players at a **hardcoded `BASE_SKILL = 12`** and is written for national
-sides. It needs a tier parameter.
-
-**Exit criteria:**
-- [x] Every club entering any cup from a `SIMULATED` country has 11+ named players
-- [x] Squad average skill is 12 / 11 / 10 / 9 / 8 for tiers 1 / 2 / 3 / 4 / 5
-- [x] Generation is lazy (on entry), not for all 14,880 clubs, and is idempotent
-- [x] **Proven able to fail:** the tier ladder is asserted against generated squads, not against `tierSkill`
-
-**The fix was smaller than the diagnosis, and the reason is worth keeping.**
-`BotLeagueStandard.TIER_ONE_AVERAGE = 12`, `STEP_PER_TIER = 1`, and `PlayerFactory.createRandomTeamPlayers`
-already read the tier from `team.getCompetition().getTier()` and applied it. **The ladder was never
-missing — it was never being applied to anybody.** So P0-CUPS-3 is `LazySquadGenerator` gaining one public
-entry point and `InternationalClubCupDraw.buildGroupStage` calling it before its idempotency early
-return, because the draw is what creates the need and a repaired world has to be able to re-enter.
-
-**No `CountryState` filter, on purpose.** The owner's decision was "only simulated countries' clubs", and
-it holds because an `ACTIVE` country's clubs already have squads from `PyramidBuilder.build()` — so the
-clubs that arrive empty *are* the simulated ones. A second `state == SIMULATED` test would be a second
-statement of the same fact, free to disagree with the first.
-
-### P0-CUPS-4 — DONE: the draw runs — a job, on day 1, at 08:00
-
-`InternationalClubCupJob` (`jobs/impl/`), key `club-cup-draw`, day 1, hour 8, order 30 — **ahead of the
-day-1 matchday job at 20:00, because this job creates the fixtures that job plays.**
-
-| Week | What it does |
-|---|---|
-| **1** | For each of the 15 cups: read the clubs that qualified off **last season's finished tables**, give the empty ones a squad, draw the group stage |
-| **2–5** | Nothing — these are group matchdays, played by the day-1 matchday job |
-| **6** | Nothing — national-team week |
-| **7–10** | One knockout round per cup, as far as the results reach. Week 10 carries the final **and** the third place |
-| **11** | Nothing — league promotion play-off |
-| **12** | Nothing — national-team week |
-
-**The calendar moved to the owner's, and the code's values were wrong:**
-
-- **`CUP_DAY` 5 → 1.** Day 5 at 18:00 is the **domestic** cup's slot. The fifteen continental cups are
-  international: day 1, 20:45. Day 5 keeps the national cup and nothing else.
-- **`CUP_WEEKS` {1,2,3,4,5,7,8,9,10,11} → {1,2,3,4,5,7,8,9,10}.** Nine weeks, not ten: five knockout
-  rounds, four knockout weeks, so the final and the third-place play-off share week 10. `weekFor()` already
-  clamped its index to the array length, so this needed no special case anywhere else.
-
-**Which season's tables.** The **finished** one, `season − 1`, clamped at 1. A club that wins its division
-in week 12 cannot enter the same season's Champions Cup by winning it in week 12. The clamp makes season 1
-honest: there is no season 0, nothing has finished, and no field is invented from a season never played.
-
-**The lookup is scoped and tiered.** Sixteen `CUP` competitions exist — one domestic cup and fifteen
-continental — so asking for "a CUP" answers with whichever row came first, which is P0-CUPS-6. It uses the
-indexed `findByTypeAndTier(CUP, tier)` rather than fifteen reads of the whole table.
-
-**Exit criteria:**
-- [x] The job draws the group stage for every cup that has qualified clubs
-- [x] Group matchdays land in weeks 1–5, on **day 1**
-- [x] Weeks 6, 11 and 12 carry no club cup fixture
-- [x] Re-running the job draws nothing twice
-- [x] **Proven able to fail** — removing the squad call and reverting P0-CUPS-5 both fail loudly
-- [ ] **A real season observed in the database.** Every assertion here is an integration test against the
-      real write path, and this is the one criterion still open: it needs the app running with a world that
-      has a finished season behind it.
-
-### P0-CUPS-5 — DONE: a field that does not divide by six was dealt into one enormous group
-
-**Found while writing P0-CUPS-4's test, not by reading the code.** `dealIntoGroups` counted groups with
-**integer division**, so it floored:
-
-```java
-int groupCount = Math.max(1, rankedDescending.size() / GROUP_SIZE);   // 8 / 6 = 1, not 2
-```
-
-Eight entrants therefore became **one group of eight**. A group of eight has seven matchdays, so its round
-numbers run 1–7 — and **rounds 6 and 7 are the last sixteen and the quarter final.** The bracket then read
-a knockout stage out of the middle of a group stage: a Champions Cup with a "last sixteen" that was two
-group matchdays.
-
-**It never showed for a real field,** because the fields are 48, 96 and 48 and all three divide exactly by
-six. It appears the moment a country is removed or a tier is short.
-
-**And the two methods disagreed.** `groupCountFor()` already answered this question with a **ceiling**, so
-the count that was asked for and the count that were built were different numbers for every field that is
-not a multiple of six. One method answers it now, and `dealIntoGroups` throws if a group ever exceeds six.
-
-**Exit criteria:**
-- [x] A field that does not divide by six gives groups of **at most** six
-- [x] `groupCountFor()` and `dealIntoGroups()` give the same number — asserted across **every** field from 8 to 100
-- [x] A group over six throws and names the reason, rather than silently overrunning the knockout rounds
-
-### P0-CUPS-7 — a field under eight still draws nothing — **FIXED ✅**
-
-When `entrants.size() < MIN_FIELD_FOR_GROUPS` (8), `buildGroupStage()` creates the table rows
-(`ensureTableRows`) and returns with `groupFixtures = 0`. Before the fix, `buildKnockouts()` read
-`groupFixtures.isEmpty()` and returned `new DrawResult(..., 0, 0, 0, 0)` — nothing drawn.
-
-The fix (2026-10-06): when fixtures are empty but `tableEntries` exist (the small-field case),
-`buildKnockouts()` reads the entrants from those entries, sorts them by the ranking comparator,
-filters to `qualifyPerGroup * 8`, and proceeds through the knockout loop (`ROUND_LAST_SIXTEEN`
-to `ROUND_SEMI_FINAL`). Two clubs play a direct final; odd fields carry an unpaired club as a bye into
-the next round; otherwise each knockout round is drawn one per call, as the original method designed.
-
-**Exit criteria:** [x] a cup with 2–7 entrants produces a knockout bracket · [x] the draw result and log
-report the fixtures created · [x] two entrants play a direct final; odd fields carry one club byes into
-the next round
-
-**Owner decision:** a two-club international cup is still a competition and plays one final. This keeps
-the qualifying field honest when a tier has only two divisions and avoids inventing a group stage.
----
-
-### P0-CUPS-6 — DONE: domestic cup drawing is scoped per country
-
-**Found 2026-10-06 while running the P0-CUPS-1/2 regressions. Fix landed. The fix is NOT yet guarded, and
-the reason it cannot be is a second, older defect — see the correction below.**
-
-`CupFixtureSeeder` picks its target two different ways, and they disagree:
-
-| Method | Selection | Scope filter |
-|---|---|---|
-| `primaryCup():293` — used by `drawRoundForWeek`, i.e. by the day-2 `CupDrawJob` | `findFirstNationalScoped(CUP, INTERNATIONAL, Limit.of(1))` | **yes** |
-| `seedIfMissing():142` — used by **boot** and by `WorldRepairService.repair("cup")` | `findAll().stream().filter(type == CUP).findFirst()` | **no** |
-
-So `seedIfMissing()` takes the **lowest-id CUP row of any scope**. The 15 continental cups are exactly
-that: `country == null`. `rankedClubs():210` then hits `cup.getCountry() == null`, logs *"Cup Champions Cup
-has no country; nothing to rank"*, returns an empty list — and **the domestic cup is not drawn at all.**
-`seedIfMissing()` now calls `primaryCup()`, so boot and the day-2 job finally agree.
-
-**Why this is P0 and not a footnote:** P0-CUPS-4 makes those 15 rows exist in the running app. Left alone,
-the national cup — which the owner has played since before this board existed — would go quietly empty on
-the next boot.
-
-#### 🔴 Correction — my first diagnosis of the 5 red `CupFixtureSeederCountryTest` was wrong
-
-I wrote on this board that this defect was *"the reason `CupFixtureSeederCountryTest` goes red the moment
-`InternationalClubCupDrawTest` runs first"*, and that the pollution was measured to predate P0-CUPS-1. The
-second half was measured and is true. **The first half was a guess dressed as a finding, and it is false.**
-Measured, in this order:
-
-| Batch | Result |
-|---|---|
-| `CupFixtureSeederCountryTest` alone | **6 green** |
-| `CupFixtureSeederCountryTest` + `CupDrawSeedingTest` | **5 red** — reproduces |
-| the same batch at `95151e6`, before any P0-CUPS code | **5 red**, identical |
-
-So the polluter is **`CupDrawSeedingTest`**, not `InternationalClubCupDrawTest`. `CupDrawSeedingTest`
-creates a country `"ZZ Cup …"` and a cup `"ZZ National Cup …"` with only 8 clubs;
-`CupFixtureSeederCountryTest` creates its own national cup with 260. Both then call code that resolves
-"the one cup" as **the lowest-id national cup in the database** — so whichever class ran first owns the
-answer, and the loser draws into the other's competition. `CupFixtureSeederCountryTest` fails with *"the
-cup drew nothing at all"* because it is drawing into an 8-club cup that fails the 256-club threshold.
-
-**The root cause is the same in both places, and it is `primaryCup()` itself.** "One cup, chosen by
-lowest id" is not a rule a competition table can satisfy — it is a rule about insertion order in a shared
-database. It makes production depend on which row got its id first, and it makes both tests depend on
-which class ran first.
-
-#### ❓ Owner decision needed: what is "the" domestic cup?
-
-`seedIfMissing`'s comment records this as a parked decision — *"one job drawing 48 national cups, or one
-draw per country"* — and deferred it to that decision. **The performance change it deferred to has long
-since been made; the correctness half was left behind, and it has now cost one unguarded fix and two
-order-dependent test classes.** Three options, and this is the owner's:
-
-| | Option | Consequence |
-|---|---|---|
-| **A** | **One cup per country.** `CupDrawJob` and `seedIfMissing` take a country and draw that country's cup. | Removes the ambiguity entirely. 48 draws per season instead of 1 — the scale question P1 exists for. **Recommended.** |
-| **B** | **Name the cup explicitly** — e.g. the lowest-id national cup per country, or a `primary` flag on `Competition`. | Smallest change that removes the shared-database coupling. Still "one cup per country" in effect. |
-| **C** | Leave it. | Keeps an order-dependent production rule and two order-dependent test classes. |
-
-**Until this is answered, P0-CUPS-6 has no test.** A guard for the `seedIfMissing` fix has to make the
-continental cup the lowest-id CUP of any scope — and whether an earlier test has already created a
-national cup below it decides whether the old code would pass. A test that is green for the wrong reason is
-worse than no test, so none was written.
-
-**Exit criteria:**
-- [x] `seedIfMissing()` targets the same competition `drawRoundForWeek()` does (calls `primaryCup()`
-      instead of `findAll()`)
-- [x] The owner's **Option A — one cup per country** is implemented: both `seedIfMissing()` and the
-      scheduled `drawRoundForWeek()` iterate every national cup and scope entrants to that cup's country.
-      International cup rows are excluded by `scope`.
-
-**Owner decision 2026-10-06: option A — one cup per country.** Implemented in `CupFixtureSeeder`: the
-repair/bootstrap path and the scheduled job both iterate national cup rows, and each round resolves its
-survivors from that cup's country. The remaining evidence is live observation of all available country
-cups being drawn in a real world.
-
----
-
-## ✅ Owner decisions, 2026-10-06 — taken after the analysis, before P0-CUPS-4
-
-Four questions asked with the measured state in front of them. **All four are now closed.**
-
-### 1. A simulated country's division has no "better" club — and that is fine
-
-**Decision: leave it. For a simulated league the order is arbitrary — a reproducible draw.**
-
-Measured, and it looked like a P0: `PyramidBuilder.fillStaticDivision()` gives all ten clubs in a
-division one identical `reputationFor(tier)`, writes `points(0)` and leaves goals unset, and sorts by
-`reputation desc, then name`. So the stored `position` is alphabetical. And nothing reads it —
-`InternationalClubCups.qualifyFrom()` orders by `LeagueTableOrder` (points → goal difference → goals
-scored → **team id**), every row ties on all four, and the club entering the Champions Cup is the one with
-**the lowest database id** in its division.
-
-**The owner's answer is that this does not need fixing, and it is the right answer.** `LeagueTableOrder`'s
-last key being team id means the order is *arbitrary but stable* — the same table produces the same order
-every time it is asked for, which is exactly the property a draw needs. Adding an intra-division strength
-spread would make the simulated field look like it was decided on merit, and it would be decided on a
-reputation number that was invented at seed time.
-
-**So this is recorded as a non-defect, and the reason is written down here on purpose.** The B6 comment in
-`fillDivision()` records a *previous* attempt at exactly this fix —
-
-> *"Every club in a division used to be created with one identical reputation… continental qualification
-> read that table, which made entry alphabetical for 47 of 48 countries."*
-
-— and that fix was applied to `fillDivision()` (active countries) and **not** to `fillStaticDivision()`
-(simulated countries). A future reader comparing the two methods will take that as an oversight and
-"correct" it. **It is not an oversight. Do not add the spread to `fillStaticDivision`.**
-
-`poolAt()` sorts each cross-division pool by reputation too, which is equally degenerate for a simulated
-country and equally deliberate: stable and arbitrary.
-
-### 2. The domestic cup is one cup per country
-
-**Decision: option A.** `CupDrawJob` and `seedIfMissing()` take a country and draw that country's cup.
-Closes **P0-CUPS-6** and unblocks its test. 48 draws per season instead of 1, which is a scale question
-and belongs in P1 when it is measured.
-
-### 3. `MatchFormat` is deleted
-
-**Decision: delete.** 144 lines, zero callers, and provably the wrong shape — a cup has two formats in one
-competition. Deleted; `CompetitionType`'s javadoc now carries the reason and points at
-`Match.groupCode`. P0-10 set the precedent on the same grounds.
-
-### 4. There is parallel work in this tree
-
-**Confirmed by the owner.** National-team competition work (`Competition.nationalLevel`,
-`Competition.nationalStage`, `NationalTournamentSeeder` and five related files) is in flight and is not
-mine. **Every P0-CUPS commit stages only its own files.** The tree compiles as of `fec7aa5`.
-
----
-
-## 🟠 P1-CUPS — the calendar, the slot model, and the two screens
-
-### P1-CUPS-1 — four weekly slots: days 1, 3, 5 and 7
-
-`SeasonCalendar` now models `SLOTS_PER_WEEK = 4` on days 1, 3, 5 and 7. League rounds remain on days 3
-and 7; days 1 and 5 are friendly-capable. Friendly availability is checked against the fixture's actual
-day, so a league, cup or international match blocks only its own slot.
-
-**Owner decision 2026-10-06: widen to four slots — days 1, 3, 5, 7 — and in the playoff week the slot
-where the playoff is played stays friendly-capable for every club not in the playoff.**
-
-`LeagueSlotSchedule` now finds each round's actual calendar slot and reads its day, so widening the
-calendar does not move league football from days 3 and 7.
-
-Touches: `SeasonCalendar`, `WeekSlot`, `FriendlyRequest.slot`, `FriendlyRequestService`,
-`FriendlyController`, `SeasonService.ensurePlayoffWeekFixtures`, `SquadTrainingService`.
-
-**Exit criteria:**
-- [x] Every league round still lands on **day 3 or day 7** — the schedule reads the calendar's league slots
-- [x] A club with no day-1 fixture can book a friendly into day 1
-- [x] A club with no day-5 fixture can book a friendly into day 5
-- [x] In week 11 a club **not** in the playoff can book into the playoff slot; a club **in** it cannot
-- [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return slot index and watch the day assertion fail
-
-### P1-CUPS-2 — friendly training cost is zero, but the training path still needs cleanup and proof
-
-**Owner decision 2026-10-06: a friendly costs no training session. Day 4 is a training *update*** — driven
-by minutes played, coach, talent, height and skill — **and that is not a training session.**
-
-The contract is now explicit: `FriendlyRequestService.TRAINING_SESSIONS_PER_FRIENDLY = 0`, so an agreed
-friendly does not consume a training session. `SquadTrainingService` keeps the baseline of three sessions,
-and `TrainingPercentService` still supplies match minutes to development calculations.
-
-The shared session helper is deliberately retained as the single API for the training baseline and the
-zero-cost deduction. **No cap on friendlies per week** — a club may book any free slot.
-
-**Exit criteria:**
-- [x] A friendly contributes zero training-session cost
-- [x] A friendly leaves the club's training-session budget unchanged; match minutes remain an input to
-      the development percentage
-- [x] `BASE_TRAINING_SESSIONS_PER_WEEK`, `TRAINING_SESSIONS_PER_FRIENDLY` and
-      `trainingSessionsAvailable` have an explicit final contract and remain the shared API
-- [x] Growth still responds to coach, age and minutes played — the parts the owner kept
-
-### P1-CUPS-3 — the country side: the qualifying race, and a job to keep it honest
-
-The owner asked for the country-side tables to be visible and followable after every round, with **a new
-job** to update them when leagues update.
-
-The qualifying race is derived from current league tables. At tier 1 the places are direct: 1st to
-Champions, 2nd and 3rd to Masters, and 4th to Challenge. At tiers 2–5 the country's divisions are pooled
-into three synthetic races: all winners for Champions, all 2nd and 3rd place clubs for Masters, and all
-4th place clubs for Challenge.
-
-**One judgement to make explicit, not to skip:** `InternationalClubCups.tierTables()` already reads a
-tier's tables in **three queries** and the World page's budget is already under test
-(`InternationalClubCupsQueryBudgetTest`). So a job is not obviously *needed* — the read is cheap and a
-persisted copy is a cache with an invalidation problem. The owner asked for a job; the honest options are
-(a) derive on read and add the job only if a measured read is too slow, or (b) persist and refresh.
-**Recommend (a), with the measurement recorded** — and say so on the board rather than building the cache
-because it was requested.
-
-**Exit criteria:**
-- [x] The country general tab shows only the relevant candidates for each cup by tier
-- [x] Tier 1 uses direct places; tiers 2–5 rank the three pooled mini-tables and mark the selected places
-- [x] It reads the current reconciled league tables when the country page loads, without a world-page refresh
-- [x] The data is deliberately derived on read; the existing league reconciliation jobs update the source
-      tables, while a persisted copy would add cache invalidation without reducing the three-query tier read
-
-### P1-CUPS-4 — the world side: three links, tiers as tabs, tables and brackets — **DONE ✅**
-
-The World page renders three rows in one competition table from `pages.js` `clubCupRow()`. Each cup page is
-`club-cup-view.js`, wired as `createClubCupView({ authFetch, escapeHtml, loadPage })` with a `clubCup`
-route in the page router. Tiers 1–5 are tabs inside each cup; each tab shows the group tables (P W D L GF
-GA GD Pts), the results and the knockout bracket — all from `ClubCupController`'s grouped payload.
-
-The table shows the expected fields: Champions `48`, Masters `96`, Challenge `48`. The separate admin
-repair action durably creates missing international competition rows before it fills simulated-country
-static tables; the week-1 cup job repeats that durable boundary before drawing.
-
-**Live verification 2026-10-06:** after a clean restart and one repair request, PostgreSQL contained all
-15 international club cup rows. `/club-cups/champions?tier=1`, `/club-cups/masters?tier=1` and
-`/club-cups/challenge?tier=1` returned HTTP 200, and the World payload exposed competition IDs for all
-15 tier rows. The long simulated-world seed was still running when the check ended, so its qualifying
-counts were not used as the final field-size assertion.
-
-**Exit criteria:**
-- [x] Three links from the World page, one per cup · [x] tier 1–5 are tabs inside each
-- [x] Each tab shows the group tables, the results and the bracket · [x] all 15 cups are reachable
-- [x] `authFetch` is used for every call and `response.ok` is checked on every one
-- [ ] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
-      → **unblocked:** `loadPage('clubCup', { cupKey, tier })` always passes `tier`; the view requests the
-      tier from the job's payload per-tab, so an empty payload renders an empty tab at once.
-
-### P1-CUPS-5 — three defects in the read path, all small — **DONE ✅**
-
-All three fixed in the same session:
-
-- **`worldOverview():159` hard-wired `finishedSeason = 1`.** Fixed — now reads
-  `out.get("currentSeason")` from the clock.
-- **`getCup()` could render the Champions Cup as a country's own cup.** Guarded on
-  `scope = NATIONAL`.
-- **Weeks 6 and 12 rendered as "Reserved for … which are not built yet".** Notes updated to
-  describe national-team matches.
-
----
-
-## ❓ P1-CUPS-6 — OPEN QUESTION, settled before P0-CUPS-4
-
-**Do `SIMULATED` countries actually play their own league?** The written spec says they do not — they
-*"hold their positions until their league is activated"*. The code says they do.
-
-`SeasonService.openNewSeasonForEveryCountry():690` iterates **every** `LEAGUE` competition in the world,
-filters only on `country != null`, and calls `ensureDoubleRoundRobinSchedule()` on each. `MatchdayJob`
-has **no `CountryState` filter** — the day-3 and day-7 jobs will play those fixtures. So a simulated
-country plays synthetic-squad league football from season 2 onward, and its table moves.
-
-**Why this blocks P0-CUPS-4 rather than following it:** the rows the cups qualify from *are* the disputed
-rows. Qualification reads the finished season's tables, so whether a simulated country's position is real
+**Why it was never cosmetic:** the rows the continental cups qualify from *are* the disputed rows.
+Qualification reads the finished season's tables, so whether a simulated country's position is real
 football or a standing fixture decides what the Champions Cup field is.
 
-**Decide before the draw job lands:** simulated countries keep a fixed table and the matchday jobs skip
-them, or they play for real. Both are defensible; the current state is neither.
-
----
-
-### P0-1 — Nine controllers have no tests at all, so the security surface is untested
-
-**Why this is first:** only three tests in the whole repository exercise any controller. Five reachable
-security defects were previously found by reading source, not by a failing test. Writing these tests
-against the current code is how the *next* five get caught.
-
-**Scope, corrected against the source on 2026-10-03:** `LineupController`, `PlayerController`,
-`TeamController`, `UserController`, `AdminController`, `CommunityController`, `DummyDataController`,
-`TransferController`. **Two names on this list never existed** — there is no `CompetitionController` and no
-`StadiumController`. The real ones are `StadiumSettingsController` (for the stadium) and, for competitions,
-no controller of their own. `TransferController` was substituted **on the owner's decision**, because
-`AdminController`'s own javadoc records that `/transfers` is "not role-guarded, so putting it there would
-let any authenticated user delist another club's player" — a named hole rather than a coverage tick.
-
-**Split in two, because one commit was not a reviewable unit:**
-
-| | Controllers | State |
-|---|---|---|
-| **P0-1a** | `LineupController`, `PlayerController`, `TeamController`, `UserController`, `AdminController` | **done**, `66553b4` |
-| **P0-1b** | all four — `TransferController`, `StadiumSettingsController`, `DummyDataController`, `CommunityController` | **done**, `6fd6521` |
-
-**How:** copy the JWT pattern from `WorldAdvanceAuthorizationTest`. **Mock the repository _interface_, not
-the injected bean** — Spring Data returns a JDK proxy that Mockito cannot wrap, and this is the single
-most common way a test of this kind fails for the wrong reason.
+**Three options, and one is the owner's:** (a) simulated countries keep a fixed table and the matchday jobs
+skip them — the spec's answer; (b) they play for real, which is what the code does; (c) leave it, which is
+neither.
 
 **Exit criteria:**
-- [x] Every one of the eight has at least one test that calls it **without** a JWT and asserts 401/403 — **P0-1a**
-- [x] Every world-moving or admin-only route asserts the role check, not just authentication — **P0-1a**
-- [x] At least one test per controller asserts a **successful** path, so the guard tests cannot all pass
-      against a controller that returns 500 for everything — **P0-1a**
-- [x] Each new test class is proven able to fail by breaking the authorization annotation and watching it
-      — **P0-1a, five mutations, all in `kanbanProgress.md`**
-- [x] The same four, for the four P0-1b controllers — **P0-1b, done.** The box was left unchecked after P0-1a merged; corrected 2026-10-04
+- [ ] Owner ruling recorded
+- [ ] Either `MatchdayJob` filters on `CountryState`, or the spec is corrected to match the code
+- [ ] A cup field observed in the database under the chosen rule
 
-**Not:** a coverage percentage. A test that asserts 401 on a route that was always going to 401 proves
-nothing about authorization.
+## T-REST-2 — 🔴 P0-8 · OWNER-GATED: the match-event layer does not work at all
 
-**Six defects P0-1a found and closed.** Recorded in full in `kanbanProgress.md`; the two that mattered most
-were **not** missing guards:
+Two independent dead paths, not one.
 
-- **`POST /lineups` had never accepted a request body at all.** It took the raw `Lineup` entity, and Jackson
-  cannot deserialise that graph — every caller, including an administrator, got
-  `HttpMediaTypeNotSupportedException` before the controller was entered. A test asserting only 403 would have
-  been green throughout, because a route that cannot bind refuses everyone equally. Now takes a DTO.
-- **`POST /players/create` answered 500 on every call.** `PlayerDTO.from` dereferences `player.getSkills()`
-  unconditionally and `createPlayer` never set one.
-
-### The most severe finding in the whole P0 segment — `TransferController`, P0-1b
-
-**Ten writes, and not one of them asked who was acting.** Every write takes the acting club as a
-caller-supplied parameter, and `TransferService` can only compare that parameter against the seller — it
-cannot know who holds the token. So the question "is this your club?" was never asked on the surface. The
-codebase says so itself: `AdminController.forceUnlist` carries a javadoc explaining it lives under `/admin`
-**because** `/transfers` is not role-guarded. The hole was documented in prose and left open.
-
-**And on four routes, omitting the parameter turned the check off.** The seller guards read
-`if (actingTeamId != null && !Objects.equals(...))`, so `null` skipped the comparison entirely. The guard was
-strictest when a caller could prove who they were and absent when they could not — exactly backwards. The
-same file's `requireSeller` already had it right: null is a 400.
-
-What that allowed, all now refused:
-
-| Route | Was |
+| Piece | State |
 |---|---|
-| `POST /list/{playerId}` | list **any** player in the world at **any** price |
-| `DELETE /remove/{playerId}` | delist **any** player |
-| `POST /buy/{playerId}` | spend **any** club's budget — the buyer is named in the body |
-| `POST /interest/{playerId}` | register interest as **any** club |
-| `/accept-offer`, `/reject-offers`, `/interest/{id}/clear` | act on **any** listing |
+| `MatchEventRepository` | **Not a repository.** A `@Component` holding a `ConcurrentHashMap`. `save()` **returns its argument and stores nothing.** `store` is only ever read, and nothing ever puts. |
+| `MatchPersistenceService` | 402 lines, **zero callers**, 0 rows. |
 
-The rule applied is the one the rest of the game already uses: **the club named in the request must be the
-club the caller runs.** Naming a rival satisfies the service's check and not this one, which is precisely how
-every route was reachable. Reads are untouched — the market page is for every manager, and the country filter
-already defaults to the viewer's own.
+Consequence: `findByMatch` **always returns an empty list**, for every match, forever.
+`MatchAnalyticsService:26` and `MatchReplayService:25` both read it and will always get nothing. The only
+caller of `save()` in the whole codebase is the dead service.
 
-**`TransferController` is the only route in the repository where one manager could move another club's
-money.**
-
-### P0-16 — DONE: `/demo` is gone from the main app, and `DummyDataController` with it
-
-**The owner's ruling:** none of `/demo` should exist on the main app, and never hardcode — take `teamId`
-from the user. **Both halves are now true of all eight call sites, and `DummyDataController` is deleted** —
-281 lines of hardcoded fake data with a literal `1` in every path.
-
-**What the calendar settled.** The owner pointed at the calendar and it answered the friendlies question
-directly: weeks **6, 11 and 12** carry the friendly slots, and *"anything that is not a scheduled fixture is
-an **option**, not an obligation: a club is not handed a friendly, it asks for one and the other club may
-refuse."* So a friendly **belongs to no competition** — which is why `competitionType` could never select one,
-and why the screen was reading fabricated data. `MatchType.FRIENDLY` (another agent's P2-8 work, already
-landed) is the right home for it, and `MatchFixture.resolvedMatchType()` keeps older rows honest.
-
-**Six rewired, five of them to endpoints that already existed and were already widely used:**
-
-| Call site | Was | Now |
-|---|---|---|
-| `club-management.js:45` | `/demo/teams/{id}/profile` | `/teams/{teamId}/profile` |
-| `staff-directory.js:100` | `/demo/teams/{id}/profile` | same |
-| `stats-view.js:36` | `/demo/stats/teams/{id}/players` | `/teams/{teamId}/players` |
-| `fixture-view.js:42` | `/demo/matches/teams/{id}/upcoming` | `/teams/{teamId}/schedule` |
-| `pages.js` `loadCup()` | `/demo/cups/{id}` | `/teams/{id}/schedule?competitionType=CUP` |
-| `pages.js` `loadInternational()` | `/demo/internationals/{id}` | `…?competitionType=INTERNATIONAL` |
-
-`/teams/{teamId}/players` was already called from `team.js`, `club-view.js`, `formations-view.js`,
-`training-view.js` and `league-view.js` — the squad endpoint was real all along and only this screen was
-asking the fake one.
-
-**New: `GET /teams/{teamId}/schedule?competitionType=`.** The route resolved exactly **one** competition —
-the club's league — so cup and international fixtures were invisible on it. **That is why those two screens
-pointed at fabricated data: there was nothing real to ask for.** Every row already carried
-`competitionType`, so this is a query choice and a filter, not a new endpoint. An unrecognised value falls
-back to the league rather than inventing rows.
-
-**1. `stats-view.js` team stats — DELETED, on the owner's decision.** It rendered four bare scalars:
-`{goals, conceded, possession, shots}` — no season, no competition, no opponent. Its two neighbours in the
-same file are real (`loadTopScorersAndAssists`, `loadPlayerStats`, both of which even handle "club not in a
-league yet" with a proper message), so this was a placeholder standing beside two working screens. The club's
-real information — `/teams/{teamId}/milestones` — is already wired into `club-view.js` and `league-view.js`.
-Removed: the function, its export, the `pages.js` delegator and the `window` global.
-
-**Building a read for it was rejected as the wrong kind of work.** Goals-against and shots-per-game per club
-need a definition of possession the codebase may not have, and shots may not be recorded per team at all.
-That is a **feature to schedule**, not a wiring job, and it should not be smuggled in here.
-
-**2. `fixture-view.js` friendlies — the last caller, and it is not a wiring job either.** My earlier claim was
-*"there is nothing to filter on"*, and tracing it showed that was **too strong**: friendlies *are* modelled —
-`SeasonService.FRIENDLY_WEEK`, a `FriendlyRequestService`, and a working `FriendlyController` the dashboard
-already reads. What is missing is narrower and more specific:
-
-- **`FRIENDLY` is not a `CompetitionType`** — the enum is `LEAGUE, INTERNATIONAL, TOURNAMENT, CUP`. The
-  owner's ruling is to **extend the enum**.
-- **But the enum alone is not enough**, and this is the part that matters: adding `FRIENDLY` makes the value
-  *filterable* and does **not** make anything *write* it. The friendly fixtures are created by
-  `FriendlyRequestService` and placed by the season calendar, so until those write `CompetitionType.FRIENDLY`,
-  `?competitionType=FRIENDLY` answers with an empty list — which is honest and is still a broken screen.
-- **The trace is incomplete.** Where the friendly fixture row is written, and what competition it carries, was
-  not established before this was written up. That is the next concrete step, and it should be finished
-  before the enum is extended, because extending an enum nothing writes is a change that looks finished and
-  is not.
-
-**Both were nearly shipped as plausible-but-wrong.** Wiring friendlies to `?competitionType=FRIENDLY` and
-team-stats to `/milestones` would both answer **200 with the wrong data** — the precise failure this task
-exists to remove.
+The 52 classes in `newLogic/model/event/` have no table. Match events live only in `Match.eventJson`.
 
 **Exit criteria:**
-- [x] No caller hardcodes a team id; all eight derive it from the signed-in manager
-- [x] Six of eight read real data
-- [x] `competitionType` filter on the schedule, **6 tests green**, mutation-proven
-- [x] Team Stats **deleted** on the owner's decision — a fourth, emptier presentation of `/milestones`
-- [x] Friendlies read real data via `?matchType=FRIENDLY`, on the calendar's own weeks 6/11/12
-- [x] **`DummyDataController` deleted** — 281 lines, zero overlap with the frozen `/demo/service` engine,
-      and no caller left. `TeamControllerAuthorizationTest` went with it, since it tested fake data
-- [x] **8 green** on the filter class; **24** with `TeamAuthorizationTest`
+- [ ] OWNER-GATED: **delete both**, or make the map real
+- [ ] If deleted: the 52 orphaned model classes are deleted or the decision to keep them is recorded
+- [ ] If made real: `findByMatch` returns what was written, proven against PostgreSQL
 
-**One assertion had to be corrected as friendlies became real.** The "unrecognised type does not guess" test
-forbade the string `FRIENDLY` anywhere in the body — which was right when no friendly row existed and became
-**wrong the moment one did**, because a genuine friendly carries `"matchType":"FRIENDLY"`. It now forbids
-`"competitionType":"FRIENDLY"`, which is the thing that must never appear: no such competition exists.
+## T-REST-3 — 🔴 P0-19 · `Team.supporterMood` and the matchday that has never been played end to end
 
----
+`Team.supporterMood` was added in `b0493a6` and the local schema now has
+`team.supporter_mood integer default 60`. **The rest is not done.**
 
-### P0-17 — DONE: the chat's applicant filter is now pinned by a test
-
-`CommunityController.shouldHideFromNonAdmin` decides whether a message bound to a **pending registration
-request** — an applicant's username and email — is shown to a non-administrator. It is a single boolean
-method, `/chat` returns the thread, and **nothing tests it.**
-
-Recorded rather than tested on purpose: pinning it needs a message bound to a pending request, and a test
-built that way would assert almost nothing about authorization. A test that cannot fail is worse than no
-test.
-
-**What is actually at stake, stated precisely rather than alarmingly.** The DTO already gates the
-applicant's **email** behind `adminViewer`. What is not gated is the **username**, the fact that they applied,
-and which club they asked for. So the exposure is not a password and not an address — it is **a list of who is
-trying to join the game and where they want to play**, visible to every logged-in manager.
-
-**Low severity today, in a world with one real player. Not low in the world this project targets.**
-
-**`RegistrationApplicantIsNotInTheChatTest`, 5 green, mutation-proven.** Removing the boolean fails exactly
-the test that claims to hold it up:
-
-```
-aRegularManagerDoesNotSeeTheApplicant
-  a pending applicant's username reached the community chat of an ordinary
-  manager ==> expected: <false> but was: <true>
-```
-
-**The four tests that keep it honest.** Asserting one hidden username proves nothing unless the message
-exists and the endpoint works, so:
-
-| Test | What it rules out |
-|---|---|
-| `anApprovedApplicantBecomesVisible` | the same applicant, same message, one status flipped — **the filter is the status, not luck** |
-| `anAdministratorSeesTheApplicant` | hiding it from the queue would break the feature the message exists for |
-| `aRejectedApplicantIsVisible` | the predicate is *pending*-only, not "any registration" by accident |
-| `aManagerCanStillReadTheChat` | the whole route being dead, which would make the first test pass for the wrong reason |
-
-The applicant name is unique per run, because the shared database does not roll back and an earlier run's row
-would otherwise let the assertion pass on stale data.
+The app boots and every read-only page works. `supporterMood` is read by the matchday-advance path and
+`FinanceController`, so **you find out by playing football, not by looking at the app.**
 
 **Exit criteria:**
-- [x] A pending applicant's username is proven invisible to a `REGULAR` manager
-- [x] Asserted on the **absence of the applicant's own name**, not on a count or a missing key
-- [x] The message is created through the real `postRegistrationSubmitted` path, not hand-built
-- [x] Proven able to fail by removing `shouldHideFromNonAdmin`
-
----
-
-### P0-13 — DONE: training asked who was acting on one route out of two
-
-**`TrainingController`, 9 tests, two mutations.**
-
-**The rule already existed in the same file.** `setIntensity`, forty lines below, documents its refusal:
-*"a player who does not play for this club is a 403, not a bad request, because the request is well formed
-and the manager simply is not allowed to make it."* And `plusFeatures` was already injected to make exactly
-that check. So `POST /train/{playerId}` — which trained and returned **any** player in the world, by id,
-with no club involved — was the one route in the controller that did not use the rule its neighbour enforced.
-
-| | Was | Now |
-|---|---|---|
-| `POST /train/{playerId}` | **200**, and returned a raw `Player` | 403 unless the player is in the caller's own club; answers `PlayerDTO` |
-| `POST /train-all` | **200** to any logged-in manager | administrator-only |
-
-**Both routes have zero callers** — not in `static/js`, not in `src/main`, not in one test. The training
-screen uses `POST /training/weekly/team/{teamId}/run`, and the world is trained by day 4's `TrainingJob`.
-
-**The raw `Player` was a third disclosure surface**, after `/players/paged` in P0-1a and `/players` in
-P0-1b: `talent`, `earnings`, the injury record, `personality`, `skills`. The test caught `9.1` where the
-entitlement rule says `null`.
-
-**`/train-all` is DELETED — the owner's ruling.** It was guarded first and deleted second, and **that order
-is the point**: the guard answered *who may*, the deletion answers *should this exist at all*, and for a
-route with zero callers the second is the question that mattered. 36 lines gone, **no production caller** to
-change. The tests now assert the route is **absent** (404/405) rather than merely gated, because a guard can
-be weakened by whoever edits it next and a deleted mapping cannot.
-
-**Exit criteria:**
-- [x] `/train/{playerId}` refuses with 403 unless the player is in the caller's own club
-- [x] `/train-all` is administrator-only
-- [x] Neither returns a raw `Player` entity — `/train-all` returned a count, thanks to another agent
-- [x] **`/train-all` ruled on: DELETED**, on the owner's decision. No caller anywhere, so nothing broke.
-      An anonymous caller still gets 401 — the filter chain runs before routing, so it never reaches the
-      missing mapping — and that is pinned separately so the distinction is not mistaken for the route
-      existing
-
----
-
-### P0-18 — DONE: `viewerTeamId` returned an id from the wrong table, and the owner took it
-
-Found because a fixture caught it, and it is worth more than the bug it looked like.
-
-`PlusFeatureService.viewerTeamId` checks `tifoCTeam` **first**:
-
-```java
-if (user.getTifoCTeam() != null && user.getTifoCTeam().getId() != null) {
-    return user.getTifoCTeam().getId();      // a CTeam id, not a Team id
-}
-```
-
-`CTeam` is `footballtextmanager.model.CTeam` — a different entity with its own `IDENTITY` sequence. So that
-value is **not** a `Team` id, and every caller comparing it against `Team.id` fails.
-
-**It is not only a fixture problem.** `DatabaseInitializer:899` and `StartupInitializer:104,142` all set the
-**owner's** `tifoCTeam`. So the owner gets a `CTeam` id back from `viewerTeamId`, which means
-`talentOrNull` withholds talent from the owner for his own players.
-
-**Why it went unnoticed:** `RegistrationService` sets only `cTeam`, so an ordinary manager never takes the
-branch. Only the owner does.
-
-**Exit criteria:**
-- [x] `viewerTeamId` resolves to a `Team` id in every case — the `tifoCTeam` short-circuit is gone, and
-      `clubNameOf` already reads `cTeam` first and falls back to `tifoCTeam`, so one name lookup serves both
-- [x] The owner can see his own players' talent — asserted on the **effect** through `talentOrNull`, not on
-      the intermediate id, so it still holds if every caller stops using `viewerTeamId`
-- [x] A test asserts the **value** of `viewerTeamId` for a user with a `tifoCTeam`, not merely that it is
-      non-null — `ViewerTeamIdIsATeamIdTest`, **6 green**
-- [x] Proven able to fail: restoring the short-circuit fails 2 of 6 with
-      `answered with the CTeam's id (17) where the club's id (1) was needed`
-- [x] **98 green** with `PlusFeatureServiceTest` and all six controller authorization classes
-
----
-
----
-
-### P0-14 — DONE: `LineupController` is read-only
-
-**Owner's decision: option B — delete the two writes, keep the reads.**
-
-`POST /lineups` and `DELETE /lineups/{id}` are gone, along with `LineupSaveRequestDTO`, which existed only to
-serve them. The reads stay because they are reached.
-
-**Why B and not C:** the duplication was the problem, not the routes' existence. The game files a squad
-sheet through `TeamController`'s `lineup-template`, and `GET /lineups/{id}` is reachable from the match view.
-Deleting the whole controller would have removed a read something uses.
-
-**What P0-1a had already fixed here**, now removed rather than kept: the missing ownership guard, and
-`POST`'s inability to accept a body at all. Both were real defects; neither has a caller, so the cheaper
-answer is deletion. `LineupAuthorizationTest` drops from 10 tests to 3, and keeps exactly the guarantee that
-still means something — **anonymous callers are refused, and a manager can read, because who is in a rival's
-eleven is a league-table fact.**
-
----
-
-### P0-15 — DONE: the tactics file is down to the one profile that places
-
-**The file `var/tactics-editor-profiles.json` is tracked in git** and is the only durable copy of a club's
-tactical-editor work. Five profiles, **one** of which named a club the world has. Now one.
-
-**Verified against the live database, not inferred:**
-
-| | |
-|---|---|
-| `OFK Omladinac` exact matches in 406 club names | **1** |
-| Already in `team_tactics_profile` | 4-4-2, ATTACKING, **132,532** chars, version 5 |
-| The surviving file profile | 4-4-2, ATTACKING, **132,532** chars |
-
-The two copies agree exactly, so the restore's "database wins where both have the club" path keeps the
-authoritative row and the file remains a genuine backup of the same thing.
-
-**Why dropping beats mapping — and it is not the reason the board gave.** The board said *"the world has
-five Beograd clubs and none is called FK Beograd"*. The stronger fact is that **twelve clubs are near-misses
-and there is no way to choose between them**:
-
-| Removed profile | Clubs it could plausibly mean |
-|---|---|
-| `FK Beograd` | `NK Beograd`, `GFK Grafičar Beograd 1945`, `SK Balkan Beograd City` |
-| `GFK Dinamo Šabac` | `OFK Šabac 1928`, `SK Kolubara Šabac`, `NK Car Konstantin Šabac 1931` |
-| `GFK Tamiš Gornji Milanovac 1901` | `NK Tamiš 1950`, `OFK Tamiš Kragujevac` |
-| `SK Čačak 1912` | `FK Čačak 1931`, `GFK Mlava Čačak 1913`, `OFK Čačak`, `SK Čačak Sport` |
-
-**Two of those are the trap.** The profile says `Čačak 1912`; the world holds `FK Čačak 1931` and
-`GFK Mlava Čačak 1913` — **adjacent founding years, different clubs.** A fuzzy matcher would attach a
-4-3-3 profile authored for one club to a confidently-named wrong one, and the mistake would be invisible
-thereafter. There is no mapping to make. Dropping is the only safe answer.
-
-**A correction to this board's own criterion.** It said *"the restore no longer reports unplaceable profiles
-by name, because there are none to report"* — which reads as an instruction to delete the `unmatched` warning.
-**Do not delete it.** That warning replaced a silent `continue`, and the silent `continue` is precisely how
-four of the owner's five profiles vanished without a word. The criterion is satisfied by the **file** no longer
-containing any, and the warning stays as the guard for the next one.
-
-**A test fixture was polluting this file, and it was mine.** `Rival b0542c46` — a club named after a
-P0-1a fixture — had been written into it by a test reaching the editor through HTTP. Removed. The cause was
-fixed in P0-1a (the backup path is now a property); this removes the pollution it left behind.
-
-**New guard:** `TacticsBackupIsNotWrittenByTests` asserts the tracked file is byte-identical either side of a
-tactics write — **and asserts the sandbox file *did* change**, so the first assertion cannot pass vacuously.
-Its first version omitted the path override, wrote to the tracked file, and **the guard caught it in the same
-commit.** That is the guard working, and the reason the override is code rather than a comment.
-
-**Exit criteria:**
-- [x] `var/tactics-editor-profiles.json` holds one profile, `OFK Omladinac`
-- [x] The restore no longer has any unplaceable profile to report, **and the warning stays**
-- [x] A test now prevents any test from writing the tracked file, **and is proven able to fail**
-- [x] **12 green**: `TacticsBackupIsNotWrittenByTests` 2, `TacticsProfileRestoreTest` 3,
-      `TacticsRulesProviderTest` 7 — plus **26** with `TeamAuthorizationTest` earlier
-
-**The mutation, and it settled the argument about assertion order.** Removing the path override made the
-write land on the tracked file, and the failure was:
-
-```
-savingTacticsDoesNotTouchTheOwnersFile:90
-  the tactics write never reached the backup service, so the assertion below
-  would pass for the wrong reason ==> expected: <true> but was: <false>
-```
-
-**The anti-vacuous assertion fired first**, which is the whole reason it is written first — and
-`git status` afterwards showed `var/tactics-editor-profiles.json` modified, confirming the tracked file
-really is reachable from a test and that the guard is guarding something real.
-
----
-
-### P0-6 — ANSWERED 2026-10-03: day 6 is form & morale
-
-**The answer was already written down**, in the Country tab's calendar, which the owner quoted:
-
-> Day 1 20:45 International · Day 2 Finance update · Day 3 19:00 League · Day 4 Training ·
-> Day 5 18:00 Cup · **Day 6 Form & morale** · Day 7 16:00 League
-
-**Verified against the code, and the calendar is right about everything except day 6.** Registered matchdays
-and jobs: day 1 internationals 20:45, day 2 `FinanceJob` and `CupDrawJob`, day 3 league 19:00, day 4
-`TrainingJob`, day 5 cup 18:00, day 7 league 16:00 (`MatchdayJobsConfig`, plus `WeekRolloverJob` and
-`SeasonRolloverJob` on day 7). **Nothing at all is registered for day 6** — no `DayJob` returns 6.
-
-So the decision is made and **the gap it names is now a known omission rather than an open question.** It is
-feature work, not a correctness defect, so it belongs in P2 — but it should not be lost, because the calendar
-now promises a manager something the server does not do.
-
-**Also confirmed from the same calendar, and both are absences rather than bugs:** weeks 6 and 12 carry no
-league football and are "reserved for national-team qualifiers" and "the World Cup", neither of which is
-built (that is P2-10); week 11 is playoff week.
-
-**Exit criteria:** the owner says what day 6 does, or says it stays empty on purpose. **— met. Carried to
-P2 as a job to build.**
-
----
-
-### P0-7 — DONE: the playoff path was the last place in the season that only knew about Serbia
-
-**`295511b`'s successor, `see kanbanProgress.md`.** The board named one site; there were **three**.
-
-**The fix needed no new plumbing.** Both callers already held the top flight —
-`buildPlayoffSummary(Competition superLiga, …)` and `ensurePlayoffWeekFixtures(Competition superLiga, …)` —
-so the country is read off the competition the caller passed. **The bug was never a missing parameter; it
-was a hardcoded string where a parameter should have been.**
-
-| Site | Was |
-|---|---|
-| `ensurePlayoffWeekFixtures` `:372` | asked for tier-2 leagues in `"SRB"` |
-| `findTier2Leagues()` `:1094` | filtered a Serbia-only list a **second** time |
-| `findSerbianLeagues()` `:1115` | the Serbia-only list itself |
-
-So of 48 countries, **47 had no promotion or relegation summary and no playoff fixtures**, and Serbia worked
-perfectly — which is exactly why the omission was invisible. The season rollover and the promotion ladder
-had already been made country-agnostic; the playoff path was the one the earlier fix missed.
-
-**A top flight with no country yields nothing rather than defaulting to Serbia.** The tempting fix — "if the
-country is null, assume SRB" — would put one country's playoff inside another's pyramid, which is worse than
-the bug. Asserted, so the fallback cannot come back.
-
-**Verification, and its limit.** `PyramidBuilder:151` sets `country` on every competition it creates and
-`CountryActivationService.activate()` builds through it, so an activated country's pyramid carries its
-country; the live database has **0 of 31** leagues with a null country. The test proves a non-Serbian country
-of exactly that shape gets both its summary and its fixtures.
-
-**But the live database is Serbia-only** — 31 leagues, 1 country, 0 non-Serbian top flights — so this was
-**not** run against a real activated foreign pyramid. The board asked for that and it is not met. Activating
-one writes ~7,750 player rows, and the board records that attempt as a 26-minute operation that committed
-nothing. **The owner's call, recorded rather than taken.**
-
----
-
-### P0-8 — DONE: §1.2–1.5 verified by running it. §1.5 is worse than claimed.
-
-| § | Verdict |
-|---|---|
-| 1.2 | **Could not be reproduced.** `simulateAllResults.html` loads no script that simulates anything — only `/js/roundResultsTeletext.js`, and the page contains no `fetch` at all. So the "silently discards an entire league" claim has no reachable code path on that page. Left unverified rather than refuted: the behaviour may live behind an endpoint I did not locate, and I am not claiming it is safe. |
-| 1.3 | **CONFIRMED, verbatim.** `NationalTeamSeeder` has `@Transactional` on `totalSides()` — a pure `count()` — and **none on `seedIfMissing()`**, which is the one that writes. Exactly as reported. |
-| 1.4 | **CONFIRMED by P1-1** — `MatchPersistenceService`, 402 lines, zero callers, 0 rows. Unchanged. |
-| 1.5 | **CONFIRMED, and far worse than "badly named".** |
-
-**§1.5 in detail, because the real answer changes what should happen to this class.**
-`MatchEventRepository` is not a repository at all — a `@Component` holding a `ConcurrentHashMap`. And:
-
-```java
-public <T extends MatchEvent> T save(T event) {
-    return event;          // returns the event, stores nothing
-}
-public void saveAll(List<MatchEvent> events) { events.forEach(this::save); }
-```
-
-- `store` is **only ever read.** The single `getOrDefault` at line 16 is the only reference to it that
-  writes anything — and it does not. Nothing anywhere puts.
-- `findByMatch` therefore **always returns an empty list**, for every match, forever.
-- The **only** caller of `save()` in the whole codebase is `MatchPersistenceService` — which §1.4 and P1-1
-  measured as dead. So the writer is dead and the store was never populated to begin with.
-- `MatchAnalyticsService:26` and `MatchReplayService:25` both read events and will always get nothing.
-- `deleteAll` contains dead code: `Long matchId = ... ? null : null;` — always null, and unused.
-
-**The conclusion is stronger than "badly named": the match-event layer does not work.** This is a second,
-independent dead path next to P0-12 §4.4's `match_tick_states` — the game's match events are held in a
-database table nothing writes *and* an in-memory map nothing writes. **Both** need an owner decision, and
-P0-12 §4.4's framing ("is it dead?") is now answered for the half it did not know existed.
-
-- [x] Every one of §1.2–1.5 confirmed or refuted by running it
-- [x] §1.2 recorded as not reproducible, with what was actually found — and not over-claimed as safe
-- [ ] OWNER-GATED: `MatchEventRepository` + `MatchPersistenceService` — delete both, or make the map real
-
----
-
-### P0-19 — `Team.supporterMood` has no column, so the world cannot be played
-
-Found while measuring P1-5, and the original database snapshot lacked the column: advancing a matchday threw
-
-```
-ERROR: column t1_0.supporter_mood does not exist  Position: 294
-```
-
-`Team.supporterMood` was added in `b0493a6` ("P2-5: supporter mood"), which **is in `main`**. The current
-local PostgreSQL schema now contains `team.supporter_mood integer default 60`; the original missing-schema
-observation is therefore stale for this database.
-
-The failure is easy to over-claim, so precisely: **the app boots and every read-only page works.**
-`supporterMood` is read by the matchday-advance path and `FinanceController`, so you find out by playing
-football — not by looking at the app.
-
-Exit criteria:
-
-- [x] The current local database contains `team.supporter_mood integer default 60`
 - [ ] A matchday advances end to end on a database built from the current entities
-- [ ] A guard test that boots against the real schema and plays a matchday — the only thing that would
+- [ ] A guard test that boots against the **real** schema and plays a matchday — the only thing that would
       have caught this, and the reason 154 test classes did not
 
-**Not fixed here.** `Reset DB` then `Initialize DB` is the documented owner path and they are destructive
-buttons; the missing piece is a guard, not a code change.
+## T-REST-4 — 🔴 P0-RANK-WIRE · the ranking rebuild has never been seen in a live matchday
 
----
+The wiring is committed and its guard is proved. What is missing is the one thing a test cannot substitute
+for: **the tables filling in a real world.**
 
-### P0-9b — DONE: `activeSeason` no longer answers `2026`, and no longer picks a coin
+**Established:** `sokker_db` is seeded (14,723 clubs, 14,620 season entries, 1,463 divisions). **26 league
+matches are played** (week 1 day 3) — but by another agent's application instance, whose build could not be
+confirmed to contain `4f8830b`. Two attempts to verify with a known build both ended with the JVM killed
+(exit 137) while other agents cycled the same port.
 
-**Seasons start at 1 and there is no calendar year anywhere.** This is the one place the product itself
-breaks that rule:
+`club_season_ranking_points`, `country_season_ranking_points` and `club_honour` were **all still empty** at
+that measurement.
 
-```java
-private Integer activeSeason(Team team) {
-    GameClock clock = clocks.findAll().stream().findFirst().orElse(null);
-    if (clock != null && clock.getCurrentSeason() != null) return clock.getCurrentSeason();
-    return Year.now().getValue();          // <-- 2026, used as a season
-}
-```
+**How to finish it, about two minutes:**
+1. advance to week 1, day 7, hour 20 (day 3 hour 20 is behind us);
+2. `select count(*) from club_season_ranking_points;` — non-zero means the rebuild ran after the batch;
+3. `select count(*) from club_honour;` — says whether a finished competition produced medals;
+4. grep `Ranking after the batch` in the log, which prints every counter and the elapsed milliseconds.
 
-**Why it matters beyond tidiness.** `summarise()` reads the ledger for that season, and
-`TransferBudgetService` grants a club's transfer budget *from settled ledger income*. So with no
-`GameClock`, every club is assessed on **season 2026** while the game settles season 1 — income that was
-really earned becomes invisible, and the club is refused with "No settled income yet".
+## T-REST-5 — 🔴 P0-CUPS-4 · a real season has never been observed for the continental cups
 
-This is the mechanism behind the red tests in P0-2. It is **not fixed here**, because the correct fallback is
-an owner decision: with no clock there is no season, so arguably nothing has been settled and the honest
-answer is a refusal — which matches `TransferBudgetService`'s own existing reasoning ("a club in its first
-week has not been given anything yet"). Changing it alters affordability for every clockless club.
-
-**A second defect was in the same three lines.** `clocks.findAll().stream().findFirst()` has **no `ORDER
-BY`**, so when more than one clock exists the season the game is "in" was whichever row the database
-happened to return. Every ledger figure is a read of that season.
-
-**Decided and done:** the fallback is `null` — with no clock there is no season, which is exactly what
-`TransferBudgetService` already says ("a club in its first week has not been given anything yet") — and the
-clock is chosen deterministically as the furthest-advanced one, ties broken by the lowest id.
-
-- [x] No calendar year anywhere in `activeSeason`
-- [x] `summarise` survives a null season instead of querying with it
-- [x] The clock is chosen deterministically, not arbitrarily
-- [x] `PlayerContractServiceTest` **18/18** — `signingMovesThePlayerToTheClub` was the last hold-out and is
-      green, because the fixture now has a league and a settled week in the season being played
-- [x] 39 green across the four affected classes
-
-**What is not proven, and should not be claimed:** `FinanceLedgerSeasonTest.theFurthestAdvancedClockWins`
-passes under the old unordered `findFirst()` too, because `findAll()` returned the season-3 row in this
-database. A test cannot reliably distinguish "unspecified order that happened to be right" from "specified
-order" — the mutation proves the calendar-year half, not the determinism half. The determinism fix is
-correct and free, but **its guard is the code, not a test.**
-
----
-
-### P0-9 — DONE, and it found three tests that were asserting a calendar assumption
-
-Seasons run **1, 2, 3 …** and there is no calendar year anywhere. Four test classes passed one anyway.
-
-| Class | Was | Mapped to |
-|---|---|---|
-| `NegotiationServiceTest` | `2026` ×11 | **1** — its own fixture sets `currentSeason = 1` |
-| `WeeklyFinanceServiceTest` | 2024 ×5, 2025 ×4, 2026 ×12 | 1, 2, 3 |
-| `PlayerContractServiceTest` | 2024 ×1, 2025 ×1, 2026 ×23 | 1, 2, 3 |
-| `StaffSponsorServiceTest` | `2026` ×18 | **3** — one value, no comparison to preserve |
-
-**The mapping preserves relative structure** where comparisons exist, so "this season against last season"
-still compares two different seasons. Collapsing everything to `1` would have broken those assertions while
-looking tidier.
-
-**Exit criteria, and the honest result:**
-- [x] Each fixture passes a season **number**, not a year — 73 call sites across four classes
-- [ ] ~~Each test still passes afterwards~~ — **three do not, and that is the finding the board predicted**:
-      `PlayerContractServiceTest` 2, `StaffSponsorServiceTest` 1. They were asserting a calendar assumption.
-      `WeeklyFinanceServiceTest` 9/9 green.
-
-**And a hypothesis of mine was wrong, which is worth recording.** `NegotiationServiceTest`'s remaining
-failure (`expected: <ACCEPTED> but was: <OPEN>`) looked like a season mismatch — contracts assigned to season
-`2026` while the clock sat at season `1`. Replacing `2026` with `1` **did not fix it.** So that failure is a
-**separate real defect in the accept-offer path**, not a fixture problem, and it is still open.
-
----
-
-### P0-10 — Re-scoped: remove only the proven dead legacy tactics chain
-
-The original scope was too broad. A fresh caller scan confirms `TacticsBridge`, `NewLogicTacticsService`,
-`newLogic.model.TacticRules`, `util.match.MatchContext` and `util.players.PlayerActionProbabilityModel` have
-no production callers, but `TeamTacticsProfile`, `FormationSlotCatalog`, `TacticsRules` and the simulation
-tactics package are live through `TeamTacticsService`, `RealSquadFactory`, `SimMatchService` and the replay
-path. The task is narrowed to the proven dead legacy classes; the live tactical profile and simulation
-engine stay in place.
+Every assertion on the international club-cup draw is an integration test against the real write path. **One
+criterion is still open:** a season observed in the database. It needs the app running with a world that
+has a finished season behind it.
 
 **Exit criteria:**
-- [x] Caller count re-verified immediately before deleting; live tactical classes were excluded
+- [ ] A cup drawn from a **finished** table, in the database
+- [ ] Group tables filling as matchdays are played
+- [ ] A knockout round advancing off real group standings
+
+## T-REST-6 — 🟠 P0-20 · four CTeam/Team id sites and the regression test that was never written
+
+`User.footballTeam` exists as a real FK and four paths now use it. The old name-join survives only as a
+labelled fallback for pre-FK accounts. **`findDistinctManagedTeamIds` is deleted and marked
+`@Deprecated`.**
+
+**Not done:** a dedicated regression test that fails if any of the four returns a `CTeam` id.
+
+**Exit criteria:**
+- [ ] One test class walking `APIController.myMatch`, `TeamController.getMatches/getSchedule`,
+      `CountryController.getLeagueMatches` and `NationalTeamAppointments`, asserting a `Team` id
+
+## T-REST-7 — 🟠 P0-3 · away-side tactics — claim contradicted by the code, verify before touching
+
+`TECHNICAL_OVERVIEW.md` §12.1 records *"Away teams still use home tactics during simulation (P0-3)"*.
+
+**The code says otherwise.** `MatchOrchestrator` has a production constructor taking `SideTactics`
+(`MatchOrchestrator.java:196`), and `SimMatchService` builds it with **both sides' own rules**
+(`SimMatchService.java:141-143`):
+
+```java
+new SideTactics(tacticsRules.forTeam(homeTeam.getId()),
+                tacticsRules.forTeam(awayTeam.getId()))
+```
+
+`SideTactics.forTeam()` returns the right side's rules and only falls back to home when away is null.
+
+**This task is therefore a verification, not a fix.** Either P0-3 is closed and the documents are stale,
+or there is a path that still passes a single `TacticsRules` — the 7-argument `SimMatchRunner` overload
+and `new MatchOrchestrator(state)` both do, and are used by diagnostics, launchers and exporters.
+
+**Exit criteria:**
+- [ ] Every **production** fixture path traced to its `MatchOrchestrator` constructor
+- [ ] If any path can reach a match with one side's rules, it is fixed and pinned
+- [ ] `TECHNICAL_OVERVIEW.md` §12.1 corrected either way
+
+## T-REST-8 — 🟠 P0-10 · the dead legacy tactics chain, not yet proven deleted
+
+Scope was narrowed to the **proven dead** classes only: `TacticsBridge`,
+`NewLogicTacticsService`, `newLogic.model.TacticRules`, `util.match.MatchContext`,
+`util.players.PlayerActionProbabilityModel`. `TeamTacticsProfile`, `FormationSlotCatalog`, `TacticsRules`
+and the simulation tactics package are **live** and stay.
+
+- [x] Caller count re-verified immediately before deleting; live tactical classes excluded
 - [ ] `mvn clean package` succeeds
 - [ ] The relevant test suite still passes
 
+**Note:** `TacticsBridge` is still present in the tree as of this restructure. See **T1-3**.
+
+## T-REST-9 — 🟠 P0-20 / domestic cup · one path still selects a cup globally
+
+**Decided and implemented:** option A — **one cup per country.** `CupFixtureSeeder` iterates every national
+cup for both the repair path and the scheduled draw, and international cup rows are excluded by scope.
+
+**Recorded as still not done:** live observation of all available country cups being drawn in a real world.
+
+**Exit criteria:**
+- [ ] Every national cup in the database has a round 1 with the entrants its own country produced
+
+## T-REST-10 — 🟡 P1-CUPS-1 · one criterion left: proven able to fail
+
+`SeasonCalendar` models four weekly slots on days 1, 3, 5, 7. League rounds stay on 3 and 7; days 1 and 5
+are friendly-capable.
+
+- [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return the slot index instead of the day, and
+      watch the day assertion fail
+
+## T-REST-11 — 🟡 P1-CUPS-4 · one criterion left: proven able to fail
+
+- [ ] **Proven able to fail:** remove one tier's bracket from the payload and watch the tab render it empty
+
+## T-REST-12 — 🔴 `Player.nationality` is null for 7,730 of 10,130 players
+
+`BotSquadGenerator:133` is the **only** place that sets it. `PlayerFactory`, which builds every actual club
+squad, never does.
+
+**Nothing reads the column today, which is exactly why it is a trap rather than a bug:** the next feature
+that needs "is this player eligible for X" will read `null` and silently refuse three players in four.
+
+Two options, none taken: set it in `PlayerFactory` and backfill the world from the club's country, or
+delete the column. **The first is honest** — a player's nationality should be fixed at creation and never
+follow him across a transfer — but it is a migration over ten thousand rows and it was not asked for.
+
+**Exit criteria:**
+- [ ] Owner ruling: populate or delete
+- [ ] If populated: `PlayerFactory` sets it and a backfill populates the existing world, both proven in the
+      database
+
+## T-REST-13 — 🟡 Loans · the happy path has never been run against the live database
+
+The refusals are real calls against the running app — wrong age, bot club, both with the endpoint's own
+409 sentence. **The successful path was deliberately not exercised**, because offering a player for real
+writes rows into the owner's season.
+
+`LoanServiceTest` covers offer, activate and terminate.
+
+**Exit criteria:**
+- [ ] Offer → accept → activate → terminate against the owner's database, with the rows inspected afterwards
+- [ ] Or: an explicit owner decision that the test suite is sufficient and the live run is declined
+
+## T-REST-14 — 🟡 Mobile · fixes measured before the build broke, never re-measured
+
+The iPhone 14 Pro Max pass (430 × 932) fixed four overflow defects. The measurements were taken **before**
+the application stopped building, because the owner's national-tournament refactor was mid-flight.
+
+CSS braces balance, the module parses, and the wrappers are the same mechanism already proven by
+`fm-squad-wrap` on the squad table. **It has not been re-measured in a browser.**
+
+**Exit criteria:**
+- [ ] Re-run the 430px pass on the four fixed panels
+- [ ] Every new T0 UI screen measured at 430px before it is called done
+
+## T-REST-15 — 🟡 Verification debt · three items claimed but never opened in a browser
+
+Each is a "not verified in a browser" line in a closed task. None is a code defect; all are claims resting
+on module execution and endpoint calls.
+
+| Item | What is unverified |
+|---|---|
+| `MatchPreviewService` | The preview page itself. 32 tests green, six failing against the old null stub — **and the page never opened** |
+| P2-20 forum / messages | A real click-through. `CommunityScreensRenderTest` exists and covers P2-20's screens, but the **nav between** forum and messages was verified by module execution only |
+| National tournament view | Groups, standings, results and bracket, opened from the World page in a browser |
+
+**Exit criteria:**
+- [ ] Each opened in a real browser, with the console-error assertion the repository already has
+
+## T-REST-16 — 🟡 UI gaps recorded in `TECHNICAL_OVERVIEW.md` §12.2
+
+| Gap | Detail |
+|---|---|
+| `playerStats` / `teamStats` routing | Needs verification against the intended screens. `stats-view.js` team stats was **deleted** on owner decision, so the route may now point at nothing |
+| Two classes styled but never emitted | `fm-qualifying-table tr.is-current-club` has a blue rule and **nothing emits it** — the manager's own club is not marked in the qualifying tables. `is-highlighted`, used by represented-country group tables, is **not defined in the stylesheet at all** |
+| `admin-view.js` unreachable handlers | `national-tournaments`, `national-ratings-reset`, `national-ratings-violations` have no button. **The third calls an endpoint that does not exist**; the real one is `/admin/national-ratings/offenders` |
+| Re-draw confirmation copy | Says *"Existing fixtures are left alone"* and does not mention that it **deletes every unplayed qualifying and tournament fixture** and refuses once a tie has been played |
+| Friendly invite action | The club-side button is not rendered even though the request service exists |
+
+## T-REST-17 — 🟡 `Replay failure` — a fixture with no teams is counted as simulated
+
+`AsyncSimulationRunner` returns early for a null home or away side and **then increments
+`simulatedCount` anyway**, so a match that was never played is reported as one that was.
+
+**Needs a decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status
+endpoint means, and the runner sits next to the simulation endpoints other work is in.
+
+**Exit criteria:**
+- [ ] Owner ruling: failure or skip
+- [ ] A fixture that was not simulated is never counted as one, and the status endpoint distinguishes them
+
+## T-REST-18 — 🧹 Dead code and owners' calls still parked
+
+| Item | Why it is not a task |
+|---|---|
+| Individual training focus per player | **Cancelled by the owner** |
+| Work permits / foreign limits | Built in full, then **removed by the owner** (`a6394f9`) |
+| Club Elo admin button | Zero reads showing `--` on an unrated world is deliberate — **zero is a rating a club can legitimately hold.** Whether it wants a button is an owner call |
+| `match_tick_states` | Dead: nothing writes, nothing reads, 0 rows. **Owner call to delete** |
+| `bb_leagues` / `BbLeagueRepository` | 0 rows, zero callers anywhere. Same question |
+| Basketball / American football / text football (old P2-15) | Per-mode work. `archive/BASKETBALL_PROGRESS.md` **predates the `newLogic` split — read the archive, then confirm against the code** |
+| Match engine realism (old P2-17) | The recorded realism numbers were measured against code that has since changed. **Re-baseline first**, then decide |
+
 ---
 
-### P0-11 — DONE: `nationalCup()` renamed, and the board stopped disagreeing with itself
+# 🟢 T0 — features we want and have not started
 
-**Contradiction 1 — resolved in code, board was stale.** The board called it *"owner-ruled but not
-implemented"*. It has been implemented since B2: `CupFixtureSeeder` picks the lowest-id cup with
-`Limit.of(1)`. The board was wrong, not the code.
+Drawn from the owner's specification and from [`CurrentStateAnalysis.md`](CurrentStateAnalysis.md). Every
+row was verified against the source, and the "what exists" column says exactly that — so a task is never
+mistaken for a rebuild.
 
-**Contradiction 2 — the name really did lie.** `nationalCup()` queried
-`CompetitionScope.INTERNATIONAL`. Renamed to **`primaryCup()`**, which is what it does: pick one cup, by
-lowest id. `INTERNATIONAL` is a property of how the rows are stored, not a claim about a continental
-competition, so a name asserting "national" was asserting something false at the call site where a reader
-would rely on it.
+## Ordering
 
-**One name deliberately left wrong, and documented rather than silently renamed.** `findFirstNationalScoped`
-is a generic scope filter — `InternationalFixtureSeeder` calls it too — so renaming it properly is a wider
-change than this task. Its javadoc and the `primaryCup()` javadoc now both say why the name is a
-misnomer and where the real explanation lives. Five call sites, one file.
-
-**Exit criteria:** [x] contradiction 1 corrected in documentation · [x] contradiction 2 resolved in code ·
-[x] board no longer disagrees with itself.
+**T0-BE-1 → T0-BE-5 → T0-UI-1 → T0-UI-4** is the spine of the product: without a tactic library there is
+nothing to pick per match, and without a per-match XI there is nothing for a condition to refer to.
+Everything in the tactics block depends on that spine being laid first.
 
 ---
 
-### P0-12 — ANSWERED 2026-10-04: keep `IDENTITY`, and bound retention before indexing
+## T0-BE — backend
 
-- **§4.1** — the `IDENTITY` generation type disables JDBC batching for **70 of 71 entities**, so
-  `batch_size=50` is dead code.
-- **§4.4** — `match_tick_states` says *"Decision needed… Do not index it as-is."*
-  **Answered by P1-1, 2026-10-03: the table is vestigial.** Nothing writes it, nothing reads it, it holds
-  0 rows, and replays are file-backed JSON with their own retention. **No index was created and none
-  should be.** Whether to delete the table and `MatchPersistenceService` is an owner call.
+### T0-BE-1 · A tactic library — more than one tactic per club
 
-Both are owner decisions. P1-1 no longer proposes an index on this table — it measured that the index
-would serve a query with no caller, so the §4.4 question dissolved rather than being answered.
+**What exists:** `TeamTacticsProfile` with a **unique constraint on `team_id`** — exactly one profile per
+club. `TacticsRulesProvider.forTeam()` loads it and caches per team id.
+
+**What is missing:** a club cannot hold a second tactic, let alone ten.
+
+**Tasks**
+1. `Tactic` entity: `team` FK, `name`, `formation`, `style`, `rulesJson`, `setPiecesJson`, `isDefault`,
+   `version`, `updatedAt`. One-to-many from `Team`.
+2. Migration: wrap the existing row as the club's first tactic, so **no club loses the tactics it has**.
+3. `TacticsRulesProvider.forTeam(teamId)` → `forTactic(teamId, tacticId)`. Keep the cache keyed per tactic.
+4. `TacticsProfileBackupService` keys on club name today; extend the file format to a list per club, and
+   **keep reading the old single-profile shape** — the tracked file is the owner's only durable copy.
+5. `evict(teamId)` becomes `evict(teamId, tacticId)`.
+
+**Exit criteria**
+- [ ] A club holds ten tactics, each with its own formation and rules
+- [ ] Every club that had a profile before the migration still has it, verified in the database
+- [ ] The backup file round-trips a club with ten tactics and a club with one
+- [ ] **Proven able to fail:** a test that reads the second tactic's `rulesJson` and would pass against a
+      provider that ignored the tactic id
+
+### T0-BE-2 · Per-match tactic assignment — up to three, with conditions
+
+**What exists:** nothing. `TacticalIntentEngine` holds **one** `SideTactics` reference for the whole match
+(`MatchOrchestrator.java:214`), and `restartManager` holds the same (`MatchOrchestrator.java:205`). There is
+no `MatchTactic` entity, no `tactic_assignment` table, and no condition model anywhere.
+
+**The owner's conditions:** always · leading by 1 · leading by 3+ · drawing · trailing by 1 · trailing by 3+.
+Max three tactics per match.
+
+**Tasks**
+1. `MatchTacticAssignment` entity: `fixture` FK, `tactic` FK, `priority` (1..3), `condition` enum,
+   `threshold` for the "3+" variants, `minuteFrom`.
+2. **Max three, enforced on write** — a fourth assignment is refused, not silently dropped.
+3. `TacticConditionEvaluator`: reads `(homeScore, awayScore, minute)` and returns the winning assignment's
+   `TacticsRules`. **Priority breaks ties**, so a "always" tactic and a "leading 2" rule cannot both fire.
+4. Make `TacticalIntentEngine` and `RestartManager` read the **evaluator** rather than a fixed reference.
+   `refreshTargets()` already runs every tick — the hook point exists.
+5. **Default tactic:** when a fixture has no assignment, fall back to the club's `isDefault` tactic, then
+   to the bundled `tactics_fallback.json`. **The manager forgetting is not an error state.**
+6. Invalidator: a tactic edited after a fixture was assigned — decide whether the assignment snapshots the
+   rules or references them. **Recommendation: reference**, so an edit reaches the match, and say so in
+   the entity javadoc.
+
+**Exit criteria**
+- [ ] Three tactics can be assigned to one fixture with three different conditions
+- [ ] A fourth is refused
+- [ ] The evaluator is a pure function and is tested as one — **no Spring, no repository, no clock**
+- [ ] A fixture with no assignment uses the club's default tactic
+- [ ] **Proven able to fail:** make the evaluator always return priority 1 and watch the condition tests go red
+
+### T0-BE-3 · Per-match lineup and bench
+
+**What exists:** `Lineup` has a `match` field (`@ManyToOne`). **Nothing ever writes it.** Both
+`TeamController` and `SimMatchService.loadLineup()` query
+`findFirstByTeamIdAndMatchIsNullOrderByIdDesc` — they explicitly want `match IS NULL`, the template.
+
+**The schema is already right. The writer and the reader are missing.**
+
+**Tasks**
+1. `MatchLineupService`: save a lineup for a fixture (11 starters ordered, up to 7 bench, formation).
+2. `SimMatchService.loadLineup()`: read the fixture's lineup first, template second, auto-pick third.
+3. **Default lineup** as a named concept — a club's template *is* the default, but the distinction must be
+   visible so the UI can say which one is in force.
+4. **The GK rule the owner specified:** a keeper may be substituted, but only by another keeper. `SubstitutionService.pickReplacement`
+   already enforces this by matching GK status. **Carry it to the UI** as a validation message rather than
+   a server error the manager reads after the fact.
+5. Availability filter: non-injured, not suspended, contract still at the club. **Note the latent defect
+   recorded in P2-7** — `getOrderedStartingPlayers()` returned join-table rows regardless of club
+   membership. Fixed there, but this is a second reader of the same table and it must be checked too.
+6. Squad-limit check on save: warn when the XI uses a suspended or injured player, do not block.
+
+**Exit criteria**
+- [ ] A lineup saved for one fixture is used for that fixture only, and the next fixture uses the template
+- [ ] A fixture with no lineup falls back to the template, then to auto-pick
+- [ ] **Proven able to fail:** assert the per-match XI differs from the template and that the template still
+      wins on a fixture with none
+
+### T0-BE-4 · Conditional substitutions — load the plan into the engine
+
+**What exists:** the engine contract is **fully built and unit-tested** — `ConditionalSubstitutionRules`
+with `Rule(triggerMinute, condition LOSING/DRAWING/LEADING/ANYTIME, playerOnId, playerOffId, status)`, and
+`MatchOrchestrator.java:654` already calls `conditionalSubs.onTick()` in the substitution precedence
+chain. `SubstitutionPlan` is a persisted model and `SubstitutionPlanController` is a working REST API.
+
+**What is missing:** `conditionalSubs.add()` is **never called from production.** The persisted plan is
+never loaded. The rules list is empty every match.
+
+**Tasks**
+1. `SimMatchService` reads the plan and calls `add()` per rule **before** the orchestrator runs.
+2. Validate on write: the named player is on the bench, the named player off is in the XI, the condition is
+   one the engine has.
+3. Rule status lifecycle: a plan edited after kickoff does not mutate a running match.
+4. Injury auto-sub already exists (`SubstitutionService.onTickInjuriesOnly()`) and needs **no change** — the
+   owner's rule "automatic if a player is injured and there is at least one player on the bench" is
+   already the behaviour.
+
+**Exit criteria**
+- [ ] A saved plan reaches the engine and fires — **proven by a match that ends with a substitution the
+      manager asked for and did not get**
+- [ ] A rule naming a player who is not in that XI is refused at save time, not at minute 60
+- [ ] **Proven able to fail:** deleting the `add()` loop turns the integration test red
+
+### T0-BE-5 · Day 6 — form and morale
+
+**What exists:** `WeekTemplate.DayKind.MORALE` and `GameDay.DAY_6` exist in the calendar. **No `DayJob`
+implementation triggers on day 6.** The calendar tab promises a manager something the server does not do.
+
+Form and morale are currently written by `MoraleService` from match results and by `RecoveryJob` as a daily
+zone compute. Neither is the day-6 settlement the template describes.
+
+**Tasks**
+1. `FormMoraleJob` — `key = "form-morale"`, day 6, hour 10, after `TrainingJob`'s day 4 and before day 7's
+   matchday.
+2. What it writes: weekly form drift from the last match, morale settlement from cumulative results,
+   morale decay for players who did not feature.
+3. Make it idempotent per `(season, week)` so the day cannot be stepped twice.
+4. Do not duplicate what `MoraleService.applyMatchToMoraleAndForm` already does per match — the job settles,
+   it does not re-derive.
+
+**Exit criteria**
+- [ ] Day 6 hour 10 runs and is visible on Admin → Jobs
+- [ ] Form and morale changed for players who played, and morale decayed for players who did not
+- [ ] Stepping to day 6 twice changes nothing the second time
+
+### T0-BE-6 · Background match generation, 30 minutes before kickoff
+
+**What exists:** `MatchdayJob` selects unplayed fixtures for the **current calendar slot** and hands them
+to `AsyncSimulationRunner`, which simulates each one to completion. Fixtures are created weeks earlier by
+draw jobs.
+
+**The owner's model:** the match is generated in the background shortly before kickoff, so the world is
+already resolved when the manager arrives at kickoff time.
+
+**Tasks**
+1. `MatchGenerationJob` fires **30 minutes before each slot's kickoff** rather than at it. The four slots
+   are 20:00, 19:00, 18:00 and 16:00, so the hours are 19:30, 18:30, 17:30 and 15:30 — **derive them from
+   `WeekTemplate`, never hardcode.**
+2. The kickoff gate in `APIController` (lines 289-329) currently decides whether **Watch** is enabled. It
+   becomes the second half of the feature: after generation, Watch opens; before it, it does not.
+3. **A match the manager wants to watch must not already be finished.** Decide: either the human's own
+   match is held back to kickoff while the rest of the slot is generated, or "watch" means the replay and
+   the copy says so. **This is a product decision — put it to the owner.**
+
+**Exit criteria**
+- [ ] Fixtures are generated 30 minutes before their slot, and the Jobs tab shows the trigger
+- [ ] Nothing generates twice if the clock is stepped through the same trigger
+- [ ] The owner's ruling on the human's own match is recorded before this lands
+
+### T0-BE-7 · Per-country kickoff times
+
+**What exists:** one `WeekTemplate` for **every** country — the file says so in its own comment. One
+timezone, `GameClockService.GAME_ZONE = "Europe/Belgrade"`.
+
+**The owner's rule:** the days of the week are the same everywhere; **only the kickoff time differs.**
+
+**Tasks**
+1. `Country.timeZoneOffsetMinutes` (or a `kickoffOffsetHours` on the country — **an offset is simpler than
+   a `ZoneId` here and is not wrong**, since the calendar is not wall-clock).
+2. `WeekTemplate` keeps one template; kickoff becomes `template kickoff + country offset`.
+3. `SeasonService.kickoffFor`, `NationalTournamentSchedule.kickoffFor` and `CupFixtureSeeder.matchDateFor`
+   all read the **home** country's offset, so a club's own fixture and its country's internationals agree.
+4. Daylight saving must **not** shift the game clock. An offset in hours cannot, which is the reason to
+   prefer it.
+
+**Exit criteria**
+- [ ] Two countries at opposite offsets have different kickoff hours on the same calendar day
+- [ ] The **days** are identical across all 48 countries
+- [ ] A season's fixtures do not drift when the host machine's timezone changes
+
+### T0-BE-8 · Post-match analytics from tick data
+
+**What exists:** match statistics, the pass-failure taxonomy, per-player ratings, and a **pre-match**
+prediction (`ScheduleInsightService`). **Nothing is computed from the tick data after the match.**
+
+**What is missing:** xG, xA, PPDA, field tilt, progressive passes, momentum.
+
+**Why this is the differentiator and not a nice-to-have:** the engine is a real spatial simulation, so all
+six are computable from **the same tick data that drives the animation** — the numbers and the pictures
+cannot disagree. Neither browser competitor can do this: Hattrick has seven sector ratings, Sokker has
+deliberately nothing. And our determinism makes an xG figure **recomputable and checkable**.
+
+**Tasks**
+1. `TickAnalyticsCollector` in the engine, alongside the existing `ProposalStatsCollector`.
+2. **xG** — shot location, distance, angle, defensive pressure and body position at the moment of the
+   strike. Calibrate against observed conversion before it is shown.
+3. **xA** — pass location, receiver position, whether the receiver was under pressure.
+4. **PPDA** — opponent passes in the final third, per team.
+5. **Field tilt** — share of passes and touches in the attacking third.
+6. **Progressive passes** — completed passes advancing a tenth of the pitch toward goal.
+7. **Momentum** — a rolling window over shot volume and field tilt, so a match can be *read*.
+8. **Every figure must be reproducible from the fixture seed.** That is the property neither competitor
+   has and the reason a stored number can be trusted.
+
+**Exit criteria**
+- [ ] All six computed from tick data, not from the result
+- [ ] **xG calibrated** against observed conversion — a team whose xG is 1.2 and whose goals are 4 is a
+      defect, not variance
+- [ ] Re-running the same fixture seed produces the same figures
+- [ ] Computed **before** `SimMatchService.persist` trims the event log, so the source is not lost
+
+### T0-BE-9 · Live streaming and skip-to-result
+
+**What exists:** the **replay viewer** — full 2D canvas and 3D, play/pause/seek/speed, player inspection,
+event overlays, file-backed and bounded. And the **live results desk** (`roundResultsTeletext.js`), which
+animates completed results as if live. Both work.
+
+**What is missing:** the simulation runs to completion synchronously (`SimMatchRunner.java:105`,
+`orchestrator.simulate(3600)`) and nothing is broadcast while it runs. Four WebSocket endpoints are
+registered and **dead** — no frontend connects, nothing broadcasts. No SSE, no STOMP. No skip-to-result.
+
+**Tasks**
+1. **Decide the product question first.** Is "watch live" watching a match that is being simulated now, or
+   watching the replay the moment it exists? The second is what exists and it is honest; the first costs a
+   streaming layer. **Put this to the owner before writing a line.**
+2. If streaming: broadcast tick batches from `MatchOrchestrator` through `MatchEventWSHandler`, which is
+   already written and already routes by match id. The frontend needs a client — **none exists**.
+3. Skip-to-result: the simulation runs on `@Async` and the UI polls a status endpoint. `simulateInBackground`
+   already returns counts; a status endpoint already exists at `/simulation/current-round/status`.
+4. **Cost, stated plainly:** the whole world's matchday is the thing that must stay fast. Streaming one
+   human's match is cheap; streaming 7,440 matches is not, and must never be attempted.
+
+**Exit criteria**
+- [ ] The owner's ruling on live-vs-replay is recorded
+- [ ] If live: a match streams while it simulates, and Skip-to-result works
+- [ ] If replay: the copy says so on the screen, and the dead WebSocket endpoints are deleted
+
+### T0-BE-10 · Friendly matches for national teams
+
+**What exists:** `NationalFriendlyRequestService` with 7 tests over **every week of the season**, and the
+owner's rule settled — a club and a nation have **no slot in common**, so week 6 day 1 is national-against-
+national. **No endpoint and no UI**, and an accepted fixture carries no competition, so the day-1 job will
+not find it.
+
+**Tasks**
+1. REST endpoints mirroring `FriendlyController`.
+2. Write `competitionType` / `matchType` on the accepted fixture so the day-1 job can select it.
+3. "Not compulsory" needs national-team support inside `FriendlyRequestService`, which is club-only today.
+
+**Exit criteria**
+- [ ] A national side can request, accept and play a week-6 day-1 warm-up
+- [ ] **Proven able to fail:** remove the `matchType` write and watch the fixture fail to be found
+
+### T0-BE-11 · Market friction — sale tax and the anti-daytrade component
+
+**What exists:** the **listing fee** is done (2.5% of asking price, human clubs only, P2-4). **The player
+can refuse to be listed** (P2-3, with two resolutions: upheld or paid at 5%). **The seller chooses which
+offer to accept** (P2-2).
+
+**Still missing:** the **sale tax**. Sokker's model is 8% base plus a second component scaling with time at
+the club, charged on the **profit** and not the full price — an explicit anti-speculation design. This is
+the cheapest remaining mechanic that turns the market into a conversation.
+
+**Tasks**
+1. `TransferTaxService`: base rate plus a time-at-club multiplier on profit.
+2. New `FinanceCategory.SALE_TAX`, so it appears on the Finances page under its own row.
+3. **The agent fee already exists** (2-5%). Do not double-charge — read it first and tax the remainder.
+
+**Exit criteria**
+- [ ] A sale writes one ledger line naming the base and the profit component
+- [ ] A player sold within weeks of arriving is taxed materially less than one sold after three years
+- [ ] The ledger line is proved by breaking the tax calculation
+
+### T0-BE-12 · Debt, interest and bankruptcy
+
+**What exists:** a nine-category ledger, gate income, sponsorship, prize money, wages, FFP bands **shown to
+the player**. No debt entity, no interest accrual, no bankruptcy path.
+
+**Why it matters now:** the analysis recorded the irony — we are starting to generate exactly the
+complaints both competitors attract. Hattrick's biggest administrative complaint is that the board hoards
+your money; ours does the opposite and has no floor at all.
+
+**Tasks**
+1. `DebtService`: a credit line per club, interest accrued weekly, a warning band, a bankruptcy threshold.
+2. Bankruptcy is **a state, not a delete** — the club keeps its history and its players.
+3. Board cash ceiling with a weekly release rate (T0-BE-13) is the natural pair: without a floor and a
+   ceiling, money is only a scoreboard.
+
+**Exit criteria**
+- [ ] Interest accrues weekly and is visible on the Finances page
+- [ ] Crossing the threshold produces a warning with a deadline, not an instant failure
+- [ ] Bankruptcy preserves the club, its history and its players
+
+### T0-BE-13 · Board cash ceiling with a weekly release rate
+
+**What exists:** `BoardExpectationService` computes trust 0-100 from FFP, standing, unhappy players and
+squad size, and shows it. **The board never acts on money.**
+
+**Tasks**
+1. A ceiling above which the board withholds, and a measured weekly release.
+2. The board's own money is also hoarded, so hoarding is punished symmetrically — Hattrick's rule and the
+   reason it works.
+3. Wire it to trust: a club that spends to the ceiling and a club that sits on it are not the same club.
+
+**Exit criteria**
+- [ ] A club above the ceiling cannot spend the excess, and the screen says why
+- [ ] The withheld amount returns on a stated schedule
+- [ ] A test proves hoarding and overspending both cost something
+
+### T0-BE-14 · The manager can be sacked
+
+**What exists:** `BoardExpectationService.trustScore()` is real. `TRUST_SACKING_REVIEW = 20.0` has **three
+references, all inside that one class.** `sackingReview` is a **read-only boolean** surfaced on the finance
+page. There is **no `BoardExpectation` entity, no persistence, no end-of-season review, no
+replacement-manager flow.**
+
+**A number the player can see that nothing responds to is worse than no number**, because it invites the
+expectation of a consequence.
+
+**Tasks**
+1. `BoardExpectation` entity: trust, per-season history, the expectations set, and the objectives.
+2. End-of-season review: trust decays across seasons, objectives are set, and the outcome is a decision.
+3. Sacking: the club is released to the pool, another manager can be assigned, the season's record survives.
+4. Trust must change for **reasons the player can see** — results, finances, squad, supporter mood.
+
+**Exit criteria**
+- [ ] Trust persists across seasons and moves for stated reasons
+- [ ] A manager below the threshold at the review is removed, and the club becomes playable again
+- [ ] A manager who is sacked is told why, with the numbers
+
+### T0-BE-15 · Pre-match tactical preview
+
+**What exists:** `MatchPreviewService` computes a real prediction — the fix landed, 32 tests, competition-
+agnostic. **`MatchController/{id}/preview` returns `Map.of()`** — an empty stub, still.
+
+The owner calls this *"Hattrick's single best idea"*, and it is also **the cheapest way to make the tactics
+work visible on day one**: a manager who cannot see that his shape changed cannot believe that it did.
+
+**Tasks**
+1. The preview endpoint returns the real prediction.
+2. **Both sides' shapes**, from their own profiles, so it is a test of the wiring rather than a display of
+   one club.
+3. Sector ratings **as the lineup is built** — the manager sees the effect of each change, not a summary
+   at the end.
+
+**Exit criteria**
+- [ ] The endpoint returns data, not `Map.of()`
+- [ ] Both sides' shapes are shown, from their own tactics
+- [ ] Changing a lineup changes the ratings **on screen, before kickoff**
 
 ---
 
-# 🟠 P1 — performance
+## T0-UI — frontend
 
-The world grew **48× in five days**. Everything here is about the code that was written for one country
-meeting 14,880 of them.
+Every T0-UI task has a **430px mobile pass** as part of its exit criteria. The repository has already lost
+a card to a table that fitted on desktop and vanished on a phone.
 
-**Every task in this category must state a before and after measurement.** A P1 task with no number is not
-finished. Where a number is already known it is given here — do not re-derive it, but do re-confirm it if
-the code near it has changed.
+### T0-UI-1 · The tactic library
 
-**Where this category stands: P1-1, P1-3, P1-4 and P1-7 are done. P1-2 is owner-gated. P1-5 and P1-6 are
-open.** Three of the four finished tasks overturned what this board said — two proposed indexes had no
-query behind them, and a third made the hot daily job 68% slower — so **read the measurements, not the
-task descriptions.** Two proposed pieces of work were measured and deliberately dropped, and both are
-recorded as dropped rather than quietly deleted.
+Save, rename, duplicate, delete and order tactics; set the default; see at a glance which one a fixture
+will use.
 
-### Measured already — do not redo
+- [ ] List of tactics with formation, style and version
+- [ ] Create, rename, duplicate, delete
+- [ ] Set default — **exactly one, enforced**
+- [ ] Delete is refused while a tactic is assigned to an unplayed fixture, and the refusal names the fixture
+- [ ] `authFetch` on every call, `response.ok` checked on every one
+- [ ] 430px pass
+
+### T0-UI-2 · Per-match tactic selection
+
+On the fixture screen: pick up to three tactics and set the condition on each.
+
+- [ ] Up to three, with the fourth refused **on screen**, not after a save
+- [ ] Condition dropdown per tactic: always · leading 1 · leading 3+ · drawing · trailing 1 · trailing 3+
+- [ ] Priority is visible and reorderable, because priority breaks ties
+- [ ] A preview line in plain words: *"Losing by 2 or more → 4-2-3-1 high press"*
+- [ ] A fixture with nothing set says **"your default tactic will be used"** — the manager forgetting is a
+      normal state, not an error
+- [ ] 430px pass
+
+### T0-UI-3 · Per-match lineup and bench
+
+Drag eleven starters and up to seven substitutes onto the formation, with the bench and the reasons a
+player cannot be selected.
+
+- [ ] Drag eleven onto the formation; the rest go to the bench, capped at seven
+- [ ] Injured, suspended and out-of-contract players are **shown with the reason**, not hidden
+- [ ] The goalkeeper constraint is a **message while building**, not a server error afterwards
+- [ ] "Use my default lineup" as one action
+- [ ] The fixture screen shows which XI is in force — per-match or template
+- [ ] 430px pass
+
+### T0-UI-4 · Substitution conditions
+
+The engine contract is built; this is the screen that feeds it.
+
+- [ ] Per-rule: minute, condition, player on, player off
+- [ ] The bench is a dropdown, so a rule cannot name someone who is not there
+- [ ] A plain-words summary of every rule, because a condition set is easy to get wrong and hard to read
+- [ ] **Injury auto-sub is stated as automatic**, since it is already the behaviour
+- [ ] Editing after kickoff is refused, with the reason
+- [ ] 430px pass
+
+### T0-UI-5 · Live match panel, or honest copy
+
+- [ ] If streaming lands: the live view plus **Skip to result**
+- [ ] If not: the screen says **"the match is simulated at kickoff — watch the replay"** instead of
+      implying a live feed that does not exist
+- [ ] Either way, no screen may imply real-time where there is none
+
+### T0-UI-6 · The analytics panels
+
+- [ ] xG and xA per side, with the shot map
+- [ ] PPDA and field tilt as two numbers with a plain-words reading
+- [ ] Progressive passes and a momentum strip across the 90 minutes
+- [ ] **Every number carries its own explanation.** A number the manager cannot interpret is a number they
+      will not act on
+- [ ] 430px pass
+
+### T0-UI-7 · Friendly requests for national teams
+
+- [ ] Request, accept and decline a week-6 day-1 warm-up
+- [ ] **Optional is stated as optional** — the panel says what not playing costs, which is nothing
+- [ ] The club-side invite button that exists in the service but is never rendered
+
+### T0-UI-8 · Pre-match preview showing both shapes
+
+- [ ] Both sides' shapes side by side, from their own tactics
+- [ ] Sector ratings that move **as the lineup is edited**
+- [ ] 430px pass
+
+---
+
+# 🟠 T1 — existing features that are incomplete or wrong
+
+Not new work. Work on something already built that does not do what it claims.
+
+## T1-1 · 🔴 `ConditionalSubstitutionRules` is dead in production
+
+Covered by **T0-BE-4**. Listed here as well because the defect class matters more than the task: **an
+engine contract with ten green unit tests and zero production callers reads exactly like a working
+feature.** It was believed covered for three sprints.
+
+**Exit criteria:** the contract fires in a real match, proven by a substitution that happened because of it.
+
+## T1-2 · 🔴 `SubstitutionPlan` is persisted and never read
+
+The same defect, one layer out. A `SubstitutionPlan` row survives a restart and is invisible to every code
+path. Covered by **T0-BE-4**.
+
+## T1-3 · 🔴 `TacticsBridge` and `NewLogicTacticsService` are dead code
+
+| Class | State |
+|---|---|
+| `TacticsBridge` | `fromRuntimeMap()` converts a runtime rule map into `TacticRules`. **Zero callers.** The archive notes this bridge was written and left unwired — the same failure mode, duplicated |
+| `NewLogicTacticsService` | `loadTacticRules(teamId, formation)` **discards both of its own arguments.** Zero callers |
+
+Both were named as *the* bridge this feature needed, and neither is wired. **Decide: wire or delete.** They
+are covered by **T-REST-8** for the deletion and **T0-BE-1** for the wiring, and this task exists so the
+decision is recorded once rather than three times.
+
+**Exit criteria:** both are either wired into the T0-BE-1 path or deleted, with the caller count re-verified
+**immediately before** deletion
+
+## T1-4 · 🟠 Six tactics sliders have zero readers
+
+`TeamTacticsProfile` carries `aggression`, `defenceLine`, `pressing`, `possession`, `counterAttack` and
+`ballControl`. **Zero readers in `src/main`.** They are stored and never used. The archive's position was
+that the product should ship **both** models — the grid for a manager who thinks in geometry, sliders for
+one who does not — which means both need consumers.
+
+**Exit criteria:** each slider changes something observable in a match, **or is removed.** A stored field
+nobody reads is a lie in the data model.
+
+## T1-5 · 🟠 `mirrorWeHaveBallRules` overwrites the defensive shape
+
+`TeamTacticsService` mirrors `WE_HAVE_BALL` onto `OPPONENT_HAS_BALL` on every save, and `DefensiveShape`
+derives the out-of-possession shape arithmetically. **This is an owner decision, not a defect** — but it
+means the editor's out-of-possession data is unreachable, and the current source of truth is arithmetic in
+`DefensiveShape` rather than anything the manager authored.
+
+**Exit criteria:** the decision is written down in the entity's javadoc, and the UI says which shape is in
+force. **Do not "fix" the mirroring** — see the traps.
+
+## T1-6 · 🟠 Formation variety — verify, then close
+
+The archive records *"9 in catalog, 1 applied"*. **The code says the formation is applied:**
+`RealSquadFactory.slotOrderFor(formation)` reads the catalog and assigns role keys from it, and
+`TacticsRules.anchorsFor(formation)` reads the right anchor cells. `SimMatchService.formationOf()` prefers
+the lineup template, then the tactics profile.
+
+**So this is a verification task, not a defect.** Either all nine formations work — which needs a test per
+formation, not one test on 4-4-2 — or the claim is stale.
+
+**Exit criteria:** one test per formation in the catalog, asserting the eleven role keys it produces
+
+## T1-7 · 🟠 `MatchdayJob` issues one query per competition
+
+`MatchdayJob.java:91-98` calls `fixtures.findUnplayedOnDay(...)` **inside** a `flatMap` — once per matching
+competition, returning the identical set every time. Only the filter differs.
+
+`CompetitionType.CUP` now matches the national cup **plus fifteen continental cups**, so a cup matchday
+issues **sixteen identical full-table queries**, and it worsens with every tier added.
+
+**Exit criteria:** one query, filtered in Java. Measured, not asserted.
+
+## T1-8 · 🟠 `buildPlayoffSummary` can disagree with what was applied
+
+`SeasonService:910-918` names relegation via **literal indices 8 and 9**, while
+`applyPromotionRelegationForLeague` computes the same thing dynamically from `expectedTeams` and
+`movementSlots`. The apply side became dynamic; the summary did not, so **for any league that is not exactly
+ten clubs with two child leagues, the player-facing summary names the wrong clubs.**
+
+**Exit criteria:** the summary reads the same computed positions the apply side uses
+
+## T1-9 · 🟡 `StaffSponsorService.seedAllClubs` has a real N+1
+
+Recorded and deliberately left. Reading the world is the point of a seeding path, so **tier 3 is
+acceptable** — but this one is a genuine `1 + 14,880` inside the loop, which is a different shape from
+"the seed needs the data".
+
+**Exit criteria:** one query for the set, not one per club
+
+## T1-10 · 🟡 Loaders consume JSON without checking `response.ok`
+
+Several loaders `await response.json()` before checking the status, so a 404 escapes to the router and a
+page becomes a generic **API Error** card. `pages.js` is the router every page goes through.
+
+**Exit criteria:** every loader checks `response.ok`, and a grep for the pattern returns nothing
+
+## T1-11 · 🟡 `JobStatusService.report()` reads the whole `job_run` table
+
+The entire table is read into memory on every `GET /admin/jobs`, then re-filtered per job in Java. The
+table grows with clock movement — roughly twenty rows a game day. Bounded now, unbounded later.
+
+**Exit criteria:** a per-key aggregate query. **Measured**, since this is a hot admin path.
+
+## T1-12 · 🟡 `GoalEventRepository`'s season-wide variant walks every match with its blob
+
+It backs top scorers, top assists and the club milestone leaders. Survivable only because P1-7b cut the
+blob 49×. **This is the reason it is not a P0, and the reason it is not free.**
+
+**Exit criteria:** measured against a full-scale season before anything changes
+
+## T1-13 · ✅ DONE 2026-10-09 — the dead CSS class was a symptom of a dead page
+
+`is-highlighted` was recorded as *"used by the represented-country group tables to mark the country being
+viewed, not defined in the stylesheet at all."* **Both halves were true, and the class was not the defect
+— the page emitting it was gone.**
+
+### `renderRepresentedCountry` was called and defined nowhere
+
+`loadCountryPage:759` calls `await renderRepresentedCountry(mainContent, countryIso)`. **The function does
+not exist anywhere in the static tree.** Nor do `groupStandingTable`, `ordinal` or `formatNumber`.
+
+**It was lost in the commit that fixed a bigger version of this same bug.** `73aafa6` — *"P1-CTRY-1: a
+Clubs tab, and a country page that had been DEAD"* — restored `loadCountryPage` after `P0-PREV-1` deleted
+it, and re-introduced the call, but not the function. The commit message says it restored *"209 lines, the
+one function, not 458 lines and half the file."* **The one function was `loadCountryPage`. The second was
+left behind.**
+
+**The crash was reachable by an ordinary click.** World page → any national competition → a group table →
+**every country name is a `.js-country` button** (`national-tournament-view.js:26`) → `openCountry` →
+`loadPage('country', { simulatedCountry })` → `renderRepresentedCountry` → **`ReferenceError`**.
+
+**And it was uncaught.** The call sits *outside* `loadCountryPage`'s try block, so it propagated out of the
+page entirely. A manager clicking their own nation in a World Cup group got a **blank page**, not an error
+card.
+
+**Why nothing caught it.** All six tabs green, the whole suite green, `node --check` parses. The harness
+written on 2026-10-08 for exactly this class — it loads the real module in Node because *"a
+`ReferenceError` inside a template string needs an engine"* — drove **six tabs and never this path**,
+because the path is not a tab.
+
+**Landed:**
+- [x] All four functions recovered from `51edd45~1`, restored before `loadCountryPage`
+- [x] Represented path added to the Node harness, all three endpoints it reads populated — so a missing one
+      cannot pass by rendering nothing
+- [x] **`is-highlighted` defined in the stylesheet.** Same rule as `is-current-club` and deliberately so:
+      both answer "which row is me?", in two different tables
+- [x] The harness **fails** on a missing mark rather than logging it — a row marked with a class the
+      stylesheet does not define looks identical to one marked correctly on screen
+- [x] Two Java tests: the path renders, and the country being viewed is marked
+- [x] **Proven able to fail:** removing the class turns **2 of 5 red**; removing the function turned the
+      harness red with `renderRepresentedCountry is not defined` **before any fix was written**
+
+**`is-current-club` is still open** and is deliberately not in this task: `CountryController.qualifyingRow`
+puts **no `teamId`**, so the frontend cannot mark the manager's club without matching on **name** — the join
+that produced four defects in this codebase. It needs one field.
+
+**The lesson, and it is the second time this file has done it:** a function can be deleted by a commit that
+is *about* restoring the file, and every signal stays green. Only an engine driving the path a user can
+actually reach finds it — which is why the harness now drives it, and why `theHarnessCanFail` asserts it
+drives `simulatedCountry` at all.
+
+## T1-13b · 🟡 `is-current-club` needs one field, and it is not optional
+
+The rule exists (`inset 3px 0 0 #4a9eff`) and **nothing emits it.** The manager's own club is unmarked in
+his own qualifying race.
+
+`CountryController.qualifyingRow:1241` sends `teamName`, `position`, `points`, goals and `qualifies` —
+**and no `teamId`.** The frontend therefore cannot compare anything, and the alternative is comparing
+**names**, which this codebase has been burned by four times (`isUserMatch`, the ZOX fixture-id guess, the
+report's per-side attribution, `APIController.myMatch`).
+
+**Tasks:** put `teamId` on the qualifying row · pass the manager's team id into the country view as a dep ·
+build the class list rather than the current `class="is-qualified"` assignment, which **overwrites** rather
+than adds · one test per combination of qualifying and own-club.
+
+**Exit criteria:**
+- [ ] A qualifying row carries its club id
+- [ ] The manager's own club is marked in all three cups across all five tiers
+- [ ] A club that is both qualifying and the viewer's own carries **both** classes
+- [ ] **Proven able to fail:** removing the `teamId` from the payload turns the test red
+
+## T1-14 · 🟡 The `teamStats` / `playerStats` routes point at deleted things
+
+`stats-view.js` team stats was **deleted** on owner decision as "a fourth, emptier presentation of
+`/milestones`". The router may still name the route.
+
+**Exit criteria:** every name in the `loadPage` switch resolves to a screen that exists. **A route name
+existing does not prove a screen exists.**
+
+## T1-15 · 🟡 `advanceHour` and `advanceWeek` are self-invocations
+
+`GameClockService.advanceHours` is `@Transactional` and calls `advanceHour()` — a self-invocation, so the
+proxy is bypassed. `advanceHour` is itself `@Transactional` and is likewise self-invoked, so its annotation
+is inert. **`advanceWeek` is therefore 168 separate transactions**, each committing and each calling
+`jobRunner.runDue` in between. A crash at step 100 leaves the clock at week+5-days with 100 hours of jobs
+applied and 68 not, with no reconciliation pass.
+
+`JobRunner.java:56-60` writes a long comment identifying exactly this trap, and is then walked into one
+layer up.
+
+**Exit criteria:** the hour step runs in the caller's transaction, or the partial application is recoverable
+
+---
+
+# 🟡 T2 — performance and optimisation
+
+**Every task here must state a before and after measurement.** A T2 task with no number is not finished.
+Where a number is known it is given — do not re-derive it, but re-confirm it if the code near it changed.
+
+**The dev database cannot measure a T2 task.** `match` holds 155 rows. A sequential scan of 155 rows is
+the correct plan and will confidently report "no problem" about a query that costs five seconds at full
+scale. Every index added here was measured in a throwaway `sokker_bench` database built to those numbers.
+
+## Already measured — do not redo
 
 | Change | Before | After | Commit |
 |---|---:|---:|---|
 | Daily recovery zone-load read *(155-match dev database)* | 21.0 ms | **10.8 ms** | `d95da9d` |
 | Weekly rollover squad reads (30 clubs, 3 listings) | 180 queries | **0** + 1 bulk | `e310856` |
-| Four fixture endpoints: game week used as a round | 155 fixtures for every week and day | correct matchday | `7374c69` |
 | League top scorers / assists *(89,280-match season)* | 158.7 ms | **0.19 ms** | `e9142ed` |
 | Club match history, played, ordered *(same)* | 170.3 ms | **0.26 ms** | `e9142ed` |
 | Club page, all matches *(same)* | 140.6 ms | **0.20 ms** | `e9142ed` |
 | One week of a season *(same)* | 156.4 ms | **27.8 ms** | `e9142ed` |
-| Club Elo replay — 155 matches, with the 742 KB event log | 443–554 ms | **6.5–11.2 ms** | `6e63831` |
-| `event_json` written per match | 840,136 B | **17,001 B** | `6e63831` |
-| A match's 198 zone loads — **no index created, query has no caller** | 629 ms | — | `e9142ed` |
-| Recovery read, one matchday *(17.7M-row table, 17 KB blobs)* | 6,173 ms | **~539 ms** | `513f738` |
+| Club Elo replay — 155 matches, 742 KB event log | 443–554 ms | **6.5–11.2 ms** | `6e63831` |
+| `event_json` per match | 840,136 B | **17,001 B** | `6e63831` |
+| Recovery read, one matchday *(17.7M-row table)* | 6,173 ms | **~539 ms** | `513f738` |
 | International Elo replay — whole-world reads | 1 + 3 × matches | **1** | `379cb12` |
 | Weekly squad rollover — squad reads | 1 + 14,880 | **2** | `379cb12` |
 | AI friendly pass — week reads, per friendly week | ~59,520 | **2** | `379cb12` |
-| `/train-all` response | every player as JSON | **`{"trained": n}`** | `379cb12` |
-| Club milestone page — season event-log reads | 2 | **1** | `6e63831` |
 | Club page blob fetched and discarded | 10 MB | **204 KB** | `6e63831` |
+| Pyramid seeding existence check | 14,880 round trips | **48** | — |
 
 **Read the scale column, because it is not uniform.** The first three rows were measured on a 155-match
 dev database. The `e9142ed` rows on a full 89,280-match season, and the `513f738` baseline on the same
-season with `event_json` at its **real** 17 KB width — which is why it reads 6,173 ms where `e9142ed`
-recorded 4,441 ms for a query that looks identical. **Same query, different harness.** A number is only
-comparable to a number measured the same way.
+season with `event_json` at its **real** 17 KB width. **Same query, different harness.**
 
----
+## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
-### P1-1 — DONE. Four indexes on `match`. Two of the three claims on this board were wrong.
+`IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.
 
-**Landed:** `ix_match_competition_season`, `ix_match_season_week`, `ix_match_home_team_date`,
-`ix_match_away_team_date`. Declared on the `Match` entity, with `tools/create-match-indexes.sql` for a
-database that already has rows. Measurements and full `EXPLAIN` plans in `kanbanProgress.md`.
+**Q1 was answered: keep `IDENTITY`** (option B). No schema change on 14,880 clubs' worth of data, and the
+honest partial is taken. **T2-2 stays blocked and should say so rather than be re-attempted.**
 
-| Query | Where it runs | Before | After |
-|---|---|---:|---:|
-| `findByCompetitionIdAndSeasonYear` | top scorers / assists, **request path** | 158.7 ms | **0.19 ms** |
-| `findByHomeTeamIdOrAwayTeamId...PlayedTrue...OrderByMatchDateDesc` | club match history, **request path** | 170.3 ms | **0.26 ms** |
-| `findByHomeTeamIdOrAwayTeamId` | club page, **request path** | 140.6 ms | **0.20 ms** |
-| `findBySeasonYearAndWeekNumber` | `GoalEventRepository`, 12× a season job | 156.4 ms | **27.8 ms** |
+The cost is that every write path that wants to batch cannot, which is why T2-2, T2-4 and T2-5 all become
+slower rather than faster. That is the price of the decision and it should be recorded as one.
 
-Measured on a full-scale season — **89,280 matches** — in a throwaway database, not on the 155-row dev
-table where a sequential scan is the correct plan and proves nothing. Write cost: **+16.8 µs per match
-row**, +125 ms per matchday at 7,440 matches, 24 MB per 89,280 matches.
-
-**What the board got wrong, all three checked against the source:**
-
-1. **`match_tick_states` — refuted. Nothing writes it and nothing reads it.** `MatchPersistenceService`
-   is its only writer and has **zero callers**; the table holds **0 rows**. Replays are file-backed
-   JSON under `app.replay-dir` with their own retention. **A `(match_id, tick)` index was not created
-   and P1-5's "~900 rows per match" is void** — growth is zero. This also settles **P0-8 §1.4** and
-   **P0-12 §4.4**: no decision needed, the table is vestigial. Deleting it is an owner call.
-2. **`player_zone_load(match_id)` — refuted, twice.** `findByMatchId` has **no caller in `src/main`**,
-   only one test; and adding the index made the one query that *does* run on that table **68% slower**
-   (4,441 ms → 7,436 ms) because it flips a hash join the planner wants into index probes it does not.
-   See P1-3, which now owns the real fix.
-3. **"Every zone-load recovery query is a seq scan on `match`" — true and irrelevant.** That scan costs
-   **112 ms of a 5,318 ms query**: 2%. Indexing `match(match_date)` changed the total by less than the
-   noise. The cost is on the other table.
-
-**`MatchIndexDeclarationTest` guards this.** It asserts the four names and their column order, and
-fails on a fifth index until that one has been measured too. Proven able to fail: swapping
-`competition_id, season_year` and adding an unmeasured fifth both fail it, and both messages print.
-
----
-
-### P1-2 — `ZoneLoadRecorder` writes 198 rows per match, one at a time
+## T2-2 · `ZoneLoadRecorder` writes 198 rows per match, one at a time
 
 22 players × 9 zones, each row saved individually. There is already a unique index on
-`(player_id, match_id, zone)`, so the rows are known to be distinct — the batch is safe to attempt.
+`(player_id, match_id, zone)`, so the rows are known to be distinct — **the batch is safe to attempt.**
 
-**This is gated on P0-12 §4.1**: `IDENTITY` disables JDBC batching, so a batch insert may not help until
-the generation type is addressed. **Establish that first** rather than writing the batch and measuring no
-change.
+- [ ] **BLOCKED while `IDENTITY` stands** (T2-1). Recorded as blocked, not retried
+- [ ] When unblocked: rows and elapsed time measured before and after
 
-**Q1 — `IDENTITY` disables batching: keep it (option B).** No schema change on 14,880 clubs' worth of data,
-and the honest partial is taken. **P1-2 stays blocked** and should say so rather than be re-attempted.
+## T2-3 · `MatchdayJob` — sixteen identical full-table queries
 
-**Q2 — `match_tick_states`: retention first, then the index (B then A).** Unbounded growth is the real
-problem; the index question is smaller once the table is bounded. P1-5 is therefore now **ahead of** P1-1's
-index proposal, not beside it.
+See **T1-7**. It is on this board twice because it is a **performance** defect and a **correctness** one:
+a query issued sixteen times returns the same set, and the number grows with every tier added.
 
-**Exit criteria:**
-- [ ] Rows-per-match and elapsed time measured before and after — **blocked while `IDENTITY` stands**, and
-      recorded as blocked rather than retried
-- [ ] If `IDENTITY` blocks it, that is recorded and the task stops — it is P0-12's to unblock, not this
-      task's to work around
+**Exit criteria:** one query. Measured query count, not milliseconds.
 
----
+## T2-4 · The static world build — ~43,000 inserts for 14,260 clubs
 
-### P1-3 — DONE. The read pages, and the index P1-1 rejected is the one that mattered
+Already improved substantially: per-country `REQUIRES_NEW` (so a failure at country 40 loses 40 countries
+rather than all 48), one read and one `saveAll` per division instead of two queries and one INSERT per
+club. **The remaining cost is the rows themselves** — about a country a minute. Faster, visible, resumable,
+not instant.
 
-**The board's version of this task was answered, not open:** `findByLastPlayedAtIsNotNull()` has no caller
-any more, so there is no `last_played_at` index to add. What was left was the read itself, on the wrong
-table.
+- [ ] The remaining cost is stated against a target, not against "it used to be worse"
+- [ ] Where it runs is a design question, not a performance one: **the world is being built implicitly
+      inside a matchday job** while a **Seed other nations** button exists for exactly that work. Owner
+      decision.
 
-| one matchday's recovery read, 89,280-match season | before | after |
-|---|---:|---:|
-| elapsed | **6,173 ms** | **~539 ms** |
-| rows read | 17,677,440 | 1,473,120 |
+## T2-5 · `JobStatusService` reads the whole `job_run` table
 
-**Three things had to be right, and two of them were not:**
+See **T1-11**. ~20 rows a game day, unbounded later.
 
-- **`player_zone_load(match_id)` is landed here, and P1-1 was right not to land it then.** Unpaged it is a
-  68% regression; paged it is what makes the read cheap. The board was right and the fix was incomplete.
-- **How the ids are passed changes the plan 80×.** `IN (SELECT … LIMIT 500)` is a 5,020 ms Hash Semi Join;
-  `IN` with 500 bound values — what JPQL emits — is a **44 ms** Parallel Bitmap Heap Scan. **Do not
-  refactor it into a subquery.** It looks identical and costs 100×.
-- **The keyset is `(match_date, id)`, not `id`.** Id-only paging cannot use an index on the date, so the
-  page query heap-filtered everything before the page: **206 ms a page against 0.35 ms**.
+## T2-6 · `GoalEventRepository`'s season-wide blob walk
 
-**Page size measured, not chosen:** 500 / 1,000 / 2,000 all land at ~530–550 ms for the window;
-**5,000 falls off a cliff to 6,478 ms** because the index stops being used. 500 shipped.
+See **T1-12**. **Measured before changed** — the blob was cut 49×, which is the only reason this is a T2
+rather than a P0.
 
-**`ix_match_date_id` is a fifth index on `match`, reversing a P1-1 measurement on new evidence.** P1-1
-proposed `match(match_date)`, measured it, found no benefit and did not create it — correct for the query it
-was measured against, since that query spends 98% of its time on the zone-load side. Paging made it
-necessary. **An index can be worthless and then become necessary when the query beside it changes shape**,
-so "measured, no benefit" is not the settled sentence it looks like.
+## T2-7 · `StaffSponsorService.seedAllClubs` — 1 + 14,880
 
-**Recovery still happens — counted, not timed.** The guard asserts **every match in the window is asked for
-exactly once**: a repeated row double-counts a player's recovery, a skipped one under-counts it, and
-neither throws. An unbounded paging loop would have been worse than a failing job, and stopping quietly
-would credit less work than the players did while logging a plausible number — so the job now **throws**
-after 200× a season's pages, with the reason in the message.
+See **T1-9**. A genuine N+1 on a seeding path.
 
----
+## T2-8 · Scale-sensitive read paths at 48 countries
 
-### P1-4 — DONE, four of nineteen. Every one of the board's five named candidates had drifted.
+`match`, `match_tick_states` and `player_zone_load` remain scale-sensitive. **Three of the four indexes
+already landed were measured on the 89,280-match harness, not the dev table.**
 
-The pattern: a repository call returning a whole table **inside a loop or on a request path**. Nineteen
-sites matched. Measurements and guards in `kanbanProgress.md`.
+`player_zone_load`'s unique index leads with `player_id`, so `findByMatchId` cannot use it — which is why
+paging made it necessary and why `IN` with bound values must never be refactored into a subquery
+(5,020 ms against 44 ms, same rows).
 
-| Fixed | before | after |
-|---|---:|---:|
-| `NationalRatingService` — whole-world reads per Elo replay | 1 + 3 × matches | **1** |
-| `SquadEnvironmentService.advanceWeek` — squad reads per week | 1 + 14,880 | **2** |
-| `FriendlyRequestService.runAiFriendlyWeek` — week reads per friendly week | ~59,520 in the first loop | **2** |
-| `TrainingController /train-all` — response body | every player entity as JSON | **`{"trained": n}`** |
+**Exit criteria:** every remaining hot query measured at full scale, in the bench harness
 
-**Every one of these was invisible to a clock** — 48 countries is a small table, and the loop asking for it
-costs more than the query. The guards count queries, not milliseconds.
+## T2-9 · `match_tick_states` is dead and grows zero
 
-**The board's five candidates, re-verified against source:**
+Nothing writes it, nothing reads it, 0 rows, and its only writer has no callers. **Do not index it.**
+Deleting it is an owner call — see **T-REST-18**.
 
-| Candidate | What is actually there |
-|---|---|
-| `SeasonService:553` `teamRepository.findAll()` | **Gone** — the fatigue work replaced it; `:610` says so in a comment |
-| `SeasonService:605` `playerRepository.findAll()` | **Gone**, same |
-| `SeasonService:1116` `competitions.findAll()` loop | **Gone** — no `findAll()` left in the file |
-| `NationalRatingService:239` `countries.findAll()` | **Fixed** — three per match, and `world` was already loaded at `:102` |
-| `CupFixtureSeeder:129` / `:271` | **Never an N+1.** One query filtered in Java; `:142` is the same |
+## T2-10 · The basketball and American-football N+1
 
-**Recorded, not fixed, with the reason:**
+`BbMatchSimulationService.savePlayerStats` and its American-football twin do **four queries per player per
+match** — `findById`, `save`, a season-stats lookup, `save` — which is **88 round trips a match**. Measured
+at **0.1745 ms** per round trip on this machine, so **15.4 ms a match** of pure overhead.
 
-- **Tier 2, once per matchday or season** — `MatchdayJob:87` (already carries a *"One query, not one per
-  competition"* comment from a previous fix), `LeagueTableReconciliationService:98` (its inner read is now
-  served by P1-1's index), `SeasonRolloverJob:71`, `CupFixtureSeeder:142`, `InternationalClubCups:397`.
-  One query each; none worth a change.
-- **Tier 3, admin buttons, repair, seeding** — `WorldIntegrityService`, `WorldRepairService`,
-  `CountryActivationService`, `SimulatedWorldSeeder`, `BotLeagueStandardBackfill`, `StaffSponsorService`.
-  Reading the world is the point of a repair or a seed. **`StaffSponsorService.seedAllClubs` still has a
-  real 1 + 14,880 N+1** inside its loop — a genuine find, on a seeding path, left as its own decision.
+**It has never run**, because no match has ever been simulated in either sport. When these sports are
+played, **this is the first thing to fix** — not a missing index on `bb_players`, which tops out at 5,580
+rows where a scan costs under a millisecond.
 
-**Two things worth keeping:**
-
-- **Only weeks 6, 11 and 12 have friendly-capable slots.** The AI friendly pass is expensive in **3 weeks
-  of a 12-week season**, not every week. A first test picked week 2, which returns before reading anything
-  and passed on a pass that did nothing.
-- **This is the third instance of one pattern** — `TransferService` (`e310856`), `SquadEnvironmentService`,
-  `FriendlyRequestService`. A collection loaded once, then re-asked inside a loop because the loop could
-  not see the copy. Three instances is a convention, not an accident.
-
-### P1-5 — Three answers given. The growth measurement is blocked by P0-19, not by this task.
-
-Four exit criteria. Three are answered from what reads what. The fourth could not be measured, because
-**the world cannot currently be simulated at all** — see P0-19.
-
-**1. Blobs — keep. No code, no policy.** What reads `match.event_json` is the match detail page
-(`MatchDetailService:34`), the external API (`ZoxApiController:575`), and `GoalEventRepository`, which
-backs **top scorers, top assists and the club milestone leaders** — one variant walking all twelve weeks of
-a season across every competition.
-
-There is no `goal_event` table, and I took that as evidence the scorers path did not read the blobs. **It
-does**: `GoalEventRepository` is a `@Component`, not a repository, and it walks matches and parses each
-log, because the log is the record. **So deleting blobs does not merely empty the match page — it empties
-three stat pages for that season.** That is the owner's call, and the bill for it:
-
-| | now, 155 matches | a full season, 7,440 |
-|---|---:|---:|
-| raw logical | 126 MB | — |
-| **on disk** | **16 MB** | **~126 MB** |
-
-TOAST compresses about 8:1, so 16 MB is the honest number. **A season of blobs costs ~126 MB on disk, and
-that is affordable only because P1-7b cut the blob 49×.** Before P1-7b this was a real question.
-
-**2. Match rows — keep, permanently.** `ClubRatingService:118` walks every played club match in date order
-for the Elo replay; `NationalRatingService:96` walks every played international; league tables, fixtures
-and every stats page read them. Deleting a played row silently breaks Elo history and nothing says so —
-the pages just get shorter. And there is nothing to save: excluding the blob the row is a few hundred
-bytes, so 89,000 rows over twelve seasons is single-digit megabytes. The board's own guess was right, and
-it is now an answer rather than an omission.
-
-**3. Replay files — already correct, and the disagreement with (2) is deliberate.** `SimReplayStore`
-expires by age (`app.replay.max-age-days`, default **14**) and evicts least-recently-modified to a count
-cap; `replay-data` holds **492 MB across 48 files**. The fact that keeps it cheap: **only the manager's own
-matches get a file** — `AsyncSimulationRunner:78` passes `replayId = -1` for AI matches — so the store
-grows with what one human plays, not with the 48× world. **Files expire at 14 days, database rows never
-do, and that is right:** a replay file is a re-renderable convenience, a match row is the record.
-
-**4. Growth per matchday — not taken.** The board asked for it "from the harness rather than
-extrapolated", and the harness cannot run: matchday advance fails on the missing `supporter_mood` column
-(P0-19), so no simulation of any size is possible on the dev database or a clone of it. I will not present
-the per-match figures from P1-3 and P1-7b as a per-matchday measurement — **that is the extrapolation the
-board ruled out.** The unblock is one `Reset DB` and one `Initialize DB`, after which it is a ten-minute
-measurement.
-
-**Carried out of P1-7:** `GoalEventRepository`'s season-wide variant loads every match of a season with
-its blob — the same full-season shape P1-7 measured at ~66 GB. It is survivable now **only** because the
-blob is 49× smaller. P1-7b is the reason this is not a P0.
-
-### P1-6 — MEASURED, NOTHING LANDED. The premise was wrong in a way that matters more than any index.
-
-**Three things were checked before proposing anything, and the first two settle it.**
-
-**1. These sports do not grow with the world.** All three hardcode a single country:
-
-| | |
-|---|---|
-| `BbDataInitializer.java:141` | `String country = "RS";` |
-| `AfDataInitializer.java:135` | `String country = "RS";` |
-| `CSDataInitializer.java:92` | `c.setIsoCode("SRB");` |
-
-The board's premise was that they are "5,580 and 3,720 players on the dev database" and will get costlier
-as the world grows. **They will not.** The 48× growth is `newLogic`'s; these three are one country and
-stay one country. So their sizes are their real sizes, not a snapshot of something bigger.
-
-**2. They have never been played.** Teams, players and fixtures are seeded — 310 teams and 310
-competition entries each, 2,790 fixtures each — and **`bb_matches` and `af_matches` hold 0 rows.** Not one
-match has been simulated in either sport.
-
-**3. So no index is justified.** Fifteen `bb_` and `af_` tables, every one with its primary key as its only
-index, the largest being `af_players` at 5,580 rows — a sequential scan of which is sub-millisecond.
-`bb_player_season_stats` and `af_player_season_stats` hold 0 rows. **Nothing here meets the bar P1-1 set,
-so nothing was created.** Recorded as measured-and-dropped rather than quietly left for someone to
-rediscover.
-
-### The one real thing, and it is not an index
-
-`BbMatchSimulationService.savePlayerStats` and its American football twin do **four queries per player per
-match** — a `findById`, a `save`, a season-stats lookup and a `save` — which is **88 round trips a match**.
-Measured on this machine: **0.1745 ms per round trip**, so **15.4 ms a match** of pure overhead.
-
-**It has never run**, because no match has ever been simulated. When these sports are played, this is the
-first thing to fix, and it is an N+1 of the same family as `TransferService`, `SquadEnvironmentService`
-and `FriendlyRequestService` — **not** a missing index on `bb_players`. The season-stats lookup filters on
-`player_id + season_year + competition_id` with only a primary key, so it is a sequential scan; but that
-table would top out at 3,720 rows a season, where a scan costs ~0.03 ms, so **an index there would not earn
-its write cost either.**
-
-### Two findings that belong to P0
-
-- **P0-9 has a second site.** Basketball and American football use **`season_year = 2025` as a calendar
-  year** where `newLogic` counts twelve weeks from 1. `BbController` hardcodes `2025` in eight places,
-  including four `defaultValue = "2025"` request parameters. **It is self-consistent** — `bb_match_fixtures`
-  is seeded with `season_year = 2025` — which is exactly why it is invisible and why the board's trap
-  wording says "even if it is self-consistent and passing". Recorded here because it was found in P1-6's
-  blast radius; **not fixed here**, it is P0-9's.
-- **`bb_leagues` and `BbLeagueRepository` are vestigial**: a table with 0 rows and a repository with **zero
-  callers** anywhere in `src/main` or `src/test`. The same shape as `match_tick_states`, and the same
-  question for the owner — delete, or leave?
-
-### P1-7 — DONE. The replays, the blob, the milestone page and the background failures. One item measured and dropped.
-
-`Match.eventJson` was the whole per-tick decision log in one text column: **742 KB – 1,035 KB a match,
-~66 GB a season.** Four separate things were wrong with it.
-
-| | before | after |
-|---|---:|---:|
-| Club Elo replay, 155 matches | 443–554 ms, ~66 GB a season | **6.5–11.2 ms, ~5 MB** |
-| `event_json` per match, written by the app | 840,136 B | **17,001 B — 49.4× smaller** |
-| Club milestone page — season reads | **2** | **1** |
-| Background fixtures that failed | logged, never counted | **counted and named** |
-
-**Landed, each measured in the database.** The replays read a `ScoredMatch` projection.
-`SimReportMapper.eventJson` writes only the event types a page can use, from a keep-list derived from
-`MatchDetailService`, `ZoxApiController` and `GoalEventRepository` — **all three** readers were checked
-against a running app on a real new match. `LeagueMilestoneService` reads the season once instead of
-twice. `AsyncSimulationRunner` counts and names the fixtures it could not simulate.
-
-**Measured and DROPPED — the club-history projection this board used to ask for.** The criterion was
-written before the blob was narrowed, when a club page pulled **10 MB**. It now pulls **204 KB**, and
-`MatchDTO.from` reads no JSON at all. Saving 204 KB per page view does not justify a new projection type
-plus three rewrites, on a query **P1-1 already took from 170 ms to 0.26 ms**. The criterion was wrong and
-is corrected rather than met.
-
-**Three defects found here:**
-
-- **FIXED — `GoalEventRepository.isGoal` credited goals VAR ruled out.** `contains("GOAL")` matched
-  `GOAL_DISALLOWED` and `VAR_GOAL_OVERTURNED` — 30 credits for goals that do not exist. **Not a product
-  question:** `BallResultHandler` asks VAR *before* `goalScored`, so the scoreline never counted them
-  either. The definition now lives on `MatchEventType`, because **three** call sites had each invented
-  their own substring.
-- **NOT A DEFECT — `simulate-all` does report its background work, and my claim was wrong.** It returns
-  `backgroundSimulating` and `backgroundTotal`; `/current-round/status` reports progress live. My print
-  statement selected four keys out of nine and I concluded from those four.
-- **OPEN, and one line further up than the last one: a fixture with no teams is counted as
-  `simulated`.** The runner returns early for a null home or away side and then increments
-  `simulatedCount` anyway, so a match that was never played is reported as one that was. **Needs a
-  decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status endpoint means,
-  and `AsyncSimulationRunner` sits next to the simulation endpoints other work is in. Exit criteria: a
-  fixture that was not simulated is never counted as one, and the status endpoint distinguishes the two.
-
-**Not done, deliberately:** no migration. The existing 155 matches keep their 742 KB blobs, so historical
-pages stay slow until the world is reset while every new match is cheap.
-
-# 🟢 P2 — features and visual work
-
-**Everything here can be completed on its own, without a decision from anyone.** Ordered by leverage per
-day of work, following `archive/COMPETITIVE_ANALYSIS.md` §10, whose ordering is deliberate.
-
----
-
-## ✅ P2-20 — DONE: the Community tab is a forum and private messages (owner decision, 2026-10-05)
-
-**All six phases landed.** `5f15232` (forum), `da61dc5` (messages) and the Phase 6 teardown. 143 tests
-across the ten classes this work added or rewrote, every guard mutation-proven. What the owner asked for on
-2026-10-05 is what runs: two forum sections, edit with a visible tag, delete, moderators who can act on
-anybody's message, a forum write ban applied from a profile, direct messages with a subject and a body,
-replies in a followable thread, sendable to any account, and a notification store that did not exist before.
-
-**Not verified in a browser.** Every screen was checked by rendering the served module against live
-responses and by driving the endpoints with `curl`; no click was performed. That is stated in every log
-entry rather than left for the owner to discover.
-
-**The largest single request on this board, and the only one that is a product decision rather than a defect.**
-The tab today is one screen reached by a menu button, and `pages.js` routes three names — `forum`, `chat`,
-`events` — all of which render the identical page (`community.js:314-320`, both bodies are
-`return loadChat()`). There is no forum and there are no events.
-
-The owner's specification, in full:
-
-| | |
-|---|---|
-| **Forum** | An old-school threaded forum, hattrick/sokker.org in shape. Any manager opens a topic. Two fixed sections: **TIFO** and **non-TIFO**. Anyone replies in a topic. Anyone **edits** their own message, and an edit shows an **edited** tag. Anyone **deletes** their own message. **MOD/ADMIN/OWNER** may delete and edit *other people's* messages, and may ban a manager from writing for a number of days **from that manager's profile** — the rest of the application keeps working and reading the forum keeps working. |
-| **Messages** | Pick an active account from a list, send a direct message with **subject and body**. A notification reaches the **ticker** and a **notification store that does not exist yet**. Replying to a specific message opens a **thread**, so the correspondence history is followable. Sendable to any active account — *active meaning the account is real, not that the person is online.* |
-
-**Owner decisions taken, 2026-10-05, and they close the questions:**
-
-| Question | Decision |
-|---|---|
-| The old shared chat | **Wiped.** No migration, no announcements topic, no third tab |
-| Registration approvals | Move off the chat, onto the Admin tab |
-| Role assignment | Built — **without it no MOD account can ever exist** |
-| Delivery for notifications | **Polling**, 30 s. Not a WebSocket |
-| Scope of a ban | **Forum writing only.** Reading, messaging and the game are untouched |
-| Reaching a user's profile | **From the club: click the team, see who runs it, click him, see his profile** |
-
-### P0-20 — DONE: football ownership uses `User.footballTeam`
-
-**Found while building the `User.footballTeam` FK (P2-20 Phase 1). Not fixed there, and deliberately so.**
-
-`User` now has a real FK to `Team`, which makes a fifth instance of this impossible. The four affected
-paths now use that FK:
-
-| Where | What |
-|---|---|
-| `UserRepository.findDistinctManagedTeamIds` | selects `u.tifoCTeam.id` — a CTeam id — and `TransferService:630` compares it against `Team.getId()`. **Now `@Deprecated` with the reason on it**, so the next reader knows why |
-| `APIController.myMatch:236-241` | `user.getTifoCTeam().getId()` read as a `Team.id` |
-| `TeamController.getMatches:252`, `getSchedule:269`, `CountryController.getLeagueMatches:689` | same |
-| `NationalTeamAppointments:95-97` | asserts in a **comment** that "the ids are the same space", then filters on it |
-
-Each is a separate reach into a different controller, and none was what this phase was asked to do. Every one
-is a query that answers with a plausible number rather than failing, which is why they survived alongside
-P0-18.
-
-**Exit criteria:**
-- [x] `findDistinctManagedTeamIds` deleted and `TransferService` reads `User.footballTeam.id`
-- [x] `APIController.myMatch` reads the football-team FK
-- [x] `TeamController` / `CountryController` use the football-team ownership path
-- [x] `NationalTeamAppointments` walks `User.footballTeam` through the FK, and its comment is corrected
-- [ ] A dedicated regression test that fails if any of the four returns a `CTeam` id is still pending
-
----
-
-### Phase 1 — DONE: the foundation the forum cannot be built without
-
-`ClubOwnershipLinker`, `ModerationService`, `UserRoles`, `AdminUserController`, and a **real foreign key**
-between `User` and `Team`. See `kanbanProgress.md` for what was measured and what did not work.
-
-- [x] `UserRoles` — one answer to "may moderate" and one to "is staff", replacing **14** backend role checks
-- [x] `User.footballTeam` — a real FK, ending the `User.cTeam.name == Team.name` join
-- [x] `ClubOwnershipLinker` — reads the FK, backfills legacy rows, and answers the reverse direction
-- [x] `ModerationService` — forum write ban with reason, expiry, and who applied it
-- [x] `POST /admin/users/{id}/role` — the only writer of `MOD`, `ADMIN` or `DEV` that has ever existed
-- [x] `POST /admin/users/{id}/forum-ban` and `/lift`
-- [x] Admin tab **Accounts** panel: role select, ban, lift ban, repair club links
-- [x] 51 tests across 5 classes, mutation-proven
-
-### Phase 2 — DONE: the user profile and the club → manager link
-
-- [x] `GET /users/{id}/profile` — name, role, club, league, country. **No email, no username, no last-seen**,
-      and not because they are gated: the DTO has no such field to gate
-- [x] `PATCH /users/me/display-name` — the field was never user-writable in the repository's history
-- [x] A public profile page, plus the moderator's ban action reached from it
-- [x] **"Managed by X"** on the club profile and on every league-table row
-- [x] **A real bug found and fixed here**: two boot-time initializers rewrote account rows without
-      mentioning the new key, so `football_team_id` came back null on the next start
-
-### Phase 3 — DONE: notifications
-
-- [x] `Notification` entity with `(recipient_id, created_at)` and `(recipient_id, read_at)` indexes
-- [x] `GET /notifications`, `/unread-count`, `POST /notifications/{id}/read`, `/read-all`
-- [x] 30 s poll, bell + badge + dropdown in the top bar, mobile-safe
-- [x] Ticker rewired off the dead `/community/summary`
-- [x] Marking read is scoped **inside** the query, so somebody else's notification is a 404
-
-### Phase 4 — DONE: the forum
-
-- [x] `ForumSection` (`TIFO`, `GENERAL`), `ForumTopic`, `ForumPost` with `editedAt`, `deletedAt` and `editedByUserId`
-- [x] Ban enforced in `ForumService`, not the controller — a ban enforced by one endpoint is bypassed by the next
-- [x] Old-school thread view, paging, "edited" and "edited by a moderator" tags
-- [x] Delete is **soft** — the row stays so the replies underneath still make sense
-- [x] A moderator may edit and delete **anybody's** message, the owner's included
-- [x] Three indexes, verified created
-- [x] 33 tests, 4 mutations proven
-
-### Phase 5 — DONE: private messages with threads
-
-- [x] `MessageThread` (subject, both participants, two read cursors) and `DirectMessage`
-- [x] First message opens a conversation; a reply appends and carries **no subject**
-- [x] **One thread per pair** — a second subject continues the conversation rather than forking it
-- [x] Recipients are **every account**, not only the online ones
-- [x] Notification on receipt, pointing at the conversation
-- [x] 24 tests, 3 mutations proven
-
-### Phase 6 — DONE: tear down
-
-- [x] Deleted: `CommunityMessage`, `CommunityMessageType`, `CommunityMessageRepository`,
-      `CommunityMessageService`, `CommunityController`, three DTOs, `community.js`, and both test classes
-- [x] `nl_community_message` dropped from the dev database (it was empty)
-- [x] `User.communityLastViewedAt` documented as dead; the column stays because `ddl-auto=update` never
-      drops and this repository has no migration mechanism
-- [x] Registration approvals **on the Admin tab**, staff-only, and the applicant's email no longer travels
-      through anything a manager can read
-- [x] `RegistrationService`'s five chat calls became moderator notifications, carrying the **username only**
-- [x] The **fake email is gone** — it logged a line and wrote a chat row claiming to be a mail, and there is
-      no SMTP in this application
-- [x] `TECHNICAL_OVERVIEW.md` corrected, `manual/` renumbered, dead `buildCommunityActionsHtml` removed
-- [x] 8 tests on reachability, 2 mutations proven
-
----
-
-### P2-1 — Corners decided by pitch geometry, not a nominated taker
-
-Half a day, and easier now that P0-3 has landed. Listed as its own item in the competitive analysis for
-exactly that reason.
-
-**Exit criteria:** corner taker selected by position relative to the ball; verified on a replay.
-
-### ~~P2-2 — Seller chooses which offer to accept~~ ✅ `SellerAcceptsANamedOfferTest` 4/4
-
-**What the board said, and what was true.** The board said the service method "exists and correctly
-rejects the wrong offer — no controller exposes it". **Both halves were wrong.** A controller did
-expose it (`POST /transfers/accept-offer/{playerId}`), and it was **broken**: `acceptBestOffer`
-settled the transfer and then settled it again, so the endpoint could only ever answer 400
-`"You cannot buy your own player."` A seller could not accept an offer at all.
-
-**Landed:**
-- [x] One settlement. `acceptBestOffer` delegates to the new `acceptOffer`; the squad-number
-      housekeeping `completeTransfer` also did is kept, extracted as `assignSquadNumbersAfterTransfer`
-- [x] `POST /transfers/accept-offer/{playerId}/{offerId}` — the seller names the bid
-- [x] Bids cross the wire with their ids: new `TransferOfferDTO`, on both `TransferDTO` and
-      `PlayerTransferStatusDTO`, including `netToSeller` so the row is not just a headline fee
-- [x] One **Accept** button per bid in the Transfer Centre and the player page, via a single shared
-      renderer (`static/js/pages/views/transfer-offer-actions.js`)
-- [x] A bid on another transfer is refused with `404 OFFER_NOT_FOUND`, not absorbed
-- [x] `NegotiationService.settleOffer` unwinds every status if settlement refuses — the auction
-      survives a failed deal instead of every rival bid being rejected for nothing
-- [x] `requireSeller` no longer treats an **absent** `teamId` as consent to act as the seller
-- [x] **Fixed alongside it:** `getTeamTransferOverview`'s `incomingOffers` had
-      `.filter(hasOpenOffer).filter(t -> !isActiveListing(t))`, and those two predicates are mutually
-      exclusive — the list was empty for every possible input, so the Incoming Offers panel was dead.
-      Proven: `expected: <1> but was: <0>` with the filter restored
-- [x] Every test proven able to fail by deliberate breakage (four break-and-restore cycles)
-
-**Also found and fixed:** `requireSeller` tightening means a caller omitting `teamId` is now
-`400 TEAM_REQUIRED` rather than silently skipping the ownership check. Both frontend call sites
-already send it.
-
----
-
-### ~~P2-3 — Player can refuse to be listed~~ ✅ `ListedPlayerCanObjectTest` 6/6
-
-The anti-speculation mechanic. Listing used to cost the player's position nothing at all — a club
-could list anybody at any price and the dressing room had no say.
-
-**Two pieces of dead code became load-bearing rather than being rewritten:**
-`SquadRole.reluctanceToSell()` (no callers anywhere) now decides how much a club's valuation of a
-player translates into his resistance, and the `PlayerContractService.wageDemand` model — already
-answering "is he paid what he thinks he is worth" for renewals — supplies the grievance.
-
-**Landed:**
-- [x] `ListingObjection` — three distinct reasons (`WAGE_DISPUTE`, `DOES_NOT_WANT_TO_LEAVE`,
-      `UNHAPPY_TO_BE_LISTED`), each with the sentence the player says. **Not** a `TransferStatus`:
-      the `transfer` table has a live Postgres `CHECK` constraint on its four values that
-      `ddl-auto=update` will not recreate
-- [x] Triggered in-game on a human club's listing, from reluctance + whether he is underpaid
-- [x] **The club cannot delist him** (`409 PLAYER_OBJECTION_OPEN`) — delisting is how a club would
-      make the objection go, so it is what has to be blocked
-- [x] **The club cannot accept a bid** while it stands; the refusal carries the reason, not just a code
-- [x] **The objection survives re-listing.** The `transfer` row is unique per player and recycled on
-      every listing, so clearing it there would make "reject the bids, take him off, put him back"
-      a free way to launder a refusal — the exact thing the mechanic exists to prevent
-- [x] Two resolutions, so the manager has a real choice: `UPHELD` (withdraw, keep him — done as part
-      of resolving, so he is not sent to a Remove button the objection just blocked) or `PAID`
-      (5% of the asking price, charged and ledgered, and the sale can continue)
-- [x] `removeFromTransferList` moved onto `requireSeller`, which **requires** a team id; it had the
-      weaker `actingTeamId != null` guard that P2-2 removed elsewhere
-- [x] Every test proven able to fail, including one that had to be **rewritten** because it passed
-      against broken code (see the log)
-
----
-
-### ~~P2-4 — Listing fee as a percentage of the asking price~~ ✅ `ListingFeeScalesWithTheAskingPriceTest` 5/5
-
-**The board said "two lines".** It was **no fee at all** — `listPlayerForTransferEntity` charged
-nothing and computed `alreadyListed` without using it, so listing was free and re-listing was free.
-
-**Scope decision, owner:** **human clubs only.** AI clubs self-list weekly and academy graduations
-list automatically; charging those would drain 14,880 budgets for a mechanic that exists to stop a
-*manager* spamming the market. Gated on `Team.humanControlled`, which is maintained by
-`PyramidBuilder`, `DatabaseInitializer` and `RegistrationService`.
-
-**Landed:**
-- [x] 2.5% of the asking price — the rate `archive/COMPETITIVE_ANALYSIS.md` benchmarks against
-- [x] New `FinanceCategory.LISTING_FEE`, so the charge appears on the Finances page under its own row
-- [x] Budget deducted and one ledger line written; charged off the **clamped** asking price, so a
-      request for EUR 0 is charged as the EUR 1 it was listed at
-- [x] `alreadyListed` honoured — re-pricing a live listing is not a new listing and is not re-charged
-- [x] A club that cannot fund the fee gets `409 INSUFFICIENT_BUDGET_FOR_LISTING_FEE` and **nothing is
-      listed**; otherwise the fee constrains only honest managers
-- [x] Own class (`TransferListingFeeService`) rather than another method on the 1199-line
-      `TransferService`
-- [x] Every test proven able to fail, including a flat fee, a repeated charge, charging the AI, and
-      dropping the affordability refusal
-
----
-
-### ~~P2-5 — Supporter mood and supporter expectations~~ ✅ `SupporterMoodRespondsTest` 6/6
-
-The board's premise verified exactly: `BoardExpectationService` has **one caller**,
-`FinanceController.java:111`, which is a read for display. `sackingReview` is a computed boolean with
-no entity behind it. **A number the player can see that nothing responds to is worse than no number**,
-because it invites the expectation of a consequence.
-
-**Landed:**
-- [x] `Team.supporterMood` (0-100, default 60) — separate from `reputation` on purpose: reputation is
-      what the club is worth, mood is how the stand feels about being there, and a club can be
-      successful and unloved
-- [x] **Mood bends attendance**, so it bends gate income, so it bends the wage-bill ratio the board
-      reads. This is the missing consequence, and it is the board criterion *"something in the game
-      responds to them"*
-- [x] **The loop back to P2-3**: a player objects to being listed → supporters notice the club is
-      selling its own people → mood falls → fewer come → gate income falls → the board's trust falls.
-      Every step already existed; nothing was connected
-- [x] `SupporterExpectation` — mood says how they feel, the expectation says what they think the club
-      should do about it, which is the half a manager can act on
-- [x] Drifts weekly rather than jumping: **exactly 1.0 at mood 60**, so a club that has not drifted is
-      unchanged. A first formula returned 1.032 at neutral, which would have silently changed gate
-      income for the whole world on day one; a test caught it
-- [x] Visible beside board trust on `/finances/{teamId}/board`
-- [x] One query for all clubs' objections, not one per club — 14,880 round-trips a week otherwise
-- [x] Every test proven able to fail, **including one that had to be rewritten because it was green
-      against unwired code**
-
----
-
----
-
-### ~~P2-6 — Graduation caps~~ ✅ `GraduationRespectsTheSquadTest` 4/4
-
-Graduation was **unconditional**: every ACTIVE junior aged ≥20 in the entire world became a senior
-`Player` in one loop. `canRegister` could not stop it, because graduation creates no `PlayerContract`
-and `canRegister` counts contracts — so a graduate was invisible to the 25-senior cap, and then drew a
-wage for a full season before the backfill noticed. **A club's academy was an unlimited source of free
-players.**
-
-**The cap is the squad, not a number.** A graduate is promoted only while his club has room; otherwise
-he is **released**. That gives P2-7 teeth in both directions — a club that refuses to let players go
-fills its own squad and blocks its own academy.
-
-**Landed:**
-- [x] Per-club room, counted down **as it is used**, so five due juniors and two places promote exactly
-      two rather than five plus an overflow discovered later
-- [x] Also bounded by `MAX_ACTIVE_JUNIORS` — unreachable through intake, but the sweep reads junior rows
-      directly and fixtures and the seeder insert them without passing through intake
-- [x] `MAX_ACTIVE_JUNIORS = 10` extracted from the inline literal
-- [x] Squad sizes loaded in **one grouped query** for the world, not one count per club — 14,880
-      round-trips inside the season rollover otherwise
-- [x] **Also fixed: the defect P2-3 introduced.** A graduate has no contract, so
-      `ListingObjectionService.roleOf` fell back to a position switch mapping `GK/DEF/MID → STARTER`.
-      A 17-year-old was judged as a senior starter. **Measured: 0.4125 objection likelihood on a
-      graduate's first day**, i.e. ~41% of all automatic graduations drew an objection the club then had
-      to pay 5% to clear. Now delegates to `PlayerContractService.inferRole`, which already encoded the
-      right rule (a cheap 17-year-old is a YOUTH, reluctance 0.12)
-- [x] Every test proven able to fail, including the `merge` bug below
-
-**Recorded, not changed:** the `10` is hardcoded three more times in `static/js/pages/features/academy.js`
-(`{n}/10`, `0/10`, and the refusal text). Java now has one source; the frontend copies still need a DTO
-field, which is a separate piece of work.
-
----
-
----
-
-### ~~P2-7 — A retirement age~~ ✅ `PlayersRetireTest` 5/5
-
-**Nothing existed.** No `retire`/`retirement`/`retired` token anywhere in `src/main` or `src/test`, no
-constant, no age-filtered query, no status field, and no removal path keyed to age. Players aged once
-a year and the only ways out of a squad were a transfer or a contract expiring — so a 32-year-old
-became 60, then 90, and `ClubNeedService.java:173` kept pricing him at 30% of value and bidding. The
-pool only ever grew.
-
-**Owner decision:** a **deterministic age band scaled by quality** (33–36), not a fixed birthday and
-not a dice roll — a club plans a squad around when a player ends. Bands are set on the **real 0–100
-rating scale** (measured on the dev world: peak ~68, range 35–93), so the cut points are 85/75/65, not
-the 0–10 scale the skills use.
-
-**Landed:**
-- [x] `Player.retiredSeason` (nullable, appended at the end of the entity as `@AllArgsConstructor`
-      demands — and two positional call sites in `sim/` were updated, exactly as that file predicted)
-- [x] `RetirementService` hooked into `SeasonService.agePlayersAndJuniorsOneYear()` **between** ageing
-      and graduation, so a player can retire and be replaced by a graduate in one season turn
-- [x] `findActiveClubPlayers()` + `ix_player_team_not_retired (team_id, retired_season, age)` — the
-      sweep would otherwise be a seq scan over every player in the world, once a season
-- [x] **He leaves, he is not deleted.** His row, statistics and history survive
-- [x] **His contract ends too** — `canRegister` counts contracts, so a retired player left holding one
-      would occupy one of the 25 senior slots for ever and the club could never replace him
-- [x] The sweep is idempotent, since a season roll-over must be safe to reason about
-- [x] Every test proven able to fail, including the destructive-delete trap below
-
-**Also fixed — a latent bug retirement would have made routine:** `Lineup.getOrderedStartingPlayers()`
-returned join-table rows regardless of club membership, so a player whose contract had expired could
-still start matches. **This already happened weekly** via `PlayerContractService.expireContracts`. The
-join table now yields only players still at that club.
-
-### ~~P2-8 — Match types, and a zero-consequence exhibition~~ ✅ `ExhibitionChangesNothingTest` 9/9
-
-**Owner decisions, 2026-10-03:** every match carries a **type** so results can be filtered by it; an
-exhibition costs **fatigue exactly as any other match** but carries **reduced injury risk**; and it
-**does** appear in match history, visibly typed.
-
-**Why the type rather than an empty competition.** A match recorded only which *competition* it
-belonged to, so a friendly or exhibition — which belong to no competition — had nowhere to say what
-they were. The two were indistinguishable, unlabelable and unfilterable. `MatchType` makes the rulebook
-one file instead of `if (friendly)` scattered through services, and puts the type in a **column** so
-read paths filter on it in SQL rather than re-deriving intent.
-
-**Landed:**
-- [x] `MatchType` — `LEAGUE`, `CUP`, `INTERNATIONAL`, `TOURNAMENT`, `FRIENDLY`, `EXHIBITION`, each
-      stating what it counts for, with `ofCompetition` as the only bridge to `CompetitionType` so the
-      two can never disagree
-- [x] `Match.matchType` and `MatchFixture.matchType`, **always resolved** — a type that must be
-      inferred per read is a type that can be absent
-- [x] `POST /simulation/exhibition?againstTeamId=` — the acting club comes from the authenticated
-      user, so no manager can play one on another's behalf
-- [x] **No table, no ratings, no career goals/assists, no morale, no form.** Five separate writes,
-      each asserted separately: asserting only the table passes against code that still inflates a
-      striker's career record
-- [x] **Fatigue is charged anyway** — ninety minutes is ninety minutes, and a free exhibition would be
-      strictly better than a league match
-- [x] **Injury risk lower but not zero** (0.35 exhibition, 0.6 friendly), applied to the base rate
-      only, and **reset after every match** so it cannot leak into the next competitive match
-- [x] **`LeagueTableReconciliationService` now filters by type.** It rebuilds tables from `match` rows
-      and would count a practice match back in — measured at **3 points added from an exhibition**
-- [x] Played inline, never via the matchday job, so nothing can pick it up and schedule it
-- [x] `ProposalEngineIsTheOnlyFixtureProducerTest`'s allow-list **extended deliberately**, not loosened;
-      the next caller still fails
-
-**The owner decision this does *not* cover:** the **friendly** fixture still cannot be played — it has
-no matchday, so nothing finds it. `MatchType.FRIENDLY` makes it a label rather than a blank, but making
-it playable is the remaining step, and it needs a day chosen.
-
-### P2-9 — Pre-match tactical preview
-
-Three to five days, and the analysis calls it *"Hattrick's single best idea"* — it is also the cheapest way
-to make P0-3's work visible on day one. `MatchController/{id}/preview` currently returns `Map.of()`.
-
-**Exit criteria:** the preview shows **both sides'** shapes from their own profiles, so it is a real test of
-P0-3 rather than a display of one club.
-
-### P2-10 — National team qualifiers and the senior World Cup
-
-The mechanism exists; the competitions and formats do not. This is P2 rather than P0 because nothing is
-broken — it is absent.
-
-**Exit criteria:** a full qualifying campaign and a tournament, played to a result.
-
-### ~~P2-11 — International club competitions~~ → moved to **P0-CUPS**, 2026-10-06
-
-*"Three tiers exist with data but the calendar is thin. Depends on the fixture generators being wired to
-named cups rather than the first CUP row."*
-
-**Wrong on both counts.** There are five tiers and 15 competitions, not three; and the calendar is not thin
-— the group stage and the bracket are written and tested. The reason none of them plays is four defects in
-sequence, the first of which (a cup group table that is never written, so every group is decided by seed
-order) was not on this board in any form. See **P0-CUPS** at the top of the P0 section.
-
-### P2-12 — U-21 as its own competitions
-
-Explicitly **not tabs on one competition**, per the analysis. Its own qualification path.
-
-### P2-13 — Named tactics with derived levels
-
-Three to four days. The six slider fields have **zero readers** today — they are stored and never used.
-
-**Exit criteria:** the sliders change something observable in a match, or they are removed.
-
-### P2-10 — National team qualifiers and the senior World Cup — **DONE: backend and football UI**
-
-The mechanism exists; the competitions and formats did not. **Work landed 2026-10-06 — see
-[`kanbanProgress.md`](kanbanProgress.md) for the full inventory and the two bugs the tests caught.**
-
-**Landed:** four `TOURNAMENT` competitions (senior + U-21, qualifiers + tournament, as **separate rows,
-not tabs**); pots-of-8 deal into 8 groups of 6; 5 qualifying matchdays on **week 6 days 2–6**; the
-worse-rated side hosting; tie-breaks points → GD → GF → **stored coin**; round of 16 d1, QF d2, SF d4,
-final + third place d6; matchday jobs for all nine days; `TOURNAMENT` accepted by `isKnockoutTie`;
-national Elo now replays tournaments, weights by stage and pays the qualification bonus; the squad locks
-at week 12 day 1 10:00; week 6 / week 12 calendar notes and events are real; a
-`/api/national-tournaments` endpoint returning groups, standings and results.
-
-**Exit criteria still open:**
-- [x] **A tournament is played to a champion.** `NationalTournamentPlayedToAResultTest` is **7/7** on a
-      fresh report: qualifying to sixteen, a level group tie left level, a level knockout tie settled from
-      the spot, the coin stable across three reads, the qualification bonus paid exactly once across three
-      replays, senior and U-21 separate, and a final **plus a third-place play-off**.
-- [x] **The World page lists the four national competitions** and links each drawn competition to its
-      groups, results and bracket; undrawn rows remain visible with their planned week. Country national
-      team summaries expose the same two competition links for senior and U-21.
-- [x] **Admin controls** for seeding national tournaments, resetting ratings and reading rating violations
-      are present in `admin-view.js`; live operation still needs observation.
-- [x] **Injuries query verified** — `decrementInjuriesByWeek` reads all injured Player rows (includes NT
-      copies). **Unverified in running app.**
-- [x] **The free-slot ad board: service done, page done.** Owner rules, both honoured: **only human teams
-      play friendlies** (asked of the club, not the caller) and a posting **expires with its own slot**,
-      which is why season/week/day are columns and why expiry compares days and not weeks. Taking an ad
-      goes through the real request service, so "one live request per side per slot" applies to ads too.
-      `FriendlyOfferServiceTest` 8/8, checking every week and all four slots against the calendar.
-      **This found two bugs in the previous commit:** `aafb7ae` widened the week to four slots, so
-      `dayOf(slot)` was putting slot-3/4 friendlies on the league's day 3, and the friendly matchday was
-      not registered for day 5 at all. Endpoints and the page are done. The AI-pairing conflict that used
-      to sit here is resolved: the owner said "AI ne igraju prijateljske", and
-      `runAiFriendlyWeek` together with its test was deleted.
-- [x] **Friendlies are playable.** They were not, and never had been: every matchday selects by
-      **competition type**, a friendly belongs to no competition, and the written fixture carried no
-      `matchType` and no `dayNumber`. A friendly could be agreed, written and shown and **never played**.
-      Fixed on both halves — the fields, and a `FriendlyMatchdayJob` that selects by type on days 1, 3
-      and 7. `FriendlyFixtureIsPlayableTest` 4/4, re-proven by deleting the type write. **Pre-existing
-      fixtures stay unplayable** and are not backfilled; that is a decision, recorded.
-- [x] **NT friendlies: week 6 day 1, national against national.** The owner's rule settles the slot
-      question — a club and a nation have **no slot in common**, since day 3 of week 6 is a qualifying
-      matchday. A separate service rather than a mode of the 596-line club one, because every rule in that
-      one is about clubs and the first rule that forgot the branch would be a national side playing on a
-      day it cannot. `NationalFriendlyRequestServiceTest` 7/7 over **every week of the season**.
-      The compulsory all-sides pairing on that day is **removed** — it was occupying the one day an
-      invitation could use. **Open:** no endpoint or UI yet, no bot auto-pairing, and an accepted fixture
-      has no competition so the day-1 job will not find it (recorded in the code).
-- [x] **INVITE FOR FRIENDLY button, on the club side.** Open slots per slot, accept / decline / withdraw,
-      a debounced club picker scoped to the club's own country, and request rows that carry a **name**
-      rather than an id. `FriendlyOpponentAndRequestRowTest` 4/4; the national-team filter re-proven by
-      removing it. **Open:** national teams as requesters and receivers, the free-slot ad board, and a
-      notification kind for the bell.
-- [x] **The week-6 day-1 warm-up round has a live draw path.** It had *stopped happening* — its only
-      caller, `ensureBaselineDataOnStartup()`, has zero callers. Now drawn by the admin action and
-      labelled `MatchType.FRIENDLY`. **"Not compulsory" is not yet implemented**: optional participation
-      needs national-team support in `FriendlyRequestService`, which is club-only.
-- [x] **The squad lock is visible.** The selector tab shows the owner's reason and renders no release
-      or call-up control while locked; both level panels carry a **Squad fixed** badge.
-      `NationalSquadLockTest` pins the boundary — every hour of weeks 1-11 open, 09:00 open and 10:00
-      locked on week 12 day 1, no expiry, unreadable clock safe.
-
-**Two defects fixed here, and the second is the one worth keeping:**
-
-1. **A dead branch.** The final was drawn by an `if (round == ROUND_FINAL)` inside the feed-forward loop,
-   and `ROUND_FINAL` is not in that list — so it could never execute and every tournament stopped at two
-   finalists while logging *"tournament complete"*. The same list change that fixed the third place
-   deleted the only path to the final.
-2. **One round per call was not actually enforced.** With the draw moved out of the loop, the method became
-   non-idempotent: every call after the semi-finals redrew the final. **Measured with the guard removed —
-   three finals, and nothing complained.** "One round per call" is a property of the code, not a statement
-   about the caller; it is only true once *already drawn* is asked about **the round being drawn**.
-
-**Both guards re-proven by breaking them:** removing the final's idempotency guard reproduces
-`a tournament has one final — expected: <1> but was: <3>`.
-
-### National-team naming: a senior side is its country (owner, 2026-10-06)
-
-*"Kod imena NT npr Germany National Team stoji samo Germany bez National Team za svaku zemlju, u-21 su
-ok."* The manager is on Germany's page, in the national-team section, under a tab already labelled
-**National Team** — the name said it three times.
-
-- [x] **A senior side is named after its country and nothing else.** U-21 keeps its suffix, because
-      "Germany" alone would leave two German teams with one name.
-      `NationalTeamSeniorNameTest` 3/3, including that a side somebody renamed by hand is left alone —
-      only the suffix this codebase used is stripped, so a re-seed brings the world forward without
-      overwriting a name a person chose.
-- [x] **The senior/U-21 split stopped being a name guess.** `InternationalFixtureSeeder` identified the
-      senior international field with `getName().endsWith("National Team")` — which, after the rename,
-      would have failed for **every** side and silently left the senior internationals undrawn, forever,
-      with a log line saying there were not two sides with squads. It asks the **country** which of its
-      two sides this is.
-      `InternationalFixtureSeederRetryTest` rebuilt to the real world shape (the country points at its
-      senior side), because that helper only ever set a name and the old check never needed more.
-
-### The national-team draw: season start, and a Re-draw that re-draws (owner, 2026-10-06)
-
-The owner: **draw the groups at the start of the season**, because the ties are played in week 6 and a
-manager who learns his group on the day of the first match cannot plan around it. And the admin
-**Re-draw** button did nothing at all — it was calling the draw job with week 6 by hand, which by then
-meant it ran a job whose own condition had moved to week 1.
-
-- [x] **The group draw runs on week 1 day 1**, for senior and U-21, and the ties it creates are still
-      week 6 days 2–6. `NationalTournamentDrawTimingTest` pins all three cases: week 1 day 1 draws 120 ties
-      per level, **week 6 day 1 draws nothing**, and week 1 day 2 draws nothing either.
-- [x] **`NationalTournamentWorldService.forceRedraw()`** clears the unplayed qualifying and tournament
-      fixtures of the current season, then draws both levels again. The admin route calls it and reports
-      the draw through the existing `toMap`, so the screen shows groups and fixture counts instead of a
-      job name. `NationalTournamentDrawJob` is no longer injected into `AdminController` — the button and
-      the job were two ways to do one thing, and only one of them was correct.
-- [x] **The seeder's "already drawn" guard was counting played ties.** It asked for *every* group fixture
-      in the competition, so a re-draw that deliberately spared the played ties could never finish: one
-      survivor was enough to make the phase read as drawn for the rest of the season. It asks for the
-      **unplayed** ones now.
-      **Re-proven by breaking it** — with the old query, `redrawKeepsPlayedFixtures` leaves
-      `expected: <119> but was: <1>`: the tie cleared, the draw refused, and the qualifying phase stuck.
-
-**The deal is derived, so a re-draw reproduces the groups.** The seed comes from the competition, the
-season and the pot, and that was a deliberate decision earlier in this task — a reproducible draw is a
-draw that can be audited and re-derived from a restored backup. It does mean the button rebuilds the
-fixtures rather than shuffling them; if the owner wants a genuinely new deal, the seed needs a draw
-generation and that is his call, not a quiet default.
-
-### P2-12 — U-21 as its own competitions — **DONE: separate competitions and football UI**
-
-Explicitly **not tabs on one competition**, per the analysis. **Landed:** its own qualifying
-competition, its own tournament, its own 8 groups, its own 120 qualifying fixtures, its own Elo track
-(`Country.youthRating`), its own matchday jobs. Confirmed by test: 120 senior fixtures and 120 U-21
-fixtures, in two different competitions.
-
-**Done:** the shared national-tournament view is linked from the World page for both senior and U-21
-competitions as soon as their rows exist.
-
-### P2-14 — Prize money: `awardPrizeMoney` has no caller — DONE ✅ `PrizeMoneyFollowsTheRealTableTest` 4/4
-
-The board said "wire it or delete it". **Wire it — but not as written, or it pays the wrong clubs.**
-
-`WeeklyFinanceService.awardPrizeMoney` was implemented with zero callers, and the weekly
-`prizeMoney` line beside it deliberately returns `null` ("only paid once the season is finished"). The
-two halves were designed to meet and the meeting never happened: **no club had ever been paid prize
-money in this game.**
-
-**The trap.** The dead method ranked clubs by `CompetitionEntry.position`. **Nothing sets that field
-during a season** — `PyramidBuilder` writes it once when the world is built and it is never updated.
-Wiring it as written would have paid the champion's money to whichever club was seeded first, every
-season, silently, under a correct-looking ledger line reading `"Finished P1 of 10"`. Measured with the
-break in place: the real champion took **384,000** and the club seeded first took **480,000**.
-
-**Landed:**
-- [x] Ranked by `LeagueTableOrder` — already the one definition of a league table (owner decision
-      S8.4), and what promotion, relegation and the playoff draw read, so the money follows the same
-      table the manager is shown. The stale `position` field and its private reader are deleted
-- [x] Called from `SeasonService.performPromotionRelegationAndNewSeason()`, **before** promotion —
-      paid for the season that finished, before clubs are moved between competitions
-- [x] **A competition nobody played in pays nothing**, so a freshly seeded world rolled over before a
-      single match does not mint a prize pool
-- [x] Every club in the table is paid, not only the champion — 45% / 28% / 20% … down the table
-- [x] Written to the ledger (with the finishing position in the note) and to the budget
-- [x] The season's competitions come from **one** query, not one per competition
-- [x] Both breaks proven: ranking on the stored field, and dropping the unplayed-season guard
-
-**Recorded, not changed:** `CompetitionEntry.position` is now written by `PyramidBuilder` and read by
-**nothing** in `src/main`. It is a dead column, and `ix_competition_entry_sc_pos` exists to serve it.
-
----
-
-### P2-15 — Basketball, American football, text-based football
-
-Per-mode work. Their agent notes are in `archive/BASKETBALL_PROGRESS.md` and have not been re-verified
-since the `newLogic` split — **read the archive first, then confirm against the code, because the notes
-predate the split.**
-
-### ~~P2-16 — Visual work: a load failure now says what failed~~ ✅
-
-Presentation, not correctness. The board named the right candidate and understated it.
-
-**The defect:** `js/pages.js` — the router every page goes through — ended in
-`mainContent.innerHTML = buildEmptyState("API Error")`. One string, no status, no code, no explanation,
-and it **replaced whatever the page had already rendered**. So a 403 saying *"Only the owning club can
-accept incoming offers"* and a 500 saying the database was unreachable both reached the manager as the
-same two words.
-
-**Landed:**
-- [x] `buildErrorState(err, context)` — titles by status (401 / 403 / 404 / 5xx) and shows the
-      `code`, the `status` and the backend's `message`, which `ApiException` already writes for the
-      person reading it
-- [x] `describePage()` names all **41** router cases in words ("the transfer centre", not `firstTeam`),
-      verified against the router's own `case` labels so the two cannot drift
-- [x] Everything interpolated is **escaped** — an error message is exactly the string that ends up
-      holding a club name
-- [x] `buildEmptyState` was interpolating its argument into HTML **unescaped**; it now escapes
-
-**Also fixed, and AGENTS.md was wrong about it:** AGENTS.md states *"`escapeHtml` lives in
-`ui/escape.js` and is the only copy."* There were **three** — `ui/escape.js`, `pages/views/utils.js`
-and `pages-renderers.js`, byte-for-byte identical. `pages.js` imported from one and used the other.
-Both duplicates now import the canonical one; **one implementation remains**, verified identical on
-null, undefined, 0 and an `</script><img onerror=...>` payload.
-
-**Recorded, not changed:** `roundResultsTeletext.js` carries `teletextFetch`, a second implementation
-of `authFetch` with its own Serbian error strings. **It has a caller** — the live-results desk — so this
-is a decision, not a cleanup.
-
-**The verification gap, stated plainly:** this repository has **no JavaScript test infrastructure at
-all** — `package.json` holds one unrelated dependency and no runner, and there is no `*.test.js`. So a
-frontend change here can only be verified by executing the module or by opening the app. Executed: the
-error card renders correctly for 403-with-message, 500-without-code, and an error with neither, and the
-escaper identity was checked case by case.
-
-**A mistake of mine, recorded because the rule exists:** I deleted `teletextFetch` on the strength of a
-caller count, and the count was wrong — my `grep` filtered out the very file I was searching, hiding its
-one caller at line 17. Restored with `git checkout` in under a minute. **P0-10 says to re-verify the
-caller count immediately before deleting, and I broke that rule while citing it.**
-
-### ✅ "Next match" on the dashboard was broken for every manager — found on the Oracle instance
-
-Reported live 2026-10-03: clicking **Next match** produced
-`Error loading match: AuthFetchError: No static resource nonexistent.`
-
-**Cause.** `match-view.js` fetched the literal string `'/nonexistent'` for an unplayed fixture, on the
-theory that a 404 is tolerable because such a fixture has no `Match` row. **`authFetch` throws on every
-non-2xx**, so the throw skipped the `if (!response.ok)` tolerance three lines below it, landed in the
-function's `catch`, and rendered the error. The tolerance was **unreachable code**, and its author had
-assumed a contract for `authFetch` that does not exist.
-
-An unplayed fixture has **no event stream at all**, so the fix is to not ask: the fixture path now skips
-the events request entirely and builds the header from `/matches/by-fixture/{id}`, which already
-existed and already had its own `catch`. That also removes a pointless HTTP round trip per fixture view.
-
-**Verified by reproducing the old strategy against a stub `authFetch` that throws like the real one:**
-
-| | before | after |
-|---|---|---|
-| fixture | `Error loading match: No static resource nonexistent.` | renders, header from metadata |
-| requests for a fixture | 3, one of them guaranteed to 404 | **2** |
-
-**The same defect class, found while fixing it:**
-- `pages/features/matches.js:9` has a comment saying this exact class of bug was fixed there — but its
-  `if (!response.ok)` guard is **still unreachable**, and `loadResults` is called inside the router's
-  `try`, so a failure there still escapes to the generic "API Error" card. Latent, not the reported
-  symptom.
-- `academy.js:138` and `stats-view.js:67` have the same unreachable guards, but both are already inside
-  a `try/catch` that returns null, so their behaviour is correct and only the dead line is misleading.
-
-**All three fixed.** `matches.js` catches and renders its own error card — which is what its own comment
-already claimed — and **`loadFixtures` never had a guard at all**, so the Schedule page had the same
-symptom with nothing handling it. The two harmless ones had their dead lines removed, so the code stops
-inviting a fourth copy of the mistake.
-
-### P2-17 — Match engine realism
-
-**Last, per the owner, and re-baseline first.** The numbers recorded for realism were measured against code
-that has since changed, so they are not a specification. Re-measure, then decide.
-
----
-
-# 📋 Parked, with the reason
-
-| Item | Why it is not a task |
-|---|---|
-| Individual training focus per player | **Cancelled by the owner** |
-| Work permits / foreign limits | **Built in full, then removed by the owner** (`a6394f9`) |
-| `DEFENSIVE_SHAPE` / `/demo` routes / Oracle auth error | Listed in an old board section and not re-examined since. Re-check before spending time |
-| `MatchdayJobsConfig` day 6 | P0-6 — an open decision, not an omission |
-| Club Elo admin button | Zero reads `--` on an unrated world is deliberate, since **zero is a rating a club can
-  legitimately hold**. Whether it wants a button is an owner call |
-
----
-
-## 🌍 THE QUEUE — split into one task per board card, worked one at a time (owner, 2026-10-07)
-
-> **razdvoji po taskovima, zapisi ih u kanban.md pa azuriraj kanban i kanban_progress md i uzimaj jedan po jedan**
-> ...**clean cut** (the ranking list shows ranking points only, not both)
-
-Everything below is one card. **One card in flight at a time**, each committed on its own with its own
-entry in `kanbanProgress.md`, so a half-built card is always visible rather than folded into a bigger one.
-
-### P0 — Ranking points: make the numbers real
-
-| Card | What it is | Done when |
-|---|---|---|
-| **P0-RANK-1** | A **per-season ledger** so the rolling window can be computed at all. One row per subject per season holding that season's points; the displayed total is `1500 + Σ(season × 1.00/0.75/0.50/0.25)`. | ✅ Two tables round-trip decimals, the window reads off them, and senior/U-21 cannot pool. **The writers land in -2 and -3** — nothing writes these rows yet. |
-| **P0-RANK-2** | **The club replay writes ranking points** instead of gap-weighted Elo deltas. | ✅ `ClubRankingPointsService` rewrites the ledger from match history, idempotently, per season, tier-weighted. |
-| **P0-RANK-3** | **The national replay writes ranking points**, senior and U-21 separately. | ✅ Same property for a country; a level guard refuses to score a side into the wrong level. |
-| **P0-RANK-4** | **One single rating system.** The head-to-head gap weighting goes from the rating as well as the points. | ✅ `clubK` no longer reads either rating. Swept 0–800 of gap. Mutation-checked. |
-| **P0-RANK-5** | **Achievement bonuses:** qualifying for an international cup, each further tournament phase, and every trophy including the national cup. Tier-weighted for clubs. | ✅ Bonuses read from the fixtures, not the draw. Stored in their own column so the pass is re-runnable. |
-| **P0-RANK-6** | **The ranking list orders by ranking points. Clean cut** — Elo is no longer displayed as a ranking. | ✅ `GET /countries/ranking` orders by points. The test builds a world where the two orderings **differ** and requires points to win. |
-
-### P0 — Every generated match opens to a preview, one competition per card
-
-> The owner's instruction: *"svaki generisan mec iz zreba nevezno da li je nacionalni kup, medjunarodni
-> kup, nt ili ntu21 mec, mora da ima cim se generise mogucnost da se udje na mec i vidi preview"*.
-
-Split one per competition because they do **not** share a code path — the national cup has a bespoke
-sheet today, the club cups have nothing clickable at all, and the two national-team competitions render
-ties as plain `<div>`s. Doing them together would hide which one actually broke.
-
-| Card | What it is | Done when |
-|---|---|---|
-| **P0-PREV-1** | **National cup** fixtures open to the shared match view, replacing the bespoke `loadCupFixturePage` sheet. | ✅ A tie opens the same screen a league fixture does. A **played** tie opens the **match**, so lineups/stats/goals/report are keyed correctly. 453 lines of bespoke sheet deleted. |
-| **P0-PREV-2** | **International club cups** fixtures open. Today `club-cup-view.js` renders ties as `<tr>` with no clickable target at all. | ✅ Both club names open the shared match view. `matchId` added to the tie payload. 26 tests green. |
-| **P0-PREV-3** | **Senior national team** fixtures open — qualifying and finals. | ✅ Group ties and knockout ties both open. 18 tests green. |
-| **P0-PREV-4** | **NT U-21** fixtures open. | ✅ **Already delivered by P0-PREV-3** — one renderer and one payload builder serve all four competitions. Evidenced by a U-21 test rather than assumed. |
-| **P0-PREV-5** | **Post-match detail for all four**: lineups, player stats, goals/scorers and the report. The views are already type-agnostic — this card *proves* that rather than assuming it. | ✅ Proven across league, cup, club cup and international. **One real defect fixed:** the report matched players to sides by team *name*. |
-| **P0-PREV-6** | **Live and replay for human matches** in those competitions, as league matches already have. | ✅ Already competition-agnostic (no type filter in the selection). **Four name round-trips replaced with the `footballTeam` foreign key**, including the one deciding what "play my match" may act on. |
-
-**The boundary that must not be crossed again:** a fixture id and a match id are both small integers over
-separate tables. `ZoxApiController` already carries the scar — *"the guess resolved a dashboard link to
-somebody else's played match"*. Each card passes an explicit kind, never a guess.
-
-### P1 — Country page
-
-| Card | What it is | Done when |
-|---|---|---|
-| **P1-CTRY-1** | **A new tab listing the clubs of that country, ranked.** No endpoint exists today; `findClubTeamsForCountry` is already indexed. | ✅ A **Clubs** tab, ranked by the same ranking points, division on every row, fetched only when that tab is asked for. |
-| **P1-CTRY-2** | **International qualifying moves out of General into its own tab.** | ✅ Its own **Qualifying** tab, next to General / Calendar / Clubs / National Team / U-21. Removed from the General panel. |
-| **P1-CUPS-DRAW** | **When does the international club-cup draw happen?** | ✅ **Owner, 2026-10-08: week 12, day 7** — *"week 12 day 7 ima informacije koji su se timovi kvalifikovali, napraviti odmah zreb od tih timova… da ne bi bilo zabune, zreb radimo na kraju sezone."* Drawn the moment the tables are finished, off **that** season's tables, into **next** season's competition. Replaces week 1 reading the season before. |
-
-### P0 — Elections (owner already approved all of this on 2026-10-07)
-
-| Card | What it is | Done when |
-|---|---|---|
-| **P0-ELEC-1** | **Registration opens week 12 day 1 of the previous season**, not one day before week 1. Measured: 7 days, because week 12 is the last week and runs into the next season. | ✅ `registrationOpensAt = weekOneDayOne − 7d`. Asserted. |
-| **P0-ELEC-2** | **`describe()` stops reporting a hardcoded stub.** | ✅ **Already satisfied on the live path** — `describe()` delegates to `describeElection` via `electionState`. The hardcoded `stage: NONE` sits only in the "this team was never created" branch, where `NONE` is honest. The closed button came from ELEC-3. |
-| **P0-ELEC-3** | **`describeElection` creates the election on demand**, so a reset is not a dead end. Today a reset leaves **0 rows** and the panel can only ever say "no election running". | ✅ Zero-row reset no longer strands the panel — asking creates the election and opens registration. |
-
-### ✅ ANSWERED — one single system
-
-> **KOLIKO PUTA DA PONOVIM?! JEDAN JEDINI REJTING SISTEM!!!**
-
-The rating's gap weighting is gone too. `clubK` no longer reads either rating, so beating a giant and
-beating an equal are worth the same, and there is no second system left to disagree with the points.
-
-**What the gap weighting was actually defending, and where it went.** It was kept here on the grounds
-that the rating should distinguish *"held on to a draw against Roma"* from *"beat Roma"*. That distinction
-is not lost — it moved. The forecast in `ScheduleInsightService` already knows Roma is stronger, so a
-result is rewarded for **beating what was predicted** rather than for beating a bigger name. Weighing the
-result by the gap as well counted the opponent **twice**.
-
----
-
-## 🔴 P0-RANK-WIRE — the ranking points and the medals computed nothing; now wired — 2026-10-08
-
-> **Owner, when asked where the replay should run:** *"After each matchday batch, like Elo."*
-
-`ClubRankingPointsService.recompute()`, `NationalRankingPointsService.recompute()`,
-`AchievementBonusService.apply()` and `HonourService.derive()` had **no caller anywhere in `src/main`**.
-Their tests called them, which is why they were green and the ledgers were empty.
-
-| Feature | Reads | In a real game, before |
-|---|---|---|
-| Country and club **ranking lists** | `ClubSeasonRankingPoints`, `CountrySeasonRankingPoints` | **empty tables** — the lists ranked nothing |
-| **Achievement bonuses** (qualification, phase, trophy) | the same ledgers | never applied |
-| **Medals** (P2-TROPHY-1) | `club_honour` | never derived, so a trophy UI would render an empty row |
-
-**Evidence, not inference:** `AsyncSimulationRunner` — the batch boundary every matchday ends at —
-recomputed **club Elo only**. And `sokker_db` held 0 played matches and 0 rows in all three tables, so no
-code path would ever have filled them.
-
-- [x] **`RankingPointsRebuildService`** owns the order, which is the whole contract: base ledgers first
-      (the bonuses read those rows), bonuses before medals (a trophy bonus and a trophy medal are the same
-      fact). All four in **one** `REQUIRES_NEW` transaction — a bonus left standing on a rolled-back
-      ledger is worse than no bonus, and the whole rebuild is idempotent.
-- [x] **Called once per matchday batch**, beside the Elo replay, skipped when the batch simulated nothing,
-      and unable to fail the matchday: the football is saved first and the next batch catches up.
-- [x] **Once per batch, never per match** — each of the four replays the played history, so inside
-      `SimMatchService.persist` it would replay the world once per fixture.
-- [x] **A test that fails when the caller is removed.** `RankingPointsRebuildServiceTest` goes through the
-      rebuild, and `AsyncSimulationRunnerRebuildsRankingTest` asserts the *caller* — because the first
-      version of the rebuild test **passed with the hook deleted**, which is the very defect it was written
-      to catch.
-- [ ] **Still not seen in a live matchday**, and the reason is recorded rather than guessed. The world is
-      seeded (14,723 clubs) and **26 league matches are played in `sokker_db`** — but by the other agent's
-      instance, whose build could not be confirmed to include this commit. Two attempts to verify with my
-      own instance were killed (exit 137) while other agents cycled the same port. **Two minutes of work to
-      finish**: advance to week 1 day 7 hour 20, then read `club_season_ranking_points` and `club_honour`.
-      The full procedure is in `kanbanProgress.md`.
-
-### The two small items from the same sweep, closed 2026-10-08
-
-| Item | Was | Now |
-|---|---|---|
-| **International club-cup Draw** guessed its week and day | `POST /admin/international-club-cups/redraw` passed **the current week** and a hardcoded **day 1**, while the job draws on week 12 day 7. The job only reads the week, so on any other week the button answered **200 and drew nothing** — and the day in the request was a number nothing looked at. | It draws on the job's **own** `DRAW_WEEK`/`DRAW_DAY`, so the button does what its label says at any point in the year, and the response names the season qualified from and the season drawn for. |
-| **National warm-up** was unreachable | Three finished endpoints (`/slot`, `/opponents`, `POST /`) since 2026-10-06 with **no frontend caller anywhere**. No manager could see the slot, name an opponent, or ask for a match. | A panel on both national-team tabs: the slot **read from `/slot`** rather than restated in the page, the opponent list, a request button that shows the endpoint's own 409 explanation, and both lists — asked and asked of. Written as **optional**: the owner said a warm-up is not compulsory, so the panel says what not playing costs, which is nothing. Read only on the two NT tabs. |
-| **…and then it broke every tab** | The panel was first written into `buildGeneralTab`, which destructures only `sortedLeagues, senior, u21` — so the page threw `ReferenceError: tab is not defined` on **all six tabs**, and four static guards stayed green throughout, because `node --check` parses and a name is only undefined at run time. | Moved into `buildSelectorTab`, which receives its data as context like every other tab. **New: `CountryPageRendersWithoutReferenceErrorTest` renders the real module in Node** across all six tabs and reproduces the owner's exact message when the panel is put back — the engine-based check this repository did not have, and the one that needs neither a browser nor a running app. |
-
-### 🔴 Loans: "I send him back and he does not arrive, and I have no option to accept" (closed 2026-10-08)
-
-One report, **two separate defects**.
-
-- [x] **The row offered the action that could not work.** `loanRow` branched on the *side* first, so every
-      loan **this club borrowed** fell through to the last branch and offered *"Send him back"* — refused by
-      the service with `LOAN_NOT_ACTIVE`, because an `AGREED` loan has not started. The action that starts
-      it, **Take him in**, was on no row and had no click handler.
-- [x] **The status now decides and the side refines it:** notice first, then `AGREED` (take him in /
-      waiting for them), then `ACTIVE` (request / send back), then nothing. An ended loan shows no button.
-- [x] **Nothing was ever notified.** Four moments now notify both clubs where both are affected — offered,
-      activated (arrived / left), termination requested, closed — as `LOAN_PROPOSED` and `LOAN_MOVED`. The
-      termination one matters most: without it the asking manager's button looked like it did nothing for a
-      week, which is the silence the owner reported.
-- [x] **"Take him in" then answered 500**, from the owner's console: a CHECK constraint on
-      `nl_notification.kind` that **no code maintained** rejected `LOAN_MOVED`, and the failed insert
-      poisoned the session so the loan transaction rolled back. The loan stayed `AGREED` — nothing half-done.
-      - ✅ **The constraint is rebuilt from `NotificationKind.values()`** at boot, beside the two existing
-            schema-compatibility steps. `ddl-auto=update` widens a column and never a CHECK, so this was a
-            landmine for every future notification.
-      - ✅ **`NotificationService.notify` is `REQUIRES_NEW`.** Its catch gave false comfort: a rejected
-            statement poisons the persistence context, so the caller's own transaction died at flush.
-            A notification is a thing a manager is *told*, not the thing that happened.
-      - ✅ **A guard that passed against the broken database** was replaced. Asserting the database's
-            constraint is vacuous on H2, which has none; it now asserts on the repair itself.
-- [x] **The owner's rule kept where it belongs:** the room is checked when the borrower **accepts**, so the
-      button says *Take him in* — the moment the place is committed.
-
-### 🔴 Advance Week was dead — found in the running app's log (closed 2026-10-08)
-
-`POST /simulation/week/advance` answered **500 and did nothing**, and it is the button the whole game is
-driven from:
-
-```text
-Unhandled exception during POST /simulation/week/advance:
-  could not initialize proxy [Team#1] - no Session
-  at SimulationController.advanceWeek(SimulationController.java:290)
-```
-
-- [x] **The cause:** the method has no `@Transactional`, so `userTeam.getCompetition().getName()` walks a
-      lazy proxy with no session — two hops of laziness for one string.
-- [x] **Fixed as a value:** `SeasonService.competitionIdOf` / `competitionNameOf` read it in a read-only
-      transaction, and the controller asks for the league rather than holding a lazy object.
-- [x] **The second copy, one line below,** which the first fix had to drag out: the fixture filter walked
-      `f.getCompetition()` too. `MatchFixture.competition` is also `LAZY`, so it survived only because a
-      repository call happened to leave a session open. Now compares competition **ids**.
-- [x] **Guard scoped to the one broken method.** My first version banned the walk from the whole controller
-      and failed against `prepareCurrentRound`, which *is* `@Transactional` and is therefore correct. A
-      guard that bans a correct pattern teaches people to work around the guard.
-
-### SeasonCalendarTest — three failures that were stale, not broken (closed 2026-10-08)
-
-All three were red long before this work and all three were the same thing: **the tests still described a
-two-slot week.** The owner moved a week to **four match moments — day 1, 3, 5 and 7** (2026-10-06), and
-these three were never updated.
-
-| Test | Was asserting | Now |
-|---|---|---|
-| `theOwnersTableVerbatim` | rounds 1-18 at slots 1 and 2, with the friendly slots unmentioned | the full four-slot table, transcribed slot by slot, plus a new test that the four slots **are** days 1/3/5/7 |
-| `friendlySlots` | 0 in a league week, 2 in week 6 | 2 in a league week (days 1 and 5), **4** in weeks 6 and 12, 4 or 3 in week 11 depending on the playoff |
-| `fixturesFitTheWeek` | a week holds at most **2** matches | at most `SLOTS_PER_WEEK` |
-
-The second one is the interesting failure: it asserted `friendlySlots(1) == 0`, and the answer is now 2 —
-because a friendly is an **option, not an obligation**, and the four-slot week deliberately leaves room
-for one beside two league rounds. The test was not wrong about the calendar; it was describing the previous
-one. The third was failing on exactly the two weeks that are **nothing but friendlies**, which is the
-calendar working as designed.
-
-None of the three was a production defect. The code was right and the transcription had drifted — so the
-fix is to the tests, and `theOwnersTableVerbatim` now says in its own comment why it is transcribed by hand
-instead of derived.
-
-**Guard checked:** moving round 1 back to the two-slot position turns it red.
-
-### Found alongside it, not fixed here
-
-- **Advancing a single day takes minutes, and the cause is this job, not the clock.** Owner, 2026-10-08:
-  *"if you can break up the process, speed it up — do it, the point is that the functionality remains,
-  the implementation I leave to you."*
-  - ✅ **The duplicate pass is gone.** Week 1 asked for the qualifying season and the active season; in
-        season 1 those are the same season, so the world's static half was built twice per tick.
-  - ✅ **The whole world was one transaction, and that is what made it look like a hang.** Measured: after
-        **37 countries** the `team` table still read **406** rows, because nothing commits until the last
-        country finishes — a failure at country 40 lost all of it. Each country is now its own
-        `REQUIRES_NEW` transaction, so **the same run showed 2,510 → 9,043 teams while it worked.**
-  - ✅ **Two queries per club removed.** The standing-table loop asked for the season competition and the
-        club's entry once per club — the same season-competition row every time. One read and one
-        `saveAll` per division instead: ~30,000 queries to write 14,260 rows. Club creation batched the
-        same way, 14,260 individual INSERTs into one per division.
-  - [ ] **The remaining cost is the rows themselves**, ~43,000 inserts for 14,260 clubs and their entries,
-        which is about one country a minute. Faster, visible, and resumable — but not instant.
-  - ✅ **Where it runs: still the job, by the owner's decision to keep the functionality.** The
-        **Seed other nations** button remains the deliberate route; the matchday job only fills in what is
-        missing, and per-country short-circuiting means it is nearly free once the world is built.
-
----
-
-## 🏟️ P2-STAD-1 — the ground is built one section at a time — owner, 2026-10-08
-
-> **nastavi sa stadionom, svaka od 4 strane sveta/tribine i svaki od 4 uglova su isti zahtevi:**
-> **izabere tip sedista, kapacitet koji se dogradjuje, i krov samo za odredjenu tribinu; dobije se
-> **proracun: cena + koliko vremena se NECE moci koristiti tribina**; svaka tribina se ceni odvojeno,
-> uz preporuku; ukupan kapacitet je zbir svih osam.**
-
-- [x] **`StadiumSection` + `StandPosition` + `SeatingType`.** Four sides, four corners, eight rows per
-      ground, unique on `(stadium_id, position)`. Laying them out is the migration: a legacy ground keeps
-      **every seat**, divided across the eight with the remainder handed out, and its seat quality read
-      back as the type it amounts to. A ground with no capacity starts empty — the manager chooses.
-- [x] **The quote comes before the money.** `POST /sections/quote` returns cost, **weeks closed**, the
-      week the stand reopens, both capacities after, and the recommended price. Nothing is spent. The page
-      shows it, and only **Yes, build it** spends.
-- [x] **A roof is one section's.** Priced on the seats it *ends up covering*, so a roof over fresh seats
-      is a bigger roof. It adds weeks to the closure, and heated seats under it add another.
-- [x] **One number, one place.** `Stadium.capacity` is the **sum of the eight**; `seatQuality` is the
-      capacity-weighted comfort of what was built; `roof` is true only when all eight hold seats and are
-      covered. The whole-ground expand/roof/seat actions were **removed**, not left dormant — two doors
-      that can write the capacity are two ways for it and the sections to disagree.
-- [x] **Eight prices that reach money.** `AdmissionService.priceLadder` is the ground's sellable blocks,
-      cheapest first, taken from the club's own sections; a section nobody priced sells at the ground's
-      standard price. `AttendanceService` runs its price elasticity off `demandPrice`, the capacity-weighted
-      average. Ticket tiers remain as the fallback for a ground that has never been laid out.
-- [x] **The page**, reached from Club profile → *Open Stadium View*: eight rows with capacity, seating,
-      roof, closure week, their own price and its recommendation, then quote → yes/no.
-- [x] **Verified in a browser against the real database**, and the demo data reverted afterwards:
-      `stadium_section` and `club_honour` exist in `sokker_db`; a build moved a real ground 15,339 →
-      16,339 and took EUR 205,588.50 off the budget; the section closed for 3 weeks; the ground total
-      stayed the sum of the eight.
-- [x] **Two guards proved by breaking the code**, not by a green tick: pricing the roof on the seats
-      already standing, and dropping unpriced sections from the ladder. Both were reverted after failing.
-
-### Found on the way, and fixed here
-
-| Found | What it was |
-|---|---|
-| The picture upload was wired **inside the colour handler** and read `mainContent`, which does not exist in that module. | Saving a colour threw a `ReferenceError` before the colours were ever sent, and the upload control was never attached at all. Both now have their own wiring. |
-| A refusal showed up in a note at the **bottom** of the panel. | The form looked like nothing had happened. Refusals are now printed where the reader is looking. |
-| A build finished and the page said **nothing**. | The message was written into the panel that the reload then replaced. It is kept across the reload now. |
-| An unpriced section showed an **empty price box** next to "Recommended 20". | It sells at the ground's standard price, so that is what the box shows, and the row says so. |
-| The tier fallback was scaled to the home sector **twice** (found by an existing test turning red). | A full house came out worth less than the same crowd with fewer cheap seats. |
-
----
-
-## 🌍 P2-MINE — from the owner, 2026-10-07 (queue behind the current run)
-
-> **prvo nastavi to da zavrsis a onda dodaj i ovo u kanban pa da preuzmes posle**
-
-Added after the ranking and preview work was under way, at the owner's instruction to finish what was
-running first. **None of this has been started.** Two of the four are questions as much as tasks, and the
-answers are not written down anywhere in the codebase yet.
-
-| Card | What the owner asked | What has to be decided first |
-|---|---|---|
-| **P2-STAD-1** | **Stadium works need a stand, a cost, and a yes/no.** | ✅ **Built and seen in the database.** Each of the four sides and four corners is its own `StadiumSection`: a **seating type** (standing / benches / seats / heated), **seats to add**, and a **roof over that section only**. `POST /sections/quote` returns the price and **how many weeks that stand holds nobody** without spending; `POST /sections/build` spends it and closes that one section; `POST /sections/price` prices a section on its own, with a recommendation beside it. **Total capacity is the sum of the eight**, and `seatQuality` is now the capacity-weighted comfort of what was built instead of a number the world builder set and nothing read. | Was: one capacity, one price, one roof, and a `POST /build` that spent the budget on the click and reported the closure afterwards. Two doors that could write `Stadium.capacity` would have let the total and the sections disagree, so the whole-ground expand/roof/seat actions were **removed** rather than left dormant; `StadiumBuildService` keeps only the shared per-seat cost and the free colouring. Laying out the eight **is** the migration: a legacy ground keeps every seat, divided across the eight, and keeps selling on its own tiers until a manager prices a section, so no existing club's gate income moves because a table appeared. |
-| **P2-TRAIN-1** | **Can training facilities be repaired, and how does that affect training?** | ✅ **Answered — they cannot be repaired, because there is no damage model.** They can be **upgraded**, three facility types, per-level cost and weekly upkeep, and upgrade level directly multiplies training growth via `TrainingProgressionService.facilityFactor` → `Stadium.trainingFactorFor(skill)`. No repair feature exists. |
-| **P2-TROPHY-1** | **Trophies on the Club page, inside milestones** — medal colour (gold/silver/bronze), competition and season beneath. | ✅ **Done, end to end.** Derivation (league 1/2/3 → gold/silver/bronze, cup final winner/loser and third-place winner; no third-place match, no bronze) runs after every matchday batch. `HonourService.honoursOf` is the read side, the medals travel on the **milestones payload** the Club page already reads, and the board draws a coloured medal with the competition and season beneath. Empty list for a club that has won nothing — a sentence, not a blank card. **Two guards, both proved by breaking them**: drop the field from the payload or the `trophies` read from the markup and four of the seven go red. |
-
-**Order:** P2-TRAIN-1 and P2-STAD-1 are done. **P2-TROPHY-1 has its backend and still needs its UI row.**
-
----
-
-## 🔶 The preview predicts again, and the ladder's top rung is reachable — owner, 2026-10-07
-
-> **preview vise ne daje prognoze a radile su pre** — showed `Not predicted`, `0%0%0%`, `xG 0.00 : 0.00`
-
-- [x] **Cause was the endpoint, not the arithmetic.** `previewForFixture` returned every computed field
-      null by design; the screenshot's numbers came from `ScheduleInsightService`.
-- [x] **`MatchPreviewService` computes the real prediction** and keeps fitness, absences and the lineup
-      null — the original reasoning was right, it was just applied one field too far.
-- [x] **Competition-agnostic**, so league, national cup, international club cup, senior and U-21 all get
-      a forecast from the same code.
-- [x] **Unit mismatch fixed in one place:** the renderer multiplies probabilities by 100, the service
-      returns whole percentages. Missing this renders every forecast as 0%.
-- [x] **`/match-stats/lineups/{id}` is a 404, not a 500** — an unplayed fixture has no `Match` row, and
-      that is not an error.
-- [x] **`EXPECTED_WIN_MARGIN` measured, not assumed.** Across the whole reachable strength range the
-      forecast margin spans only **−1.10 to +1.79**, so a threshold of 2.0 made *expected to win*
-      **unreachable** and the top rungs dead code. Now 1.0, chosen from the measured table.
-- [x] **32 tests green**, six of which fail against the old null stub.
-- [ ] **Not verified in a browser or against the real database** — the application is only ever started
-      through `run-app.sh`, and the owner is not to start it until the list is clear.
-
----
-
-## 🔶 Ranking points: the formula is specified and tested, not yet wired — owner, 2026-10-07
-
-> **zelim da osmislis kako se dobijaju i gube ranking poeni za ranking listu, i za NT i za klubove**
-
-- [x] **One number, not two.** Every team starts on **1500**; every match moves it by how the result
-      compared with what was expected; achievement bonuses add to it. **No head-to-head term anywhere** —
-      the same result against a tier-1 and a tier-31 champion scores identically.
-- [x] **Rolling window** of four seasons at **100 / 75 / 50 / 25**, his choice.
-- [x] **The ladder:** staying inside the expected outcome is worth **0**; crossing it is worth
-      **±20 / ±30 / ±40 / ±50**, graded and capped.
-- [x] **Both zeros are his own words** — a win short of the margin and a loss short of the margin are
-      each worth nothing rather than a penalty. Points are only won or lost by *crossing* the line.
-- [x] **Competition values** 1.00 league / 1.25 national cup / 1.50 international club cup /
-      1.20 qualifying / 2.00 World Cup / **0.30 friendly**, his choice to count them.
-- [x] **Division weights** 1.00 / 0.85 / 0.70 / 0.55 / 0.40 — which is **why the totals are decimals**.
-- [x] **25 tests, mutation-checked:** moving the crossing threshold 3→2 breaks 8 of them.
-- [x] **Three bugs the table caught in my own code:** the ladder ignored "won by more than forecast";
-      a club cup and a WC qualifier were indistinguishable without `teamType`; `tierWeight` contradicted
-      its own javadoc.
-- [x] **Storage and replay** — `ClubSeasonRankingPoints` / `CountrySeasonRankingPoints`, replayed per
-      season and windowed at 100/75/50/25. Was unticked because the replay had no caller; **wired** by
-      `4f8830b` (🔴 P0-RANK-WIRE).
-- [x] **Ranking list ordered by points** — both `/countries/ranking` and the country **Clubs** tab sort by
-      the points total, not by the Elo they replaced.
-- [x] **`RatingEngine.clubK`'s gap weighting removed** — the weight is `CLUB_BASE_K × value.scale()` and
-      reads neither rating. The two-argument overload is kept so the call sites still compile, and it
-      ignores both arguments.
-- [x] **Equal totals no longer share a position.** `RankingTieBreakSeed` holds one coin per ladder — the
-      world ladder and one per country for its club ladder — written on first use and read from then on.
-      `RankingTieBreakService.coin(seed, id)` mixes it with the id, so level totals get **distinct**
-      positions in a **stable** order. Verified against PostgreSQL: 48 countries and 310 clubs all on
-      1500, distinct positions, identical order on a second read, one stored row per ladder.
-      The pattern and the reason are `NationalGroupTieBreak`'s: a coin re-rolled per read is a table that
-      reorders itself while nobody is watching.
-
-#### Two stale tests this uncovered, and what they had been asserting
-
-`CountryRankingTest` was **already red before the coin existed** — two failures, confirmed by running it
-on the commit before. Both were written against the pre-points ranking:
-
-| Test | Was asserting | Now |
-|---|---|---|
-| `equalRatingsShareAPosition` | level ratings **share** a position, fed from `reputation` | `levelCountriesAreSeparatedByTheCoin` — level **points** get distinct positions, seeded from the ledger the list actually reads |
-| `theTwoLevelsAreRankedSeparately` | senior and U-21 read `reputation` and `youthRating` | reads two separate `CountrySeasonRankingPoints` rows, 300 senior and −100 U-21 |
-
-The first one had been wrong twice over — the numbers it set were not the numbers the list reads, **and**
-the rule it asserted is the one the owner has since overruled.
-
----
-
-## ✅ The two patterns that would turn a bigger world into a cliff — owner, 2026-10-07
-
-> **fix the findAll() and per-club-loop patterns now as a precondition** for a full pyramid later
-
-- [x] **Measured, not guessed:** 287 bytes/player tuple, 215 bytes/player of index, `shared_buffers` 128 MB,
-      heap 8 GB, 2 `@Scheduled` jobs. Full pyramid ≈ 373,000 players ≈ **190–300 MB**.
-- [x] **Daily use barely moves**, because every hot path is country-scoped and `ix_player_team` /
-      `ix_team_country` already exist — and the expensive multiplier (simulated leagues simulating) is
-      already avoided by design.
-- [x] **`PlayerRatingBackfill` no longer calls `findAll()`.** Batches of 500, each in its own
-      `requiresNew` transaction, so peak memory is bounded by a constant and a partial failure keeps what
-      already committed. Paged by id — only ratings change, so page boundaries are stable.
-- [x] **The national pool is one query, not one per club.** It loaded every club in the world, filtered in
-      Java, then queried each of the country's clubs — and ran **twice** per page load. Now one indexed
-      join, **10.2 ms**.
-- [x] **`poolSize` and the pool rows come from the same list**, so the count cannot disagree with the rows.
-- [x] **Guard driven through the selector path** (a non-selector never runs the code) and asserting
-      `atMostOnce()`, not `never()` — `describe` legitimately loads the side's own 25 players.
-
----
-
-## ✅ Active national sides field real players — owner, 2026-10-07
-
-> **zasto su u u-21 i prvom timu u 25 lazni igraci (verovatno nastali tokom init db) umesto stvarnih?
-> AKTIVNA liga MORA imati STVARNE igrace a ne simulirane!!!**
-
-- [x] **All 2,400 national-squad players were generated.** Serbia had 7,730 real players available and
-      still fielded `N. SRB-GK01` at 82 while `Zoran Zivadinovic` sat in the pool at 94.
-- [x] **Cause: the sides are seeded before the pyramid exists**, so the bot fallback ran; then the
-      idempotence guard read *"a squad exists"* and made the simulated players permanent.
-- [x] **`BotSquadGenerator.isGenerated`** recognises its own output, built from the same prefix list and
-      the same `Position` values so the two cannot drift.
-- [x] **Generated players are replaced by real ones**, topping up rather than rebuilding, so a selector
-      who already called somebody up is not overwritten.
-- [x] **`sourcePlayerId` is now stamped on every seeded copy** — it was only set by `addToSquad`, and it
-      is the column that keeps a called-up player out of the pool. Without it the fix would have shown
-      the same 25 players in the squad *and* the pool.
-- [x] **An empty club list is no longer memoised.** `clubsIn` cached it on a singleton field, and since
-      the sides are seeded before any club exists, every country cached "no clubs" — **Repair world
-      would have reported success and replaced nothing.**
-- [x] **A country with no clubs keeps its generated side.** Deleting its only XI is worse, and an empty
-      national side cannot be drawn against. Full pyramid for the other 47 is deferred by owner decision.
-- [x] **Guard mutation-tested:** with `setSourcePlayerId` removed, the test fails with the exact message
-      it claims to prevent.
-- [x] **Seen in the database:** Serbia 25/0 generated/real → **0/25**; U-21 the same. Pool 7,730 → 7,705
-      with no double-listing.
-
----
-
-## ✅ The message list carries the last message — owner, 2026-10-07
-
-> **u listi poruka se samo vidi subject i poslednja poruka i kad se klikne onda se expanduje ceo thread**
-
-- [x] **Reply, the original subject with no subject field on a reply, and the New message button were all
-      already built and working** — behind Community, which is why they were hard to find. `MessageService.send`
-      is deliberately one route for both: `threadId` continues, `recipientUserId` opens, so the client cannot
-      fork a thread by choosing wrong.
-- [x] **The one real gap was the last message**, which is the thing the row is read for.
-- [x] **`lastMessage` on every thread row, in one query** for the page — `DISTINCT ON (thread_id)`, because
-      thirty threads is thirty queries otherwise.
-- [x] **PostgreSQL-only, and the H2 tests pass through the fallback** — so a green suite is not evidence
-      the query works. Verified against the owner's database (`PREVIEW PATH: QUERY (PostgreSQL DISTINCT ON)`)
-      and the test says in its own assertion that it checks the fallback.
-- [x] A thread with no messages lists **no** preview rather than an empty one.
-- [x] `MessageServiceTest` **27/27**: the preview is the **newest** message, each thread carries its own.
-
----
-
-## ✅ The notification chime resumes instead of giving up — owner, 2026-10-07
-
-> **red dot radi lepo i broj ali taj ton kad stigne ja ne cujem**
-
-- [x] **The old code closed a suspended context and returned** — and a context created outside a user
-      gesture is suspended in **every current browser** (Chrome's own autoplay policy documents it). So the
-      chime was given up on **every ring**, inside a `try` with an empty `catch`: no error, no log, no
-      console message. It looked like defensive error handling; it was the reason the tone never sounded.
-- [x] **Resume instead of abandon**, one context for the page, kept rather than closed after each ring.
-- [x] **Unlocked on the first click or keypress**, because Chrome will only start a context from a gesture.
-- [x] `NotificationChimeBrowserTest` **1/1** against real Chromium — and it says plainly that **headless has
-      no autoplay policy**, so it cannot witness the bug. It asserts the checkable half: `resume()` leaves
-      the context running. The suspended half rests on Chrome's documentation, quoted in the test.
-- [x] **A regression this task introduced, caught by an existing assertion**: rewriting the chime deleted
-      `buildDropdownHtml` entirely, and `theDropdownShowsUnreadOnly` failed on the missing filter.
-
----
-
-## ✅ Opening a notification's target marks it read — owner, 2026-10-07
-
-> **kad se klikne na open conversation ili open forum iz notificationsa odmah smanji broj unread-a jer je taj
-> vec procitan (i izbaci ga i iz tickera ako je tamo)**
-
-- [x] **The link never marked it read.** Clicking a notification's row did; clicking *Open the conversation*
-      did not — and the row handler deliberately skipped those buttons, so a notification could be acted on
-      for ever and still sit in the ticker with the count unchanged.
-- [x] **One path for both ways of reading it**, `consumeNotification(id, row)`.
-- [x] **The screen moves before the server is asked** — row gone, badge down, then the POST. A badge that
-      waits on a round trip to change reads as broken. If the POST fails the next poll corrects it.
-- [x] **Reading cannot make the bell ring**: the decrement also moves `lastSeenUnread`, so the next poll sees
-      no increase and stays quiet.
-- [x] `NotificationBellAlertTest` **9/9**, pinning that the row is removed **before** the `await`.
-
----
-
-## ✅ Jobs view: a real tab, and a table class that exists — owner, 2026-10-07
-
-> **napravi lepse job pregled, bas je zbrkano ... normalna leepa tabela ko sve druge tabele, kolone su ok,
-> pazi na mob prelom**
-
-- [x] **`fm-table` is defined nowhere in the stylesheet** — the panel had no padding, no header styling,
-      no borders and no hover, which is what "zbrkano" was. It uses **`fm-squad`**, the style every other
-      table here uses. The backup table had the same defect and is fixed too.
-- [x] **A real tab bar** at the top of Admin, so Jobs is not the ninth section in a scrolling page.
-- [x] **Panels toggle with `hidden`**, not a class — a `display:none` panel still fetches, so Jobs would
-      have read the server while invisible.
-- [x] **Mobile:** the table scrolls inside its own wrapper; below 640px the trigger and next-trigger
-      columns are dropped and the name, last outcome and failure count are kept. The outcome is never
-      dropped — it is the reason the panel exists.
-- [x] `AdminJobsViewTest` **4/4**, including **every class the view uses is defined** — this failure mode is
-      silent, so it is asserted rather than noticed.
-
----
-
-## ✅ P0 — Reset DB: a typo, then a subtle one, both found by running it for real — owner, 2026-10-07
-
-> **unrecognized configuration parameter "session_replica_role"** · **moras ovo da istestiras pre nego kazes
-> da ok, slobodno drljaj po bazi**
-
-- [x] **`session_replica_role` is not a PostgreSQL parameter.** The real one is
-      `session_replication_role`. Reproduced before changing anything, then fixed — **and the button stayed
-      broken until the owner pressed it**, which is the standing rule this task now follows.
-- [x] **One `TRUNCATE ... CASCADE` was also wrong**: `CASCADE` follows references in *both* directions, and
-      eight tables reference `app_user`, so it emptied the accounts the reset exists to keep. Measured:
-      truncating `nl_notification` alone took `app_user` from 8 rows to 5.
-- [x] **Ordered deletes with integrity suspended under the correct name**, restored in a `finally`.
-- [x] **The suspension is verified, not assumed** — `SET` through Hibernate can return without taking
-      effect, and the session is asked what it is set to. The log line exists for that failure mode.
-- [x] **`ResetServiceOnRealPostgresTest` against a real copy of the world**: 122 tables emptied, 0
-      countries, both accounts kept. `@DataJpaTest` **replaces the DataSource with an embedded database**,
-      which is why the first version silently skipped itself.
-
-**Two of the last three failures are invisible to H2.** Anything touching the real schema is not verified
-by a suite running on a smaller one.
-
----
-
-## ✅ Admin → Jobs, and what an advance triggered — owner, 2026-10-07
-
-> **Mora u Admin deo da se doda poseban tab za jobove ... istorija kad je trigerovan job i da li je ispravno
-> zavrsen, kad je sledeci triger** · **advance hour/day/week ... da se pinguje job syncer**
-
-- [x] **A jobs panel**: every registered job with its trigger, last outcome, next trigger and failure
-      count. The rows were **already in `job_run` with no reader anywhere** — that is why "does training
-      work?" was unanswerable.
-- [x] **A FAILED badge and a tinted row.** A failed job is retried silently, which means a *permanently*
-      broken job looks healthy for ever. The status was being written and never read.
-- [x] **Next trigger is walked forward, not subtracted** — whether a trigger is reached depends on which
-      hours the clock offers. Pinned: from week 3 day 7 hour 22, a day-7 hour-23 job is **one hour away and
-      still week 3**, not week 4.
-- [x] **The advance commands were already correct** — `advanceHours` steps an hour at a time and runs what
-      is due at each step, and `advanceWeek` **is** `advanceHours(168)`. Checked, not assumed.
-- [x] **The gap was the report**: a 24-hour advance returned only the last hour's outcomes, so it reported
-      two or three jobs when it had run five. It now returns `advance: {hoursAdvanced, ran, skipped,
-      failed, jobsRan, jobsFailed}` — "moved 24 hours, ran training, skipped 3, nothing failed".
-- [x] `JobStatusServiceTest` **5/5**, `AdminJobsControllerTest` **2/2**.
-
----
-
-## ✅ Training: measured, and it works — but nothing could prove it (owner, 2026-10-07)
-
-> **potencijalni p0: da li nam radi trening? na Oracle je prosao dan za trening a nije se desio**
-
-- [x] **`job_run` said `training` had run once**, every other job repeatedly — a real signal, and the
-      reason for it turned out to be the world's state rather than a defect.
-- [x] **The hypothesis was wrong and the test said so.** Hour 23 looked unreachable (the clock increments
-      the day and the hour in the same step), and both rollover jobs sit there. `JobTriggerCoverageTest`
-      walks a real week: **hour 23 *is* reached, on all seven days.** Kept because the question is real
-      for the next job on an unusual hour.
-- [x] **`TrainingJobFiresTest` 3/3 proves it through the real `JobRunner`**: at day 4 hour 10 the outcomes
-      contain `key=training … status=DONE`, alongside day-opened, recovery, table-reconcile and
-      tournament-draw. **Training works.**
-- [x] **The real gap: nothing tested the job at all.** The service had a test, the manual endpoint had a
-      test, and the scheduler had none — a service wired to nothing looks exactly like one that works.
-
----
-
-## ✅ Back from an NT match went to the league; qualifying rows were unstyled; seeding scanned per club — owner, 2026-10-07
-
-- [x] **Back from a national-cup match landed on the league match list.** `match-view.js` mapped the caller
-      to a Back target through an **allowlist**, and everything outside it fell through to `'results'`. An
-      unknown caller now **returns to the previous screen** — correct for every surface, including the next
-      one, which an allowlist cannot be.
-- [x] **"Qualifies" was invisible.** The rows already carried `is-qualified`; **the class was defined
-      nowhere**, and the whole `fm-qualifying-*` block had no styling. Now a tinted row with a **green left
-      rule** — a full fill turns five tiers of tables into stripes — plus a blue rule for the manager's own
-      club.
-- [x] **Seeding was one table scan per club.** Measured at **10 ms × 14,880 = 149 s**, which is the
-      *"kako ide dalje kroz drzave tako ide sve sporije"* shape exactly. Now **one query per country**
-      (48 total) and a `Set` membership test. `PyramidBuilderQueryCountTest` 2/2 asserts the **query count**,
-      not the result — every behavioural test passed while this took minutes.
-
----
-
-## ✅ P0 — Reset DB died on a foreign key; the senior-side rename never ran — owner, 2026-10-07
-
-- [x] **The schema has genuine FK cycles** — `cteam ↔ cscountry`, `new_logic_lineup ↔ new_logic_match`,
-      `country ↔ team`. **No ordering of row-by-row deletes satisfies an immediate FK around a cycle**,
-      which is what the children-first sort was pretending. Referential integrity is now suspended for the
-      reset and restored in a `finally`; the ordering code is deleted rather than patched.
-- [x] **The sabotage test passed** — H2's schema does not carry those basketball/legacy foreign keys, so
-      the wrong order completes there. `foreignKeyCyclesDoNotStopTheReset` puts rows in the cycle pair.
-      **Second time in this task H2's smaller schema hid a real defect.**
-- [x] **The senior-side rename was correct, compiled, and unreachable.** It lived only inside
-      `seedIfMissing`, so it ran only if somebody pressed Re-seed. `renameSeniorSides` is now standalone and
-      idempotent, the repair calls it and reports the count, and **the 48 rows in the owner's database were
-      corrected directly**.
-
----
-
-## ✅ A represented country now says something — owner, 2026-10-07
-
-> **za simulate zemlje trenutno stoji za npr Rumuniju ... da stoji ranking poeni i pozicija na ranking listi,
-> da stoji grupa u kojoj je NT tim, da ako su seedovai international predstavnici stoji to**
-
-- [x] **The old page said only "ROU is represented, not played"** and pointed at Admin. True and useless:
-      **24 of the 48 countries on the World page are exactly this**, and their national sides play
-      qualifying groups and a World Cup like any other.
-- [x] **Ranking points and position**, on the senior Elo the matches produced. A position is a statement
-      about every country, so it is computed server-side in `GET /countries/ranking` — the World page and
-      a country page cannot disagree about who is 12th.
-- [x] **Equal ratings share a position.** A table numbering two identical countries 7 and 8 claims a
-      difference it cannot support. **Re-proven by breaking it** (`expected: <1> but was: <2>`).
-- [x] **Which group each of its two national sides is in**, with the whole group's table.
-- [x] **Whether it has played anything** — an unrated country says so instead of showing its seed rating
-      as a result.
-- [x] Senior and U-21 read from **two different columns** (`reputation` / `youthRating`).
-- [x] `CountryRankingTest` **5/5**.
-
----
-
-## ✅ The qualifying schedule existed and was never sent — owner, 2026-10-07
-
-> **gde su mecevi kad izadje draw? ... svaka grupa, ime grupe klikabilno ... svaka reprezentacija treba
-> klikom da vodi na tu zemlju**
-
-- [x] **The schedule was never in the response.** `roundsOf` skips every fixture with a group code —
-      correct for a knockout, and it meant a qualifying competition returned **no fixtures at all**. Eight
-      groups on screen with nothing behind them. Each group now carries its five matchdays.
-- [x] **`exists` now means drawn, not "the row exists".** `ensureAll` creates all four rows the moment any
-      one is drawn, so the World page reported four competitions when one had been. A tile is a link
-      exactly when there is something behind it.
-- [x] **The group name opens the group's schedule** — rendered and hidden rather than fetched, because a
-      manager comparing two groups wants both on screen.
-- [x] **Every team name is a link to its country**, in the standings and the schedule, from the ISO code
-      the server now sends beside every name.
-- [x] `NationalTournamentScheduleTest` **5/5**, the schedule line **re-proven by breaking it**.
-
----
-
-## ✅ Forum bans now tell the person they were applied to — owner, 2026-10-07
-
-> **kada igrac banovan s foruma treba da dobije i info u notifications (ostaje ono sto mu izadje ako pokusa
-> da pize)**
-
-- [x] **`notifyModeratorsOfBan` had zero callers.** A ban produced no notification anywhere — neither to
-      the banned manager nor to the moderators. `FORUM_BANNED` was reachable from nowhere.
-- [x] **`banFromForum` now notifies the banned manager**: the length in days, the reason, and who applied
-      it. And the moderators, so the decision is on the record.
-- [x] **The write refusal is unchanged**, exactly as asked — the notification is in addition to it, not
-      instead of it.
-- [x] **Lifting a ban sends nothing.** A lift is the absence of something.
-- [x] `ModerationServiceTest` **19/19**, the notify line **re-proven by breaking it**
-      (`expected: <1> but was: <0>`).
-
----
-
-## ✅ Notifications: the bell was never polled, and read items never left the ticker — owner, 2026-10-07
-
-> **notification - niti zvuka kad stigne niti crvene tacke - nista, testirao sam** ·
-> **kad se poruka procita skida se iz tickera**
-
-- [x] **The poll never started.** `startNotificationPolling` guarded on
-      `document.getElementById('notification-bell')` — and the bell is in `dashboard.html`, so that is
-      always true and the function **always returned early**. The badge only ever updated when the
-      manager opened the dropdown, which is why nobody noticed. The red dot and the ring were correct
-      code with nothing to run on. Now a `pollStarted` flag, which is the state the guard meant.
-- [x] **The dropdown lists unread only.** Read items leave the list rather than dimming in it, and the
-      header count is derived from the filtered list so the two cannot disagree. Rows stay in the
-      database.
-- [x] `NotificationBellAlertTest` **7/7**, every guard re-proven by breaking it.
-
-**The lesson, recorded because it is the third instance:** a guard written about the wrong thing. Here
-`getElementById` was used as *"have I started?"* when the element is part of the page rather than a
-consequence of starting — and the same shape appears twice more this task, in the reset's delete-list and
-in a list of club columns shorter than the table.
-
----
-
-## ✅ P0 — Reset DB kept 86 tables, and Initialize DB crashed on the ones it kept — owner, 2026-10-07
-
-Two defects, both reported from the same session, both caused by the same thing: code that enumerated
-instead of deriving.
-
-### 1. Initialize DB died halfway through the pyramid
-
-> `Cannot invoke "Country.getIsoCode()" because the return value of "Competition.getCountry()" is null`
-> — `DatabaseInitializer.initSerbianFootballStructure`, at the filter that finds the Serbian leagues.
-
-The four national-team competitions **have no country** — an international tournament is not any one
-nation's — and the walk asked `c.getCountry().getIsoCode()` without asking whether there was a country.
-Twelve lines below the same file already had the null check. So once the NT competitions existed,
-Initialize DB always died, half-built, and the panel reported *"Database job 'initialize' failed"*.
-
-**Order-dependent, which is why it survived:** it needs an NT competition to already exist, and a cold
-database has none.
-`DatabaseInitializerNationalCompetitionsTest` builds that exact world and calls the method the button
-calls — 1 test, and it takes ~3 minutes because it builds a real pyramid.
-
-### 2. Reset DB kept 86 of the 125 tables
-
-> *"treba da prezive samo podaci u owner useru i o useru Kecko i tactical editor podaci - sve ostalo -
-> brisi, timove, forume, poruke, sve"*
-
-The reset was a **delete-list of 39 tables**. The database has 125. So **86 tables were never
-touched** — `nl_forum_topic`, `nl_forum_post`, `nl_message_thread`, `nl_direct_message`,
-`nl_notification`, the transfers, the scouting, the finance ledger, and the tie-break coins. The owner
-pressed Reset DB and found forum topics still in place, and he was right.
-
-- [x] **The reset is a keep-list now.** `app_user` (the two named accounts), `user`, `tactics`,
-      `formation`, `formation_positions`. Everything else is cleared **whatever it is called and whenever
-      it was added** — a delete-list is a promise to remember every table the application will ever have,
-      and a keep-list is a promise about the three things that must survive.
-- [x] **Both accounts are named, and both are detached.** `velibor@example.com` and `kecko@example.com`.
-      A rule preserving "row 1" deletes whichever manager registered first.
-- [x] **The national-team competitions are cleared too.** They are world data like any other; leaving four
-      orphan tournament rows behind a reset is how "the qualifying groups are still there after I reset"
-      happens.
-
-**The bug the new test found in the new fix — kept, because the shape of it is the point:**
-
-`preserveOwnerAccount` nulled `cteam_id` and `tifocteam_id` but **not `football_team_id`**. Teams are
-deleted before accounts, so the reset would fail on the foreign key — *"Database job 'reset' failed"* and
-a half-cleared world. **The columns are now read from `information_schema`**, so the next sport added to
-this application cannot repeat the omission. That is the same mistake as the delete-list, one level down:
-a list of columns quietly shorter than the table.
-
-`ResetServiceKeepsOnlyAccountsAndTacticsTest` 3/3. Its central assertion is **"no table outside the
-keep-list holds a row"** — the owner's actual words — because a test naming the 86 tables would be the
-same mistake in test form. **The detachment guard is re-proven by breaking it:** naming only two of the
-five club columns reproduces the failure.
-
-**Rows in that test are written through the entities, not through hand-built SQL.** An earlier version
-assembled `INSERT`s from `information_schema` and guessed a literal per column, and burned five
-iterations on `SUPPORTER_MOOD` being an integer and `HUMAN_CONTROLLED` a boolean. A name is not a type.
-
-**Also learned, and it cost real time:** the test profile is **H2** and the owner's database is
-**PostgreSQL**, and the obvious `TRUNCATE TABLE a, b, c RESTART IDENTITY CASCADE` is valid in neither
-other case — H2 takes one table per `TRUNCATE` and has no `CASCADE`. The reset deletes rows children-first
-(order read from the catalogue, not hand-written) and restarts each identity. **Catalogue casing differs
-too**: PostgreSQL reports `"player"`, H2 reports `"PLAYER"`, and lower-casing the names broke the H2 run.
-
----
-
-## ✅ Admin database backup and restore — owner, 2026-10-06
-
-> *"teba dodati dve funkcionalnosti u Admin deo - jedna je da celu bazu (npr kad postavim cistu bazu na
-> pocetku season 1 week 1 day 1 sa svim timovima seed i svi kupovi draw i sve mi bude ok ili prosto
-> sutradan za backup) uradi backup/dump i naziv je yyyy-mm-dd-HH-mm-ss, a druga da iscita iz backupa bazu
-> i zameni umesto postojece"*
-
-**Exit criteria:**
-
-- [x] **A dump of the whole database, named `yyyy-mm-dd-HH-mm-ss.dump`.** `pg_dump --format=custom`,
-      written to `backups/` (gitignored — a dump is a copy of a world, not source). **The real world dumps
-      to 2.0 MB in ~1 second**, 250 tables, so the button is fast enough to press whenever the state is
-      good rather than only at the end of a session.
-- [x] **A restore that replaces the database.** Validates the archive, **then** drops the schema, then
-      replays it. The ordering is the feature — see below.
-- [x] **The list of backups, and restore per row**, on the admin panel, with the file named in the
-      confirmation. A restore that asks "are you sure?" without saying *which file* is a question nobody can
-      answer.
-- [x] **`/admin/**` role guard holds**, and the `.dump` extension survives the path variable
-      (`AdminBackupControllerTest` 5/5).
-
-**Three decisions that were not obvious:**
-
-1. **The archive is proved readable before anything is dropped.** `pg_restore --list` reads the archive's
-   table of contents without touching the database, so a truncated file fails **before** the schema goes.
-   **Re-proven by moving the drop first:** `aCorruptArchiveIsRefusedBeforeAnythingIsDropped` then fails
-   with `relation "roundtrip_marker" does not exist` — the world is gone and the restore never happened.
-2. **`drop schema public cascade`, not `pg_restore --clean`.** `--clean` drops objects one at a time in
-   the archive's own order and can stop halfway through a dependency chain, which is how a restore ends
-   with half the old world and half the new one. One statement cannot.
-3. **The client tools are chosen against the server, not taken from `PATH`.** See the environment note
-   above: Homebrew's 16.15 cannot read this 18.4 server. Resolved over JDBC; `app.backup.pg-tools`
-   overrides.
-
-**No shell, ever.** Every command is a `ProcessBuilder` list, so a filename from a request can never
-become a command. The password goes in `PGPASSWORD`, not in an argument, so it does not appear in `ps`
-output to every other process on the machine. **stdin is closed**, because a client tool that decides to
-ask a question — `force?`, `password?` — would otherwise read from the console and hang the request
-forever; that is not hypothetical, it hung the first version of the round-trip test.
-
-**A restore needs a restart**, and says so in its own response: the process that just replaced the
-database still holds a connection pool and a persistence context built against the old one.
-
-**Tests:** `DatabaseBackupServiceTest` 6/6 (naming, traversal, listing, refusals — no database needed,
-because the checks that protect a destructive operation must hold on a machine where running it would be
-harmless), and `DatabaseBackupRoundTripTest` **4/4 against real PostgreSQL 18** on a scratch database named
-`sokker_roundtrip_scratch`, dropped and recreated per test. Dump, change, restore, and the change is gone.
-It refuses to start if that name does not carry its marker — a destructive test whose target is a constant
-in a test file is one edit away from dropping the owner's world.
-
----
-
-## ✅ Notifications: the bell rings and has a red dot — owner, 2026-10-06
-
-> *"kada ima nesto u notification, idealno i neki ring zvuk da se cuje a i da se pojavi neka crvena tacka
-> na zvoncetu koje je ikonica ili tako nesto, i broj neprocitanih mozda 9ne obavezno ali nice to have"*
-
-- [x] **The unread count was already there** — `notification-badge`, painted since 2026-10-05, with
-      `NotificationService.list` returning it beside the rows so badge and dropdown cannot disagree.
-- [x] **A red dot on the bell**, top-left so it does not collide with the count on the right, drawn as a
-      pseudo-element so no template edit can remove it, with a `prefers-reduced-motion` guard that drops
-      the pulse and keeps the mark.
-- [x] **A ring on arrival**, synthesised with Web Audio (two notes a fifth apart — a "ting-ting", not an
-      alarm; most of these are forum replies). No audio file added.
-- [x] **It rings on an INCREASE, not on "there is something unread".** The poll runs every 30 seconds for
-      as long as the tab is open, so the obvious version rings every 30 seconds for the rest of the
-      session. The baseline is `null`, not `0`, so signing in with four unread is not an arrival.
-- [x] **It fails silently.** Browsers block audio until the page is interacted with and the refusal is a
-      *rejected promise* — unhandled, that is a console error on the dashboard, and
-      `CommunityScreensRenderTest` fails on console errors.
-
-`NotificationBellAlertTest` **5/5**, and both guards **re-proven by breaking them**: the `unread > 0`
-version fails the increase test, and renaming the CSS selector so the JS's class has no styling fails the
-dot test — which is exactly how this bug would arrive in production, the class set, a JS-only test green,
-and no dot on screen.
-
----
-
-## ✅ P2-24 — Loans: a player too young for his tier goes down for minutes (owner, 2026-10-08)
-
-**A feature that had been half-built for three sprints.** Sprint 3.4 wrote the `Loan` entity, created
-the `loan` table, wrote `LoanService` and wired `closeFinishedLoans()` into `WeekRolloverJob`. **Nothing
-could create a loan**, nothing moved a player, `isRegisteredByNobody` and `wageCarriedBy` had no callers,
-and there was no controller. The weekly tick has been dutifully closing loans that nothing could open.
-
-### The rules
-
-| | |
-|---|---|
-| Age | younger than **24** |
-| Country | **domestic only** |
-| Tier | **strictly down**: 1→2–5, 2→3–5, 3→4–5, 4→5, **5 cannot lend at all** |
-| Clubs | **human only, both sides** — an AI club has no policy for agreeing to one |
-| Duration | **to the end of the season it started in** — week 12 day 7, back to the club |
-| Week 12 | **refused** — a loan started now returns in six days having played nothing |
-| Ending | **either** club may ask; agreement ends it at once, otherwise it ends a week later |
-| Wage, training | **stay with the lending club**. The borrower gives minutes and nothing else |
-
-### The owner's model, and why it is cheaper than mine
-
-He proposed it: keep `Player.team` on the lender. I had planned to move the player to the borrower and
-filter the lender's wage bill and trainer. He was right, and for a reason worth keeping: **his two
-explicitly stated rules become correct by construction instead of by remembering a filter.** A forgotten
-filter means the borrower's coaches train a player the owner said the lender trains, and nothing reports
-it.
-
-### Two lists, and they are not the same
-
-| | fieldable | counts against the 30 |
-|---|---|---|
-| owned, not loaned out | yes | yes |
-| owned, **loaned out** | **no** | **yes** |
-| borrowed in | yes | yes |
-
-**The middle row is a bug the tests caught in this commit.** The first version was `owned + borrowed-in`,
-which left a loaned-out player fieldable by the club that owns him — **both clubs could field him on one
-matchday**. And fixing it exposed the third column: loaning somebody out frees no places, or loans would
-be a way to grow a squad past the limit one loan at a time.
-
-### Two rules dropped, both in the javadoc
-
-**Nationality is not enforced.** `Player.nationality` is set only by `BotSquadGenerator` — **7,730 of
-10,130 players have none** — and given the domestic rule it either adds nothing or blocks every
-foreign-signed domestic player. `Player.nationality` being three-quarters null is recorded below as its
-own defect rather than fixed here.
-
-**No transfer-window gate.** Sprint 3.4 had one because a loan moved a player. It does not.
-
-### A loanee cannot be traded — and this had no test
-
-The guards in `TransferService` and `PlayerContractService` were written, believed covered, and then a
-mutation deleted the "cannot list" guard and `LoanServiceTest` passed **19/19**. They had no test at
-all. `LoaneeCannotBeTradedTest` exists because of that, and because the failure mode is concrete:
-`requirePlayerTeam` resolves the **lender** as the seller, so a buyer would pay the wrong club and the
-borrower would carry on fielding a player sold out from under it.
-
-### The screen
-
-`loans.js`, in the Club segment beside Juniors: the rules stated in full at the top, players **in**,
-players **out**, offers to accept, and a lending table with a destination dropdown per player. A manager
-who cannot loan to anybody reads **why** — "no club a person manages", "not a lower tier", "a different
-country" — because the server sends the reason and an empty dropdown is the least useful answer.
-
-Two button labels because the rule is symmetric: the lending club reads **Request return**, the
-borrowing club reads **Send him back**. When the other club has asked, the borrowing club reads **Accept
-return**, and the copy says what happens if they do nothing.
-
-### Verified against the running application, not reasoned about
-
-The owner's application was already up and serving statics from source, so this was called for real:
-
-```
-GET  /loans/rules        200  tier ladder, wage rule, "week 12 day 7"
-GET  /loans/available    200  13 players, loanable flags
-GET  /loans/destinations 200  every club with a reason per refusal
-POST /loans  (24-year-old)      409 LOAN_PLAYER_TOO_OLD — "Only players younger than 24; he is 24."
-POST /loans  (bot club)         409 LOAN_BOT_CLUB — "…ŽFK Tamiš Vranje is not one."
-```
-
-**And this found a defect I had written.** The lending table showed `Player.getRating()`, which is the
-**stored column** — and every row on the owner's club reads `0`, because `PlayerRatingBackfill` has not
-been run over this world. Every rating on the screen would have shown zero. It now reads
-`careerRating()`, the computed 1–100 value the squad screen uses.
-
-### Not verified
-
-`/loans/offers` and the screen render need a restart; both were written after the running build. The
-**successful** path — offer, accept, terminate — was deliberately not exercised against the owner's live
-game, because that writes rows into his season. The refusals above are real; the happy path is only
-proven by `LoanServiceTest`.
-
----
-
-## 🔧 P2-24b — the Loans screen, and what calling it for real found (2026-10-08)
-
-**Screen:** `loans.js` in the Club segment beside Juniors: rules in full, players in/out/offers, and a lending table with a destination dropdown per player.
-
-**Verified live, refusals only.** The owner's app was up and serving statics from source, so none of this needed a restart or a browser. Calling it found two defects I had just written.
-
-**Every rating on the screen would have been zero.** The endpoint read `Player.getRating()`, the **stored column** — and every player reads 0 because `PlayerRatingBackfill` has never been run. Every rating on the screen would have been a column of zeros. The fix: `careerRating()`, the computed 1–100 value the squad screen uses. No test catches this: the fixtures never set `rating`, so a fixture with `rating=0` looks exactly like a correctly seeded one.
-
-**The destination dropdown would have been empty.** The running build predates the boolean `eligible` field and sent `null` for eligible. A screen checking `d.eligible === true` would have offered **no destinations at all** — an empty dropdown reads as "there is nobody to loan to". The screen now accepts both shapes and names the refusals.
-
-**A gap the screen found, not the tests.** The borrowing club had no way to see an offer. `GET /loans/offers` and `LoanService.offersFor` now exist. Found by writing the screen, not by a test — every test was single-club.
-
-**Not done:** the successful path was never run against the live database (it would mutate the owner's season); the refusals are real calls; the happy path is a test. The screen render and `/loans/offers` need a restart.
-
----
-
-## 🔴 `Player.nationality` is null for 7,730 of 10,130 players
-
-Found while implementing the loan rules, 2026-10-08. **`BotSquadGenerator:133` is the only place that
-sets it** — `PlayerFactory`, which builds the actual club squads, never does.
-
-Three-quarters of the world's players have no nationality. **Nothing currently reads the column**, so
-nothing is broken today, and that is exactly why it is a trap rather than a bug: the next feature that
-needs "is this player eligible for X" will read `null` and silently refuse three players in four.
-
-Options, none taken: set it in `PlayerFactory` and backfill the existing world from the club's country,
-or delete the column. The first is honest — a player's nationality should be fixed when he is created
-and never follow him across a transfer — but it is a data migration over ten thousand rows and it was not
-asked for.
-
----
-
-## ✅ P2-23 — one squad limit, counted in players (owner, 2026-10-08)
-
-**Owner rule: a club has 30 players. Seniors, youth players and — when loans exist — loanees all count
-against the same 30. A full club cannot sign from the transfer list and cannot promote a junior until it
-has freed a place.**
-
-### What it replaces
-
-| | Before | Now |
-|---|---|---|
-| Limits | 25 senior **and** 8 academy = **33** | **30**, one bucket |
-| Counted | `PlayerContract` **rows** | `Player` **rows** |
-| Split by | `SquadRole.isSenior()`, inferred from age and value | nothing |
-| Enforced on | signing a free agent — **one path** | signing, **buying from the market**, junior promotion |
-
-### The two defects it fixes
-
-**It counted the wrong thing.** A `Player` with no contract was invisible to it, and several real paths
-create exactly that: a player made from an academy junior, and every player in the world between
-creation and the next season's contract backfill. `PlayerContractServiceTest.aContractlessPlayerStillCounts`
-pins this — twenty-nine contracted players plus one graduate was thirty, and the old rule said there was
-room.
-
-**It was in the wrong place, which is the larger one.** `canRegister` was called from exactly one place:
-`PlayerContractService.sign`. **Buying from the transfer list never consulted it at all.** So the market —
-the main way a manager adds anybody — was entirely uncapped, and a club could buy its way to fifty
-players. `completeTransfer` checked the price floor and the budget and nothing else. Three mutations are
-recorded below; removing the new check turns `aFullClubCannotBuy` and `aRefusedTransferSettlesNothing`
-red.
-
-**Both limits now read the same way.** `SquadRegistrationService.MAX_CLUB_SQUAD` and
-`NationalTeamService.SQUAD_SIZE` are both 25-or-30 numbers counted in players, so they can be read side
-by side. The asymmetry between the NT rule and the club rule — which existed because one counted players
-and the other counted contracts — is gone.
-
-### Kept deliberately
-
-**No room check on the forced academy paths.** Tenure expiry and school closure list every prospect, and
-the club may sit above 30 until they are sold. Owner's words: *"svi idu na TL i klub zaradjuje od
-prodaje."* Being over the cap blocks signing and promotion; **it does not block selling**. The way out is
-the market, which is where the value came from. This reverses the P2-6 guard recorded in
-`GraduationRespectsTheSquadTest`, and that class keeps its name and its reasoning because the finding was
-real.
-
-**Academy `Junior` rows are not players.** They do not occupy one of the 30 — which is what makes
-"cannot promote until you free a spot" mean anything, since promotion is what adds the player.
-
-### Dead code removed
-
-`SquadRole.isSenior()` and `PlayerRepository.countSquadSizesByTeamIds` had no callers left once the
-two-bucket split and the expiry-pass room check were both gone. Deleted rather than kept as helpers
-nothing calls; the reasoning survives in `SquadRegistrationService`'s javadoc.
-
-### Not enforced
-
-`PlayerController.createPlayer` still adds players freely. It is the fixture endpoint the seeders use to
-build 14,880 clubs, and capping it would make world construction order-dependent. **Noted, not changed.**
-
----
-
-## ✅ P2-22 — the youth academy gets one clear cycle (owner, 2026-10-08)
-
-**The owner's complaint was not a bug.** The Juniors screen worked; what was missing was a rule a
-manager could quote. "When do they arrive, how many, and can I reveal one on arrival?" had no answer
-that was true, because the rules were spread across a query, two constants, and four hardcoded literals
-in the JavaScript.
-
-### The cycle, as specified
-
-| | |
-|---|---|
-| **Arrival** | once a season, **week 2**, **6 to 10** juniors — was a bell over 1..10 |
-| **Age, talent, skill** | unchanged; still the existing rolls |
-| **Tenure** | **exactly one season** — was `20 − arrivalAge`, i.e. one to five seasons |
-| **Ageing** | at the season boundary, as before |
-| **Decision** | **week 1 of the following season** — was weeks 1–2 |
-| **Narrowing** | the talent estimate firms up **week by week through the season** — was by age |
-| **Unresolved at the end** | **transfer-listed** — was promoted at 20 |
-| **Promotion** | unchanged, reveal included |
-
-Three points were owner decisions and are recorded because they were not derivable: the outcome for an
-unresolved prospect (**TRANSFER_LISTED**, not promotion — a manager who never opened the page should not
-end up with ten players he did not choose), the window (**week 1 only**), and the count's shape
-(**uniform**, not a bell clipped into 6–10).
-
-### The defect the tenure change exposed, and why it mattered
-
-**Talent narrowing was measured in ages.** `TalentRange.observationProgress` spanned
-`graduationAge − arrivalAge`. Intake produces ages **15–19**, so a nineteen-year-old's span was
-**zero**: progress 1.0 on the day he arrived, every report pinned at ±1, and the exact ceiling handed
-over the moment he signed. The band only ever worked for the fifteen-year-olds.
-
-This was invisible for the same reason the mobile table was: the suite was green. `TalentRangeTest`
-passed 15-year-olds and had no case for a nineteen-year-old. Narrowing is now measured in **weeks of the
-tenure** (11: arrival week 2 through week 1 of the next season), which is also what the owner asked for
-— the coach narrows *during* the season. `TalentRangeTest.arrivalAgeNoLongerDrivesTheBand` exists
-specifically to fail if that regresses, and `everyTrainingWeekNarrowsTheBand` fails if the report only
-moves at the boundary.
-
-### The rules now reach the screen instead of living in a comment
-
-`JuniorAcademyStateDTO` carries `intakeWeek`, `intakeMinCount`, `intakeMaxCount`, `decisionWeek` and
-`maxActiveJuniors`, read from the service's own constants. `academy.js` was writing the decision window
-out as `week >= 1 && week <= 2` and the academy limit **four times** as `10` — the debt the
-`MAX_ACTIVE_JUNIORS` javadoc had already recorded. Changing a rule in Java did not change the screen.
-
-### Kept on purpose, against the new rule
-
-**The squad cap on the expiry pass** (P2-6). `graduateExpiredJuniors` counts senior room down per club
-and **releases** the overflow rather than listing it, because graduation creates no `PlayerContract` and
-`canRegister` counts contracts — without this an academy is an unlimited source of players. This is the
-one place the outcome is `RELEASED` rather than the owner's `TRANSFER_LISTED`, and only when the club has
-no place for him. `GraduationRespectsTheSquadTest` guards it.
-
-### The one behaviour worth knowing
-
-**A manager who ignores week 1 blocks his own intake.** An academy still holding unresolved carryover is
-at the cap, and the season's intake is suppressed entirely. With a one-season tenure carryover is
-transient — resolve it in week 1 and week 2 brings the full 6–10 — but "no prospects arrived" is now a
-consequence rather than a mystery. Pinned by `aFullAcademyTakesNoNewIntake`.
-
----
-
-## 🔧 P2-21 — mobile: the iPhone 14 Pro Max pass, 2026-10-06
-
-**Reference device: iPhone 14 Pro Max, portrait — 430 × 932 CSS px at DPR 3.** Measured in Chromium at
-that viewport, not reasoned about. Every page in the application was loaded and measured.
-
-No page overflows the viewport horizontally (`scrollWidth == innerWidth` on all twelve). Two things are
-wrong inside that, and one of them was not mine.
-
-| Found | Where | Verdict |
-|---|---|---|
-| **The league standings table was clipped.** 510px of table in a panel ending at 408px, **no scroll container** — the Elo and rating-delta columns ran under the panel's rounded edge and could not be reached | Owner's | **Fixed.** Given the same `fm-squad-wrap` scroll container the squad table already had |
-| **The top-scorers and top-assists tables** measured 384px, inside the viewport, but were at the limit | Owner's | **Fixed** with the same wrapper, so a longer club name cannot push them out |
-| **Every compose field was a box inside a box** — the wrapper carried a border, background, radius and padding, and the input inside carried its own | Mine | **Fixed.** The wrapper is now a layout box only; the field provides the chrome |
-| The squad table is 902px wide and scrolls horizontally | Owner's | Left as is — it already scrolls, and a squad list is the right thing to scroll |
-
-**The phone render of a table is the finding.** On a desktop a clipped column is invisible; at 430px the
-Elo column is simply gone with no scrollbar and no hint it existed. `MobilePanelOverflowTest` did not
-catch it because it asks whether a **panel** overflows, and the panel did not — the table inside it did.
-
-**Not verified:** the fixes were measured *before* and the application **would not build** afterwards,
-because the owner's national-tournament refactor was mid-flight and `NationalTeamService.java:225` does
-not compile. CSS braces balance, the module parses, and the wrappers are the same mechanism already
-proven by `fm-squad-wrap` on the squad table. **It has not been re-measured in a browser.**
-
----
-
-## 🔧 P2-20 polish — the owner's interface corrections, 2026-10-06
-
-Six changes asked for after looking at the running application. Each is pinned by a measurement in
-`CommunityInterfaceTest` rather than by a class name or a stylesheet rule.
-
-| # | Asked for | What was wrong |
-|---|---|---|
-| 1 | Forum and Messages as **options under one Community tab**, as it was | Phase 4 gave them a top-bar button each |
-| 2 | A bigger envelope | U+2709 renders small beside the emoji the other buttons use |
-| 3 | The compose field's background ran **past the panel** | `width:100%` + `padding: 14px 16px` under the default `content-box` |
-| 4 | Narrower, and the message box wider | Both defaulted to a character-based width: **147px** and **182px** |
-| 5 | Type a name to find a manager | The picker was a native `<select>` |
-| 6 | A forum section's Back goes to the **dashboard** | `data-nav-back` pops the navigation history, so it went to the index |
-
-- [x] One Community entry, with Forum / Messages as an option row on all three forum screens and both
-      message screens. "Forum" stays lit while reading a topic.
-- [x] Envelope scaled, not swapped — a different glyph would stop the row reading as one set
-- [x] `box-sizing: border-box` and a `max-width` inset: measured **1303 → 1171** against a panel edge at 1290
-- [x] Subject and body take the field width: **147px → 1006px**, **182px → 1006px**
-- [x] A searchable picker over a hidden `<select>`, matching anywhere in the name or the login
-- [x] **Back returns to the previous screen, the same button the Club section uses** — see below
-
-#### The sixth item was wrong twice, and the real defect was elsewhere
-
-The first reading of "a section's Back should go to the dashboard" was implemented as a **second kind of
-Back button** that bypassed the history. The owner's correction: **Back goes to the previous screen, like
-almost every other Back in this application — copy the Club section, do not invent.**
-
-Copying it exposed the defect that the invented button had been hiding:
-
-> Clicking a forum section, or a topic, or a conversation, called the **view function directly** rather
-> than the router. The router is what pushes the navigation history, so those navigations were never
-> recorded. Back then popped whatever happened to be open **before** the forum — measured: **Back from
-> the TIFO section landed on Messages.**
-
-So the fix is in the navigation, not the button. `components.js` has one button again.
-
-**Exit criteria:**
-- [x] Every one of the six is measured in a browser, not asserted from the stylesheet
-- [x] Three mutations proven
-- [x] `CommunityInterfaceTest` green alongside the rest of the P2-20 suite
-
----
-
-## ✅ P2-20 browser check — DONE
-
-`CommunityScreensRenderTest`: a real Chromium, a real login, and clicks through every screen P2-20 added.
-It asserts on the page's own text and **fails on any uncaught or console error**.
-
-**This exists because of what the full-suite run found.** Phase 6's run of all 1,359 tests caught
-`dashboard.js` calling `readUnreadCount` without importing it — a ReferenceError thrown on the dashboard
-for every manager, every page load, for three phases. Nothing else noticed: the endpoint returned 200, the
-module parsed, and the markup rendered. `CountryPageRendersTest`'s console-error assertion caught it,
-because it runs a browser.
-
-That is the same shape as the bug `CountryPageRendersTest` was written for: an escaping function called
-from a template string where it was not in scope, a name that exists elsewhere in the project, so it looked
-right. Both were found by a browser and by nothing else.
-
-The test is mutation-proven: routing `loadPage('forum')` to a wrong section fails it.
-
----
-
-# 🗂 Agent session log — 2026-10-06, three commits after the measured run
-
-## ✅ Documentation — current football UI technical overview
-
-`TECHNICAL_OVERVIEW.md` was rebuilt from the current `footballmanager.newLogic` source and graphical
-football UI. It incorporates the current international club cup UI, the forum/private-message
-replacement, the national-tournament backend state, current security/boot behaviour, and the open gaps
-recorded on this board. `archive/TECHNICAL_OVERVIEW.md` remains historical.
-
-## ✅ Documentation — graphical football user manual
-
-`userManual.md` documents the user-facing options in the graphical football UI, from login and the
-dashboard through Club, League, Country, World, Community, profiles, mobile navigation and Admin.
-
-**Exactly three commits sit on top of `7df4af2`, the run that measured 20 red.** So the 20 is stale in a
-way that is worth stating precisely, because only one of the three can move a number:
-
-| Commit | Task | Can it change a result? |
-|---|---|---|
-| `1cb4f40` / `cd431f7` | **P0-9b** — `activeSeason` no longer answers `2026`, clock chosen deterministically; `PlayerContractServiceTest` fixture given a league, a clock and a settled week | **Yes.** `signingMovesThePlayerToTheClub` was red at measurement and is green now |
-| `a5be205` | **P0-8 + P0-11** — verification and a rename | No. §1.3 and §1.5 were read, not changed; `nationalCup()` → `primaryCup()` is private |
-
-**Expected 19 red, unmeasured.** The figure is a prediction, not a measurement, and it is exactly that
-kind of prediction that this repository has been wrong about before. **Do not quote 19.** Run the suite.
-
-**What this session closed, and where it is recorded:** P0-9 and P0-9b (seasons, and the calendar year the
-ledger was reading), P0-14 (`LineupController` read-only, 383 lines deleted), P0-11 (the name that said
-"national" while querying `INTERNATIONAL`), P0-8 (§1.3 confirmed, §1.5 far worse than claimed, §1.2 not
-reproducible). Full reasoning and mutation results in `kanbanProgress.md`.
-
-**One retired:** `SidLeagueSeedingIntegrationTest`, on the owner's decision — it asserted world-building
-that boot no longer performs.
-
-# 🔖 Suite state — MEASURED 2026-10-06
-
-**`mvn test`: 1363 tests, 14 failures, 6 errors, 20 red, ~21 min**, run with the app up on `:8080` and
-allowed to finish.
-
-**20 red, down from 32** on 2026-10-04. **Every one of the P2-20 classes is green** — 144 tests across twelve of
-them, listed in `kanbanProgress.md`. Two of the twenty were this work's, and both were found and fixed
-inside it: a `readUnreadCount` import that Phase 6's full run caught, and the browser check that now covers
-that class of bug.
-
-**Not comparable on test count** — P2-20 added 112 — but comparable on red, because both runs were allowed
-to finish and the Maven summary prints at the end.
-
-**A full run requires the app on `:8080`** — without it three Playwright classes hang the entire run rather
-than failing. This run had it up, and `CommunityScreensRenderTest` is a fourth.
-
-**The earlier figures — 992 tests, 29 red, ~2 h 52 m — described a different application** and are
-superseded twice over. The wall clock changed because boot writes nothing; the test count changed because
-P2-20 added 112.
+**Exit criteria:** batched writes, measured against the round-trip count

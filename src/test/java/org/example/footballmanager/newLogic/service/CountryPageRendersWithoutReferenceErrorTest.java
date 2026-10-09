@@ -71,6 +71,44 @@ class CountryPageRendersWithoutReferenceErrorTest {
     }
 
     @Test
+    @DisplayName("the represented-country path renders, and it is reached before the try block")
+    void theRepresentedCountryRenders() throws Exception {
+        assumeTrue(nodeIsAvailable(), "Node is not on this machine's PATH");
+
+        Result result = runHarness();
+
+        // Twenty-four of the forty-eight countries on the World page have no club pyramid, and a
+        // manager reaches this path by clicking a country name in a national-tournament group table.
+        // It dispatches to its own function rather than to the tab builders, and it does so from
+        // OUTSIDE the try block, so a ReferenceError there is not caught and the manager gets a blank
+        // page rather than an error card.
+        //
+        // Its function was deleted by the commit that restored the country page (73aafa6) and never
+        // restored with it. All six tabs worked, every test was green, and `node --check` passed,
+        // because nothing rendered this path.
+        assertTrue(!result.representedFailed(),
+                "the represented-country page did not render:\n" + result.output()
+                        + "\n\nThis is a different code path from the six tabs: it is reached before the "
+                        + "try block, so a ReferenceError there is uncaught and the manager gets nothing.");
+    }
+
+    @Test
+    @DisplayName("the country being viewed is marked in its own group table")
+    void theViewedCountryIsMarked() throws Exception {
+        assumeTrue(nodeIsAvailable(), "Node is not on this machine's PATH");
+
+        Result result = runHarness();
+
+        assertTrue(result.representedMarkedOwnRow(),
+                "the country being viewed carried no is-highlighted class in its qualifying group:\n"
+                        + result.output()
+                        + "\n\n\"Who are we drawn with\" is the question this page answers, and a table "
+                        + "in which your own row looks like every other row answers it by name-matching. "
+                        + "The class was emitted and had no definition in the stylesheet, so it was "
+                        + "invisible either way.");
+    }
+
+    @Test
     @DisplayName("the harness itself fails when the panel is put back in the general tab")
     void theHarnessCanFail() throws IOException {
         // Not a runtime mutation of the source: this asserts the harness is wired to the real file, so
@@ -85,6 +123,9 @@ class CountryPageRendersWithoutReferenceErrorTest {
         assertTrue(List.of("general", "calendar", "clubs", "qualifying", "senior", "u21")
                         .stream().allMatch(harness::contains),
                 "every tab has to be in the list: a harness that renders one tab cannot see a break in another");
+        assertTrue(harness.contains("simulatedCountry"),
+                "and it must drive the represented-country path, which is a different function reached "
+                        + "before the try block — the one that was deleted and never restored");
     }
 
     // ── harness plumbing ──────────────────────────────────────────────────────────────────────────
@@ -99,6 +140,16 @@ class CountryPageRendersWithoutReferenceErrorTest {
                 }
             }
             return withPanel;
+        }
+
+        boolean representedFailed() {
+            return lines.stream().anyMatch(line -> line.startsWith("represented")
+                    && !line.contains("ok"));
+        }
+
+        boolean representedMarkedOwnRow() {
+            return lines.stream().anyMatch(line -> line.startsWith("represented")
+                    && line.contains("[own row marked]"));
         }
     }
 

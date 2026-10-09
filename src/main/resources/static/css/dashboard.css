@@ -5522,6 +5522,27 @@ body {
     box-shadow: inset 3px 0 0 #4caf88, inset 6px 0 0 rgba(74, 158, 255, 0.7);
 }
 
+/* The country being viewed, in its own national qualifying group (represented countries only).
+ *
+ * The same rule as `is-current-club` and deliberately so: both answer the same question — "which row
+ * is me?" — in two different tables. A manager who learns the mark on his own club's qualifying race
+ * should not have to learn it again on a World Cup group.
+ *
+ * The class was emitted by `groupStandingTable` since 2026-10-07 and had no definition anywhere in
+ * this stylesheet, so the country being viewed was marked with nothing at all. `is-highlighted` is
+ * one of exactly two cases in this file of a class set in JavaScript and absent here, and both of them
+ * were silent: no error, no warning, just a row that reads like every other row.
+ */
+.fm-league-table tr.is-highlighted {
+    box-shadow: inset 3px 0 0 #4a9eff;
+    background: rgba(74, 158, 255, 0.07);
+}
+
+.fm-league-table tr.is-highlighted td {
+    color: #cfe4ff;
+    font-weight: 600;
+}
+
 /* ── Jobs panel (admin, owner 2026-10-07) ────────────────────────────────────────────────────────────
  *
  * The FAILED badge is the whole point. A job that throws is retried on the next hour and retried again,

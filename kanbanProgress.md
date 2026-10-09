@@ -1,5 +1,212 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-13 — the represented-country page was a live `ReferenceError` (2026-10-09)
+
+### What the board said, and what was true
+
+The board recorded two CSS classes as defects. One of them turned out to be a **symptom**.
+
+`is-highlighted` — *"used by the represented-country group tables to mark the country being viewed, not
+defined in the stylesheet at all."* Both halves true. But grepping the whole static tree:
+
+```
+$ grep -rn "is-highlighted" src/main/resources/
+(no output)
+```
+
+Not in the CSS. **Not in the JavaScript either.** The class was emitted by a function that no longer exists.
+
+### The function was called, and defined nowhere
+
+```
+$ grep -rn "renderRepresentedCountry" src/main/resources/static/
+country-view.js:759:            await renderRepresentedCountry(mainContent, countryIso);
+```
+
+**One hit — the call.** The definition is gone, along with `groupStandingTable`, `ordinal` and
+`formatNumber`.
+
+`loadCountryPage:759` — a line that calls a function that is not there, **outside the try block.**
+
+### It was lost in the commit that fixed a bigger version of this same bug
+
+```
+$ git log --oneline -S "renderRepresentedCountry" -- .../country-view.js
+73aafa6 P1-CTRY-1: a Clubs tab, and a country page that had been DEAD
+```
+
+`73aafa6`'s own message: *"It also restores the country page, which P0-PREV-1 had broken... Restored from
+the commit before P0-PREV-1... **209 lines, the one function, not 458 lines and half the file.**"*
+
+**The one function was `loadCountryPage`. The function `loadCountryPage` calls was left behind.** The
+restoration was surgical and correct and incomplete, and the incompleteness cost a page.
+
+### It was reachable by an ordinary click, and it threw uncaught
+
+`national-tournament-view.js:26` renders every country name in every group table as
+`<button class="... js-country" data-country-iso="...">`. Line 142 wires them to `openCountry`, which calls
+`loadPage('country', { simulatedCountry: code })`. So:
+
+**World page → a national competition → click any country name → blank page.**
+
+Not an error card. Line 759 sits before `try {`, so the `ReferenceError` propagated out of `loadCountryPage`
+and the manager got nothing at all.
+
+### Why nothing caught it
+
+| Signal | Said |
+|---|---|
+| `node --check` | **parses.** A missing function is a run-time error, not a parse error |
+| The Node harness (`CountryPageRendersWithoutReferenceErrorTest`) | **green.** Written on 2026-10-08 for *exactly this class*, because *"a `ReferenceError` inside a template string needs an engine."* **It drove six tabs and never this path, because the path is not a tab** |
+| The full suite | green |
+| The owner's browser | **would have found it in one click** |
+
+That third harness row is the finding. The right check existed, was built for this, and had a **coverage
+hole shaped exactly like the defect.**
+
+### What landed
+
+- All four functions recovered from `51edd45~1` and restored ahead of `loadCountryPage`, with a comment
+  recording where they went and which commit lost them.
+- The represented path added to the Node harness, with **all three endpoints it reads populated**
+  (`/countries/ranking`, and both qualifying competitions) — so a missing endpoint cannot pass by rendering
+  nothing. One side is deliberately undrawn, which is a normal state and has to render as one.
+- **`is-highlighted` defined in the stylesheet.** Same rule as `is-current-club` and deliberately so: both
+  answer "which row is me?", in two different tables. A manager who learns it once should not learn it twice.
+- **The harness now fails on a missing mark** rather than logging it.
+- Two Java tests, and `theHarnessCanFail` extended to assert the harness drives `simulatedCountry` at all —
+  so the next function deleted from this file is caught by the same route.
+
+### Verification, and the mutations
+
+`CountryPageRendersWithoutReferenceErrorTest` **5/5 green.**
+
+| Mutation | Result |
+|---|---|
+| Delete `renderRepresentedCountry` (the defect itself) | `represented THREW renderRepresentedCountry is not defined` — **caught before any fix was written** |
+| Drop the `is-highlighted` class from the row | **2 of 5 red** — `theViewedCountryIsMarked`, with the owner's own question in the message |
+
+`node --check` parses · CSS braces balanced (865/865) · 2 rules for `tr.is-highlighted`.
+
+### Not done, and it is not a small thing
+
+**`is-current-club` is still open** and is now **T1-13b**, because it is not a CSS task.
+
+`CountryController.qualifyingRow:1241` sends `teamName`, `position`, `points`, goals and `qualifies` — **and
+no `teamId`.** The frontend has nothing to compare against except the name, and matching a team by name is
+the join this codebase has been burned by four separate times. It needs one field on the row, and a class
+list rather than the current `class="is-qualified"` assignment, which **overwrites** rather than adds.
+
+**And the browser check is still owed.** The Node harness is the half that always runs;
+`CountryPageRendersTest` is the half that can catch a fault in the fetch layer and it needs Chromium and a
+running application. The owner's own click — World page, a country name — is the one verification no harness
+substitutes for, and this defect was found by reading, not by clicking.
+
+## 🔀 The board was restructured into T-REST / T0 / T1 / T2 (2026-10-09)
+
+### Why this happened
+
+The owner asked for the board to be reorganised as a **senior architect and product owner for this
+specific genre** would hold it, on the back of a code-verified gap analysis
+([`CurrentStateAnalysis.md`](CurrentStateAnalysis.md)) covering the owner's written specification for the
+game.
+
+The previous board had grown to **3,438 lines** and had lost the property that makes a board usable:
+**you cannot tell, in one look, what to do next.** Finished work sat beside open work with identical
+visual weight. The three categories that had been used — P0 correctness, P1 performance, P2 features —
+described *severity*, not *kind of work*, so a one-line CSS fix and a month-long engine feature both
+appeared as "P2". Owner decisions were buried in the middle of implementation write-ups.
+
+### What was wrong with the previous shape
+
+| Problem | Consequence |
+|---|---|
+| Closed work stayed on the board | 3,438 lines of which roughly **70% was history**. The signal was buried. |
+| P0/P1/P2 described severity, not kind | A task could not be selected by *what kind of work it is*, only by how bad it was. |
+| The owner's specification was not on the board anywhere | The tactical-condition layer, the per-match XI, the multi-tactic library — **the core of the product vision — existed in a conversation, not in the board.** |
+| Owner decisions sat inside write-ups | `SeasonCalendar` has four slots because of a decision recorded in a progress log entry. |
+| "Parked" items were indistinguishable from "not looked at yet" | Five items were parked, and the reason for two of them had to be re-derived |
+
+### The new shape
+
+| Section | What it holds | Why |
+|---|---|---|
+| **T-REST** | Unfinished items carried over from the previous board | **Nothing new.** This is the residue, and it was the only thing that needed to move |
+| **T0** | Features we want and have **not started**. Split **BE** / **UI** | Separating them is what makes each verifiable. The backend contract can be proven by a test; the screen can only be proven by opening the app |
+| **T1** | Work on features that **already exist** — incomplete wiring, dead contracts, unverified claims | This is the category the old board had nowhere for. "Built and unreachable" is not P2; it is a distinct kind of work and it was the single most common defect class in this repository |
+| **T2** | Performance and optimisation | The old P1. **Every task states a measurement**, and the section opens with the note that the dev database cannot measure a T2 task |
+
+**Ordering inside T0 is stated, not implied:** `T0-BE-1 → T0-BE-5 → T0-UI-1 → T0-UI-4` is the spine.
+Without a tactic library there is nothing to pick per match, and without a per-match XI there is nothing
+for a condition to refer to.
+
+### Nothing was deleted that was still open
+
+Eighteen `T-REST` items carry the previous board's unfinished work, **with its reasoning intact** — the
+reasoning is frequently the hard part, and rewriting it would have destroyed information. Closed items
+were removed from the board and are already in this log, which is where history belongs.
+
+### Three things the restructure surfaced that the old board did not say
+
+**1. The tactical editor is wired to the engine. The archive said it was not.**
+`archive/COMPETITIVE_ANALYSIS.md` §9.1 — the document the P2 ordering follows — claims the editor's data
+"is read by no engine file" and that this is *"the only P0 from the original three."* **The code says
+otherwise**, and the trace is:
+
+```
+tactic-editor-view.js → PUT /teams/{id}/tactics-editor → TeamTacticsService.saveTacticsEditor()
+  → TeamTacticsProfile.rulesJson → TacticsRulesProvider.forTeam() → TacticsRules
+  → SideTactics(home, away) → MatchOrchestrator(state, tactics) → TacticalIntentEngine.refreshTargets()
+```
+
+`TacticsBridge` and `NewLogicTacticsService` — the two classes that document named as *the* bridge this
+feature needed — are both dead. **The bridge that works is `TacticsRulesProvider`, and it is not the one
+either document names.** Recorded because the P2 ordering follows that document's §10 list, and one of its
+top items is closed.
+
+**2. `P0-3` — "away teams use home tactics" — is contradicted by the code, and is now a verification
+task rather than a fix.** `SimMatchService:141-143` builds `SideTactics` from **both sides' own rules**.
+Either the documents are stale or a diagnostic path can still reach a single-rules match — the 7-argument
+`SimMatchRunner` overload and `new MatchOrchestrator(state)` both do. **T-REST-7 exists to settle it**, and
+it exists because a task whose premise has been falsified is more dangerous than one that was never
+written: an agent picking it up would go looking for a defect that is not there.
+
+**3. Two items the old board marked done are contradicted by the board's own log.**
+`P2-14` says prize money **is** wired. `P2-4` says the listing fee **is** built. `P2-3` says a player
+**can** refuse to be listed. My first gap analysis, written from `TECHNICAL_OVERVIEW.md` §12, marked all
+three as missing. **The gap analysis was wrong and `TECHNICAL_OVERVIEW.md` is the reason.**
+
+That is a finding worth its own line on the board, because it is now a **trap**:
+
+> **`TECHNICAL_OVERVIEW.md` §12 "Known gaps" is stale.** It was written against an earlier state and
+> several rows have been closed since. `CurrentStateAnalysis.md` was verified against source and is the
+> document to work from. Where they disagree, the analysis wins — and where the analysis was written from
+> the overview, **the source wins over both.**
+
+### The evidence standard for the new board
+
+Every T0 and T1 task carries an exit criterion in the same shape, because the old board learned this the
+expensive way:
+
+- **A claim that is only checked by reading the code is not a claim.** T1-6 exists because "9 formations in
+  the catalog, 1 applied" was written from a grep and the code contradicts it.
+- **`node --check` parses.** It does not run. A `ReferenceError` inside a template string killed every tab
+  of the country page while four static guards stayed green.
+- **The suite runs on H2 and the world runs on PostgreSQL.** Four defects were invisible to H2 alone,
+  including a shipped `session_replica_role` typo that took the Reset DB button out of service.
+- **`mvn clean test-compile`, never the incremental build.** It once reported SUCCESS while three test
+  classes called methods that no longer existed.
+
+### What the owner gets from this
+
+The board is now **four questions in order**: *what did we not finish* (T-REST), *what do we want that does
+not exist* (T0), *what exists and is wrong* (T1), *what is slow* (T2). Each T0 task states what already
+exists in the "What exists" column, so **no task can be mistaken for a rebuild** — which was the failure
+in my own first analysis, where I proposed a five-day live-streaming build for a replay viewer that already
+worked, and the owner caught it.
+
+---
+
 ## 🟢 P2-24 — Loans (2026-10-08)
 
 ### What existed before I wrote a line

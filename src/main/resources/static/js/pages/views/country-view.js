@@ -742,6 +742,157 @@ export function createCountryView(deps) {
             </section>`;
     }
 
+    // ------------------------------------------------------- represented country
+
+    /**
+     * A country that has national sides and no club pyramid.
+     *
+     * <p>The owner replaced the old page (2026-10-07), which said only "ROU is represented, not played"
+     * and pointed at Admin. True, and useless: the twenty-four other countries on the World page are
+     * exactly this, and a manager who clicks one wants to know how its national team is doing. That is
+     * the whole of what a represented country *is* in this world.
+     *
+     * <p>So: where it stands in the ranking, on what rating; which qualifying group each of its two
+     * national sides is in; and whether it has played anything yet. The rating is the senior Elo for
+     * the senior side and the youth rating for U-21 — two different columns, and reading one for the
+     * other is the mistake this codebase has made before.
+     *
+     * <p>Every one of these is allowed to be absent. An undrawn tournament and an unplayed ranking are
+     * normal states, and they are said in words rather than shown as zero.
+     *
+     * <p><b>These four functions were deleted and never restored</b> (recovered 2026-10-09). The commit
+     * that put the country page back — {@code 73aafa6}, P1-CTRY-1 — restored {@code loadCountryPage}
+     * and re-introduced the call to {@code renderRepresentedCountry}, but not the function. Every one
+     * of the six tabs worked, every test was green, and {@code node --check} passed, because nothing
+     * rendered this path. Clicking a country name in a World Cup group table threw
+     * {@code ReferenceError: renderRepresentedCountry is not defined}, from a call that sits
+     * <em>outside</em> the try block, so nothing caught it and the manager got a blank page.
+     */
+    async function renderRepresentedCountry(mainContent, countryIso) {
+        const readOptional = async path => {
+            try {
+                return await readJson(path);
+            } catch {
+                return null;
+            }
+        };
+
+        const [ranking, seniorQualifying, u21Qualifying] = await Promise.all([
+            readOptional('/countries/ranking?level=senior'),
+            readOptional('/api/national-tournaments/senior/QUALIFYING'),
+            readOptional('/api/national-tournaments/u21/QUALIFYING')
+        ]);
+
+        const rows = Array.isArray(ranking) ? ranking : [];
+        const senior = rows.find(row => String(row.isoCode || '').toUpperCase() === countryIso);
+        const name = senior?.name || countryIso;
+
+        const groupOf = payload => {
+            if (!payload?.exists) return null;
+            for (const group of (Array.isArray(payload.groups) ? payload.groups : [])) {
+                const inGroup = (Array.isArray(group.table) ? group.table : [])
+                    .some(entry => String(entry.countryIso || '').toUpperCase() === countryIso);
+                if (inGroup) return { code: group.code, group };
+            }
+            return null;
+        };
+        const seniorGroup = groupOf(seniorQualifying);
+        const u21Group = groupOf(u21Qualifying);
+
+        const played = rows.filter(row => row.rated).length;
+        const positionLine = senior
+            ? (senior.rated
+                ? `${senior.position}${ordinal(senior.position)} of ${rows.length} — ${formatNumber(senior.points)} points`
+                : `Unrated, on the starting ${formatNumber(senior.points)} — no international results yet`)
+            : 'Not in the ranking.';
+
+        const sideCard = (label, group, competition) => `
+            <section class="fm-panel">
+                <div class="fm-panel-head"><div>
+                    <h3>${htmlEscape(label)}</h3>
+                    <p class="fm-subtle">${group
+                        ? htmlEscape(competition) + ' — Group ' + htmlEscape(group.code)
+                        : 'Not in a qualifying group yet.'}</p>
+                </div></div>
+                ${group ? groupStandingTable(group.group, countryIso) : `
+                    <p class="fm-empty">The ${htmlEscape(competition)} has not been drawn, or this side is not in it.</p>`}
+            </section>`;
+
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--country">
+                <header class="fm-country-header">
+                    <div class="fm-country-header-main">
+                        <div>
+                            <div class="fm-eyebrow">Represented country</div>
+                            <h2 class="fm-country-header-title">${htmlEscape(name)}</h2>
+                        </div>
+                    </div>
+                    <button class="back-to-dashboard fm-country-header-back" data-nav-back="dashboard">Back</button>
+                </header>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head"><div>
+                        <h3>Senior ranking</h3>
+                        <p class="fm-subtle">${htmlEscape(positionLine)}</p>
+                    </div></div>
+                    <p class="fm-subtle">${played} of ${rows.length} countries have played an international
+                        match and hold a rating that means something.</p>
+                </section>
+
+                ${sideCard('Senior national team', seniorGroup, 'World Cup Qualifiers')}
+                ${sideCard('U-21 national team', u21Group, 'U-21 World Cup Qualifiers')}
+
+                <div class="fm-callout">
+                    No club pyramid, so there is nothing to manage here. A country is given its own
+                    five-tier pyramid from Admin &rarr; Activate a country.
+                </div>
+            </div>`;
+
+        mainContent.querySelectorAll('.js-country').forEach(button => {
+            button.addEventListener('click', () => {
+                loadCountryPage({ tab: 'general', simulatedCountry: button.dataset.countryIso });
+            });
+        });
+    }
+
+    /**
+     * One group's table with this country marked.
+     *
+     * <p>The whole group, not just this country: "who are we drawn with" is the question the page is
+     * answering, and a table of one row answers nothing.
+     *
+     * <p>The {@code is-highlighted} class this emits had no definition anywhere in the stylesheet, so
+     * the country being viewed was marked with nothing at all. Restored with the rule (2026-10-09).
+     */
+    function groupStandingTable(group, countryIso) {
+        const table = Array.isArray(group.table) ? group.table : [];
+        if (!table.length) return '<p class="fm-empty">No standings yet.</p>';
+        return `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
+                <thead><tr><th>#</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
+                <tbody>${table.map(row => `<tr${String(row.countryIso || '').toUpperCase() === countryIso ? ' class="is-highlighted"' : ''}>
+                    <td>${htmlEscape(row.position)}</td>
+                    <td>${htmlEscape(row.teamName || 'Unknown team')}</td>
+                    <td>${htmlEscape(row.played)}</td><td>${htmlEscape(row.goalDifference)}</td>
+                    <td><strong>${htmlEscape(row.points)}</strong></td>
+                </tr>`).join('')}</tbody></table></div>`;
+    }
+
+    function ordinal(position) {
+        const n = Number(position);
+        if (!Number.isFinite(n)) return '';
+        const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th'
+            : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+        return suffix;
+    }
+
+    function formatNumber(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '0';
+        return Number.isInteger(n) ? String(n) : n.toFixed(1);
+    }
+
+    // ------------------------------------------------------------------ page
+
     async function loadCountryPage(options) {
         const { tab = 'general', level: forcedLevel, simulatedCountry = '' } = options || {};
         const mainContent = document.getElementById('main-content');
