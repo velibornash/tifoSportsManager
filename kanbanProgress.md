@@ -180,6 +180,36 @@ Not caused by T1-16 — the failing line is identical in the committed version, 
 `git show HEAD`. Filed as **T-REST-0c** with exit criteria rather than fixed here, because it is
 a separate defect and the owner asked for the three paused tasks.
 
+## ✅ T-REST-2 — match-event layer dead code deleted (2026-10-09)
+
+The board recorded two independent dead paths:
+
+| Piece | State |
+|---|---|
+| `MatchEventRepository` | `@Component` with `ConcurrentHashMap`, `save()` returned argument and stored nothing |
+| `MatchPersistenceService` | 402 lines, zero callers |
+| `MatchAnalyticsService` | zero callers |
+| `MatchReplayService` | zero callers |
+
+The 52 classes in `newLogic/model/event/` have no table. Match events live only in
+`Match.eventJson` as JSON — that is the actual persistence.
+
+**What was done:**
+- Deleted `MatchEventRepository.java` (stub `ConcurrentHashMap`, `save()` stored nothing)
+- Deleted `MatchPersistenceService.java` (402 lines, zero callers)
+- Deleted `MatchAnalyticsService.java` (zero callers)
+- Deleted `MatchReplayService.java` (zero callers)
+- **Kept** the 52 event classes in `newLogic/model/event/` — they are used for in-memory
+  representation during simulation and JSON serialization in `Match.eventJson`
+
+**Verified:**
+- Build compiles
+- All related tests pass
+- No callers of the deleted code existed
+
+The 52 event classes are **kept** because they are the in-memory representation used during
+simulation and serialized to `Match.eventJson` JSON — that is the actual persistence.
+
 ## ✅ T-REST-3 — supporterMood drift verified end to end (2026-10-09)
 
 ## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)

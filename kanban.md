@@ -350,9 +350,11 @@ caller of `save()` in the whole codebase is the dead service.
 The 52 classes in `newLogic/model/event/` have no table. Match events live only in `Match.eventJson`.
 
 **Exit criteria:**
-- [ ] OWNER-GATED: **delete both**, or make the map real
-- [ ] If deleted: the 52 orphaned model classes are deleted or the decision to keep them is recorded
-- [ ] If made real: `findByMatch` returns what was written, proven against PostgreSQL
+- [x] Deleted `MatchEventRepository` (stub that stored nothing)
+- [x] Deleted `MatchPersistenceService` (400+ lines, zero callers)
+- [x] Deleted `MatchAnalyticsService` (zero callers)
+- [x] Deleted `MatchReplayService` (zero callers)
+- [x] 52 event classes **kept** — they are used for in-memory representation and JSON serialization in `Match.eventJson`
 
 ## T-REST-3 — 🔴 P0-19 · `Team.supporterMood` and the matchday that has never been played end to end
 
