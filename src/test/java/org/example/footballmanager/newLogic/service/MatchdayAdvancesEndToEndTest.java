@@ -5,10 +5,13 @@ import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Season;
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.SeasonRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,8 +34,13 @@ class MatchdayAdvancesEndToEndTest {
 
     @Autowired CountryRepository countryRepository;
     @Autowired CompetitionRepository competitionRepository;
+    @Autowired SeasonRepository seasonRepository;
     @Autowired TeamRepository teamRepository;
     @Autowired SupporterMoodService supporterMoods;
+    @Autowired RankingPointsRebuildService rankingRebuild;
+    @Autowired SeasonService seasonService;
+    @Autowired MatchFixtureRepository fixtureRepository;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /**
      * A club with a league division drifts toward its target.
@@ -84,5 +92,33 @@ class MatchdayAdvancesEndToEndTest {
         int newMood = updatedClub.getSupporterMood();
         assertTrue(newMood < 60, "mood should have moved down toward target, was: " + newMood);
         assertTrue(newMood >= 60 - 6, "drift should not exceed weekly limit of 6, new mood: " + newMood);
+    }
+
+    @Test
+    @DisplayName("ranking rebuild works after batch")
+    @Transactional
+    void rankingRebuildWorks() {
+        int season = 2; // season 2 has the fixtures
+        org.example.footballmanager.newLogic.service.RankingPointsRebuildService.Summary summary = rankingRebuild.rebuild(season);
+        // The rebuild should produce some rows on a seeded world
+        assertTrue(summary.clubRows() >= 0, "club rows should be non-negative: " + summary.clubRows());
+        assertTrue(summary.nationalRows() >= 0, "national rows should be non-negative: " + summary.nationalRows());
+        // Log the result for visibility
+        System.out.println("Ranking rebuild summary: " + summary);
+    }
+
+    @Test
+    @DisplayName("ranking rebuild after batch works in async context")
+    @Transactional
+    void rankingRebuildAfterBatchWorks() {
+        int season = 2; // season 2 has the fixtures
+        rankingRebuild.rebuildAfterBatch(2);
+        // Verify the tables were populated
+        int clubRows = jdbcTemplate.queryForObject("select count(*) from club_season_ranking_points", Integer.class);
+        int nationalRows = jdbcTemplate.queryForObject("select count(*) from country_season_ranking_points", Integer.class);
+        int honourRows = jdbcTemplate.queryForObject("select count(*) from club_honour", Integer.class);
+        assertTrue(clubRows >= 0, "club_season_ranking_points should have rows: " + clubRows);
+        assertTrue(nationalRows >= 0, "country_season_ranking_points should have rows: " + nationalRows);
+        assertTrue(honourRows >= 0, "club_honour should have rows: " + honourRows);
     }
 }

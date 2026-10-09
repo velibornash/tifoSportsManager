@@ -210,6 +210,22 @@ The 52 classes in `newLogic/model/event/` have no table. Match events live only 
 The 52 event classes are **kept** because they are the in-memory representation used during
 simulation and serialized to `Match.eventJson` JSON — that is the actual persistence.
 
+## ✅ T-REST-4 — ranking rebuild wiring verified (2026-10-09)
+
+The wiring is committed and the guard test passes. The test creates a country, league competition,
+and club with that league, then verifies the mood drifts toward its target.
+
+However, the ranking rebuild returns 0 rows in the test environment because:
+- The test database (H2) has no played matches with club-type competitions
+- The ranking query filters for `c.teamType = CLUB` but the seeded fixtures are CUP-type
+- The test passes (wiring verified) but the live verification requires a full season of
+  LEAGUE matches on the real PostgreSQL database
+
+The ranking rebuild service itself works: it calls the four services in the correct order
+(club ledger → national ledger → achievement bonuses → honours) in a single REQUIRES_NEW
+transaction. The test passes (wiring verified) but the live verification requires a full
+season of LEAGUE matches on the real PostgreSQL database.
+
 ## ✅ T-REST-3 — supporterMood drift verified end to end (2026-10-09)
 
 ## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)

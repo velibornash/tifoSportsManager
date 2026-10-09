@@ -389,6 +389,12 @@ that measurement.
 3. `select count(*) from club_honour;` — says whether a finished competition produced medals;
 4. grep `Ranking after the batch` in the log, which prints every counter and the elapsed milliseconds.
 
+
+**Status (2026-10-09):** The wiring is verified (test passes), but the ranking tables remain empty because
+the simulated matches in the test run are CUP-type fixtures, not LEAGUE-type, and the ranking query
+filters for `c.teamType = CLUB`. The test passes (wiring verified) but the live verification requires
+a full season of LEAGUE matches on the real PostgreSQL database, which is pending.
+
 ## T-REST-5 — 🔴 P0-CUPS-4 · a real season has never been observed for the continental cups
 
 Every assertion on the international club-cup draw is an integration test against the real write path. **One
