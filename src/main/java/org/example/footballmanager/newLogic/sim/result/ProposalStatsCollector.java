@@ -421,18 +421,43 @@ public class ProposalStatsCollector {
     }
 
     private double calculateRating(PlayerAcc p) {
-        double r = 6.0;
-        r += p.goals * 1.5;
-        r += p.assists * 1.0;
-        r += p.passesCompleted * 0.02;
-        r += p.interceptions * 0.3;
-        r += p.duelsWon * 0.2;
-        r += p.saves * 0.5;
-        if ("GK".equals(p.player.getRole())) r += p.saves * 0.3;
-        r -= p.foulsCommitted * 0.3;
-        r -= p.yellowCards * 0.5;
-        r -= p.redCards * 2.0;
-        return Math.max(1.0, Math.min(10.0, r));
+        // Base rating for simply playing the match.
+        double r = 5.5;
+
+        // Goals are the biggest single event, but with diminishing returns.
+        if (p.goals > 0) {
+            r += 2.0 + (p.goals - 1) * 0.8; // 1st goal +2.0, subsequent +0.8
+        }
+
+        // Assists reward creation but less than goals.
+        if (p.assists > 0) {
+            r += 1.2 + (p.assists - 1) * 0.5;
+        }
+
+        // Passing volume rewards involvement, capped so high-volume passers don't inflate.
+        r += Math.min(p.passesCompleted * 0.015, 1.5);
+
+        // Defensive contributions
+        r += p.interceptions * 0.25;
+        r += p.duelsWon * 0.15;
+        r += p.tackles * 0.1; // defensive work rate
+
+        // Goalkeeper specific
+        if ("GK".equals(p.player.getRole())) {
+            r += p.saves * 0.4;
+        }
+
+        // Discipline penalties
+        r -= p.foulsCommitted * 0.25;
+        r -= p.yellowCards * 0.4;
+        r -= p.redCards * 3.0;
+
+        // Minutes scaling: a 45-minute sub shouldn't rate the same as a 90-minute starter
+        int minutes = minutesPlayed(p.player);
+        double minuteFactor = Math.min(1.0, minutes / 90.0);
+        r = 5.0 + (r - 5.0) * minuteFactor;
+
+        return Math.max(2.0, Math.min(10.0, Math.round(r * 10.0) / 10.0));
     }
 
     private static class TeamAcc {
