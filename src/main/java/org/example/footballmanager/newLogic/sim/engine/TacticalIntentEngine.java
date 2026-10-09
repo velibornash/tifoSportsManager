@@ -175,6 +175,14 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
             Position desired = tactics.forPlayer(p).desiredCell(p.getRole(), centerSpot, p.getTeam());
+            // T-REST-0d: desiredCell returns null when no rule covers this role. Without this
+            // fallback, playableOwnHalf called desired.getRow() on null and threw
+            // NullPointerException, which surfaced as "Cannot invoke Position.getRow()
+            // because desired is null" — the error that broke POST
+            // /simulation/current-round/prepare for every manager.
+            if (desired == null) {
+                desired = p.getPosition();
+            }
             playableOwnHalf(desired, p.getTeam(), p);
         }
     }

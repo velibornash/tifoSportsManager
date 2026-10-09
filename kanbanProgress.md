@@ -180,6 +180,26 @@ Not caused by T1-16 — the failing line is identical in the committed version, 
 `git show HEAD`. Filed as **T-REST-0c** with exit criteria rather than fixed here, because it is
 a separate defect and the owner asked for the three paused tasks.
 
+## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)
+
+**The defect.** `POST /simulation/current-round/prepare` returned 500 for every manager:
+
+```
+Cannot invoke "Position.getRow()" because "desired" is null
+```
+
+`TacticalIntentEngine.placeOnOwnHalf` called `tactics.forPlayer(p).desiredCell(...)` which
+can return `null` when no rule covers a role. The code had no fallback, so
+`playableOwnHalf(desired, ...)` immediately called `desired.getRow()` on `null`. The same
+endpoint that T-REST-0c just fixed was still broken at a different point.
+
+**The fix.** Added the same `if (desired == null) desired = p.getPosition();` fallback that
+`refreshTargets` already uses. One line, same pattern as the rest of the engine.
+
+**Verified live.** `POST /simulation/current-round/prepare` now returns 200 with
+`"Simulation finished - replay is available."` The match is played, persisted, and the
+replay ID is returned.
+
 ## ✅ T-REST-0c — simulate-all 500 fixed (2026-10-09)
 
 **The defect.** `POST /simulation/current-round/simulate-all` returned 500 for every manager:
