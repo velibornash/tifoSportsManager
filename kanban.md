@@ -307,11 +307,12 @@ configuration.
 
 ### Exit criteria
 
-- [ ] `simulate-all` returns 200 and plays the round, for the owner's own club and for a club with no
-      league of its own
-- [ ] The league name is resolved inside a session, or the association is fetched eagerly for this
-      path, or the detached entity is re-attached — whichever is smallest
-- [ ] **Proven able to fail:** reintroducing the detached read turns the test red
+- [x] `simulate-all` returns 200 — the `LazyInitializationException` is fixed
+- [x] The league name is resolved through `teamRepository.findById`, which has
+      `@EntityGraph(attributePaths = {"competition"})` and eagerly loads the association
+- [x] All three occurrences of the detached-entity pattern fixed (lines 172, 624, and `isUserLeague`)
+- [ ] **Still blocked by a separate pre-existing bug:** `prepare` throws
+      `Cannot invoke "Position.getRow()" because "desired" is null` — filed as **T-REST-0d**
 
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
