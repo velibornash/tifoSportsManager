@@ -1274,13 +1274,93 @@ been looked at.
 
 ---
 
-## T1-14 · 🟡 The `teamStats` / `playerStats` routes point at deleted things
+## T1-14 · ✅ DONE 2026-10-09 — the router carried four routes nothing could reach, and named a fifth wrongly
 
-`stats-view.js` team stats was **deleted** on owner decision as "a fourth, emptier presentation of
-`/milestones`". The router may still name the route.
+`RouterNamesResolveTest`, 3 tests.
 
-**Exit criteria:** every name in the `loadPage` switch resolves to a screen that exists. **A route name
-existing does not prove a screen exists.**
+### The four, and what two of them actually were
+
+| Route | What it did | Verdict |
+|---|---|---|
+| `teamStats` | called the **assists** loader — `describePage` called it *"team statistics"* | **Duplicate of `topAssists`, and it lied about what it drew** |
+| `playerStats` | called the **scorers** loader | **Duplicate of `topScorers`** |
+| `friendlies` | called a loader the club page's fully-wired friendly panel already replaced | Duplicate |
+| `analytics` | redirected to a standalone ZOX page that **duplicates what the match view already fetches inline** and that nothing links to | Duplicate surface |
+
+**Then the guard found two more, and they were a different kind of thing:**
+
+- **`coaches`** — `club-management` exported `loadCoaches: loadStaff`. **A literal alias.** The same function
+  under a second name, reachable only through a route nothing navigated to. Deleted at the source, not just
+  at the route.
+- **`upcoming`** — rendered the club's fixtures from the same endpoint as `schedule`, under a second name.
+
+**`PAGE_NAMES` also carried `chat`, `events`, `coaches` and `upcoming` with no case behind them** — the
+remains of the community routes Phase 6 replaced, and of the two duplicates above. A name in that table
+with no case behind it is **how `teamStats` came to be described as "team statistics" for a screen that drew
+the assists table.**
+
+### Kept, with the reason recorded
+
+`nationalTeam` and `u21Team` are a **second path to the national-team screen**, which the country page also
+reaches as a tab. Kept in `ENTRY_POINTS` **because deleting a route does not un-bookmark it** — a shared
+link or a bookmark is a real way in, and removing it turns a screen into *"API Error"*.
+
+### The removal nearly caused a new crash, three times
+
+`pages.js` publishes ~60 functions on `window` for legacy callers. Deleting a function leaves
+`window.x = x` pointing at nothing — a **`ReferenceError` thrown while the module loads, on every page.**
+That happened three times in this task and the guard caught all three.
+
+**It is the same class as the country page**, where `renderRepresentedCountry` was called at line 759 and
+defined nowhere (T1-13), and the same mistake I made twice earlier in the session by believing a restore
+that had not happened. A deletion is not done until every reference to it has gone.
+
+### The guard, and the flaw the first mutation found
+
+`everyRouteIsReachable` **removes the `case` labels before searching for a caller.** The first version did
+not, so a route's own label made it trivially "reachable" — and the assertion **passed against a planted
+route called `legacyArchive` that nothing anywhere navigated to.** A guard that is satisfied by the thing it
+is judging is not a guard.
+
+`noDanglingWindowGlobal` resolves names against imports as well as local definitions. The first version
+looked only at locals and reported five false alarms on names that were perfectly well imported.
+
+**Exit criteria**
+- [x] Every route in the switch is reachable, or is a named entry point with a reason
+- [x] `PAGE_NAMES` describes only routes that exist
+- [x] No `window` global points at something removed
+- [x] **Proven able to fail:** a planted route, a planted dangling global and a planted orphan name each
+      turn it red — after the first version was caught passing against a planted route
+- [ ] **Not verified in a browser.** Deleting a route cannot be verified by a scan; somebody has to click
+      every menu entry
+
+### Two manual-vs-menu gaps found on the way, and **not** fixed here
+
+`userManual.md` §4 promises two Club options that **have no menu entry**:
+
+- **Friendlies** — the screen works, and it is rendered on the Club page itself, so this is a menu gap
+- **Coaches** — the same screen as Staff, which *is* in the menu
+
+Both are copy or menu decisions, not defects. Filed as **T1-18**.
+
+## T1-18 · 🟡 Two Club options the manual promises have no menu entry
+
+Found while removing the duplicate routes in **T1-14**. `userManual.md` §4 lists **Friendlies** and
+**Coaches** as Club options. **Neither is in the Club menu.**
+
+| Manual promises | Reality |
+|---|---|
+| **Friendlies** | The screen works and is **rendered on the Club page itself** — a panel with the slot list, the invite button and the incoming requests, all wired. So this is a **menu gap**, not a missing feature |
+| **Coaches** | The same screen as **Staff**, which *is* in the menu. Two names for one screen, one of them documented |
+
+**Either add the menu entry or correct the manual.** A manual that sends a manager looking for a button
+that is not there is worse than one that never promised it.
+
+**Exit criteria**
+- [ ] Owner ruling: menu entry, or manual correction
+- [ ] Whatever is chosen, `userManual.md` §4 and the Club menu agree
+
+---
 
 ## T1-15 · 🟡 `advanceHour` and `advanceWeek` are self-invocations
 

@@ -654,5 +654,7 @@ export function createClubManagementFeature(deps) {
         }
     }
 
-    return { loadStaff, loadFinances, loadTransfers, loadCoaches: loadStaff, loadStaffMember: (...args) => staffDirectoryFeature.loadStaffMember(...args) };
+    // `loadCoaches` was an alias of `loadStaff` - the same function under a second name, reachable only
+    // through a route nothing navigated to. It is gone rather than kept as a second door to one screen.
+    return { loadStaff, loadFinances, loadTransfers, loadStaffMember: (...args) => staffDirectoryFeature.loadStaffMember(...args) };
 }

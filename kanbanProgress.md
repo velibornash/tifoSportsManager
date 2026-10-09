@@ -1,5 +1,76 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-14 — the router carried four unreachable routes and named a fifth wrongly (2026-10-09)
+
+### What the four were
+
+| Route | What it did | Verdict |
+|---|---|---|
+| `teamStats` | called the **assists** loader; `describePage` called it *"team statistics"* | duplicate of `topAssists`, **and it lied about what it drew** |
+| `playerStats` | called the **scorers** loader | duplicate of `topScorers` |
+| `friendlies` | called a loader the club page's fully-wired panel already replaced | duplicate |
+| `analytics` | redirected to a standalone ZOX page that **duplicates what the match view already fetches inline**, and that nothing links to | duplicate surface |
+
+`analytics` is the one worth naming. It was not a *missing link* to a good page — the match view already
+fetches `/api/zox/match-preview`, `/api/zox/match-stats` and `/api/zox/post-match-report` inline, so the
+standalone page is a **second surface for the same three endpoints**, and the only two things that pointed at
+it were a route with no caller and a function with no caller.
+
+### Then the guard found two more, and a different kind of thing
+
+- **`coaches`** — `club-management` exported **`loadCoaches: loadStaff`**. A literal alias: the same function
+  under a second name, reachable only through a route nothing navigated to. Deleted at the source.
+- **`upcoming`** — the club's fixtures from the same endpoint as `schedule`, under a second name.
+
+**`PAGE_NAMES` also carried `chat`, `events`, `coaches` and `upcoming` with no case behind them.** A name in
+that table with no case behind it is **how `teamStats` came to be described as "team statistics" for a screen
+that drew the assists table** — the description outlived the screen, and nothing noticed because the
+description is only read when a page fails.
+
+### Kept, with the reason recorded
+
+`nationalTeam` and `u21Team` are a second path to a screen the country page also reaches by tab. Kept in
+`ENTRY_POINTS` **because deleting a route does not un-bookmark it** — a shared link is a real way in, and
+removing it turns a screen into *"API Error"*.
+
+### The removal nearly caused a new crash — three times
+
+`pages.js` publishes ~60 functions on `window`. Deleting one leaves `window.x = x` pointing at nothing: a
+**`ReferenceError` thrown while the module loads, on every page.** It happened three times here and the
+guard caught all three.
+
+**Third time this session** this class has appeared: the country page called `renderRepresentedCountry` at
+line 759 with no definition (T1-13), and twice I believed a restore that had not happened. **A deletion is
+not done until every reference to it has gone**, and the third instance was created by me while removing the
+duplicates.
+
+### The guard, and the flaw the first mutation found
+
+`RouterNamesResolveTest`, 3 tests.
+
+`everyRouteIsReachable` **strips the `case` labels before searching for a caller.** The first version did
+not, so a route's own label made it trivially "reachable" — and **the assertion passed against a planted
+route called `legacyArchive` that nothing anywhere navigated to.** A guard satisfied by the thing it judges
+is not a guard.
+
+`noDanglingWindowGlobal` resolves names against **imports as well as local definitions**. The first version
+looked only at locals and reported **five false alarms** on names that were perfectly well imported — the
+same assume-then-verify error this repository records in most of its entries.
+
+**Exit criteria**
+- [x] Every route reachable, or a named entry point with a reason
+- [x] `PAGE_NAMES` describes only routes that exist
+- [x] No `window` global points at something removed
+- [x] **Proven able to fail** — planted route, planted dangling global, planted orphan name, all three red
+- [ ] **Not verified in a browser.** A deleted route cannot be verified by a scan
+
+### Filed, not done
+
+**T1-18 — two Club options the manual promises have no menu entry.** `userManual.md` §4 lists **Friendlies**
+(the screen works, and is rendered on the Club page — a menu gap) and **Coaches** (the same screen as Staff,
+which *is* in the menu). A manual that sends a manager looking for a button that is not there is worse than
+one that never promised it.
+
 ## ✅ T1-10 — every loader checks the response (2026-10-09)
 
 ### Why this is correctness and not style

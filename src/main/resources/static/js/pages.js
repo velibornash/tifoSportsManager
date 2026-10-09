@@ -547,10 +547,6 @@ function buildPageNavState(page, options = {}) {
                     await loadTransfers();
                     break;
 
-                case "coaches":
-                    await loadCoaches();
-                    break;
-
                 case "training":
                 case "trainingSetup":
                     await loadTrainingSetup();
@@ -564,10 +560,6 @@ function buildPageNavState(page, options = {}) {
                     break;
 
                 // MATCHES
-                case "upcoming":
-                    await loadUpcomingMatches();
-                    break;
-
                 case "results":
                     await loadResults();
                     break;
@@ -599,10 +591,6 @@ function buildPageNavState(page, options = {}) {
 
                 case "international":
                     await loadInternational();
-                    break;
-
-                case "friendlies":
-                    await loadFriendlies();
                     break;
 
 	                case "world":
@@ -669,14 +657,6 @@ function buildPageNavState(page, options = {}) {
                     break;
 
                 // STATS
-                case "playerStats":
-                    await loadTopScorersAndAssists("scorers");
-                    break;
-
-                case "teamStats":
-                    await loadTopScorersAndAssists("assists");
-                    break;
-
                 case "topScorers":
                     await loadTopScorersAndAssists("scorers");
                     break;
@@ -684,10 +664,6 @@ function buildPageNavState(page, options = {}) {
                 case "topAssists":
                     await loadTopScorersAndAssists("assists");
                     break;
-
-                case "analytics":
-                    window.location.href = '/zox-match-preview.html';
-                    return;
 
                 case "userProfile":
                     return loadUserProfile();
@@ -733,12 +709,10 @@ function buildPageNavState(page, options = {}) {
         staff: 'the staff',
         finances: 'the finances',
         transfers: 'the transfer centre',
-        coaches: 'the coaching staff',
         training: 'training',
         trainingSetup: 'the training setup',
         trainingReports: 'the training reports',
         profile: 'the club profile',
-        upcoming: 'the upcoming fixtures',
         results: 'the results',
         schedule: 'the schedule',
         fixtures: 'the fixtures',
@@ -747,7 +721,6 @@ function buildPageNavState(page, options = {}) {
         leagueMatches: 'the league matches',
         cup: 'the cup',
         international: 'international competitions',
-        friendlies: 'friendlies',
         world: 'the world',
         country: 'the country',
         countryCup: 'the national cup',
@@ -755,14 +728,9 @@ function buildPageNavState(page, options = {}) {
         nationalTeam: 'the national team',
         u21Team: 'the under-21s',
         forum: 'the forum',
-        chat: 'chat',
-        events: 'events',
         admin: 'the admin page',
-        playerStats: 'player statistics',
-        teamStats: 'team statistics',
         topScorers: 'the top scorers',
         topAssists: 'the top assists',
-        analytics: 'match analytics',
         stadium: 'the stadium',
         userProfile: 'your profile'
     };
@@ -820,10 +788,6 @@ function buildPageNavState(page, options = {}) {
 
     async function loadFixture(fixtureId, options = {}) {
         return fixtureView.loadFixture(fixtureId, options);
-    }
-
-    async function loadFriendlies() {
-        return fixtureView.loadFriendlies();
     }
 
     async function loadLeagueTable(seasonYear = null) {
@@ -1188,10 +1152,6 @@ function buildPageNavState(page, options = {}) {
         return messagesView.loadMessageThread(threadId);
     }
 
-    async function loadAnalytics() {
-        window.location.href = '/zox-match-preview.html';
-    }
-
     function openStadiumImage(imageUrl) {
         return clubView.openStadiumImage(imageUrl);
     }
@@ -1214,9 +1174,6 @@ function buildPageNavState(page, options = {}) {
     }
     async function loadStaff() {
         return clubManagementFeature.loadStaff();
-    }
-    async function loadCoaches() {
-        return clubManagementFeature.loadCoaches();
     }
     async function loadFinances() {
         return clubManagementFeature.loadFinances();
@@ -1321,7 +1278,6 @@ function buildPageNavState(page, options = {}) {
     window.loadStaff = loadStaff;
     window.loadFinances = loadFinances;
     window.loadTransfers = loadTransfers;
-    window.loadCoaches = loadCoaches;
     window.loadTrainingSetup = loadTrainingSetup;
     window.loadTrainingReports = loadTrainingReports;
     window.loadTrainingReportsPage = loadTrainingReportsPage;
@@ -1331,7 +1287,6 @@ function buildPageNavState(page, options = {}) {
     window.loadFixtures = loadFixtures;
     window.renderFixtures = renderFixtures;
     window.loadFixture = loadFixture;
-    window.loadFriendlies = loadFriendlies;
     window.loadLeagueTable = loadLeagueTable;
     window.loadLeagueSchedule = loadLeagueSchedule;
     window.loadLeagueMatches = loadLeagueMatches;
@@ -1347,7 +1302,6 @@ function buildPageNavState(page, options = {}) {
     window.openForumTopic = (topicId) => loadPage('forumTopic', { topicId });
     window.loadPlayerStats = loadPlayerStats;
     window.loadTopScorersAndAssists = loadTopScorersAndAssists;
-    window.loadAnalytics = loadAnalytics;
     window.renderPlayers = renderPlayers;
     window.renderMatches = renderMatches;
     window.renderTable = renderTable;

@@ -299,21 +299,9 @@ export function createFixtureView(deps) {
         }
     }
 
-    async function loadFriendlies() {
-        const teamId = getTeamId();
-        if (!teamId) return;
-        try {
-            const response = await authFetch(`/teams/${teamId}/schedule?matchType=FRIENDLY`);
-            const matches = await readJsonOrThrow(response, 'Friendlies');
-            renderMatches(matches, "Friendlies");
-        } catch (err) {
-            renderMatchesError('Could not load friendlies', err);
-        }
-    }
-
     function renderFixtures(fixtures, title, options = {}) {
         renderFixturesView(fixtures, title, options);
     }
 
-    return { loadFixture, loadFixtures, loadUpcomingMatches, loadFriendlies, findFixtureRow, renderFixtures };
+    return { loadFixture, loadFixtures, loadUpcomingMatches, findFixtureRow, renderFixtures };
 }
