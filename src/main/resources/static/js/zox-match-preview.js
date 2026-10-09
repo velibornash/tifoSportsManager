@@ -7,6 +7,10 @@ function getZoxContent() {
 
 async function getMatchId() {
     const params = new URLSearchParams(window.location.search);
+    // Whether the caller pasted an explicit id, as opposed to falling back to this club's played
+    // matches. Only the pasted one can be a fixture id, so only it needs resolving - and it is
+    // reported alongside the id rather than guessed from its shape.
+    let isLikelyFixtureId = params.get('matchId') !== null;
     let matchId = params.get('matchId') || localStorage.getItem('lastMatchId');
 
     if (!matchId) {
@@ -26,7 +30,9 @@ async function getMatchId() {
         }
     }
 
-    return matchId;
+    // A pasted id and a discovered one are not the same claim about the world, and the caller needs
+    // to know which it is holding.
+    return { matchId, isLikelyFixtureId };
 }
 
 function safe(value, fallback = 'N/A') {
@@ -281,7 +287,7 @@ async function initializeZoxDashboard() {
     const content = getZoxContent();
     if (!content) return;
 
-    const matchId = await getMatchId();
+    const { matchId, isLikelyFixtureId } = await getMatchId();
     if (!matchId) {
         content.innerHTML = `
             <div class="zox-empty-block">
@@ -297,10 +303,32 @@ async function initializeZoxDashboard() {
         // single 403 rejected the whole set and replaced the preview, the statistics AND the report with
         // one error block — so a manager who was not allowed to see the post-match report lost the
         // pre-match preview as well, which he *was* allowed to see.
+        // The same id-space rule the match view follows (see FixtureNeverRendersAnotherMatchTest).
+        //
+        // `?matchId=` is a query string, so a manager can paste anything into it - including a fixture
+        // id. The two id spaces overlap and a fixture id asked for statistics is another club's played
+        // game. The fallback in getMatchId is safe by construction (`/teams/{id}/matches` filters
+        // playedTrue, so `matches[0].id` is a real match). The pasted one is not, so it is resolved
+        // the same way the match view resolves it: ask the fixture endpoint which match it became.
+        //
+        // Note what is deliberately NOT used here: a `^[0-9]+$` shape check. Both id spaces are
+        // numeric, so it accepts every fixture id in the database and guards nothing.
+        let playedMatchId = matchId;
+        if (isLikelyFixtureId) {
+            const byFixture = await readJsonOr(
+                await authFetch(`/matches/by-fixture/${matchId}`), {}, 'The fixture');
+            playedMatchId = byFixture?.playedMatchId ?? null;
+        }
+        const hasPlayedMatch = playedMatchId !== null && playedMatchId !== undefined;
+
         const [previewResponse, statsResponse, reportResponse] = await Promise.all([
             authFetch(`/api/zox/match-preview/${matchId}`),
-            authFetch(`/api/zox/match-stats/${matchId}`),
-            authFetch(`/api/zox/post-match-report/${matchId}`)
+            hasPlayedMatch
+                ? authFetch(`/api/zox/match-stats/${playedMatchId}`)
+                : Promise.resolve({ ok: false, status: 0 }),
+            hasPlayedMatch
+                ? authFetch(`/api/zox/post-match-report/${playedMatchId}`)
+                : Promise.resolve({ ok: false, status: 0 })
         ]);
         const [preview, stats, report] = await Promise.all([
             readJsonOr(previewResponse, {}, 'The match preview'),

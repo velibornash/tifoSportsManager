@@ -121,6 +121,64 @@ throwaway `sokker_bench` database built to those numbers.
 
 Everything the previous board carried open. Nothing here is new work; this is the residue.
 
+## T-REST-0 — 🔴 P0-FIXTURE-MATCH · a fixture rendered **another fixture's** lineups and statistics
+
+**Found by the owner, 2026-10-09.** Club → Schedule → the fixture **OFK Omladinac v SK Teleoptik City**
+(unplayed, Season 1 Week 1 Day 4, 16:00). The Lineups tab listed **GFK Bor 1945 v SK Kragujevac** — a
+different fixture, with real names, ratings, cards and minutes, under this fixture's heading. Stats did the
+same. Goals and the match report had the same path.
+
+### Why — one sentence, and the file already said it
+
+`matchId` in `match-view.js` holds a **fixture** id whenever the screen was opened for a fixture. The two id
+spaces are separate tables with separate sequences, so **fixture 5 and match 5 are both 5** and they are
+unrelated rows. Three calls passed that id straight to **match** endpoints:
+`/match-stats/lineups/{id}`, `/api/zox/match-stats/{id}`, `/api/zox/post-match-report/{id}`. The server
+answered honestly for a different question.
+
+The rule was **already written in the view's own comment**, twenty lines above the defect:
+
+> *"a caller that does not say which it holds gets whichever the server finds first... Callers now pass
+> `fixture: true`, and the two spaces have two endpoints."*
+
+Three places did not say which they held. **This is the fourth time in this repository that the correct
+answer was already in the file next to the code that broke it.**
+
+### Why there was no way to know
+
+`MatchDTO.unplayed(fixtureId, fixture)` set `id` to the **fixture** id and never exposed the played match's
+id. So the frontend held a fixture id and had no field telling it whether a match existed. It had to guess,
+and guessing is what this board has already paid for twice.
+
+### The fix
+
+- **`MatchDTO.playedMatchId`** — new field, null when the fixture has not been played, read from
+  `MatchFixture.playedMatch`. **A separate field on purpose:** overloading `id` would hide the one thing
+  that caused this, and a caller would keep passing it to both kinds of endpoint. `MatchFixture.playedMatch`
+  is unique and indexed, so this is an exact answer and not a lookup by convention.
+- **`match-view.js`** — resolves the id space **once**, at the top, and no match-only endpoint is called
+  unless `playedMatchId` exists. The five buttons that need a played match are `disabled` with a title
+  saying why. An unplayed fixture gets an honest empty state.
+- **`zox-match-preview.js`** (the standalone page, unreachable from the router but still serving 200) —
+  same guard, because `?matchId=` is a pasted query string and can carry a fixture id.
+- **`MatchDTO.from`** — the positional `@AllArgsConstructor` call was replaced with setters. Adding a
+  16th argument to a constructor of four interchangeable `Integer`s is how `seasonNumber` ends up holding
+  a `dayNumber` and nothing notices.
+
+### Mutation evidence
+
+Three mutations, each caught by a named test: the two original raw-id calls, the ZOX page trusting a pasted
+id, and — deliberately — replacing the resolution with a `^[0-9]+$` shape check, which the guard rejects
+because **both id spaces are numeric and a shape check guards nothing.**
+
+**Exit criteria:**
+- [x] `playedMatchId` on the DTO, null for an unplayed fixture
+- [x] No match-only endpoint reachable with a fixture id, in either file
+- [x] Buttons that need a played match are disabled, not merely erroring
+- [x] Guards proven able to fail against three mutations
+- [ ] **Observed in the browser** — the OFK Omladinac fixture showing no foreign lineups
+- [ ] Confirmed against `sokker_db` that no fixture shares a `played_match_id`
+
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
 **The written spec says they do not** — they *"hold their positions until their league is activated"*.

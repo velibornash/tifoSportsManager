@@ -63,15 +63,39 @@ export function createMatchView(deps) {
             // The events carry the score and the date but not what kind of match it was, so the
             // header pulls the one record that does. It is one extra request in parallel, not a
             // second round trip.
-            const [events, lineupsPayload, matchMeta] = await Promise.all([
+            const [events, matchMeta] = await Promise.all([
                 eventsRequest,
-                authFetch(`/match-stats/lineups/${matchId}`)
-                    .then(r => r.ok ? r.json() : null)
-                    .catch(() => null),
                 authFetch(isFixture ? `/matches/by-fixture/${matchId}` : `/matches/${matchId}`)
                     .then(r => r.ok ? r.json() : null)
                     .catch(() => null)
             ]);
+
+            // **THE FIX. The id space is resolved once, here, and nowhere else.**
+            //
+            // `matchId` above is a FIXTURE id whenever `isFixture` is true, and the two spaces overlap:
+            // fixture 5 and match 5 are both 5. This used to pass it straight to
+            // `/match-stats/lineups/${matchId}` — a match endpoint — so a fixture for OFK Omladinac v
+            // SK Teleoptik City rendered the lineups of GFK Bor 1945 v SK Kragujevac. A different club's
+            // played game, with real names, ratings, cards and minutes, under this fixture's heading.
+            //
+            // The rule was already written in this file's own comment twenty lines above: *"a caller that
+            // does not say which it holds gets whichever the server finds first."* Three places did not
+            // say which they held.
+            //
+            // So: the metadata endpoint carries `playedMatchId`, and **no match-only endpoint is called
+            // unless there is one.** An unplayed fixture gets an honest empty state instead of another
+            // team's result, which is what `MatchDTO.unplayed` and this screen have claimed since the
+            // fixture route was introduced.
+            const playedMatchId = isFixture
+                ? (matchMeta?.playedMatchId ?? null)
+                : matchId;
+            const hasPlayedMatch = playedMatchId !== null && playedMatchId !== undefined;
+
+            const lineupsPayload = hasPlayedMatch
+                ? await authFetch(`/match-stats/lineups/${playedMatchId}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .catch(() => null)
+                : null;
 
             // No events and no metadata means there is genuinely nothing to show. No events *with*
             // metadata means an unplayed match, which has a header and a preview and is not an error.
@@ -155,11 +179,11 @@ export function createMatchView(deps) {
                 </div>
                 <div id="match-buttons-container" class="fm-match-actions">
                     <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
-                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn">Lineups</button>
-                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn">Stats</button>
-                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn">Goals</button>
-                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn">Replay</button>
-                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn">Match Report</button>
+                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
+                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
+                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
+                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Available once the match has been played"'}>Replay</button>
+                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
                 <div style="text-align:center; margin-top:30px;">
@@ -413,9 +437,14 @@ export function createMatchView(deps) {
                     renderMatchReport(cachedMatchReport);
                     return;
                 }
+                // Same rule: a match-only endpoint needs a MATCH id.
+                if (!hasPlayedMatch) {
+                    infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">There is no match report until the match has been played.</p>`;
+                    return;
+                }
                 infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Loading match report...</p>`;
                 try {
-                    const response2 = await authFetch(`/api/zox/post-match-report/${matchId}`);
+                    const response2 = await authFetch(`/api/zox/post-match-report/${playedMatchId}`);
                     if (!response2.ok) throw new Error(`Report unavailable (${response2.status})`);
                     cachedMatchReport = await response2.json();
                     renderMatchReport(cachedMatchReport);
@@ -430,9 +459,15 @@ export function createMatchView(deps) {
                 // read verbatim by /api/zox/match-stats/{id}. Deriving them from
                 // the detail events (eventJson) yields zeros for engine matches
                 // because eventJson only carries GOAL events.
+                // A match-only endpoint, so it needs a MATCH id. Passing the fixture id returned
+                // another fixture's statistics - see the resolution at the top of this function.
+                if (!hasPlayedMatch) {
+                    infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Statistics are recorded once the match has been played.</p>`;
+                    return;
+                }
                 let payload = null;
                 try {
-                    const resp = await authFetch(`/api/zox/match-stats/${matchId}`);
+                    const resp = await authFetch(`/api/zox/match-stats/${playedMatchId}`);
                     if (resp.ok) payload = await resp.json();
                 } catch (error) {
                     console.error('Failed to load match stats:', error);

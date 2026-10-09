@@ -33,6 +33,25 @@ public class MatchDTO {
     private Long replayId;
 
     /**
+     * The {@code Match} this thing was played into, or null if it has not been played.
+     *
+     * <p><b>Added because the frontend could not otherwise know.</b> {@code /matches/by-fixture/{id}} sets
+     * {@link #id} to the <em>fixture</em> id, and the id spaces overlap: fixture 5 and match 5 are both 5.
+     * A caller that passed that id to a match endpoint — {@code /match-stats/lineups/5},
+     * {@code /api/zox/match-stats/5} — got <b>a different club's played game</b>. That is not a
+     * hypothetical: it is the defect the owner reported, a fixture for OFK Omladinac v SK Teleoptik City
+     * rendering the lineups of GFK Bor 1945 v SK Kragujevac.
+     *
+     * <p>It is a separate field rather than an overload of {@code id} <b>on purpose</b>. Overloading
+     * {@code id} would make the one thing that caused this bug invisible: a caller could not tell which
+     * space it was holding, and would keep passing it to both kinds of endpoint. The name says which.
+     *
+     * <p>Backed by {@code MatchFixture.playedMatch}, which is a unique indexed column — one played match
+     * belongs to at most one fixture — so this is an exact answer and not a lookup by convention.
+     */
+    private Long playedMatchId;
+
+    /**
      * The same DTO for a fixture — a match that has not been played.
      *
      * <p>A {@code Match} row is born when a match is played, so a seeded world holds 2,790 fixtures and
@@ -63,6 +82,10 @@ public class MatchDTO {
         dto.setResultHidden(false);
         dto.setResultRevealed(false);
         dto.setReplayId(null);
+        // The one field that tells a caller whether a match endpoint may be called at all. Null here is
+        // the honest answer for a fixture that has not been played, and it is the answer the frontend
+        // needs in order to stop asking.
+        dto.setPlayedMatchId(fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getId());
         return dto;
     }
 
@@ -99,23 +122,35 @@ public class MatchDTO {
 
         Competition competition = match.getCompetition();
 
-        return new MatchDTO(
-                match.getId(),
-                match.getHomeTeam() != null ? match.getHomeTeam().getName() : "TBD",
-                match.getAwayTeam() != null ? match.getAwayTeam().getName() : "TBD",
-                homeGoals,
-                awayGoals,
-                formattedDate,
-                buildSeasonDayLabel(match.getSeasonYear(), match.getDayNumber(), match.getMatchDate()),
-                match.getSeasonYear(),
-                match.getDayNumber(),
-                match.getWeekNumber(),
-                competition != null ? competition.getName() : null,
-                competition != null && competition.getType() != null ? competition.getType().name() : null,
-                resultHidden,
-                resultRevealed,
-                match.getReplayId()
-        );
+        // Setters, not the positional constructor.
+        //
+        // `@AllArgsConstructor` hands out a 16-argument constructor whose arguments are
+        // `Integer,Integer,String,String,Integer,Integer,...` - four of them interchangeable
+        // nullables in a row. Adding `playedMatchId` broke this call at compile time, and the fix
+        // chosen by reflex would have been to append one more `null` and move on. That is how
+        // `seasonNumber` ends up holding a `dayNumber` and nothing notices, because all four are
+        // still integers and the DTO still compiles.
+        //
+        // Named setters make the field order irrelevant, and a field added tomorrow cannot silently
+        // shift every argument after it.
+        MatchDTO dto = new MatchDTO();
+        dto.setId(match.getId());
+        dto.setHomeTeam(match.getHomeTeam() != null ? match.getHomeTeam().getName() : "TBD");
+        dto.setAwayTeam(match.getAwayTeam() != null ? match.getAwayTeam().getName() : "TBD");
+        dto.setHomeGoals(homeGoals);
+        dto.setAwayGoals(awayGoals);
+        dto.setMatchDate(formattedDate);
+        dto.setSeasonDayLabel(buildSeasonDayLabel(match.getSeasonYear(), match.getDayNumber(), match.getMatchDate()));
+        dto.setSeasonNumber(match.getSeasonYear());
+        dto.setDayNumber(match.getDayNumber());
+        dto.setWeekNumber(match.getWeekNumber());
+        dto.setCompetitionName(competition != null ? competition.getName() : null);
+        dto.setCompetitionType(competition != null && competition.getType() != null
+                ? competition.getType().name() : null);
+        dto.setResultHidden(resultHidden);
+        dto.setResultRevealed(resultRevealed);
+        dto.setReplayId(match.getReplayId());
+        return dto;
     }
 
     /**

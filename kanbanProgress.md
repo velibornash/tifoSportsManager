@@ -1,5 +1,84 @@
 # kanbanProgress.md — the append-only log
 
+## 🔴 T-REST-0 — a fixture rendered another fixture's lineups and statistics (2026-10-09)
+
+Reported by the owner from Club → Schedule. The fixture **OFK Omladinac v SK Teleoptik City** (unplayed)
+listed the lineups of **GFK Bor 1945 v SK Kragujevac**. Not a rendering glitch and not a stale cache —
+**a different fixture entirely**, with real names, ratings, cards and minutes, under this fixture's heading.
+
+### The cause, in one sentence
+
+`matchId` in `match-view.js` holds a **fixture** id whenever the screen was opened for a fixture, the two
+id spaces are separate sequences (**fixture 5 and match 5 are both 5**), and three calls passed it to
+**match** endpoints: `/match-stats/lineups/{id}`, `/api/zox/match-stats/{id}`,
+`/api/zox/post-match-report/{id}`.
+
+The two lines either side of the lineups call **both** branch on `isFixture`. The lineups call did not.
+That single missing ternary was the bug.
+
+### The part worth recording
+
+**The rule was already written twenty lines above the defect**, in the view's own comment — *"a caller
+that does not say which it holds gets whichever the server finds first... Callers now pass `fixture: true`,
+and the two spaces have two endpoints."* Three places did not say which they held.
+
+This is the **fourth** time in this repository the correct answer was already on the page next to the code
+that broke it. It is also the third recorded instance of the same shape: a guess about which row is meant
+resolving to **somebody else's played match**. The board already warned about it under T1-14, and the
+warning did not reach these three lines.
+
+### Why the frontend could not have known
+
+`MatchDTO.unplayed(fixtureId, fixture)` set `id` to the **fixture** id and never carried the played match's
+id, so there was no field to consult. The frontend had no choice but to pass the id it had.
+
+### What changed
+
+| File | Change |
+|---|---|
+| `MatchDTO.java` | **`playedMatchId`** — null when unplayed, from `MatchFixture.playedMatch`. Separate field on purpose: overloading `id` would hide the ambiguity rather than end it |
+| `MatchDTO.java` | `from()` now uses setters. The 16-arg positional constructor was one field away from silently putting a `dayNumber` in `seasonNumber` |
+| `match-view.js` | Resolves the id space **once**. No match-only endpoint is called without `playedMatchId`; five buttons `disabled` with a reason |
+| `zox-match-preview.js` | Same guard. `?matchId=` is a pasted query string and can carry a fixture id |
+| `FixtureNeverRendersAnotherMatchTest.java` | New, 7 tests |
+
+`MatchFixture.playedMatch` was made **unique and indexed** in `1ed5033`, which is what lets `playedMatchId`
+be an exact answer rather than a best guess.
+
+### A guard that guarded nothing, caught before it shipped
+
+My first version of the ZOX fix was `const isLikelyPlayedMatch = /^[0-9]+$/.test(String(matchId))`. **Both
+id spaces are numeric — it accepts every fixture id in the database and stops nothing.** I wrote a shape
+check because it looked like the guard the board asked for.
+
+The test rejects it by name, and mutation B confirms it: the numeric check fails the guard.
+
+> `a pasted ?matchId= can be a FIXTURE id. Both id spaces are numeric, so a shape check would accept every
+> fixture in the database and guard nothing - the id has to be resolved through the fixture endpoint instead.`
+
+### Mutation evidence — three mutations, three named failures
+
+| Mutation | Caught by | Result |
+|---|---|---|
+| A: restore `${matchId}` in the two match-only calls | `noMatchEndpointSeesTheRawId` | names both endpoints |
+| B: numeric shape check instead of resolution | `theStandalonePageResolvesToo` | `expected: <playedMatchId> but was: <matchId>` |
+| C: ZOX page trusts the pasted id | `theStandalonePageResolvesToo` | same |
+
+All restored; `FixtureNeverRendersAnotherMatchTest, RouterNamesResolveTest, LoadersCheckResponseOkTest`
+green together.
+
+Two test-authoring problems worth recording. My import prune removed `assertNotNull` while it was still used
+twice, and the first helper built a fixture without an id — the fix that took a second pass to see. And the
+`${...}` pattern could not survive a heredoc: four levels of escaping produced `\\$` and a Java string
+template. **The regex was replaced with plain string operations**; expressing `${` as a pattern is a
+reliable way to ship a broken guard.
+
+### Not done
+
+- **The browser pass.** Everything above is code and a mutation. The owner's original screen has not been
+  reopened, and by this repository's own rule that is not the same as fixed.
+- **`sokker_db` was not running**, so the `played_match_id` duplicate query from `1ed5033` is still unrun.
+
 ## ✅ T1-14 — the router carried four unreachable routes and named a fifth wrongly (2026-10-09)
 
 ### What the four were
