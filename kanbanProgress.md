@@ -180,6 +180,8 @@ Not caused by T1-16 — the failing line is identical in the committed version, 
 `git show HEAD`. Filed as **T-REST-0c** with exit criteria rather than fixed here, because it is
 a separate defect and the owner asked for the three paused tasks.
 
+## ✅ T-REST-3 — supporterMood drift verified end to end (2026-10-09)
+
 ## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)
 
 **The defect.** `POST /simulation/current-round/prepare` returned 500 for every manager:

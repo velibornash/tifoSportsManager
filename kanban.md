@@ -363,9 +363,10 @@ The app boots and every read-only page works. `supporterMood` is read by the mat
 `FinanceController`, so **you find out by playing football, not by looking at the app.**
 
 **Exit criteria:**
-- [ ] A matchday advances end to end on a database built from the current entities
-- [ ] A guard test that boots against the **real** schema and plays a matchday — the only thing that would
+- [x] A matchday advances end to end on a database built from the current entities
+- [x] A guard test that boots against the **real** schema and plays a matchday — the only thing that would
       have caught this, and the reason 154 test classes did not
+- [x] Verified: a club with a league division drifts toward its target mood
 
 ## T-REST-4 — 🔴 P0-RANK-WIRE · the ranking rebuild has never been seen in a live matchday
 
