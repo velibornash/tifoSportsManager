@@ -43,8 +43,10 @@ const seniorNt = { exists: true, teamId: 7, isSelector: true, squad: [], pool: [
 // The manager's own country iso is a variable, not a constant: the represented-country page is only
 // reached when the country being asked about IS the manager's own, so driving it needs a second
 // instance whose own country is a represented one.
-function buildView(iso, name) {
+function buildView(iso, name, teamId) {
     return factory({
+        // T1-13b: the manager's own club id, so the qualifying table can mark it.
+        getTeamId: () => teamId ?? null,
         authFetch: async (path) => {
             if (path.includes('friendly-requests/opponents')) return json([{ id: 9, name: 'Opponent', country: 'X' }]);
             if (path.includes('friendly-requests/slot')) return json({ week: 6, day: 1 });
@@ -140,6 +142,74 @@ for (const tab of tabs) {
     } catch (e) {
         failed++;
         console.log(`represented  THREW  ${e.message}`);
+    }
+}
+
+// T1-13b: the manager's own club is marked in the qualifying table, and a club that is BOTH
+// qualifying and the manager's own carries BOTH classes.
+{
+    // A qualifying table with three rows: one qualifying, one not, one that is both.
+    const qualifyingView = factory({
+        getTeamId: () => 42,
+        authFetch: async (path) => {
+            if (path.includes('friendly-requests/opponents')) return json([{ id: 9, name: 'Opponent', country: 'X' }]);
+            if (path.includes('friendly-requests/slot')) return json({ week: 6, day: 1 });
+            if (path.match(/friendly-requests\/\d+$/)) return json({ season: 1, week: 6, incoming: [], outgoing: [] });
+            if (path.includes('/national-team')) return json(seniorNt);
+            if (path.includes('/clubs/ranking')) return json({ totalClubs: 2, clubs: [] });
+            if (path.includes('/leagues')) return json([]);
+            if (path.includes('/calendar/week')) return json({ days: [] });
+            if (path.includes('/calendar/season')) return json({ weeks: [] });
+            if (path.startsWith('/countries/ranking')) return json([]);
+            // The qualifying tab reads /countries/{iso}/qualifying, which returns tiers -> cups -> standings.
+            if (path.includes('/qualifying')) {
+                return json({
+                    country: 'Serbia', isoCode: 'SRB', season: 1,
+                    tiers: [{
+                        tier: 1,
+                        cups: [
+                            // teamId 42 is the manager's own club AND qualifies (position 1, 1 place).
+                            { cup: 'Champions Cup', places: 1, standings: [
+                                { teamName: 'Romania', position: 1, points: 7, goalDifference: 4, qualifies: true, teamId: 42 },
+                                { teamName: 'Serbia', position: 2, points: 5, goalDifference: 1, qualifies: false, teamId: 7 },
+                                { teamName: 'Hungary', position: 3, points: 3, goalDifference: -2, qualifies: false, teamId: 99 },
+                            ]},
+                        ],
+                    }],
+                });
+            }
+            if (path.includes('/national-tournaments/u21/QUALIFYING')) return json({ exists: false, week: null, groups: [] });
+            if (path === '/countries') return json([{ isoCode: 'SRB', name: 'Serbia' }]);
+            return json({});
+        },
+        loadPage: async () => {},
+        loadMatch: async () => {},
+        setActiveLeagueContext: () => {},
+        getCurrentUserCountryIsoCode: () => 'SRB',
+        getActiveLeagueCountryIsoCode: () => 'SRB',
+        getCurrentUserCountryName: () => 'Serbia',
+    });
+    main.innerHTML = '';
+    try {
+        await qualifyingView.loadCountryPage({ tab: 'qualifying' });
+        const text = main.innerHTML || '';
+        // The manager's own club (teamId 42) is in position 1, which qualifies.
+        const bothClasses = text.includes('is-qualified is-current-club') || text.includes('is-current-club is-qualified');
+        // A club that is NOT the manager's own should NOT have is-current-club.
+        const noFalsePositive = !text.includes('Serbia') || !text.includes('is-current-club') || text.includes('is-qualified is-current-club');
+        console.log(`qualifying   ${bothClasses ? 'ok' : 'FAILED'}  ${bothClasses ? '[both classes on own club]' : '[own club NOT marked]'}`
+            + `  ${noFalsePositive ? '[no false positive]' : '[FALSE POSITIVE: non-own club marked]'}`);
+        if (!bothClasses) {
+            failed++;
+            console.log('   -> the manager\'s own club is not marked in the qualifying table.');
+        }
+        if (!noFalsePositive) {
+            failed++;
+            console.log('   -> a club that is not the manager\'s own is incorrectly marked.');
+        }
+    } catch (e) {
+        failed++;
+        console.log(`qualifying   THREW  ${e.message}`);
     }
 }
 

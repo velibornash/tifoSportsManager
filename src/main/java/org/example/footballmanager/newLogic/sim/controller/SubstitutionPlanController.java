@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -46,6 +47,7 @@ public class SubstitutionPlanController {
 
     private final SubstitutionPlanRepository plans;
     private final MatchFixtureRepository fixtures;
+    private final org.example.footballmanager.newLogic.service.SubstitutionRuleValidator validator;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(@PathVariable Long fixtureId) {
@@ -81,8 +83,46 @@ public class SubstitutionPlanController {
             }
         }
 
+        // Parse, validate, and refuse — in that order. (T1-16.)
+        //
+        // This used to be `String.valueOf(rules == null ? "[]" : rules)` and nothing else: whatever the
+        // API was sent became the plan. The screen's dropdowns stop the UI naming somebody who is not in
+        // the squad, but the API never could, so a typo became a rule the engine marked VOID *during the
+        // match* — where nothing reads voidReason back, so it was a silently dead instruction,
+        // discovered never.
+        //
+        // Refusing here is the cheapest possible moment to say so: the manager is still on the screen
+        // that produced the mistake.
         Object rules = body.get("rules");
         String json = String.valueOf(rules == null ? "[]" : rules);
+
+        List<?> parsed;
+        try {
+            parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, List.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "PLAN_UNREADABLE",
+                    "message", "The plan could not be read as a list of substitution rules."));
+        }
+
+        List<org.example.footballmanager.newLogic.service.SubstitutionRuleValidator.Rejection> rejections =
+                validator.validate(parsed, fixture);
+        if (!rejections.isEmpty()) {
+            // Every rejection, not just the first. A manager fixing one typo at a time through a form
+            // that accepted it is the experience this task exists to end.
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "RULE_CANNOT_FIRE",
+                    "message", rejections.size() == 1
+                            ? rejections.get(0).message()
+                            : rejections.size() + " of your " + parsed.size() + " rules cannot fire.",
+                    "rejections", rejections.stream()
+                            .map(r -> Map.of(
+                                    "index", r.index(),
+                                    "code", r.code(),
+                                    "message", r.message()))
+                            .toList()));
+        }
 
         SubstitutionPlan plan = plans.findByFixtureId(fixtureId).orElseGet(() -> new SubstitutionPlan(
                 fixtureId, nameOf(fixture.getHomeTeam()), nameOf(fixture.getAwayTeam()), json));
@@ -135,6 +175,10 @@ public class SubstitutionPlanController {
         view.put("homeTeam", plan.getHomeTeam());
         view.put("awayTeam", plan.getAwayTeam());
         view.put("rulesJson", plan.getRulesJson());
+        // How the rules actually went, once there has been a match for them to have gone in. (T1-16)
+        // Null before kickoff, which is honest: nothing is known about how an instruction went until
+        // there is a match for it. The screen shows fired / void per rule from this.
+        view.put("outcomeJson", plan.getOutcomeJson());
         view.put("updatedAt", plan.getUpdatedAt());
         // Whether the plan can still be changed, so the screen disables itself instead of offering a
         // button the server will refuse.

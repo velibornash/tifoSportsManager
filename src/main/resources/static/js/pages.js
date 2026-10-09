@@ -442,6 +442,9 @@ function buildPageNavState(page, options = {}) {
     });
     const countryView = createCountryView({
         authFetch,
+        // T1-13b: the manager's own club id, so the qualifying table can mark it without
+        // comparing names. Name comparison has been burned four times in this codebase.
+        getTeamId: () => currentUserTeamId,
         loadPage: (...args) => loadPage(...args),
         // The shared match view, so a national-cup tie opens the same screen a league fixture does
         // (owner, 2026-10-07: "svaki generisan mec ... mora da ima mogucnost da se udje na mec i vidi

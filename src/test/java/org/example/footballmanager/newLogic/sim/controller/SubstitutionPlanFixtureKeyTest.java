@@ -131,19 +131,30 @@ class SubstitutionPlanFixtureKeyTest {
 
     @Test
     @DisplayName("saving twice replaces the plan rather than merging it")
-    void saveReplaces() throws Exception {
+void saveReplaces() throws Exception {
         Long fixtureId = aFixture(LocalDateTime.now().plusDays(3)).getId();
 
+        // A real rule list, not a placeholder. This used to send the literal string "[A]", which is
+        // not JSON at all — T1-16 added a parse step and this test correctly turned red.
+        //
+        // It was asserting that a plan round-tripped while sending nonsense in, so it would have passed
+        // just as happily over a server that stored literally anything. A test that cannot fail proves
+        // less than no test, and this one had been passing for that reason.
         mvc.perform(put("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
                 .header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"rules\":\"[A]\"}")).andExpect(status().isOk());
+                .content("{\"rules\":\"[{\\\"team\\\":\\\"HOME\\\",\\\"triggerMinute\\\":60,"
+                        + "\\\"condition\\\":\\\"LOSING\\\",\\\"playerOnId\\\":\\\"\\\"}]\"}"))
+                .andExpect(status().isOk());
         mvc.perform(put("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
                 .header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"rules\":\"[B]\"}")).andExpect(status().isOk());
+                .content("{\"rules\":\"[{\\\"team\\\":\\\"AWAY\\\",\\\"triggerMinute\\\":70,"
+                        + "\\\"condition\\\":\\\"LEADING\\\",\\\"playerOnId\\\":\\\"\\\"}]\"}"))
+                .andExpect(status().isOk());
 
         mvc.perform(get("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
-                .header("Authorization", bearer))
-                .andExpect(jsonPath("$.rulesJson").value("[B]"));
+                        .header("Authorization", bearer))
+                .andExpect(jsonPath("$.rulesJson").value(
+                        org.hamcrest.Matchers.containsString("AWAY")));
     }
 
     @Test
@@ -185,7 +196,9 @@ class SubstitutionPlanFixtureKeyTest {
         Long fixtureId = aFixture(LocalDateTime.now().plusDays(3)).getId();
         mvc.perform(put("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
                 .header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON)
-                .content("{\"rules\":\"[A]\"}")).andExpect(status().isOk());
+                .content("{\"rules\":\"[{\\\"team\\\":\\\"HOME\\\",\\\"triggerMinute\\\":60,"
+                        + "\\\"condition\\\":\\\"ANYTIME\\\",\\\"playerOnId\\\":\\\"\\\"}]\"}"))
+                .andExpect(status().isOk());
 
         mvc.perform(delete("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
                         .header("Authorization", bearer))

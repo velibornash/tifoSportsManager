@@ -23,6 +23,24 @@ import java.time.Instant;
  * would honour it had finished running. The owner's rule is that substitution decisions close
  * <b>an hour before kickoff</b>, which is before any match exists.
  *
+ * <p><b>The dead {@code match_id} column, and why every new plan used to be a 500.</b> Re-keying this
+ * entity from match to fixture left the old column in the database as
+ * {@code bigint NOT NULL}, while the entity stopped mapping it entirely. So the insert that every save
+ * performs had nothing to put in a column the schema forbade null in:
+ *
+ * <pre>
+ *   ERROR: null value in column "match_id" of relation "substitution_plan" violates not-null constraint
+ * </pre>
+ *
+ * <p><b>The tests did not see it.</b> They run against H2, where the schema is generated from the
+ * entity — and the entity no longer has that field, so H2 never created the column. The production
+ * schema kept it. A green suite and a feature that cannot be used at all, which is the fifth time in
+ * this repository that a green status has meant nothing.
+ *
+ * <p>The column is dropped by {@code SubstitutionPlanSchemaRepair} at startup, with this comment as the
+ * reason it is safe: nothing reads it, nothing writes it, and {@code fixture_id} is the key the feature
+ * actually uses.
+ *
  * <p><b>Why the fixture, and why there is no ambiguity about which match that fixture became.</b>
  * {@link MatchFixture#getPlayedMatch()} is the only fixture → result path, and it is a unique indexed
  * column: one played match belongs to at most one fixture, and {@code SimMatchService} sets it in the
@@ -80,6 +98,27 @@ public class SubstitutionPlan {
 
     /** Minute the plan was last edited, for the live view. */
     private Instant updatedAt = Instant.now();
+
+    /**
+     * How each rule actually went, written once when the match is simulated.
+     *
+     * <p><b>This is the half of the feature that did not exist.</b> The engine marks a rule
+     * {@code VOID} with a {@code ConditionalSubstitutionRules.VoidReason} — the player had left the
+     * squad, the substitutions were gone, the window had closed — and <b>nothing read it back</b>. So a
+     * rule that never fired was indistinguishable from a rule that was never set, and a manager who
+     * had quietly given an instruction that could not be honoured had no way to find out, ever. T1-16
+     * closed the other half by refusing a rule that cannot fire <em>before</em> kickoff; this is the
+     * half for the rules that were legal when written and still could not be honoured.
+     *
+     * <p>Held on the plan rather than on {@code Match} because the plan is already keyed by fixture —
+     * unique, one per fixture — and {@code MatchFixture.playedMatch} is the exact link from a played
+     * match back to the instructions that produced it. No new table, and no new column on a hot table.
+     *
+     * <p>Null before the match is played. That is honest rather than empty: nothing is known about how
+     * an instruction went until there is a match for it to have gone in.
+     */
+    @Column(name = "outcome_json", columnDefinition = "TEXT")
+    private String outcomeJson;
 
     public SubstitutionPlan() { }
 

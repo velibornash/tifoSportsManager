@@ -163,6 +163,79 @@ The defence is **entirely client-side.** `GET /match-stats/lineups/6` still retu
 lineups, and that is correct — it *is* match 6. The endpoint cannot know the caller meant a fixture.
 Hardening it would mean a fixture-aware route, and that belongs in the API work, not in this fix.
 
+## ✅ T1-16, T1-13b, T1-18 — three paused tasks closed (2026-10-09)
+
+The owner asked to pick these three back up after T-REST-0 and T-REST-0b were closed. All three
+done, one of them by a ruling rather than code.
+
+### T1-16 — a substitution rule naming the wrong player is refused at save time
+
+**The defect.** `PUT /api/sim/fixtures/{id}/substitution-plan` did `String.valueOf(rules)` and
+stored it. The engine marks an unfulfillable rule `VOID` with a `VoidReason` — *during the match* —
+and nothing reads `voidReason` back. So a typo became a silently dead instruction, discovered never.
+
+**`SubstitutionRuleValidator`** — one responsibility: say whether a rule can ever fire, and if not
+why. Checks the trigger minute, the condition, and both player ids against the fixture's own two
+squads. An empty player id means "the engine chooses" and stays legal — refusing it would break the
+feature's main use. An unknown condition is refused rather than silently reinterpreted, because the
+engine's `default -> true` would make it ANYTIME.
+
+**The controller** parses, validates, then saves. Every rejection is returned, not just the first —
+a manager fixing one typo at a time through a form that kept accepting it is the experience this
+exists to end.
+
+**The other half.** `SimMatchService.ruleOutcomeJson` reads `firedAtMinute` and `voidReason` off the
+live rules at the final whistle, and `SimulationController.recordHowSubstitutionRulesWent` writes it
+onto the plan. Separately transactional, because it is a courtesy record about an already-played
+match: if it fails, the result stands.
+
+**A defect found while wiring it, and it is the reason the feature never worked at all.**
+`substitution_plan.match_id` is `bigint NOT NULL` from before the plan was re-keyed to fixture —
+and the entity stopped mapping it. So **every INSERT was a guaranteed 500 in production**:
+
+```
+ERROR: null value in column "match_id" of relation "substitution_plan" violates not-null constraint
+```
+
+The tests run against H2, where the schema is generated from the entity — and the entity no longer
+has that field, so H2 never created the column. A green suite and a feature that could not be used,
+which is the fifth time in this repository that a green status has meant nothing. Dropped at
+startup by `ResetService.dropLegacyColumnIfExists`, the same mechanism used for the other dead
+columns. Confirmed gone from the live database.
+
+**Almost shipped wrong twice.** The first version of the validator matched the rule's `team` against
+the fixture's club **names** — and would have rejected every valid plan the UI can produce, because
+`substitution-plan-view.js` sends `team: 'HOME'` and the engine's `scoreFor` compares against those
+two literals. Caught by a test, not by reading. And the new constructor dependency broke
+`SimulationControllerFixtureScopeTest`, which builds the controller by hand.
+
+**Verified live.** Unknown player → 400 `RULE_CANNOT_FIRE` / `PLAYER_NOT_IN_SQUAD`, naming the club.
+Valid plan → 200, readable back, `outcomeJson` null before the match. 12 tests green; removing the
+validation turns 7 of 10 red.
+
+**One thing that did not get verified.** Playing a match end-to-end to watch the outcome be written.
+`POST /simulation/current-round/simulate-all` returns 500 with
+`LazyInitializationException: could not initialize proxy [Team#1] - no Session` at
+`SimulationController.java:172` — `userTeam.getCompetition()` outside a session. That is pre-existing
+code, confirmed identical in the committed version, and it blocks the endpoint for everyone. Filed
+below, not fixed here.
+
+### T1-13b — `is-current-club`
+
+The rule existed in CSS and nothing emitted it. `CountryController.qualifyingRow` now carries
+`teamId`; `pages.js` passes the manager's club id in as a dep; the view builds a class list instead
+of assigning one class that overwrites. A club that is both qualifying and the manager's own now
+carries both.
+
+Nearly missed: the qualifying tab reads `/countries/{iso}/qualifying` and returns
+`tiers -> cups -> standings`, not the shape I first stubbed. The first version of the test passed
+against data the screen never requests.
+
+### T1-18 — two Club options the manual promises have no menu entry
+
+Ruling: **correct the manual.** Friendlies is documented as a panel on the Club page rather than a
+menu option, and Coaches is documented as Staff. No UI change, no new routes.
+
 ## ✅ T-REST-0b — "not knowable yet" was rendered as a confident 0% (2026-10-09)
 
 Same fixture, same session as T-REST-0. The owner saw `0%`, `0.0 bench` and `Availability 0% vs 0%`

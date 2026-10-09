@@ -164,7 +164,11 @@ public class SimMatchService {
             replayId = replayStore.store(SimReplayView.build(orchestrator, homeName, awayName));
         }
         return new SimMatchOutcome(outcome, replayId, fixture.getHomeTeam(), fixture.getAwayTeam(),
-                orchestrator.getRecorder().getSnapshots());
+                orchestrator.getRecorder().getSnapshots(),
+                // How each conditional rule actually went, read once here while the object is still
+                // in memory. (T1-16) Without this the VoidReason the engine assigned is discarded and
+                // a rule that never fired is indistinguishable from a rule that was never set.
+                ruleOutcomeJson(orchestrator));
     }
 
     /**
@@ -730,8 +734,52 @@ public class SimMatchService {
      */
     public record SimMatchOutcome(ProposalMatchOutcome outcome, long replayId,
                                   Team homeTeam, Team awayTeam,
-                                  List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots) {
+                                  List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots,
+                                  /** Each conditional rule's fate, as JSON, or null when there were none. */
+                                  String ruleOutcomeJson) {
         public int homeGoals() { return outcome != null ? outcome.homeGoals() : 0; }
         public int awayGoals() { return outcome != null ? outcome.awayGoals() : 0; }
+
+        /** The four-argument form every existing caller uses. */
+        public SimMatchOutcome(ProposalMatchOutcome outcome, long replayId, Team homeTeam, Team awayTeam,
+                               List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> snapshots) {
+            this(outcome, replayId, homeTeam, awayTeam, snapshots, null);
+        }
+    }
+
+    /**
+     * Each conditional rule's fate at the final whistle, as JSON.
+     *
+     * <p>Reads {@code firedAtMinute} and {@code voidReason} — the two fields the engine writes during
+     * the match and nothing ever read. Returns null when no plan was attached, which is the common
+     * case and is not worth a row.
+     */
+    private String ruleOutcomeJson(
+            org.example.footballmanager.newLogic.sim.engine.MatchOrchestrator orchestrator) {
+        var rules = orchestrator.conditionalSubstitutions().all();
+        if (rules == null || rules.isEmpty()) return null;
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var rows = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (var rule : rules) {
+            if (rule == null) continue;
+            rows.add(new java.util.LinkedHashMap<>(java.util.Map.of(
+                    "team", rule.team == null ? "" : rule.team,
+                    "triggerMinute", rule.triggerMinute,
+                    "condition", rule.condition == null ? "" : rule.condition,
+                    "playerOnId", rule.playerOnId == null ? "" : rule.playerOnId,
+                    "playerOffId", rule.playerOffId == null ? "" : rule.playerOffId,
+                    "status", rule.status == null ? "" : rule.status.name(),
+                    "voidReason", rule.voidReason == null ? "" : rule.voidReason.name(),
+                    "firedAtMinute", rule.firedAtMinute)));
+        }
+        if (rows.isEmpty()) return null;
+        try {
+            return mapper.writeValueAsString(rows);
+        } catch (Exception e) {
+            // The match is already played; failing to record how its rules went must not cost it.
+            log.warn("Could not record the substitution rule outcome for fixture {}: {}",
+                    "fixture", e.getMessage());
+            return null;
+        }
     }
 }

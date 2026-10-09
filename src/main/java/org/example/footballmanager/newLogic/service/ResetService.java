@@ -23,6 +23,9 @@ public class ResetService {
         log.info("Checking lineup schema compatibility for legacy order columns...");
         dropLegacyColumnIfExists("lineup_starting_players", "slot_order");
         dropLegacyColumnIfExists("lineup_substitutes", "bench_order");
+        // T1-16: substitution_plan.match_id is a dead NOT NULL column left over from before the
+        // plan was re-keyed to fixture. Nothing maps or writes it, but it blocks every INSERT.
+        dropLegacyColumnIfExists("substitution_plan", "match_id");
     }
 
     /**

@@ -820,9 +820,12 @@ So the current state is: a typo becomes a silently dead rule, discovered never.
       and which were not
 
 **Exit criteria**
-- [ ] A rule naming a player who is not in the squad is refused at save time, with the reason
-- [ ] A post-match screen reports each rule as fired or void, and why
-- [ ] **Proven able to fail:** posting an unknown `playerOnId` returns 400 and not 200
+- [x] A rule naming a player who is not in the squad is refused at save time, with the reason
+- [x] A post-match screen reports each rule as fired or void, and why
+- [x] **Proven able to fail:** posting an unknown `playerOnId` returns 400 and not 200
+- [x] Dead `substitution_plan.match_id` column dropped (was blocking every INSERT in production)
+- [x] 12 tests green; 7 of 10 go red when validation is removed
+- [x] Verified live: 400 with reason for unknown player, 200 for valid plan, `match_id` column gone from DB
 
 ### T0-BE-5 · Day 6 — form and morale
 

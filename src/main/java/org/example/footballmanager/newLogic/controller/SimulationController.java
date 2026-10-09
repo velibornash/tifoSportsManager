@@ -43,6 +43,7 @@ public class SimulationController {
     private final CurrentRoundSimulationStateService stateService;
     private final GameClockService gameClockService;
     private final CompetitionRepository competitionRepository;
+    private final org.example.footballmanager.newLogic.repository.SubstitutionPlanRepository substitutionPlanRepository;
     private final SeasonService seasonService;
     private final TrainingProgressionService trainingProgressionService;
     private final AsyncSimulationRunner asyncSimulationRunner;
@@ -387,8 +388,36 @@ public class SimulationController {
                 // The snapshots go with it, so the zone load can be read off the match that was played.
                 ? simMatchService.persist(fixture, sim.outcome(), replayId, sim.snapshots())
                 : simMatchService.persist(fixture, null, replayId, sim.snapshots());
+        recordHowSubstitutionRulesWent(fixture, sim);
         rateClubsAfterAMatch(matchId);
         return matchId;
+    }
+
+    /**
+     * Writes down how the manager's conditional rules actually went, once the match is over. (T1-16)
+     *
+     * <p>The engine has always assigned each rule a {@code VoidReason} when it could not fire, and
+     * nothing has ever read it back — so a rule that quietly never fired was indistinguishable from a
+     * rule that was never set. The manager's instruction to his coach could go unfulfilled with no
+     * evidence anywhere, ever.
+     *
+     * <p>Separate from {@code simMatchService.persist} and in its own transaction, because it is a
+     * courtesy record about an already-played match: if it fails, the result stands and the manager has
+     * still got his match. Failing the save to also write the report would be the wrong trade.
+     */
+    private void recordHowSubstitutionRulesWent(MatchFixture fixture, SimMatchService.SimMatchOutcome sim) {
+        if (fixture == null || sim == null || sim.ruleOutcomeJson() == null) return;
+        try {
+            var plans = substitutionPlanRepository.findByFixtureId(fixture.getId());
+            if (plans.isEmpty()) return;
+            var plan = plans.get();
+            plan.setOutcomeJson(sim.ruleOutcomeJson());
+            plan.setUpdatedAt(java.time.Instant.now());
+            substitutionPlanRepository.save(plan);
+        } catch (Exception e) {
+            log.warn("Match {} was played but its substitution rule outcome could not be recorded: {}",
+                    fixture.getId(), e.getMessage());
+        }
     }
 
     /**

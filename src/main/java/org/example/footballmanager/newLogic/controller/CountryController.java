@@ -1249,6 +1249,9 @@ public class CountryController {
         row.put("goalsAgainst", entry.getGoalsConceded());
         row.put("goalDifference", entry.getGoalsScored() - entry.getGoalsConceded());
         row.put("qualifies", qualifies);
+        // T1-13b: the club's id, so the frontend can mark the manager's own club without
+        // comparing names. Name comparison has been burned four times in this codebase.
+        row.put("teamId", entry.getTeam() == null ? null : entry.getTeam().getId());
         return row;
     }
 

@@ -190,6 +190,9 @@ class SimulationControllerFixtureScopeTest extends BaseTest {
                 Mockito.mock(CurrentRoundSimulationStateService.class),
                 Mockito.mock(GameClockService.class),
                 Mockito.mock(CompetitionRepository.class),
+                // T1-16: the post-match rule-outcome record. Mocked here like the rest, because this
+                // test is about fixture scope and never plays a match.
+                Mockito.mock(org.example.footballmanager.newLogic.repository.SubstitutionPlanRepository.class),
                 seasons,
                 Mockito.mock(TrainingProgressionService.class),
                 Mockito.mock(AsyncSimulationRunner.class),
