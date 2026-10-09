@@ -163,6 +163,23 @@ The defence is **entirely client-side.** `GET /match-stats/lineups/6` still retu
 lineups, and that is correct — it *is* match 6. The endpoint cannot know the caller meant a fixture.
 Hardening it would mean a fixture-aware route, and that belongs in the API work, not in this fix.
 
+## 📋 T-REST-0c filed — `/simulation/current-round/simulate-all` returns 500 for everyone (2026-10-09)
+
+Found while verifying T1-16 end-to-end. The endpoint that plays a whole matchday is broken for
+every manager on the server:
+
+```
+LazyInitializationException: could not initialize proxy [Team#1] - no Session
+    at SimulationController.java:172
+```
+
+`resolveUserTeam` returns a detached `Team`; `Team.competition` is lazy; the session is closed
+before the name is read. `Team#1` is OFK Omladinac, so the owner's own club hits it first.
+
+Not caused by T1-16 — the failing line is identical in the committed version, confirmed with
+`git show HEAD`. Filed as **T-REST-0c** with exit criteria rather than fixed here, because it is
+a separate defect and the owner asked for the three paused tasks.
+
 ## ✅ T1-16, T1-13b, T1-18 — three paused tasks closed (2026-10-09)
 
 The owner asked to pick these three back up after T-REST-0 and T-REST-0b were closed. All three

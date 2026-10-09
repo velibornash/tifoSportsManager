@@ -265,6 +265,54 @@ each one as `.mjs`. This is the first check in the repository that can see a mod
 - [x] Guards proven able to fail against four mutations
 - [x] Every shipped ES module parses; a nested backtick fails the suite
 
+## T-REST-0c — 🔴 P0-SIMULATE-ALL · the endpoint that simulates a whole round returns 500 for everyone
+
+**Found 2026-10-09, while verifying T1-16 end-to-end.** Not caused by T1-16 — the code at the
+failing line is identical in the committed version.
+
+### What the owner sees
+
+`POST /simulation/current-round/simulate-all` returns:
+
+```json
+{"status": 500, "code": "INTERNAL_SERVER_ERROR",
+ "message": "could not initialize proxy [org.example.footballmanager.newLogic.model.Team#1] - no Session"}
+```
+
+### The cause
+
+`SimulationController.java:172`:
+
+```java
+Team userTeam = resolveUserTeam(user);
+if (userTeam != null && userTeam.getCompetition() != null) {
+    userLeagueName = userTeam.getCompetition().getName();
+}
+```
+
+`resolveUserTeam` returns a **detached** `Team`, and `Team.competition` is a lazy association. The
+session is already closed by the time the name is read, so Hibernate throws
+`LazyInitializationException`. `spring.jpa.open-in-view` is on (the boot log says so), but the
+proxy was never *initialized* inside a session, and open-in-view only helps associations loaded
+in the view layer — not a detached entity resolved by a helper.
+
+### Why it matters more than one broken button
+
+This is the endpoint that plays a **whole matchday**. The owner's "Advance Week" flow ends here,
+and it is the path every league, every cup tie and every manager's fixtures go through. It is also
+the one route that must work for the owner's own club, because `Team#1` **is** OFK Omladinac.
+
+**Every manager on the server cannot simulate their matchday.** Not an edge case, not a rare
+configuration.
+
+### Exit criteria
+
+- [ ] `simulate-all` returns 200 and plays the round, for the owner's own club and for a club with no
+      league of its own
+- [ ] The league name is resolved inside a session, or the association is fetched eagerly for this
+      path, or the detached entity is re-attached — whichever is smallest
+- [ ] **Proven able to fail:** reintroducing the detached read turns the test red
+
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 
 **The written spec says they do not** — they *"hold their positions until their league is activated"*.
