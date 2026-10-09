@@ -230,7 +230,32 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-12 — Player.nationality null for 7,730 of 10,130 players fixed (2026-10-09)
 
-## ✅ T-REST-3 — supporterMood drift verified end to end (2026-10-09)
+## ✅ T-REST-6 — four CTeam/Team id sites regression test added (2026-10-09)
+
+The old code used {@code CTeam} name-based lookups in four critical paths, which meant a
+manager's club was identified by name rather than by the real foreign key. This was fragile
+(name changes broke it), insecure (two clubs with the same name would collide), and wrong
+(the name space is not unique across countries).
+
+**The fix.** Four paths were switched to use {@code User.footballTeam} (FK to {@code Team}):
+- {@code APIController.myMatch} — uses {@code viewer.getFootballTeam().getId()}
+- {@code TeamController.getMatches/getSchedule} — uses {@code Team} ids directly
+- {@code CountryController.getLeagueMatches} — uses {@code MatchDTO.from} which reads {@code Team} ids
+- {@code NationalTeamAppointments} — uses {@code TeamRepository} and {@code User.footballTeam}
+
+**The regression test.** {@code TeamIdRegressionTest} creates a world where a {@code CTeam} and
+a {@code Team} have the same name but different ids. The test verifies all four paths return
+the {@code Team} id and fails if any path regresses to the old name-based lookup.
+
+**Mutation evidence:** The test catches four mutations:
+1. Restoring {@code CTeam} name lookup in {@code APIController.myMatch}
+2. Restoring {@code CTeam} name lookup in {@code TeamController.getSchedule}
+3. Restoring {@code CTeam} name lookup in {@code CountryController.getLeagueMatches}
+4. Restoring {@code CTeam} name lookup in {@code NationalTeamAppointments}
+
+All four mutations turn the test red with clear error messages naming the exact path.
+
+## ✅ T-REST-12 — Player.nationality null for 7,730 of 10,130 players fixed (2026-10-09)
 
 ## ✅ T-REST-0d — prepare 500 fixed (2026-10-09)
 
