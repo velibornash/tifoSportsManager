@@ -472,10 +472,10 @@ Scope was narrowed to the **proven dead** classes only: `TacticsBridge`,
 and the simulation tactics package are **live** and stay.
 
 - [x] Caller count re-verified immediately before deleting; live tactical classes excluded
-- [ ] `mvn clean package` succeeds
-- [ ] The relevant test suite still passes
+- [x] `mvn clean package` succeeds
+- [x] The relevant test suite still passes
 
-**Note:** `TacticsBridge` is still present in the tree as of this restructure. See **T1-3**.
+**Note:** The dead legacy tactics chain has been deleted. `TacticRules` (singular) was kept as it's used by `Team.tacticRules`.
 
 ## T-REST-9 — 🟠 P0-20 / domestic cup · one path still selects a cup globally
 
