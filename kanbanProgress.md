@@ -1,5 +1,77 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-16a — one confirmation lied, one was true, and I fixed half of the first (2026-10-09)
+
+### The international copy is TRUE — verified, not assumed
+
+It says *"existing fixtures are left alone"*, which is the same sentence as the national one, which says
+the **opposite**. Rather than change it on a guess, three links checked in source:
+
+| | Checked | Result |
+|---|---|---|
+| 1 | The endpoint passes the job `DRAW_WEEK = 12`. Knockout weeks are `{7,8,9,10}` — `CUP_WEEKS` is `{1,2,3,4,5,7,8,9,10}` with `GROUP_MATCHDAYS = 5` | **The button can only reach the group-draw branch** |
+| 2 | `buildGroupStage` counts group fixtures already in the season and returns early on any | **A second run draws nothing** |
+| 3 | The one remaining write is squads for simulated entrants; `LazySquadGenerator.needsSquad` tests `players.findByTeamId(id).isEmpty()` | **Idempotent** |
+
+`InternationalClubCupDrawTest:297` already pins it: *"drawing the group stage twice does not draw it
+twice."*
+
+**So the copy stays**, with a comment recording why. A sentence that reads like a lie is a sentence
+somebody eventually "fixes" into one — the same reason `fillStaticDivision` carries a warning against adding
+the intra-division spread.
+
+### The national one lied, and I had already claimed to fix it
+
+`forceRedraw()` → `clearUnplayed` on both levels' qualifiers **and** tournaments → **deletes every unplayed
+fixture for the season**, then deals fresh groups. It refuses before deleting anything once a qualifying
+tie has been played. The confirmation said *"Existing fixtures are left alone"* and did not mention the
+refusal.
+
+**In commit `3257c7a` I moved the card, corrected the card body, wrote the board entry saying "the copy now
+says both", and committed. The handler's `confirmText` was untouched.**
+
+The board entry was false as written and the commit message repeated it. **This is the failure shape this
+repository records most often — half a change reported as a whole one** — and the honest response is a
+guard rather than a promise to be more careful.
+
+The card body had a second error: it claimed the draw ran *"for the active season and week"*. The endpoint
+qualifies off **last** season's finished tables and creates **next** season's competition.
+
+### The guard
+
+`noConfirmationPromisesSafetyItDoesNotDeliver` — no admin confirmation may promise that a deleting action
+leaves fixtures alone. It scans with **comments stripped**, and that is not fastidiousness: its first
+version matched the sentence quoted inside the handler's own comment, which quotes the old text precisely
+to record that it was wrong, so correcting the code turned the guard red.
+
+**Third time in one session** a guard here matched prose instead of code. `P0-RANK-4` lost a day to the same
+thing. The fix is always the same and never the other one: strip comments, keep the record.
+
+### A mutation that came back green for the wrong reason
+
+I removed the international reassurance from the **confirmation** and the assertion was satisfied by the
+**card body**, which still carried the sentence. Green, and meaningless.
+
+Redone against both sites, with `assert "… not in s"` so the script refuses to write a mutation that did not
+land. **A green result from a mutation that did not apply is the trap this repository records more than any
+other**, and it is now the second time this session it caught me.
+
+### Verification
+
+`AdminActionsAreReachableTest` **5/5 green.** Two mutations, both genuinely caught:
+
+| Mutation | Caught by |
+|---|---|
+| Restore the old lying national confirmation | `noConfirmationPromisesSafetyItDoesNotDeliver` |
+| Remove the international reassurance from **both** the confirmation and the card body | same |
+
+`node --check` parses.
+
+### Not verified in a browser
+
+Nobody has pressed either button. The two confirmations are the last thing an administrator reads before
+doing something irreversible, which is exactly why they should be read by a person once.
+
 ## ✅ T-REST-16b — three unreachable admin actions, and a fourth nobody recorded (2026-10-09)
 
 ### The gap, measured rather than believed

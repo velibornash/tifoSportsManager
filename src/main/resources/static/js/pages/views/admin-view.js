@@ -281,18 +281,48 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             return;
         }
         if (action === 'redraw-international-cups') {
+            // The "existing fixtures are left alone" in this card's body is TRUE, and it was verified
+            // rather than assumed — because it reads exactly like the national re-draw's, which says the
+            // same thing and is the opposite. Three links:
+            //
+            //   1. the endpoint passes the job its own DRAW_WEEK (12), and the knockout weeks are
+            //      {7,8,9,10}, so this button can only ever reach the group-draw branch
+            //   2. `buildGroupStage` counts the group fixtures already in the season and returns early
+            //      on any, so a second run draws nothing
+            //   3. the one write a re-run can still make is giving squads to simulated entrants that have
+            //      none, and `LazySquadGenerator.needsSquad` skips any club that already has players
+            //
+            // `InternationalClubCupDrawTest` also pins the idempotence directly. **So do not "correct" this
+            // sentence to sound more cautious** — it would become false, and the national one beside it is
+            // the one that needed rewriting.
             await runRepair(button, {
-                confirmText: 'Re-draw the international club cups?\n\nThe scheduled club-cup draw job will run for the active season and week. Existing fixtures are left alone.',
+                confirmText: 'Re-draw the international club cups?\n\n'
+                    + 'Runs the scheduled club-cup draw for the season that has just finished. If the group '
+                    + 'stage is already drawn this draws nothing, and existing fixtures are left alone.\n\n'
+                    + 'The only thing it can still add is a squad for a simulated club that entered without one.',
                 path: '/admin/international-club-cups/redraw',
                 successNote: 'International club-cup draw job run'
             });
             return;
         }
         if (action === 'redraw-national-tournaments') {
+            // This one deletes. `NationalTournamentWorldService.forceRedraw()` calls `clearUnplayed` on
+            // both levels' qualifiers AND tournaments, so every unplayed fixture for the season goes,
+            // then fresh groups are dealt. It also refuses, before deleting anything, once a qualifying
+            // tie has been played — a played fixture carries a group code, and a re-draw deals new
+            // groups, so the result would sit on a table its two nations are no longer in.
+            //
+            // The confirmation used to say "Existing fixtures are left alone". It is the exact opposite,
+            // and it is the sentence that had to be found by reading the service rather than the button.
             await runRepair(button, {
-                confirmText: 'Re-draw the national-team competitions?\n\nThe scheduled qualifying and knockout draw job will run. Existing fixtures are left alone.',
+                confirmText: 'Re-draw the national-team competitions?\n\n'
+                    + 'This DELETES every unplayed qualifying and knockout fixture for the season, for both '
+                    + 'senior and U-21, and deals the qualifying groups again.\n\n'
+                    + 'It refuses if any qualifying tie has already been played — a played result belongs '
+                    + 'to the group it was played in, and re-drawing would leave it on a table its nations '
+                    + 'are no longer in. That refusal is the point, not a limitation.',
                 path: '/admin/national-tournaments/redraw',
-                successNote: 'National-team draw job run'
+                successNote: 'National-team qualifying groups re-drawn'
             });
             return;
         }
@@ -1115,7 +1145,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         })}
                         ${toolCard({
                             title: 'Re-draw international cups',
-                            body: 'Runs the scheduled international club-cup draw job for the active season and week. Existing fixtures are untouched.',
+                            body: 'Runs the club-cup draw for the season that has just finished, qualifying off its finished tables. If the group stage is already drawn this draws nothing.',
                             action: 'redraw-international-cups',
                             label: 'Re-draw international cups',
                             variant: ''

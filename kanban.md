@@ -417,21 +417,64 @@ but nobody has pressed the five new buttons.
 
 ---
 
-## T-REST-16a — 🟡 The re-draw confirmations
+## T-REST-16a — ✅ DONE 2026-10-09 — one confirmation lied, one was true, and I only checked half of the first
 
-**The national one is now honest**, rewritten in T-REST-16b's new panel. It used to say *"Existing fixtures
-are left alone"*; `forceRedraw()` calls `clearUnplayed` on both levels' qualifiers and tournaments and
-**deletes every unplayed fixture for the season**, and `refuseIfQualifyingStarted` throws once a qualifying
-tie has a result. The copy now says both.
+### The international one is TRUE. Verified, not assumed.
 
-**Still open:** the international one carries the same *"Existing fixtures are left alone"* sentence. It
-runs `InternationalClubCupJob` with its own `DRAW_WEEK`/`DRAW_DAY`, and the job has idempotency guards, **so
-the sentence is probably true — and it must be verified against the guards rather than edited on a guess.**
+It says *"existing fixtures are left alone"* — the same words as the national one, which says the opposite.
+**Three links, each checked in source:**
+
+1. The endpoint passes the job its own `DRAW_WEEK = 12`. The knockout weeks are `{7,8,9,10}` (`CUP_WEEKS`
+   `{1,2,3,4,5,7,8,9,10}` with `GROUP_MATCHDAYS = 5`), so **this button can only ever reach the
+   group-draw branch.**
+2. `InternationalClubCupDraw.buildGroupStage` counts the group fixtures already in the season and
+   **returns early on any**, so a second run draws nothing.
+3. The one write a re-run can still make is giving squads to simulated entrants that have none, and
+   `LazySquadGenerator.needsSquad` **skips any club that already has players.**
+
+`InternationalClubCupDrawTest:297` already pins the idempotence directly — *"drawing the group stage twice
+does not draw it twice."*
+
+**So the copy stays**, and a comment records why, because a sentence that reads like a lie is a sentence
+somebody eventually "fixes" into one.
+
+### The national one lied, and I fixed half of it first
+
+`forceRedraw()` calls `clearUnplayed` on both levels' qualifiers **and** tournaments — **deletes every
+unplayed fixture for the season** — then deals fresh groups, and refuses before deleting anything once a
+qualifying tie has been played. The confirmation promised the exact opposite and did not mention the
+refusal.
+
+**In the previous commit I moved the card, corrected the card body, wrote the board entry saying "the copy
+now says both", and committed. The handler's `confirmText` still said "Existing fixtures are left alone."**
+
+The board entry was false when I wrote it, and the commit message claimed it. **This is the failure shape
+this repository records most often** — half a change reported as a whole one — and the reason the guard
+below exists rather than my having been careful.
 
 **Exit criteria:**
-- [ ] Read `InternationalClubCupJob`'s draw path; establish whether a second run can change anything
-- [ ] If it can: say what it does. If it cannot: the copy may stand, with a comment saying why
-- [ ] A test that no admin confirmation promises a button leaves existing data alone
+- [x] The national confirmation states the deletion **and** the refusal
+- [x] The international copy verified against the job's guards, and left alone with a comment saying why
+- [x] The international **card body** corrected: it claimed *"for the active season and week"*, and the
+      endpoint qualifies off **last** season's finished tables
+- [x] A guard: no admin confirmation may promise that a deleting action leaves fixtures alone
+- [x] **Proven able to fail:** restoring the old sentence turns it red; removing the international
+      reassurance from both the confirmation and the card body turns it red
+- [ ] **Browser:** nobody has pressed these two buttons
+
+### The guard, and the third comment/prose collision of the session
+
+`noConfirmationPromisesSafetyItDoesNotDeliver` scans with comments stripped. **Its first version matched
+the sentence quoted inside the handler's own comment** — which quotes the old text precisely to record
+that it was wrong — so correcting the code turned the guard red.
+
+**Third time in one session.** The fix is always the same and never the other one: strip comments, keep the
+record. `P0-RANK-4` lost a day to it.
+
+And a second mutation that came back green for the wrong reason: I removed the reassurance from the
+**confirmation** and the assertion was satisfied by the **card body**, which still carried it. Redone
+against both sites, with an assertion that the mutation applied — because a green result from a mutation
+that did not land is the trap this repository keeps recording.
 
 ---
 

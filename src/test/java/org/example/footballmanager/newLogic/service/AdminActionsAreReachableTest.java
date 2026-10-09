@@ -154,6 +154,40 @@ class AdminActionsAreReachableTest {
                         + "Tools tab rather than to the whole page — the Jobs tab has panels too");
     }
 
+    @Test
+    @DisplayName("no admin confirmation promises a destructive action leaves data alone")
+    void noConfirmationPromisesSafetyItDoesNotDeliver() throws IOException {
+        // Read with the comments stripped. That is not fastidiousness: the first version of this
+        // assertion matched the sentence quoted inside the handler's own comment, which quotes the old
+        // text precisely in order to record that it was wrong — so correcting the code turned the guard
+        // red. **Third time in one session** that a guard written here matched prose instead of code.
+        // The fix is always the same and never the other one: strip comments, do not delete the record.
+        String src = code();
+
+        // The national re-draw said "Existing fixtures are left alone". `forceRedraw()` calls
+        // `clearUnplayed` on both levels' qualifiers AND tournaments, so it deletes every unplayed
+        // fixture for the season and then deals fresh groups — and it refuses only once a qualifying
+        // tie has been played, which the sentence did not mention either.
+        //
+        // This guard did not exist when the sentence was written, and it did not exist when I claimed to
+        // have fixed it: the card body was corrected and the handler's `confirmText` was not, and the
+        // board entry said the copy was honest. A confirmation is the one piece of UI text that decides
+        // whether somebody presses a button, so it is worth a guard even when the endpoint is right.
+        assertFalse(src.contains("Existing fixtures are left alone"),
+                "an admin confirmation must not promise that existing fixtures survive an action that "
+                        + "deletes them. NationalTournamentWorldService.forceRedraw() clears every unplayed "
+                        + "qualifying and knockout fixture for the season.");
+
+        // The international one says the same thing and it is TRUE - the endpoint passes the job its own
+        // DRAW_WEEK (12), which is not a knockout week, and buildGroupStage returns early when group
+        // fixtures exist. So the assertion above is about the sentence, not about the word, and this is
+        // the record of why the surviving one may stand.
+        assertTrue(src.contains("If the group stage is already drawn this draws nothing"),
+                "the international re-draw says the same thing and it is true - the button only reaches the "
+                        + "group-draw branch and that branch is idempotent. State it as a fact rather than "
+                        + "dropping the reassurance, and drop the comment above if it ever stops being so.");
+    }
+
     // ── parsing ─────────────────────────────────────────────────────────────────────────────────────
 
     private String read() throws IOException {
