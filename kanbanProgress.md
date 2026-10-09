@@ -232,6 +232,8 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-9 — domestic cup draws verified per-country (2026-10-09)
 
+## ✅ T-REST-10 — LeagueSlotSchedule day mapping not tested (2026-10-09)
+
 ## ✅ T-REST-7 — away-side tactics verification complete (2026-10-09)
 
 **The claim:** `TECHNICAL_OVERVIEW.md` §12.1 stated *"Away teams still use home tactics during simulation (P0-3)."*

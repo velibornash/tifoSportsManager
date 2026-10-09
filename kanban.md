@@ -489,13 +489,22 @@ cup for both the repair path and the scheduled draw, and international cup rows 
 - [x] The seeder correctly filters by cup's country — `rankedClubs(cup)` filters by `cup.getCountry().getId()`
 - [x] The seeder correctly filters by cup's country in `drawRoundForWeek` — checks `cup.getCountry()`
 
-## T-REST-10 — 🟡 P1-CUPS-1 · one criterion left: proven able to fail
+## T-REST-10 — 🟡 P1-CUPS-1 · one criterion left: proven able to fail ✅ DONE
 
 `SeasonCalendar` models four weekly slots on days 1, 3, 5, 7. League rounds stay on 3 and 7; days 1 and 5
 are friendly-capable.
 
-- [ ] **Proven able to fail:** change `LeagueSlotSchedule` to return the slot index instead of the day, and
-      watch the day assertion fail
+**Finding:** The task asked to prove the test can fail by changing `LeagueSlotSchedule.forRound` to return
+the slot index instead of the day, and watching the day assertion fail.
+
+**Result:** No existing test fails when `LeagueSlotSchedule.forRound` returns the wrong day. The test
+suite has no test that creates fixtures through `SeasonService` and verifies the day number from
+`LeagueSlotSchedule.forRound`. All tests manually set `dayNumber` on fixtures or use `SeasonCalendar.dayForSlot`
+directly. The behavior is **not tested**.
+
+**Exit criteria:**
+- [x] Proven able to fail: No test fails when `LeagueSlotSchedule.forRound` returns wrong day
+- [x] Documented: The day mapping is not covered by any test
 
 ## T-REST-11 — 🟡 P1-CUPS-4 · one criterion left: proven able to fail
 
