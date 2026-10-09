@@ -230,6 +230,28 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-12 — Player.nationality null for 7,730 of 10,130 players fixed (2026-10-09)
 
+## ✅ T-REST-7 — away-side tactics verification complete (2026-10-09)
+
+**The claim:** `TECHNICAL_OVERVIEW.md` §12.1 stated *"Away teams still use home tactics during simulation (P0-3)."*
+
+**The reality:** The production simulation path (`SimMatchService.simulate` → `SimMatchRunner.build` → `MatchOrchestrator`) uses `SideTactics` with **both clubs' own rules**:
+```java
+new SideTactics(
+    tacticsRules.forTeam(homeTeam.getId()),
+    tacticsRules.forTeam(awayTeam.getId()))
+```
+
+**The single-rules paths** (`MatchOrchestrator(state)`, `MatchOrchestrator(state, TacticsRules)`, `SimMatchRunner.run(..., TacticsRules)`) exist but are only used by:
+- Diagnostics: `ProposalPhysicsDiagnostic`, `ProposalPassFailDiag`, `ProposalBatchDiag`, `ProposalMatchController`, `ProposalSeasonDiag`, `ProposalMatchExporter`, `ProposalViewerLauncher`, `ProposalPhysicsDiagnostic`, `ProposalPassFailDiag`
+- Launchers: `ProposalViewerLauncher`, `MatchSimulationLauncher`
+- Exporters: `ProposalMatchExporter`, `ProposalBatchDiag`
+- `MatchSimulator` (demo)
+- `TeamStrengthProbe` (probe)
+
+None of these are production fixture paths. The production path (`SimMatchService.simulate` → `SimMatchRunner.build`) correctly uses `SideTactics` with each club's own rules.
+
+**`TECHNICAL_OVERVIEW.md` §12.1 corrected** — the claim "Away teams still use home tactics during simulation (P0-3)" was stale. The production path uses `SideTactics` with each club's own rules.
+
 ## ✅ T-REST-8 — dead legacy tactics chain deleted (2026-10-09)
 
 **Deleted classes (confirmed zero callers in main code):**

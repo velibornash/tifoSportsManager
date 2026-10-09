@@ -460,9 +460,9 @@ or there is a path that still passes a single `TacticsRules` — the 7-argument 
 and `new MatchOrchestrator(state)` both do, and are used by diagnostics, launchers and exporters.
 
 **Exit criteria:**
-- [ ] Every **production** fixture path traced to its `MatchOrchestrator` constructor
-- [ ] If any path can reach a match with one side's rules, it is fixed and pinned
-- [ ] `TECHNICAL_OVERVIEW.md` §12.1 corrected either way
+- [x] Every **production** fixture path traced to its `MatchOrchestrator` constructor
+- [x] No production path reaches a match with one side's rules — the production path (`SimMatchService.simulate`) uses `SideTactics` with both teams' own rules
+- [x] `TECHNICAL_OVERVIEW.md` §12.1 corrected — the claim "Away teams still use home tactics" was stale; the production path uses `SideTactics` with each club's own rules
 
 ## T-REST-8 — 🟠 P0-10 · the dead legacy tactics chain, not yet proven deleted
 

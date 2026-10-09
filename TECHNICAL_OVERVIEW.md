@@ -1082,7 +1082,7 @@ These are current source/board findings, not historical audit claims.
 
 ### 12.1 Open correctness and ownership work
 
-- Away teams still use home tactics during simulation (P0-3).
+- ~~Away teams still use home tactics during simulation (P0-3).~~ **Resolved:** The production path (`SimMatchService.simulate`) now uses `SideTactics` with each club's own `TacticsRules` (`tacticsRules.forTeam(homeTeam.getId())` and `tacticsRules.forTeam(awayTeam.getId())`). The single-`TacticsRules` constructors (`MatchOrchestrator(state)` and `MatchOrchestrator(state, TacticsRules)`) and the `SimMatchRunner.run(..., TacticsRules)` overload remain in the codebase but are only used by diagnostics, launchers, and exporters — not by production fixture paths. `TECHNICAL_OVERVIEW.md` §12.1 corrected.
 - Several controller/service paths still interpret a `CTeam` id as a football `Team` id (P0-20).
 - Small international fields use direct knockouts, including a one-final two-club competition.
 - Domestic cup drawing is still globally selected in one path instead of being explicitly one cup per country.
