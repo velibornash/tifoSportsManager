@@ -101,6 +101,17 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     Optional<MatchFixture> findByHomeTeamIdAndAwayTeamIdAndSeasonYearAndRoundNumber(Long homeTeamId, Long awayTeamId, Integer seasonYear, Integer roundNumber);
 
     List<MatchFixture> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);
+
+    /**
+     * Every fixture of a competition, in any season.
+     *
+     * <p>Added for the World page's national-competition tiles, which answer "is there a competition to
+     * click into" rather than "is it drawn this season". Counting one season only made a competition
+     * drawn in season 1 read as undrawn while season 2 was active (owner, 2026-10-10).
+     */
+    @Query("select f from MatchFixture f where f.competition.id = :competitionId "
+            + "order by f.seasonYear, f.roundNumber, f.matchDate")
+    List<MatchFixture> findByCompetitionIdOrdered(@Param("competitionId") Long competitionId);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
     long countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(Long competitionId, Integer seasonYear, Integer roundNumber);

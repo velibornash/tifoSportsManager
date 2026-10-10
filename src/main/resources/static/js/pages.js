@@ -1027,8 +1027,14 @@ function buildPageNavState(page, options = {}) {
                                     ${clubCupRow('Challenge Cup', 'challenge', world.clubCups)}
                                     ${NATIONAL_COMPETITIONS.map(definition => {
                                         const item = nationalRows.find(row => row.level === definition.level && row.stage === definition.stage) || {};
+                                        // The season the fixtures belong to, not the season it is now. A tile
+                                        // that says "120 fixtures" with no season invites the reader to assume
+                                        // it is this season's — which was the confusion behind the whole thing
+                                        // reporting "Not drawn yet" while holding 120 fixtures.
                                         const status = item.exists && Number(item.fixtures || 0) > 0
-                                            ? `${item.fixtures} fixtures · week ${item.week}` : 'Not drawn yet';
+                                            ? `${item.fixtures} fixtures · week ${item.week}`
+                                              + (item.drawnSeason ? ` · season ${item.drawnSeason}` : '')
+                                            : 'Not drawn yet';
                                         return `<tr class="fm-world-competition-row ${item.exists ? 'is-real' : 'is-disabled'}"
                                             data-national-level="${definition.level}" data-national-stage="${definition.stage}"
                                             tabindex="0" role="link">

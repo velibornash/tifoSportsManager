@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 
 /**
@@ -73,9 +74,21 @@ public class NationalTournamentController {
         for (NationalTeamLevel level : NationalTeamLevel.values()) {
             for (NationalStage stage : List.of(NationalStage.QUALIFYING, NationalStage.WORLD_CUP)) {
                 Competition competition = catalogue.find(level, stage).orElse(null);
-                int drawn = competition == null ? 0 : fixtures
-                        .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
-                                competition.getId(), seasonYear).size();
+
+                // **Any season, not only the active one.** This counted fixtures for `seasonYear` only,
+                // so a competition drawn in an earlier season reported "not drawn" on the World page
+                // while it plainly was: the qualifiers here hold 120 fixtures each in season 1, the
+                // active season is 2, and all four national competitions read "Not drawn yet" - directly
+                // above three club cups that correctly read "238 qualified" (owner, 2026-10-10).
+                //
+                // The tile answers "is there a competition to click into", which does not change with the
+                // calendar. What the active season decides is which one is coming next, and the season
+                // the fixtures belong to is reported alongside so the number is explainable rather than
+                // merely true.
+                List<MatchFixture> allFixtures = competition == null ? List.of()
+                        : fixtures.findByCompetitionIdOrdered(competition.getId());
+                int drawn = allFixtures.size();
+                Integer drawnSeason = drawn == 0 ? null : allFixtures.get(0).getSeasonYear();
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("level", level == NationalTeamLevel.U21 ? "u21" : "senior");
                 row.put("stage", stage.name());
@@ -86,6 +99,10 @@ public class NationalTournamentController {
                 // link exactly when there is something behind it.
                 row.put("exists", drawn > 0);
                 row.put("competitionId", competition == null ? null : competition.getId());
+                // The season those fixtures belong to, so the count is explainable rather than
+                // merely true. A tile that says "120 fixtures" with no season invites the reader
+                // to assume it is this season's, which is exactly the confusion this fix removes.
+                row.put("drawnSeason", drawnSeason);
                 if (competition != null) {
                     row.put("week", stage == NationalStage.QUALIFYING
                             ? NationalTournamentSchedule.QUALIFYING_WEEK
@@ -150,7 +167,24 @@ public class NationalTournamentController {
         body.put("groups", groups);
         body.put("rounds", rounds);
         if (!drawn) {
-            body.put("note", "This competition has been created but nothing has been drawn into it yet.");
+            // **Which seasons DO have a draw, said out loud.** The page opens on the active season and
+            // this competition's 120 qualifying fixtures are in season 1, so it reported "nothing has
+            // been drawn into it yet" about a competition holding 120 of them (owner, 2026-10-10). An
+            // empty view with no reason is the worst of the three: not wrong enough to be a bug report
+            // and not right enough to be believed.
+            List<Integer> seasonsWithFixtures = competition == null ? List.of()
+                    : fixtures.findByCompetitionIdOrdered(competition.getId()).stream()
+                            .map(MatchFixture::getSeasonYear)
+                            .filter(Objects::nonNull)
+                            .distinct()
+                            .sorted()
+                            .toList();
+
+            body.put("seasonsWithFixtures", seasonsWithFixtures);
+            body.put("note", seasonsWithFixtures.isEmpty()
+                    ? "This competition has been created but nothing has been drawn into it yet."
+                    : "Nothing is drawn into this competition for season " + seasonYear
+                            + ", but it has been drawn for season " + seasonsWithFixtures.get(0) + ".");
         }
         return ResponseEntity.ok(body);
     }

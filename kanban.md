@@ -2414,6 +2414,50 @@ copy was dropped afterwards and `sokker_db` was never touched — still 707 matc
 appears in no log), and all 235 season-1 matches have a fixture pointing at them — **zero orphans**, so
 they were played through the normal fixture flow rather than left behind by a failed clear.
 
+## T-REST-19 · 🟡 ANSWERED 2026-10-10 — do cup, national and friendly matches reach the club's schedule?
+
+**Asked by the owner.** Answered by reading the routes and then by calling them, not by assumption.
+
+| Competition | In Club → Schedule? | In Next Match / Recent Matches? |
+|---|---|---|
+| **International club cups** | **Yes** — `?competitionType=CUP` returns them | **Recent: yes. Next: NO** |
+| **National cup** (Kup Srbije) | **Yes** — same route, same filter | **Recent: yes. Next: NO** |
+| **Friendlies** | **Route supports it, nothing to show** | same |
+| **National-team tournaments** | **No, and cannot** — clubs do not play them | n/a |
+
+### The one real gap: **Next Match ignores everything that is not the league**
+
+`dashboard.js:618` calls `/teams/{id}/schedule` with **no filter**. The controller then does:
+
+```java
+Competition competition = (wantedType == null && wantedMatchType == null)
+        ? resolveScheduleCompetition(team, activeSeasonYear) : null;   // the club's LEAGUE
+```
+
+**Measured on a club that is actually in the Champions Cup** (team 99):
+
+- `/teams/99/schedule?competitionType=CUP` → **5** fixtures
+- `/teams/99/schedule` → **0**
+
+So a manager in a continental competition is told **"Next Match: nothing scheduled"** while standing in a
+group with five matches in it. The fixtures, the results and the Recent Matches card all know about the
+cup; the Next Match card does not.
+
+**Recent Matches is fine** — `/teams/{id}/matches` carries **no competition filter at all**, so a played
+Champions Cup tie comes back with its competition and score (verified: a 1-1 Champions Cup match).
+
+### 🟡 Why the schedule page is right and Next Match is not
+
+This is the same shape as the id-space bug the board has twice: **the correct behaviour is already in the
+file next to the defect.** `getSchedule` grew `competitionType` and `matchType` filters precisely because
+*"a caller asking for one kind of football cannot be answered from the league alone… the frontend's cup
+and international screens were pointing at fabricated data because there was nothing real to ask for."*
+The Schedule page uses them. The dashboard never asks.
+
+**Not fixed here** — it changes what a manager sees on their first screen, and the honest question is
+whether **Next Match should be the league next, or the next match of any kind**. A Champions Cup round may
+fall mid-week between two league rounds; both answers are defensible and they are different products.
+
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
 `IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.
