@@ -23,6 +23,88 @@ export const CONDITIONS = [
 ];
 
 /**
+ * Why a condition could not happen, in the manager's words.
+ *
+ * <p>Keyed by the engine's `VoidReason`. The engine has written these since the rules existed and nothing
+ * ever read them back, so a condition could die mid-match and the manager never found out — which is the
+ * whole reason the outcome is on the screen now.
+ *
+ * <p>`PLAYER_ALREADY_ON_PITCH` is the one whose name lies: the engine sets it when the player named to
+ * come <em>off</em> could not be found on the pitch (`fire`, when `resolvePlayerOff` returns null), so it
+ * is described by what actually happened rather than by what the constant is called.
+ */
+const VOID_REASONS = {
+    NO_SUBS_LEFT: 'the five substitutions were already used',
+    NO_WINDOWS_LEFT: 'the three substitution windows were already used',
+    PLAYER_UNAVAILABLE: 'the player named to come on was not available',
+    PLAYER_ALREADY_ON: 'the player named to come on was already on the pitch',
+    PLAYER_ALREADY_ON_PITCH: 'the player named to come off was no longer on the pitch',
+    EMPTY_BENCH: 'nobody was left on the bench'
+};
+
+/** What identifies a rule well enough to line its outcome up with it. */
+function ruleSignature(rule) {
+    return [
+        String(rule?.team ?? ''),
+        Number(rule?.triggerMinute) || 0,
+        String(rule?.condition ?? 'ANYTIME'),
+        String(rule?.playerOnId ?? ''),
+        String(rule?.playerOffId ?? '')
+    ].join('|');
+}
+
+/**
+ * Lines each rule up with the outcome the engine recorded for it.
+ *
+ * <p>By content, not by position. The engine keeps the order the rules were written in, so position would
+ * usually do — but a rule that failed to parse is skipped when the outcome is built, which shifts every
+ * later row by one and would report the wrong fate for the wrong condition. Matching on what the rule
+ * <em>is</em> cannot shift. Falls back to null when there is genuinely no outcome for a rule, which is the
+ * honest answer for a plan written after the match was played.
+ *
+ * @returns {(object|null)[]} one entry per rule, in rule order
+ */
+export function matchOutcomes(rules, outcomes) {
+    const queues = new Map();
+    (Array.isArray(outcomes) ? outcomes : []).forEach(outcome => {
+        const signature = ruleSignature(outcome);
+        if (!queues.has(signature)) queues.set(signature, []);
+        queues.get(signature).push(outcome);
+    });
+    return (Array.isArray(rules) ? rules : []).map(rule => {
+        const queue = queues.get(ruleSignature(rule));
+        return queue && queue.length > 0 ? queue.shift() : null;
+    });
+}
+
+/**
+ * One rule's fate at the final whistle, as a badge.
+ *
+ * <p>`PENDING` is the common case and is not a failure — "if we are losing from 60" on a game won 3–0 was
+ * a correct instruction that never came due. It is worded so it cannot be misread as a broken rule.
+ *
+ * @returns {{tone: string, label: string}|null} null when the rule has no recorded outcome
+ */
+export function describeOutcome(outcome) {
+    if (!outcome) return null;
+    const status = String(outcome.status || '');
+    const firedAt = Number(outcome.firedAtMinute);
+
+    if (status === 'FIRED') {
+        const hasMinute = Number.isFinite(firedAt) && firedAt > 0;
+        return { tone: 'good', label: hasMinute ? `Fired at ${firedAt}'` : 'Fired' };
+    }
+    if (status === 'VOID') {
+        const reason = VOID_REASONS[outcome.voidReason];
+        return { tone: 'bad', label: reason ? `Void — ${reason}` : 'Void' };
+    }
+    if (status === 'WAITING_FOR_STOPPAGE') {
+        return { tone: 'flat', label: 'Never happened — the window closed on it' };
+    }
+    return { tone: 'flat', label: 'The condition never came up' };
+}
+
+/**
  * One rule in plain words.
  *
  * <p>A condition set is easy to get wrong and hard to read back: four rows of dropdowns say nothing
@@ -82,29 +164,54 @@ export function createSubstitutionPlanView(deps) {
         }
     }
 
+    function parseOutcome(outcomeJson) {
+        if (!outcomeJson) return [];
+        try {
+            const parsed = JSON.parse(outcomeJson);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+
     function render(host, { fixtureId, plan, squad, playersById }) {
         const editable = plan.editable !== false;
         const starters = squad.filter(p => !p.onBench);
+        const outcomes = matchOutcomes(rules, parseOutcome(plan.outcomeJson));
+        // `some`, not `length > 0`. The matched array always has one slot per rule — filled with null
+        // when there is no record — so its length says nothing about whether the match has been played.
+        const played = outcomes.some(Boolean);
 
         host.innerHTML = `
             <section class="fm-panel">
                 <div class="fm-panel-head"><div>
                     <h3>Substitutions</h3>
                     <p class="fm-subtle">${plan.homeTeam || 'Home'} v ${plan.awayTeam || 'Away'}.
-                        ${editable
-                            ? 'Decisions close an hour before kickoff.'
-                            : '<strong>Closed</strong> — the team is already picked.'}</p>
+                        ${played
+                            ? 'How each condition went at the final whistle.'
+                            : editable
+                                ? 'Decisions close an hour before kickoff.'
+                                : '<strong>Closed</strong> — the team is already picked.'}</p>
                 </div></div>
 
                 ${rules.length === 0
                     ? `<p class="fm-empty">No conditions set. The manager and the engine decide as the
                         game goes.</p>`
-                    : `<ul class="fm-list">${rules.map((rule, index) => `
+                    : `<ul class="fm-list">${rules.map((rule, index) => {
+                        const outcome = describeOutcome(outcomes[index]);
+                        return `
                         <li class="fm-substitution-rule">
                             <span>${htmlEscape(describeRule(rule, playersById))}</span>
+                            ${outcome ? `<span class="fm-badge ${outcomeBadgeClass(outcome.tone)}"
+                                title="${htmlEscape(outcome.label)}">${htmlEscape(outcome.label)}</span>` : ''}
                             ${editable ? `<button type="button" class="fm-link-btn"
                                 data-sub-rule-remove="${index}">Remove</button>` : ''}
-                        </li>`).join('')}</ul>`}
+                        </li>`;
+                    }).join('')}</ul>`}
+
+                ${played ? `
+                <p class="fm-subtle">A condition that fired is one the engine used. One that was void
+                    could not happen — the reason is on the badge.</p>` : ''}
 
                 ${editable ? `
                 <div class="fm-friendly-invite-form">
@@ -138,6 +245,13 @@ export function createSubstitutionPlanView(deps) {
             </section>`;
 
         wire(host, fixtureId, editable, playersById, squad);
+    }
+
+    /** Reuses the palette the rest of the app already uses rather than inventing three new colours. */
+    function outcomeBadgeClass(tone) {
+        if (tone === 'good') return 'fm-badge-fit';
+        if (tone === 'bad') return 'fm-badge-inj';
+        return 'fm-badge-cold';
     }
 
     function wire(host, fixtureId, editable, playersById, squad) {

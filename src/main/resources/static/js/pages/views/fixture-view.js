@@ -280,9 +280,16 @@ export function createFixtureView(deps) {
     /**
      * Loads the substitution plan into the fixture page.
      *
-     * <p><b>Only for a fixture the manager is playing, and only before it is played.</b> The plan is the
-     * home club's instruction and the engine reads it for the home side; putting it on a fixture page for
-     * an away club, or on one that already has a result, would offer a control that has no meaning.
+     * <p><b>Only for a fixture the manager's club is playing at home.</b> The plan is the home club's
+     * instruction and the engine reads it for the home side, so putting it on an away club's fixture
+     * would offer a control that has no meaning.
+     *
+     * <p><b>Mounted after the match too, on purpose.</b> This used to bail out on
+     * {@code fixture.played}, which was correct while the panel was purely an input — there was nothing
+     * to see once the team was picked. But the engine records how each condition went
+     * (`SubstitutionPlan.outcomeJson`) and that record was unreachable from the app: written on every
+     * simulation, returned by the endpoint, and displayed nowhere. A manager whose "if losing from 60"
+     * rule quietly died of an empty bench had no way to find that out.
      *
      * <p>Failures are swallowed on purpose. The fixture page is a working screen and the plan is one
      * panel on it — a plan that will not load must not take the fixture detail down with it.
@@ -291,7 +298,7 @@ export function createFixtureView(deps) {
         const host = mainContent.querySelector('#fm-substitution-plan');
         if (!host) return;
         const isHome = Number(fixture?.homeTeamId) === Number(teamId);
-        if (fixture?.played || !isHome) return;
+        if (!isHome) return;
         try {
             await substitutionPlanView.loadPlan(fixtureId, host, teamId);
         } catch (err) {

@@ -909,10 +909,10 @@ reads `rule.voidReason` back.
 So the current state is: a typo becomes a silently dead rule, discovered never.
 
 **Tasks**
-- [ ] Validate on save: the named player is in the squad, the named player off is in the XI, the condition
+- [x] Validate on save: the named player is in the squad, the named player off is in the XI, the condition
       is one the engine has, and the minute is in range
-- [ ] Refuse the save with the reason, rather than accepting a rule that cannot fire
-- [ ] Surface `voidReason` after the match, so a manager can see which of his instructions were honoured
+- [x] Refuse the save with the reason, rather than accepting a rule that cannot fire
+- [x] Surface `voidReason` after the match, so a manager can see which of his instructions were honoured
       and which were not
 
 **Exit criteria**
@@ -922,6 +922,53 @@ So the current state is: a typo becomes a silently dead rule, discovered never.
 - [x] Dead `substitution_plan.match_id` column dropped (was blocking every INSERT in production)
 - [x] 12 tests green; 7 of 10 go red when validation is removed
 - [x] Verified live: 400 with reason for unknown player, 200 for valid plan, `match_id` column gone from DB
+- [x] The outcome is rendered by a real JavaScript engine, and the harness has been seen to fail — both
+      mutations (position-matching instead of content, badge deleted from the row) go red
+
+**What the third task actually turned out to be (2026-10-10).** The line above was already ticked when
+this was picked up, and it was not true. Writing `outcomeJson` was only half of it. Two things stopped it
+reaching the screen:
+
+1. `substitution-plan-view.js` parsed `rulesJson` and nothing else — it never read `outcomeJson`.
+2. `fixture-view.js` returned early from `mountSubstitutionPlan` when `fixture.played` was true.
+
+So the record was written on every simulation, served on every request, and displayed nowhere, and the
+early return was there for a good reason at the time: the panel had been built purely as an *input*, so
+there was genuinely nothing to show once the team was picked. Both are fixed. Outcomes are matched to
+rules by content rather than by position, because the engine skips a rule it cannot parse and that shifts
+every later row — position matching would have reported the wrong minute for the wrong condition, which
+is worse than showing nothing. `PLAYER_ALREADY_ON_PITCH` is described by what the engine actually does
+with it (the player named to come *off* is no longer on the pitch) rather than by what the constant is
+called, because the constant's name is misleading.
+
+**Not yet verified in a browser.** The post-match view needs a fixture that has been played *and* carries
+an outcome, and the database has **0** such rows: `simulate-all` is the only way to produce one and it
+would play **5,209** unplayed fixtures across 48 countries. That is the owner's season, so it was not
+done for a UI check. What is proven is the rendering, against the real module, by
+`SubstitutionOutcomeIsShownTest`. Filed as **T1-16b**.
+
+## T1-16b · 🟡 The post-match substitution outcome has never been seen in a browser
+
+The outcome report is implemented and its rendering is proven by a Node harness against the real module
+(`SubstitutionOutcomeIsShownTest`, five checks, both mutations seen to fail). **It has never been looked at
+in the running application**, because the condition that produces it does not exist yet in the data.
+
+`substitution_plan` holds **1** row and `outcome_json` is **null** on it. Every played fixture that could
+carry an outcome has none, and the only route to one is `POST /simulation/current-round/simulate-all`,
+which would play **5,209** unplayed fixtures across 48 countries and rewrite a season that took five days
+to build. That is the owner's decision, not an agent's, so it was not run for a UI check.
+
+**Options, for the owner to pick:**
+1. Play the current round deliberately — the outcome then appears on real data, which is the honest version.
+2. Advance to a round the manager's own club is in and simulate only that — needs a fixture-scoped route,
+   which does not exist today (`/simulation` has `prepare`, `exhibition`, `simulate-all`, `week/advance`).
+3. Accept the harness as sufficient and close this, recording that the post-match screen is unverified in
+   a browser.
+
+**Exit criteria**
+- [ ] A played fixture carrying an outcome is opened in the browser, at 430px, and the fired/void badges
+      are read and confirmed
+- [ ] Or: an explicit owner decision closing it without that
 
 ### T0-BE-5 · Day 6 — form and morale
 

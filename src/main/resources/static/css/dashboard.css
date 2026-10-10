@@ -5736,6 +5736,16 @@ body {
     min-width: 0;
 }
 
+/* The outcome badge sits between the sentence and the Remove button, so it has to be allowed to be
+ * wider than a badge on a tight row and to shrink its text rather than push the row into overflow. */
+.fm-substitution-rule > .fm-badge {
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: left;
+    line-height: 1.35;
+    white-space: normal;
+}
+
 /* Below 430px the button drops under the sentence rather than squeezing it. The sentence is the content;
  * the remove control is the action, and it is the one that can move. */
 @media (max-width: 430px) {
@@ -5743,5 +5753,10 @@ body {
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
+    }
+
+    /* Full width under the sentence, so a void reason wraps instead of being clipped. */
+    .fm-substitution-rule > .fm-badge {
+        max-width: 100%;
     }
 }

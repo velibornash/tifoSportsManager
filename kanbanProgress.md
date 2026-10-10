@@ -234,6 +234,60 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-11 — international club cups knockout rounds verified (2026-10-09)
 
+## ✅ T1-16 (third task) — the post-match substitution outcome, wired to the screen (2026-10-10)
+
+**The claim on the board:** "A post-match screen reports each rule as fired or void, and why" — already
+ticked. **It was not true**, and the reason is the third time this shape of claim has appeared.
+
+`SubstitutionPlan.outcomeJson` was written by every simulation, returned by `SubstitutionPlanController`,
+and parsed by nothing. Two things stood between it and the screen:
+
+1. `substitution-plan-view.js` parsed `rulesJson` and ignored `outcomeJson` entirely.
+2. `fixture-view.js` returned early from `mountSubstitutionPlan` when `fixture.played` was true — so the
+   panel did not exist on a played fixture at all.
+
+The second one is not a careless bug. The panel had been written purely as an *input*, and the early
+return was the correct decision at the time: there was nothing to show once the team was picked. It
+became wrong only when the engine started recording outcomes, and nothing revisited the mount condition.
+
+**What was done.** Outcomes are read from `outcomeJson` and badged per rule — the minute a condition
+fired, or the plain-English reason it went void. The panel now mounts after the match.
+
+**The part that needed care.** Matching outcomes to rules by position would be simpler and wrong. The
+engine skips a rule it cannot parse when it builds the outcome list, which shifts every later row by one;
+position matching would then tell a manager that condition A fired at condition B's minute — a confident,
+specific, wrong answer, which is worse than showing nothing. Rules are matched by content instead, and a
+rule with no record shows no badge rather than borrowing someone else's.
+
+Two names also had to be translated rather than copied. `PLAYER_ALREADY_ON_PITCH` is set when the player
+named to come **off** is no longer on the pitch — the constant's name says the opposite of what the engine
+does with it — and `PENDING` is a condition that never came due ("if we are losing from 60" on a game won
+3–0), which is not a failure and must not read as one.
+
+**What failed on the way.** The first implementation computed `played` as `outcomes.length > 0`, but the
+matched array always has one slot per rule, filled with `null` — so its length said nothing about whether
+the match had been played, and an unplayed fixture announced a post-match report. The harness caught it
+before it was committed.
+
+**Verified.** `SubstitutionOutcomeIsShownTest` — 5 checks green, driving the real module through Node.
+Both mutations were run against it and both caught:
+
+| Mutation | Result |
+|---|---|
+| `matchOutcomes` matching by position instead of content | 4 checks red |
+| Badge deleted from the rule row | 5 checks red |
+| `fixture-view.js` early return put back | `thePanelIsMountedAfterTheMatch` red |
+| `played` computed from array length (the real bug above) | 1 check red, caught in development |
+
+Also verified live, against the running application: the validated `PUT` accepted two conditions on
+fixture 16, and `DELETE` returned **204** — the route `SubstitutionPlanController` documents as having been
+"always a 500" until `@Transactional` was added. That plan was then removed, so the database is back to
+the one row it started with.
+
+**Not done, and filed as T1-16b.** The post-match screen has not been opened in a browser. Producing an
+outcome requires `simulate-all`, which would play **5,209** unplayed fixtures across 48 countries. That is
+the owner's season and their call.
+
 ## ❌ T-REST-13 — H2 loan test written, then withdrawn as meaningless (2026-10-10)
 
 **What was claimed:** that the loan happy path had been "verified live" against the owner's PostgreSQL
