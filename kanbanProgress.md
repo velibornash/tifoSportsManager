@@ -1,5 +1,22 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-8 (schedule page) — three-way filter (Upcoming/Played/All) + recent matches sort (2026-10-10)
+
+Added `scheduleFilterHtml()` and `applyScheduleFilter()` to the schedule page, allowing the manager to click between:
+- Upcoming matches
+- Played matches  
+- All matches
+
+The filter hides the rows that are excluded from the chosen set, using `[data-schedule-list]` for the row container and `.is-played` for the played marker. Active chip styling uses the same FM palette as other filters. The UI now matches the club schedule's header counts rather than opening a Results page for played matches.
+
+**Fixed critical syntax error** in `renderFixturesView()`: the filter call `${scheduleFilterHtml(fixtureRows)}` was placed outside the template literal, breaking the entire page and leaving `loadPage` undefined. Corrected by closing the template literal before the `if (fixtureRows.length === 0)` block.
+
+**Also fixed Recent Matches ordering** on the dashboard: was sorting by `matchDate` (wall-clock date), now uses the game calendar order (season → week → day → hour), which is the correct ordering for this game's time model. A cup tie and league round can share a wall-clock day; the game's season/week/day columns are the truth.
+
+Two earlier scheduler-related tasks were merged into this implementation:
+- `T0-UI-8b` → the filter (this entry)
+- `T0-UI-4b` → fixing 20 entry points that bypassed `loadPage` and broke on cold pages
+
 ## ✅ T-REST-17 (counting) — a fixture that was never played is no longer counted as one (2026-10-10)
 
 The loop ran inside executeWithoutResult, and a lambda's return leaves the lambda and nothing else, so

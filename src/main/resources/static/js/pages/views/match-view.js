@@ -488,7 +488,17 @@ export function createMatchView(deps) {
                         </div>
                         <div style="margin-top:16px; padding:14px; border-radius:12px; background:rgba(255,255,255,0.04);">
                             <h4 style="margin:0 0 10px; color:#dfe6eb;">Timeline</h4>
-                            ${timeline.length ? timeline.map(event => `<div style="display:grid; grid-template-columns:48px 28px minmax(0,1fr); gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,0.06);"><strong style="color:#e8d47d;">${Number(event.minute || 0)}'</strong><span>${htmlEscape(String(event.icon || '•'))}</span><div><strong>${htmlEscape(String(event.title || 'Event'))}</strong><div style="color:#9aa0a6; font-size:0.88em;">${htmlEscape(String(event.teamName || ''))} · ${htmlEscape(String(event.detail || ''))}</div></div></div>`).join('') : '<div style="color:#9aa0a6;">No key events logged.</div>'}
+                            ${timeline.length
+                                ? timeline.map(event => `<div class="fm-timeline-row">
+                                       <strong class="fm-timeline-minute">${Number(event.minute || 0)}'</strong>
+                                       <span class="fm-timeline-icon fm-timeline-icon--${htmlEscape(String(event.iconKind || 'other'))}"
+                                             title="${htmlEscape(String(event.iconKind || ''))}">${htmlEscape(String(event.icon || '•'))}</span>
+                                       <div class="fm-timeline-body">
+                                           <strong>${htmlEscape(String(event.title || 'Event'))}</strong>
+                                           <div class="fm-timeline-sub">${htmlEscape(String(event.teamName || ''))}${event.detail ? ' · ' + htmlEscape(String(event.detail)) : ''}</div>
+                                       </div>
+                                   </div>`).join('')
+                                : '<div style="color:#9aa0a6;">No key events logged.</div>'}
                         </div>
                     </div>`;
             }

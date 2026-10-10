@@ -678,6 +678,20 @@ public class TeamController {
         row.put("played", fixture.isPlayed());
         row.put("round", fixture.getRoundNumber() != null ? fixture.getRoundNumber() : 1);
         row.put("week", fixture.getWeekNumber() != null ? fixture.getWeekNumber() : fixture.getRoundNumber());
+
+        // **The league round, which is NOT the same as `round` and is not the week.**
+        //
+        // A league round sits on two days a week in this calendar, and the season runs a round every two
+        // weeks: day 3 is round 1, day 5 round 2, day 7 round 3, then week 2 starts round 4. A fixture in
+        // week 1 therefore carries `weekNumber = 1` and `roundNumber = 3`, and a row that said "week 1"
+        // for its third round was the owner's exact complaint — "kad pise season 1 day 3, za sve ligaske
+        // ne nza se koji je od koje nedelje" (owner, 2026-10-10).
+        //
+        // `roundNumber` is the cup's round, which is why this needs its own field. For a cup the two
+        // numbers agree, and the row says "round"; for a league the row says "round N of week M".
+        boolean isLeague = fixture.getCompetition() != null
+                && fixture.getCompetition().getType() == CompetitionType.LEAGUE;
+        row.put("leagueRound", isLeague ? (fixture.getRoundNumber() != null ? fixture.getRoundNumber() : 1) : null);
         row.put("seasonYear", fixture.getSeasonYear());
         row.put("competitionName", fixture.getCompetition() != null ? fixture.getCompetition().getName() : "Competition");
         // The id as well as the name: the schedule screen needs it to send you to the right league,

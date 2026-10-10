@@ -427,14 +427,58 @@ public class ZoxApiController {
                         teamName, ""));
             }
         }
-        return timeline;
+        return collapseVarReviews(timeline);
     }
 
-    private Map<String, Object> timelineItem(int minute, String icon, String title,
+    /**
+     * One row per VAR <em>decision</em>, not one per VAR event.
+     *
+     * <p>A single yellow-card check wrote three events - the review opening, the decision, and the card it
+     * produced - and all three arrived here as separate rows, so one decision took three lines of the
+     * timeline and repeated the player's name each time (owner, 2026-10-10).
+     *
+     * <p>Rows for the same minute and the same player are merged, and the last one wins because it is the
+     * settled one. The card the review produced is already its own row, so collapsing these loses the
+     * echo and nothing else.
+     */
+    private List<Map<String, Object>> collapseVarReviews(List<Map<String, Object>> timeline) {
+        Map<String, Integer> seen = new LinkedHashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+
+        for (Map<String, Object> row : timeline) {
+            if (!"var".equals(row.get("iconKind"))) {
+                out.add(row);
+                continue;
+            }
+            String key = row.get("minute") + "|" + row.get("title");
+            Integer at = seen.get(key);
+            if (at == null) {
+                seen.put(key, out.size());
+                out.add(row);
+            } else {
+                out.set(at, row);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One row of the match timeline.
+     *
+     * <p><b>{@code icon} was a word.</b> It carried {@code "yellow_card"}, {@code "var"},
+     * {@code "goal"} — and the renderer printed it into a 28px column, so the labels overlapped each
+     * other and the timeline read as a wall of text where it should read as a row of symbols (owner,
+     * 2026-10-10).
+     *
+     * <p>So the key is now a <b>symbol</b> and {@code iconKind} carries the word for styling and for
+     * anything that needs to reason about the type. A glyph is 30 columns wide whatever it says.
+     */
+    private Map<String, Object> timelineItem(int minute, String iconKind, String title,
                                               String teamName, String detail) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("minute", minute);
-        item.put("icon", icon);
+        item.put("icon", symbolFor(iconKind));
+        item.put("iconKind", iconKind);
         item.put("title", title);
         item.put("teamName", teamName);
         item.put("detail", detail);
@@ -606,5 +650,28 @@ public class ZoxApiController {
             log.warn("Failed to parse eventJson", e);
             return null;
         }
+    }
+
+    /**
+     * The glyph for a timeline row.
+     *
+     * <p>ASCII-safe on purpose: these are rendered as text, and a symbol that a font cannot draw is worse
+     * than the word it replaced. {@code ?} is the fallback so a new event type can never blank a row.
+     */
+    private static String symbolFor(String iconKind) {
+        if (iconKind == null) {
+            return "?";
+        }
+        return switch (iconKind) {
+            case "goal" -> "\u26BD";           // football
+            case "penalty" -> "P";               // a penalty is not a football and there is no glyph for it
+            case "yellow_card" -> "\u25C9";     // filled circle
+            case "red_card" -> "\u25CF";         // filled circle, styled red
+            case "var" -> "V";
+            case "offside" -> "\u25CB";         // hollow circle
+            case "injury" -> "+";                // a medical cross
+            case "substitution" -> "\u21C4";    // up-down arrow
+            default -> "?";
+        };
     }
 }

@@ -420,31 +420,68 @@ public class ProposalStatsCollector {
         return m;
     }
 
+    /**
+     * A player's match rating, 2.0 to 10.0.
+     *
+     * <p><b>Rewritten (owner, 2026-10-10).</b> The old formula gave **5.5 for turning up** and up to
+     * **1.5 for passing volume alone**, so the arithmetic put a routine contributor at the ceiling.
+     * Ivica Tomić in a real match on the owner's database — one goal, one assist, one interception —
+     * came out at **10.0**: 5.5 + 2.0 + 1.2 + 1.5 + 0.25 = 10.45, clipped. The owner saw several players
+     * a match doing "a few tackles" rated 10.
+     *
+     * <p><b>What changed, and why each part.</b>
+     * <ul>
+     *   <li><b>6.0 base, not 5.5.</b> A 6.0 is an ordinary, unremarkable 90 and it is where a league
+     *       average sits. 5.5 made "did nothing wrong" sound like a bad game.</li>
+     *   <li><b>Passing volume now costs something.</b> It was a straight bonus for being a hub, capped at
+     *       +1.5 — a midfielder with 100 completed passes earned as much as a second assist without
+     *       creating anything. It is now <b>±0.6 around a 70% completion rate</b>: above it is a small
+     *       bonus, below it a penalty. A 40% passer is now worse than one who never touched it.</li>
+     *   <li><b>Goals and assists cost rating when they are not converted.</b> A striker who misses
+     *       everything is no longer 6.0 for the trouble.</li>
+     *   <li><b>10.0 is now reserved.</b> It takes a hat-trick, or a goal plus two assists, to get near it.
+     *       The old top end was reachable by arithmetic accident; this one is not.</li>
+     * </ul>
+     *
+     * <p>Deliberately <b>not</b> rewritten as a weighted average of team result and player actions: that
+     * would rate a defender of a 4-0 highly for a game he did not touch, which is the same mistake in
+     * the other direction.
+     */
     private double calculateRating(PlayerAcc p) {
-        // Base rating for simply playing the match.
-        double r = 5.5;
+        // Base rating for playing the whole match, unchanged in spirit.
+        double r = 6.0;
 
-        // Goals are the biggest single event, but with diminishing returns.
+        // Goals are the biggest single event, with diminishing returns. The first goal is worth less
+        // than it was: 2.0 of it was most of a match's worth of credit for one event.
         if (p.goals > 0) {
-            r += 2.0 + (p.goals - 1) * 0.8; // 1st goal +2.0, subsequent +0.8
+            r += 1.6 + (p.goals - 1) * 0.7; // 1st goal +1.6, subsequent +0.7
         }
 
         // Assists reward creation but less than goals.
         if (p.assists > 0) {
-            r += 1.2 + (p.assists - 1) * 0.5;
+            r += 1.0 + (p.assists - 1) * 0.45;
         }
 
-        // Passing volume rewards involvement, capped so high-volume passers don't inflate.
-        r += Math.min(p.passesCompleted * 0.015, 1.5);
+        // Passing: a rate, not a volume. A hub who completes 90% of 100 passes has earned something,
+        // and a met whose team keeps it has earned something negative.
+        if (p.passesAttempted > 0) {
+            double completion = (double) p.passesCompleted / p.passesAttempted;
+            r += Math.max(-0.8, Math.min(0.6, (completion - 0.70) * 2.0));
+        }
+
+        // Shots: effort is rewarded, finishing is rewarded more, and missing everything is not neutral.
+        if (p.shots > 0) {
+            r += Math.min(0.5, p.shotsOnTarget * 0.25) - Math.min(0.5, (p.shots - p.shotsOnTarget) * 0.12);
+        }
 
         // Defensive contributions
-        r += p.interceptions * 0.25;
-        r += p.duelsWon * 0.15;
-        r += p.tackles * 0.1; // defensive work rate
+        r += p.interceptions * 0.2;
+        r += p.duelsWon * 0.12;
+        r += p.tackles * 0.08; // defensive work rate
 
         // Goalkeeper specific
         if ("GK".equals(p.player.getRole())) {
-            r += p.saves * 0.4;
+            r += p.saves * 0.35;
         }
 
         // Discipline penalties
@@ -455,7 +492,9 @@ public class ProposalStatsCollector {
         // Minutes scaling: a 45-minute sub shouldn't rate the same as a 90-minute starter
         int minutes = minutesPlayed(p.player);
         double minuteFactor = Math.min(1.0, minutes / 90.0);
-        r = 5.0 + (r - 5.0) * minuteFactor;
+        // Anchored on the base, which is 6.0. Anchoring on the old 5.0 would have quietly moved the
+        // floor of every sub and every early substitute.
+        r = 6.0 + (r - 6.0) * minuteFactor;
 
         return Math.max(2.0, Math.min(10.0, Math.round(r * 10.0) / 10.0));
     }

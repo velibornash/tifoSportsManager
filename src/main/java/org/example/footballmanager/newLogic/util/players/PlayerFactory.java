@@ -252,7 +252,7 @@ public class PlayerFactory {
         playerRepository.saveAll(players);
 
         System.out.println("→ " + teamName + ": " + players.size() + " igrača, tier "
-                + (tier == null ? "?" : tier) + " standard (prosjek "
+                + (tier == null ? "?" : tier) + " standard (prosek "
                 + leagueStandard.skillAverageForTier(tier) + ")");
         return players;
     }
