@@ -53,6 +53,25 @@ public final class SimReportMapper {
         stats.put("awayFouls", val(away, TeamOutcome::fouls));
         stats.put("homeDominance", round1(clamp(o.possessionHome())));
         stats.put("awayDominance", round1(clamp(o.possessionAway())));
+
+        // Passes attempted, and the defensive counts (T0-UI-6).
+        //
+        // The engine has counted every one of these all along — they are on `TeamOutcome` and were being
+        // computed on every match — and none of them reached the payload. So PPDA could not be formed from
+        // a stored match at all: the numerator was a percentage and the denominator did not exist. These are
+        // writes, not new measurements.
+        stats.put("homePassesAttempted", val(home, TeamOutcome::passesAttempted));
+        stats.put("awayPassesAttempted", val(away, TeamOutcome::passesAttempted));
+        stats.put("homePassesCompleted", val(home, TeamOutcome::passesCompleted));
+        stats.put("awayPassesCompleted", val(away, TeamOutcome::passesCompleted));
+        stats.put("homeClearances", val(home, TeamOutcome::clearances));
+        stats.put("awayClearances", val(away, TeamOutcome::clearances));
+        stats.put("homeInterceptions", val(home, TeamOutcome::interceptions));
+        stats.put("awayInterceptions", val(away, TeamOutcome::interceptions));
+        stats.put("homeBlocks", val(home, TeamOutcome::blocks));
+        stats.put("awayBlocks", val(away, TeamOutcome::blocks));
+        stats.put("homeDeflections", val(home, TeamOutcome::deflections));
+        stats.put("awayDeflections", val(away, TeamOutcome::deflections));
         return stats;
     }
 

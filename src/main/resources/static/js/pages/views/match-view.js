@@ -507,6 +507,110 @@ export function createMatchView(deps) {
                 }
             }
 
+            /**
+             * Field tilt and PPDA, each with the reading that makes it usable (T0-UI-6).
+             *
+             * <p>Both are shown only when the server actually measured them. A match whose stored stats
+             * predate these counts says so, because a 0.0 would read as a fact about the game rather than
+             * a gap in a column — and a number the manager cannot interpret is one he will not act on.
+             *
+             * <p>Written as pure functions taking the payload, so the reading can be checked without a
+             * browser.
+             */
+            function buildAnalyticsPanels(payload) {
+                const num = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
+                const homeName = htmlEscape(String(payload.homeTeamName ?? 'Home'));
+                const awayName = htmlEscape(String(payload.awayTeamName ?? 'Away'));
+
+                const panels = [];
+
+                const homeTilt = num(payload.homeAttackShare);
+                const awayTilt = num(payload.awayAttackShare);
+                if (homeTilt !== null && awayTilt !== null) {
+                    panels.push(`
+                        <section class="fm-analytics-panel">
+                            <h4>Field tilt</h4>
+                            <div class="fm-analytics-row">
+                                <span>${homeName}</span>
+                                <strong>${homeTilt.toFixed(0)}%</strong>
+                            </div>
+                            <div class="fm-analytics-row">
+                                <span>${awayName}</span>
+                                <strong>${awayTilt.toFixed(0)}%</strong>
+                            </div>
+                            <p class="fm-analytics-reading">${htmlEscape(readFieldTilt(homeTilt, awayTilt))}</p>
+                            <p class="fm-analytics-def">${htmlEscape(String(payload.tiltDefinition ?? ''))}</p>
+                        </section>`);
+                }
+
+                const homePpda = num(payload.homePpda);
+                const awayPpda = num(payload.awayPpda);
+                // Named individually. If PPDA is missing for this match while tilt is present, saying
+                // nothing about it reads as "there is nothing to say" rather than "we did not measure it" —
+                // and the 235 matches already in the world are exactly that case.
+                const missing = [];
+                if (homePpda === null && awayPpda === null) missing.push('PPDA');
+                if (panels.length && missing.length) {
+                    panels.push(`
+                        <section class="fm-analytics-panel fm-analytics-panel--missing">
+                            <h4>${htmlEscape(missing.join(' and '))}</h4>
+                            <p class="fm-analytics-reading">Not recorded for this match — it was played
+                                before these numbers were kept. A new match will carry them.</p>
+                        </section>`);
+                }
+                if (homePpda !== null || awayPpda !== null) {
+                    panels.push(`
+                        <section class="fm-analytics-panel">
+                            <h4>PPDA</h4>
+                            <div class="fm-analytics-row">
+                                <span>${homeName}</span>
+                                <strong>${homePpda === null ? '—' : homePpda.toFixed(1)}</strong>
+                            </div>
+                            <div class="fm-analytics-row">
+                                <span>${awayName}</span>
+                                <strong>${awayPpda === null ? '—' : awayPpda.toFixed(1)}</strong>
+                            </div>
+                            ${homePpda !== null && awayPpda !== null
+                                ? `<p class="fm-analytics-reading">${htmlEscape(readPpda(homePpda, awayPpda))}</p>`
+                                : ''}
+                            <p class="fm-analytics-def">${htmlEscape(String(payload.definition ?? ''))}</p>
+                        </section>`);
+                }
+
+                if (!panels.length) {
+                    return `<p class="fm-subtle">The deeper numbers for this match were not recorded — it
+                        was played before they existed. Possession, shots and xG below are unaffected.</p>`;
+                }
+                return `<div class="fm-analytics">${panels.join('')}</div>`;
+            }
+
+            /** The sentence that turns a percentage into something a manager can act on. */
+            function readFieldTilt(home, away) {
+                const gap = Math.abs(home - away);
+                const leader = home >= away ? 'The home side' : 'The away side';
+                if (gap < 3) {
+                    return 'Both sides spent about as long in the opposition half. The result came from what '
+                        + 'they did with it, not where they stood.';
+                }
+                const leaderShare = Math.max(home, away);
+                const side = home >= away ? 'home' : 'away';
+                return `${leader} spent ${leaderShare.toFixed(0)}% of the match in the opposition's third — `
+                    + `a ${gap.toFixed(0)}-point ${side} tilt.`;
+            }
+
+            /** Higher means the opposition had to work harder to stop them. */
+            function readPpda(home, away) {
+                const gap = home - away;
+                const better = gap >= 0 ? 'home' : 'away';
+                if (Math.abs(gap) < 0.5) {
+                    return 'Both sides completed about the same number of passes per defensive action — '
+                        + 'neither was put under sustained pressure.';
+                }
+                return `${better === 'home' ? 'Home' : 'Away'} needed `
+                    + `${Math.abs(gap).toFixed(1)} more passes per defensive action to win the ball back. `
+                    + `${gap >= 0 ? 'Home' : 'Away'} was pressed harder.`;
+            }
+
             async function showStats() {
                 // Canonical stats come from the engine's statsJson (statsMap),
                 // read verbatim by /api/zox/match-stats/{id}. Deriving them from
@@ -563,6 +667,7 @@ export function createMatchView(deps) {
                 }).join('');
 
                 let html = `<h3 style="text-align:center; margin:0 0 20px; color:#4CAF50;">Match Stats</h3>`;
+                html += buildAnalyticsPanels(payload);
                 html += `
                 <table style="width:100%; border-collapse:collapse; font-size:0.95em;">
                     <thead>

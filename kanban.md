@@ -1336,7 +1336,7 @@ and three need data that does not exist.**
 | **xG per side** | **Already done and already displayed.** `ProposalMatchOutcomeBuilder.computeExpectedGoals` scores every shot from its distance to goal, and the Stats tab has shown `['xG', …]` all along. Nothing to build. |
 | **Field tilt** | **Derivable from data that exists.** `player_zone_load` holds **27,757 rows across 235 matches** — nine zones per team (`ATTACKING/MIDFIELD/DEFENSIVE` × `LEFT/CENTRE/RIGHT`) with minutes and intensity. Field tilt is the attacking share of it. |
 | **PPDA** | **Cheap, with one gap.** Passes attempted is team-level; `tackles`, `duelsWon`, `blocks`, `interceptions` are all counted but only reach the payload **per player**, never summed per side. One aggregation away. |
-| **xA** | **Does not exist.** No expected-assist model anywhere. It is the same shape as the xG model and would be built the same way — a probability from distance and angle. |
+| **xA** | **Dropped by owner decision, 2026-10-10** — *"izbaci xA skroz, nepotreban je kad imamo xG."* It never existed, and with xG on the screen a second speculative probability is a number the manager cannot act on any better than the one he already has. |
 | **Shot map** | **The data does not survive the match.** `positionRow` / `positionColumn` exist on `sim/recording/MatchEvent` — the **in-memory recorder** — and on nothing else. No table stores where a shot was taken. xG is computed from that position and then persisted as a number; the position itself is gone. Every event table is 0 rows. |
 | **Progressive passes** | **Same gap.** Pass positions are not persisted. |
 | **Momentum strip** | **Same gap.** There is no per-tick or per-minute timeline in the database — `match_tick_states` is 0 rows and nothing writes it (T2-9). |
@@ -1350,13 +1350,64 @@ screen.
 player*, so the two sides must be read through the same perspective discipline as the tactical mirror
 (T-REST-14) or a home side's attacking third would be compared against the away side's defensive one.
 
-**Recommended order, if the owner agrees**
+**Recommended order — accepted by the owner, 2026-10-10**
 1. **Field tilt and PPDA**, each as a number **with its plain-words reading** — the existing data, no new
    persistence, and the two a manager would actually act on.
-2. **xA**, built on the same model as the xG that is already there.
+2. ~~**xA**~~ — **removed at the owner's decision.** With xG already on the screen it is a second
+   speculative probability, and a number the manager cannot act on is a number the panel does not need.
 3. **Shot map, progressive passes, momentum** — filed as their own data-layer task, not here.
 
 Every number carries its own explanation, and a 430px pass, as the task already requires.
+
+### T0-UI-6 (part 1) · DONE 2026-10-10 — field tilt and PPDA, each with its reading
+
+The two the audit found were nearly free. **xA is gone** (owner: *"izbaci xA skroz, nepotran je kad imamo xG"*), and the
+three that need data the game does not keep are filed as their own task below.
+
+**Field tilt — arithmetic on data that already existed.** `player_zone_load` holds nine zones per player
+with minutes and intensity; tilt is each side's share of its **own** minutes in the attacking third. The
+zones are named from the player's perspective, so the two sides are compared share-for-share — reversing
+one side would compare home's attacking third against away's defensive one and produce a number that looks
+like tilt and means nothing. The same perspective discipline as the tactical mirror (T-REST-14).
+
+**PPDA — and what its denominator actually is.** The engine had been counting passes attempted,
+clearances, interceptions, blocks, deflections and fouls on every match and **none of them reached the
+stored payload** — the numerator was a percentage and the denominator did not exist. `SimReportMapper.statsMap`
+now writes all of them. **Tackles are not in it**: they are counted per player and never summed to the side,
+so this is deliberately not the textbook "tackles + interceptions + fouls", and **the definition is printed
+under the figure** rather than implying a textbook number it is not computing.
+
+**Nothing is invented where it was not measured.** A match whose stored stats predate these keys shows
+*"Not recorded for this match"*, not 0.0 — a zero would be a claim about a game rather than a statement
+about a column. The **235 matches already in the world** are all in that state for PPDA, and the panel says
+so for each of them rather than going silent, because silence reads as "nothing to show" rather than "not
+measured".
+
+**Verified in the running application at 430 × 932**, on a real played match with 235-matches-worth of zone
+data: field tilt reads **NK Balkan 1928 33% v FK Sinđelić Užice 1945 35%** with the even-match reading
+("Both sides spent about as long in the opposition half"), the PPDA panel names itself as not recorded, and
+the existing xG row is unaffected. The two panels stack in one column at 430px with no overflow.
+
+**A correction to the audit I wrote an hour earlier.** It said xG "is already computed and displayed".
+That is true of the **engine** matches, and `computeTeamStats` prefers `statsJson` — which carries the real
+score. But the fallback path for a match with no `statsJson` computes `goals * 0.7 + 0.5` and labels it
+xG. No match in the current world takes that path; a legacy or hand-created one would show a fabricated
+figure. Recorded rather than quietly corrected, because the fallback is deliberate and the honest fix is a
+separate decision.
+
+### T0-UI-6 (part 2) · The shot map, progressive passes and the momentum strip — NOT UI WORK
+
+Deferred by the audit, and filed here so it is not lost. **All three need data the game does not keep.**
+A shot's and a pass's cell exist only on `sim/recording/MatchEvent` — the in-memory recorder — and on
+nothing else; every event table is 0 rows; there is no per-tick timeline at all (`match_tick_states` is 0
+rows, T2-9). xG is computed from that position and persisted as a *number*; the position is gone.
+
+**This is a decision about what the database stores**, written down at match time across 14,723 clubs and
+3,600 ticks a match, and it belongs beside **T2-9** rather than inside a screen.
+
+**Exit criteria**
+- [ ] An owner decision: persist shot and pass positions, or close these three as not being built
+- [ ] If persisted: a shot map, progressive passes, and a momentum strip, each with its reading
 
 ### T0-UI-7 · Friendly requests for national teams
 

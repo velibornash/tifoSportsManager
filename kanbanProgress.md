@@ -1,5 +1,32 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-6 (part 1) — field tilt and PPDA, each with its reading (2026-10-10)
+
+xA dropped by owner decision. Field tilt came out of data that already existed: `player_zone_load` holds
+nine zones per player with minutes, and tilt is each side's share of its own minutes in the attacking
+third. The zones are named from the player's perspective, so the two sides are compared share-for-share —
+reversing one would compare home's attacking third against away's defensive one and produce a number that
+looks like tilt and means nothing. Same discipline as the T-REST-14 mirror.
+
+**PPDA's denominator is the interesting part.** The engine had been counting passes attempted,
+clearances, interceptions, blocks, deflections and fouls on every match and none of them reached the stored
+payload: the numerator was a percentage and the denominator did not exist. All of them now do. Tackles are
+still missing — counted per player, never summed to the side — so the definition is printed under the
+figure rather than implying a textbook PPDA it is not computing.
+
+**Nothing invented where nothing was measured.** The 235 matches already in the world predate these keys,
+so the PPDA panel names itself as not recorded instead of showing 0.0 or going silent. Silence reads as
+"nothing to show"; a zero reads as a fact about the game.
+
+**Verified at 430 × 932 on a real played match**: tilt reads NK Balkan 1928 33% v FK Sinđelić Užice 1945 35%
+with its even-match reading, the PPDA panel says not recorded, and the existing xG row is untouched.
+
+**A correction to my own audit.** It said xG was "already computed and displayed". True for engine matches,
+where `computeTeamStats` prefers `statsJson` and carries the real score — but the fallback for a match with
+no `statsJson` computes `goals * 0.7 + 0.5` and labels it xG. Nothing in the current world takes that path.
+Recorded rather than quietly fixed, because the fallback is deliberate.
+
+## ✅ T0-BE-3 UI — the Team selection screen (2026-10-10)
 ## ✅ T0-BE-3 UI — the Team selection screen (2026-10-10)
 
 A club could pick a team for one fixture and had nowhere to pick it. Third time this session that a working

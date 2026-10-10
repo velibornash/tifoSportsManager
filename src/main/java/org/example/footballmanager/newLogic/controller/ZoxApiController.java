@@ -26,6 +26,7 @@ public class ZoxApiController {
     private final MatchPlayerStatsRepository statsRepository;
     private final ObjectMapper objectMapper;
     private final org.example.footballmanager.newLogic.service.MatchPreviewService previews;
+    private final org.example.footballmanager.newLogic.service.FieldTiltService fieldTiltService;
 
     /**
      * The pre-match screen, for a fixture or for a match that has been played.
@@ -195,7 +196,24 @@ public class ZoxApiController {
     public ResponseEntity<Map<String, Object>> getMatchStats(@PathVariable Long matchId) {
         Match match = matchRepository.findById(matchId).orElse(null);
         if (match == null) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(computeTeamStats(match));
+        Map<String, Object> stats = new LinkedHashMap<>(computeTeamStats(match));
+
+        // Field tilt and PPDA (T0-UI-6). Both are numbers a manager can act on, so both carry the
+        // definition they were computed with. Neither invents a value: field tilt returns nothing when the
+        // match has no zone data, and PPDA returns nothing for a match stored before those counts existed.
+        Map<String, Object> ppda = org.example.footballmanager.newLogic.service.PassingPressure.bothSides(stats);
+        stats.putAll(ppda);
+
+        var tilt = fieldTiltService.forMatch(matchId,
+                new org.example.footballmanager.newLogic.service.FieldTiltService.TeamNames(
+                        match.getHomeTeam() == null ? null : match.getHomeTeam().getName(),
+                        match.getAwayTeam() == null ? null : match.getAwayTeam().getName()));
+        if (tilt != null) {
+            stats.putAll(tilt);
+            stats.put("tiltDefinition",
+                    "share of each team's own minutes spent in the attacking third");
+        }
+        return ResponseEntity.ok(stats);
     }
 
     // ─── Stats ────────────────────────────────────────────────

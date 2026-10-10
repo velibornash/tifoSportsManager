@@ -5829,3 +5829,59 @@ body {
         gap: 12px;
     }
 }
+
+/* The two deeper numbers on the Stats tab. Each carries its reading, because a figure the manager cannot
+ * interpret is one he will not act on. */
+.fm-analytics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.fm-analytics-panel {
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.fm-analytics-panel h4 {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+}
+
+.fm-analytics-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 3px 0;
+}
+
+.fm-analytics-row strong {
+    font-size: 1.05rem;
+}
+
+.fm-analytics-reading {
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.fm-analytics-def {
+    margin: 0;
+    font-size: 0.72rem;
+    opacity: 0.65;
+}
+
+@media (max-width: 430px) {
+    .fm-analytics {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* A figure we did not measure, said as such rather than left silent. */
+.fm-analytics-panel--missing h4 {
+    opacity: 0.7;
+}
