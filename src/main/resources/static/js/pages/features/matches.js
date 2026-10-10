@@ -18,7 +18,20 @@ export function createMatchesFeature(deps) {
         try {
             const response = await authFetch(`/teams/${teamId}/matches`);
             const matches = await response.json();
-            const results = matches.sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate));
+            const results = matches.sort((a, b) => {
+                const aSeason = Number(a.seasonYear || 0);
+                const bSeason = Number(b.seasonYear || 0);
+                if (aSeason !== bSeason) return bSeason - aSeason;
+                const aWeek = Number(a.week || 0);
+                const bWeek = Number(b.week || 0);
+                if (aWeek !== bWeek) return bWeek - aWeek;
+                const aDay = Number(a.day || 0);
+                const bDay = Number(b.day || 0);
+                if (aDay !== bDay) return bDay - aDay;
+                const aRound = Number(a.round || 0);
+                const bRound = Number(b.round || 0);
+                return bRound - aRound;
+            });
             renderMatches(results, 'Results', { currentPage: 'results' });
         } catch (err) {
             renderMatchesError(`Could not load results (${err.message}).`);
@@ -51,7 +64,20 @@ export function createMatchesFeature(deps) {
             const response = await authFetch(`/teams/${teamId}/schedule`);
             const schedule = await response.json();
             const fixtures = (Array.isArray(schedule) ? schedule : [])
-                .sort((a, b) => new Date(a?.matchDate || 0) - new Date(b?.matchDate || 0));
+                .sort((a, b) => {
+                    const aSeason = Number(a.seasonYear || 0);
+                    const bSeason = Number(b.seasonYear || 0);
+                    if (aSeason !== bSeason) return aSeason - bSeason;
+                    const aWeek = Number(a.week || 0);
+                    const bWeek = Number(b.week || 0);
+                    if (aWeek !== bWeek) return aWeek - bWeek;
+                    const aDay = Number(a.day || 0);
+                    const bDay = Number(b.day || 0);
+                    if (aDay !== bDay) return aDay - bDay;
+                    const aRound = Number(a.round || 0);
+                    const bRound = Number(b.round || 0);
+                    return aRound - bRound;
+                });
             renderFixtures(fixtures, 'Schedule', { currentPage: 'schedule' });
         } catch (err) {
             renderMatchesError(`Could not load the schedule (${err.message}).`);
