@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.util.players;
 
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.PlayerRole;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.model.Skills;
@@ -348,6 +349,44 @@ public class PlayerFactory {
         s.setStriker(striker);
         p.setSkills(s);
 
+        // **The rating, derived from the skills that were just set.**
+        //
+        // This overload left `rating` at 0. Every other path that builds a player does this - the world
+        // seeder at line 246, BotSquadGenerator, BotLeagueStandardBackfill, PlayerRatingBackfill - and
+        // all four set it from `careerRating()`. So a player created through here was rated **0**, and a
+        // rating of 0 is not a weak player: the engine's `Math.max(1, rating)` floors it at 1, so the
+        // whole squad sat at the bottom of the scale against any properly seeded club.
+        //
+        // Observed on the owner's database (2026-10-10): OFK Omladinac and Sremac Berkasovo hold **13
+        // and 17 players, every one rated 0**. OFK Omladinac then lost 2-0 while holding **90.6%
+        // possession and not one event belonging to the opponent** - a match that looked like a broken
+        // engine and was actually thirteen blank players.
+        //
+        // The role is set from the position too. It is survivable to leave it null - RealSquadFactory
+        // derives a role from position - but a null role reads as "MID" everywhere else, so a striker
+        // who never had one was a midfielder to half the codebase.
+        p.setRating(p.careerRating());
+        p.setRole(roleFor(position));
+
         return p;
+    }
+
+    /**
+     * The role a position implies.
+     *
+     * <p>Goalkeeper and the rest. There is no "unknown" here on purpose: a player has a position, and the
+     * position is what the engine runs on, so the role is derivable and should never be left null.
+     */
+    private static PlayerRole roleFor(Position position) {
+        if (position == null) {
+            return PlayerRole.CENTRE_MIDFIELDER;
+        }
+        return switch (position) {
+            case GK -> PlayerRole.GOALKEEPER;
+            case DEF -> PlayerRole.CENTRE_BACK;
+            case MID -> PlayerRole.CENTRE_MIDFIELDER;
+            case WNG -> PlayerRole.WINGER;
+            case ATT -> PlayerRole.STRIKER;
+        };
     }
 }

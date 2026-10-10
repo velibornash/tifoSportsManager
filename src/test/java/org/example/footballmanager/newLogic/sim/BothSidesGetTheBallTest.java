@@ -72,6 +72,50 @@ class BothSidesGetTheBallTest {
     }
 
     @Test
+    @DisplayName("no side is ever shut out of the match entirely")
+    void noSideIsShutOut() {
+        // The owner's ruling (2026-10-10): a 0-event match is never acceptable. Not rare, not a tail —
+        // never. The match that prompted it was 2-0 at 90.6% possession where the away side produced no
+        // shot, no foul and no event of its own in ninety minutes.
+        //
+        // The fix was to make the press ordered rather than reactive: TYPE A used to require a defender
+        // to already be within 1.5 cells of the carrier, so a side keeping the ball out of press range
+        // never attracted one. The threshold now decides who is *sent*, not whether anyone is.
+        Random random = new Random(4242L);
+        List<String> shutOut = new ArrayList<>();
+        int total = 60;
+
+        for (int i = 0; i < total; i++) {
+            ProposalMatchOutcome outcome = SimMatchRunner.run(
+                    "Home " + i, "Away " + i, 3600,
+                    RealSquadFactory.buildSquad(lineupWith(eleven(random, 70 + random.nextInt(8))), "HOME"),
+                    RealSquadFactory.buildSquad(lineupWith(eleven(random, 70 + random.nextInt(8))), "AWAY"))
+                    .buildOutcome();
+
+            for (ProposalMatchOutcome.TeamOutcome side : List.of(outcome.homeStats(), outcome.awayStats())) {
+                if (side == null) {
+                    continue;
+                }
+                // A side with no shot, no foul, no corner, no card and no substitution produced nothing
+                // at all. That is the shape of the match the owner was shown.
+                int actions = side.shots() + side.fouls() + side.corners()
+                        + side.yellowCards() + side.redCards() + side.offsides()
+                        + side.clearances() + side.interceptions() + side.throwIns()
+                        + side.passesAttempted() + side.saves() + side.penalties();
+                if (actions == 0) {
+                    shutOut.add(side.teamName() + " in match " + i + " produced no action of any kind");
+                }
+            }
+        }
+
+        assertTrue(shutOut.isEmpty(),
+                shutOut.size() + " of " + total + " matches had a side that did nothing at all: "
+                        + shutOut.stream().limit(4).toList()
+                        + ". A side with no shot, foul, corner, card or offside had the ball for ninety "
+                        + "minutes without anyone being able to take it off them.");
+    }
+
+    @Test
     @DisplayName("possession always adds up to a whole match")
     void possessionSumsToOneHundred() {
         Random random = new Random(7L);

@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.util;
 
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.PlayerRole;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +92,11 @@ public class PlayerRatingBackfill {
 
             List<Player> stale = new ArrayList<>();
             for (Player player : content) {
-                if (player.getRating() != player.careerRating()) {
+                // A player with no role is stale for this pass too. It is survivable - the engine
+                // derives a role from position - but a null role reads as MID everywhere else, so a
+                // striker who never had one was a midfielder to half the codebase. Both clubs the owner
+                // manages had every player in this state alongside a zero rating.
+                if (player.getRating() != player.careerRating() || player.getRole() == null) {
                     stale.add(player);
                 }
             }
@@ -102,6 +107,9 @@ public class PlayerRatingBackfill {
                     for (Player player : stale) {
                         batchSpread.merge(player.getRating(), 1, Integer::sum);
                         player.setRating(player.careerRating());
+                        if (player.getRole() == null) {
+                            player.setRole(PlayerRole.defaultFor(player.getPositionEnum()));
+                        }
                         players.save(player);
                     }
                 });

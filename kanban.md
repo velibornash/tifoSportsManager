@@ -2180,67 +2180,96 @@ scale. Every index added here was measured in a throwaway `sokker_bench` databas
 dev database. The `e9142ed` rows on a full 89,280-match season, and the `513f738` baseline on the same
 season with `event_json` at its **real** 17 KB width. **Same query, different harness.**
 
-## T0-POSS · 🔴 P0 — a side can be starved of the ball for ninety minutes, and the stats report it faithfully
+## T0-POSS · ✅ WRONG DIAGNOSIS — it was never the engine (2026-10-10)
 
-**Found by the owner, 2026-10-10, and he was right to doubt it.** OFK Omladinac 2-0 OFK Proleter Apatin
-displayed as **91% possession, 10 shots to 1, xG 1.90 to 0.10** — and *0 fouls by the away side*.
+**The owner was right that possession was wrong, and I was wrong twice about why.**
 
-### The number was never wrong. The match was.
+### What I got wrong
 
-Reading that match's event log settles it: **not one of its 25 events belonged to the away side.** Every
-shot, every throw-in, every corner — all home. Nine per cent possession and no events at all is a
-simulation that gave one team the ball for ninety minutes, and the possession counter reported it
-accurately.
+1. **"The production engine has no duels."** It does. `newLogic` has its own `DuelEngine` (13KB) and a
+   `DuelService`, and `MatchOrchestrator:701` runs `detectAndResolveDuels()` every tick. I found this by
+   grepping for `DuelEngine` and letting **`head -6` truncate the list** — every line I saw was the frozen
+   `demo/` engine, so I stopped looking and reported the wrong answer.
+2. **"Zero duels in 707 matches."** Also wrong. `DUEL` is not in `SimReportMapper.REPORTABLE_TYPES`, so
+   duels are filtered out of the stored event blob *by design*. The count was an artifact of the filter.
+   The proof duels work is simpler and was in front of me: **6.7 home / 8.0 away fouls a match**, and a
+   foul can only be recorded from `DuelService:98` — a duel the defender won. ~15 contested duels a match.
+3. **"A press must be made non-reactive."** I widened `PRESS_ORDER_RANGE_A` to 4.0 so the closest defender
+   is *sent* rather than needing to be in range already. Measured over 60 simulated matches it changed
+   **nothing** — and the mutation test proved it: reverting to 1.5 still passed. **A change that cannot be
+   shown to matter is not a fix, so it was reverted.**
 
-### How rare, measured rather than guessed
+### What was actually wrong
 
-Across the **707 matches** simulated on the owner's database:
+**The user's own club has a blank squad.**
 
-| | |
-|---|---|
-| Average home possession | **48.1%** — nearly even |
-| Matches outside 20–80% | **6 (0.8%)** |
-| Matches where the away side committed no foul | **2** |
+| team | players | rated 0 | role null |
+|---|---|---|---|
+| **OFK Omladinac** (id 1) | **13** | **13** | **13** |
+| **Sremac Berkasovo** (id 2) | **17** | **17** | **17** |
 
-**This is not a systematic inversion.** Match 80 is a tail case — but a tail case that produces a scoreline
-no reader can distinguish from a real one-sided game.
+Match 80 — *OFK Omladinac 2-0 OFK Proleter Apatin, 90.6% possession* — was **13 players rated zero, with
+no roles assigned, against a real club of 25 averaging 75.6.** The engine's `Math.max(1, rating)` floor
+gave those blanks a nominal strength and the match played out exactly as it should have.
 
-### 🔴 Root cause: the production engine has no way to take the ball off anyone
+**So the possession number was accurate and the match was legitimate.** 91/9 with 0 away events is what
+13 unrated players against 25 rated ones looks like. This is the same signal the dashboard was already
+giving: *"Bench depth missing — Only 1/7 bench slots are filled right now."*
 
-Possession in `newLogic` changes in exactly one place — `BallPhysicsEngine`:
+### The owner's ruling stands regardless
 
-```java
-Player near = nearestPlayer(state, null, PICKUP_R);
-if (near != null) { state.setCarrier(near); state.setLastTouchTeam(near.getTeam()); ... }
-```
+*"A 0-event match can never happen."* **That is right, and this match is not a counter-example** — it was a
+club that could not field a team. The invariant worth keeping is that a side with a real squad always
+contests the ball, and `BothSidesGetTheBallTest` asserts it over **100 simulated matches**: worst
+possession **7.5%**, least active side still produced **83 actions**.
 
-The ball only changes hands when **nobody is within `PICKUP_R` and the intended receiver never arrives**, so
-the nearest player gathers it. **There is no turnover, no press and no dispossession anywhere in the
-production engine** — `grep -rn "turnover" src/main/java/.../newLogic/sim/engine/` returns nothing.
+---
 
-**And `DuelEngine` — the entire pressure/contest model, with `PRESS_DRIB_DUEL_RADIUS`,
-`RECEIVE_PASS_RADIUS`, side-on ties and aerial duels — is called only by the frozen `demo/` engine.**
-`MatchOrchestrator` never constructs it. Its own comment says the old press radius *"was not a press at all
-but a steal at distance"*, which is the tuning work that was done and then never wired into production.
+## T0-SQUAD · 🔴 FIXED 2026-10-10 — `PlayerFactory.createPlayer` never set the rating
 
-So a side in possession can be pressed by nobody, dispossessed by nobody, and will keep the ball until a
-restart or a loose ball happens to intervene. **A 2-0 with 91% possession is the engine working as built.**
+**The real defect, and it is one line.** `PlayerFactory.createPlayer` set skills, position, age, value,
+wage and form — and then **stopped**. No `setRating`, no `setRole`.
+
+Every other path that builds a player does this: the world seeder at `PlayerFactory:246`,
+`BotSquadGenerator`, `BotLeagueStandardBackfill`, `PlayerRatingBackfill`. Four writers set it, this fifth
+one did not, and the two clubs it created were unplayable.
+
+### What that produced
+
+| | before | after |
+|---|---|---|
+| OFK Omladinac (13 players) | every rating **0** | **56 – 93** |
+| Sremac Berkasovo (17 players) | every rating **0** | **35 – 65** |
+
+**Ratings only.** Their skills, ages, values, talents and positions were all correct throughout — only
+the derived number was missing, so the repair is exact and nothing was invented.
+
+A rating of 0 is not "a weak player": the engine floors it at **1**, so a whole squad sits at the bottom
+of the scale. That is why the match produced 90.6% possession and an opponent with no events.
+
+### Why it survived
+
+**`WorldIntegrityService` reports the world healthy and never looks at club squads.** It checks countries,
+competitions, national sides and legacy rows; `PlayerRepository` appears in it exactly once, for national
+squads. "Repair world" was pressed on the owner's database and returned `healthy=true` with these two
+clubs unplayable in front of it.
+
+### 🟡 A test I wrote was wrong, and the data corrected it
+
+I first asserted *"no player lacks a role"*. **All 33,430 players lack one** — the column is never
+written, because `RealSquadFactory` derives the role from position and always has, and `LoanController`
+documents reading `careerRating()` instead. A null role is the world's normal state and is **not** the
+defect. Narrowed to the rating, which is the thing that makes a team unplayable.
 
 ### Exit criteria
 
-- [x] **Diagnosed on real data** — event log, 707-match distribution, and the call graph
-- [x] `BothSidesGetTheBallTest` — 40 simulated matches, **none** starved, so the tail is rare
-- [x] Possession always sums to 100 across a match
-- [ ] **Owner's ruling: how should possession be taken?** This is a football-design question, not a bug
-      fix, and it is the same class of decision as T1-5 (`mirrorWeHaveBallRules`)
-- [ ] Whatever is chosen, a match must not be able to reach one side under 5%
-
-### The honest framing
-
-The average is 48.1%, so **this is not "possession is broken"**. It is that a match has no mechanic which
-*guarantees* the ball is contestable, so the tail produces nonsense. Whether that tail is acceptable is a
-football judgement: real football has 91/9 games, and real football also never has a team with 0 fouls and
-0 events.
+- [x] Root cause found: `createPlayer` never set the rating
+- [x] Fixed at source, and `PlayerRatingBackfill` now also fills a null role
+- [x] Owner's two clubs repaired — **30 rows**, ratings 0 → 35-93, using the app's own formula
+- [x] Backup taken first (`_bak_blank_squads`, 30 rows) before anything was written
+- [x] `PlayerFactoryGivesEveryPlayerARatingTest` — 4 tests, **mutation removes the line and 2 go red**
+- [x] `ClubSquadIsPlayableTest` asserts the real invariant against the live world
+- [ ] **`WorldIntegrityService` should check club squads** — it currently reports a broken world as healthy
 
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
