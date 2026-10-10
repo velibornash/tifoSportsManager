@@ -902,8 +902,24 @@ async function loadRecentMatches() {
         if (!response.ok) throw new Error('Failed to load matches');
 
         const matches = await response.json();
-        const recent = matches
-            .sort((a, b) => new Date(b.matchDate) - new Date(a.matchDate))
+        // Order by the game calendar (season, week, day), not by wall-clock date.
+        // The game has no calendar - only season/week/day. Wall-clock dates can be misleading
+        // when a cup tie and league round share a day.
+        const calendarOrder = (a, b) => {
+            for (const key of ['seasonYear', 'week', 'day']) {
+                const left = Number(a?.[key]);
+                const right = Number(b?.[key]);
+                const leftRank = Number.isFinite(left) ? left : Number.MAX_SAFE_INTEGER;
+                const rightRank = Number.isFinite(right) ? right : Number.MAX_SAFE_INTEGER;
+                if (leftRank !== rightRank) return rightRank - leftRank; // descending = most recent first
+            }
+            const leftTime = parseDashboardDate(a.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            const rightTime = parseDashboardDate(b.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            return rightTime - leftTime;
+        };
+        const recent = (Array.isArray(matches) ? matches : [])
+            .filter(match => match.played)
+            .sort(calendarOrder)
             .slice(0, 3);
 
         const list = document.getElementById('recent-matches-list');

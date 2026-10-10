@@ -770,8 +770,7 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
                 <span class="fm-panel-action">${venueCount} venues · ${h2hCount} H2H notes</span>
             </div>
             ${scheduleFilterHtml(fixtureRows)}
-            <div class="fm-fixtures" data-schedule-list>
-
+            <div class="fm-fixtures" data-schedule-list>`;
     if (fixtureRows.length === 0) {
         html += `<div class="fm-empty">No schedule entries to display.</div>`;
     }
