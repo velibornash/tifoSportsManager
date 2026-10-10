@@ -294,6 +294,7 @@ public class TeamController {
                                                                  @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
                                                                  @RequestParam(value = "competitionType", required = false) String competitionType,
                                                                  @RequestParam(value = "matchType", required = false) String matchType,
+                                                                 @RequestParam(value = "allCompetitions", required = false, defaultValue = "false") boolean allCompetitions,
                                                                  @AuthenticationPrincipal User user) {
         // Who is asking, because this is the surface where a manager is most likely to see his own
         // result by accident: the schedule is the page a manager opens to see what is next.
@@ -321,7 +322,18 @@ public class TeamController {
         // 6, 11 and 12 -- "a club is not handed a friendly, it asks for one and the other club may refuse" --
         // so they have no league to be found through and `competitionType` cannot select them. That is the
         // whole reason this screen was pointing at fabricated data, and it is why `MatchType` exists.
-        Competition competition = (wantedType == null && wantedMatchType == null)
+        // **`allCompetitions` asks for every fixture, and only the dashboard's two cards do.**
+        //
+        // Without it the route answers one competition — the club's league — whenever no filter is named,
+        // because that is what a Schedule page wants. But "your next match" and "recent matches" are not
+        // league questions: a Champions Cup round can fall between two league rounds, and a manager told
+        // "no next match" while holding five group fixtures is being told something false (owner,
+        // 2026-10-10).
+        //
+        // An explicit parameter rather than a missing one, because the default has to keep meaning the
+        // league for the Schedule page, and a filter that silently returned the league instead would be
+        // worse than no filter at all.
+        Competition competition = (wantedType == null && wantedMatchType == null && !allCompetitions)
                 ? resolveScheduleCompetition(team, activeSeasonYear) : null;
         List<MatchFixture> fixtures;
         if (competition != null) {

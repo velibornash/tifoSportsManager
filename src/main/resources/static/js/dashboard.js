@@ -615,7 +615,11 @@ function loadDashboard() {
 
 async function loadNextMatch() {
     try {
-        const response = await authFetch(`/teams/${currentUserTeamId}/schedule`);
+        // **Every competition, not the league.** "Next Match" is not a league question: a Champions Cup
+        // round can fall between two league rounds, and a manager told "no next match" while holding
+        // five group fixtures is being told something false (owner, 2026-10-10). Measured on a club in
+        // the Champions Cup: this route returned 0 without the flag and 5 with it.
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?allCompetitions=true`);
         if (!response.ok) throw new Error(`Failed to load schedule: ${response.status}`);
 
         const schedule = await response.json();

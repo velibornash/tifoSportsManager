@@ -2454,9 +2454,29 @@ file next to the defect.** `getSchedule` grew `competitionType` and `matchType` 
 and international screens were pointing at fabricated data because there was nothing real to ask for."*
 The Schedule page uses them. The dashboard never asks.
 
-**Not fixed here** — it changes what a manager sees on their first screen, and the honest question is
-whether **Next Match should be the league next, or the next match of any kind**. A Champions Cup round may
-fall mid-week between two league rounds; both answers are defensible and they are different products.
+### ✅ FIXED 2026-10-10 — Next Match is any kind of match (owner's ruling)
+
+*"Next matches i recent matches pokazuje bilop koji mec koji je na redu za igru i bilo koje odigrane
+meceve nevezno za tip meca"* — next match and recent matches show whichever match is next and whichever
+matches have been played, **regardless of type**.
+
+**Recent Matches needed no change.** `/teams/{id}/matches` already carried no competition filter, which
+is why a played Champions Cup tie was already coming back with its competition and a 1-1 score.
+
+**Next Match did.** `/teams/{id}/schedule` now takes **`allCompetitions`**, and only the dashboard asks for
+it. An explicit parameter rather than a missing one, because **the default has to keep meaning the league**
+for the Schedule page — and a filter that silently fell back to the league would be worse than no filter.
+
+**Measured on team 179, in the Tier 4 Masters Cup:**
+
+| | fixtures |
+|---|---|
+| `/schedule?seasonYear=2` | **0** |
+| `/schedule?seasonYear=2&allCompetitions=true` | **4** — *Tier 4 Masters Cup* |
+
+**Honest note on what the dashboard shows today:** the calendar is on season 3 and no cup fixtures exist
+for it, so the card reads *"Schedule updating"*. That is true rather than broken — the cups were drawn for
+seasons 1 and 2.
 
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
