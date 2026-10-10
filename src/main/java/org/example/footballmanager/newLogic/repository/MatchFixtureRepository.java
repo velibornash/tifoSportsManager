@@ -4,8 +4,6 @@ import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -14,6 +12,20 @@ import java.util.Optional;
 @Repository
 public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long> {
     List<MatchFixture> findByHomeTeamIdOrAwayTeamId(Long homeTeamId, Long awayTeamId);
+
+    /**
+     * The fixture a played match came from.
+     *
+     * <p>The link runs fixture → match ({@code MatchFixture.playedMatch}), and the match view needs it the
+     * other way round: after the whistle a manager is on the match, and the substitution plan is keyed by
+     * fixture. Without this there is no route from a played match to the report of how its conditions
+     * went, which is why {@code MatchDTO} has no fixture id to offer.
+     *
+     * <p>{@code played_match_id} carries a unique constraint — one played match belongs to at most one
+     * fixture — so {@code Optional} is the honest return rather than a list that should never hold two.
+     * An exhibition has no fixture and returns empty, which is a real state rather than a broken one.
+     */
+    Optional<MatchFixture> findByPlayedMatchId(Long playedMatchId);
 
     /**
      * Every fixture a team appears in, home or away.

@@ -947,308 +947,19 @@ would play **5,209** unplayed fixtures across 48 countries. That is the owner's 
 done for a UI check. What is proven is the rendering, against the real module, by
 `SubstitutionOutcomeIsShownTest`. Filed as **T1-16b**.
 
-## T1-16b · 🟡 The post-match substitution outcome has never been seen in a browser
-
-The outcome report is implemented and its rendering is proven by a Node harness against the real module
-(`SubstitutionOutcomeIsShownTest`, five checks, both mutations seen to fail). **It has never been looked at
-in the running application**, because the condition that produces it does not exist yet in the data.
-
-`substitution_plan` holds **1** row and `outcome_json` is **null** on it. Every played fixture that could
-carry an outcome has none, and the only route to one is `POST /simulation/current-round/simulate-all`,
-which would play **5,209** unplayed fixtures across 48 countries and rewrite a season that took five days
-to build. That is the owner's decision, not an agent's, so it was not run for a UI check.
-
-**Options, for the owner to pick:**
-1. Play the current round deliberately — the outcome then appears on real data, which is the honest version.
-2. Advance to a round the manager's own club is in and simulate only that — needs a fixture-scoped route,
-   which does not exist today (`/simulation` has `prepare`, `exhibition`, `simulate-all`, `week/advance`).
-3. Accept the harness as sufficient and close this, recording that the post-match screen is unverified in
-   a browser.
-
-**Exit criteria**
-- [ ] A played fixture carrying an outcome is opened in the browser, at 430px, and the fired/void badges
-      are read and confirmed
-- [ ] Or: an explicit owner decision closing it without that
-
-### T0-BE-5 · Day 6 — form and morale
-
-**What exists:** `WeekTemplate.DayKind.MORALE` and `GameDay.DAY_6` exist in the calendar. **No `DayJob`
-implementation triggers on day 6.** The calendar tab promises a manager something the server does not do.
-
-Form and morale are currently written by `MoraleService` from match results and by `RecoveryJob` as a daily
-zone compute. Neither is the day-6 settlement the template describes.
-
-**Tasks**
-1. `FormMoraleJob` — `key = "form-morale"`, day 6, hour 10, after `TrainingJob`'s day 4 and before day 7's
-   matchday.
-2. What it writes: weekly form drift from the last match, morale settlement from cumulative results,
-   morale decay for players who did not feature.
-3. Make it idempotent per `(season, week)` so the day cannot be stepped twice.
-4. Do not duplicate what `MoraleService.applyMatchToMoraleAndForm` already does per match — the job settles,
-   it does not re-derive.
-
-**Exit criteria**
-- [ ] Day 6 hour 10 runs and is visible on Admin → Jobs
-- [ ] Form and morale changed for players who played, and morale decayed for players who did not
-- [ ] Stepping to day 6 twice changes nothing the second time
-
-### T0-BE-6 · Background match generation, 30 minutes before kickoff
-
-**What exists:** `MatchdayJob` selects unplayed fixtures for the **current calendar slot** and hands them
-to `AsyncSimulationRunner`, which simulates each one to completion. Fixtures are created weeks earlier by
-draw jobs.
-
-**The owner's model:** the match is generated in the background shortly before kickoff, so the world is
-already resolved when the manager arrives at kickoff time.
-
-**Tasks**
-1. `MatchGenerationJob` fires **30 minutes before each slot's kickoff** rather than at it. The four slots
-   are 20:00, 19:00, 18:00 and 16:00, so the hours are 19:30, 18:30, 17:30 and 15:30 — **derive them from
-   `WeekTemplate`, never hardcode.**
-2. The kickoff gate in `APIController` (lines 289-329) currently decides whether **Watch** is enabled. It
-   becomes the second half of the feature: after generation, Watch opens; before it, it does not.
-3. **A match the manager wants to watch must not already be finished.** Decide: either the human's own
-   match is held back to kickoff while the rest of the slot is generated, or "watch" means the replay and
-   the copy says so. **This is a product decision — put it to the owner.**
-
-**Exit criteria**
-- [ ] Fixtures are generated 30 minutes before their slot, and the Jobs tab shows the trigger
-- [ ] Nothing generates twice if the clock is stepped through the same trigger
-- [ ] The owner's ruling on the human's own match is recorded before this lands
-
-### T0-BE-7 · Per-country kickoff times
-
-**What exists:** one `WeekTemplate` for **every** country — the file says so in its own comment. One
-timezone, `GameClockService.GAME_ZONE = "Europe/Belgrade"`.
-
-**The owner's rule:** the days of the week are the same everywhere; **only the kickoff time differs.**
-
-**Tasks**
-1. `Country.timeZoneOffsetMinutes` (or a `kickoffOffsetHours` on the country — **an offset is simpler than
-   a `ZoneId` here and is not wrong**, since the calendar is not wall-clock).
-2. `WeekTemplate` keeps one template; kickoff becomes `template kickoff + country offset`.
-3. `SeasonService.kickoffFor`, `NationalTournamentSchedule.kickoffFor` and `CupFixtureSeeder.matchDateFor`
-   all read the **home** country's offset, so a club's own fixture and its country's internationals agree.
-4. Daylight saving must **not** shift the game clock. An offset in hours cannot, which is the reason to
-   prefer it.
-
-**Exit criteria**
-- [ ] Two countries at opposite offsets have different kickoff hours on the same calendar day
-- [ ] The **days** are identical across all 48 countries
-- [ ] A season's fixtures do not drift when the host machine's timezone changes
-
-### T0-BE-8 · Post-match analytics from tick data
-
-**What exists:** match statistics, the pass-failure taxonomy, per-player ratings, and a **pre-match**
-prediction (`ScheduleInsightService`). **Nothing is computed from the tick data after the match.**
-
-**What is missing:** xG, xA, PPDA, field tilt, progressive passes, momentum.
-
-**Why this is the differentiator and not a nice-to-have:** the engine is a real spatial simulation, so all
-six are computable from **the same tick data that drives the animation** — the numbers and the pictures
-cannot disagree. Neither browser competitor can do this: Hattrick has seven sector ratings, Sokker has
-deliberately nothing. And our determinism makes an xG figure **recomputable and checkable**.
-
-**Tasks**
-1. `TickAnalyticsCollector` in the engine, alongside the existing `ProposalStatsCollector`.
-2. **xG** — shot location, distance, angle, defensive pressure and body position at the moment of the
-   strike. Calibrate against observed conversion before it is shown.
-3. **xA** — pass location, receiver position, whether the receiver was under pressure.
-4. **PPDA** — opponent passes in the final third, per team.
-5. **Field tilt** — share of passes and touches in the attacking third.
-6. **Progressive passes** — completed passes advancing a tenth of the pitch toward goal.
-7. **Momentum** — a rolling window over shot volume and field tilt, so a match can be *read*.
-8. **Every figure must be reproducible from the fixture seed.** That is the property neither competitor
-   has and the reason a stored number can be trusted.
-
-**Exit criteria**
-- [ ] All six computed from tick data, not from the result
-- [ ] **xG calibrated** against observed conversion — a team whose xG is 1.2 and whose goals are 4 is a
-      defect, not variance
-- [ ] Re-running the same fixture seed produces the same figures
-- [ ] Computed **before** `SimMatchService.persist` trims the event log, so the source is not lost
-
-### T0-BE-9 · Live streaming and skip-to-result
-
-**What exists:** the **replay viewer** — full 2D canvas and 3D, play/pause/seek/speed, player inspection,
-event overlays, file-backed and bounded. And the **live results desk** (`roundResultsTeletext.js`), which
-animates completed results as if live. Both work.
-
-**What is missing:** the simulation runs to completion synchronously (`SimMatchRunner.java:105`,
-`orchestrator.simulate(3600)`) and nothing is broadcast while it runs. Four WebSocket endpoints are
-registered and **dead** — no frontend connects, nothing broadcasts. No SSE, no STOMP. No skip-to-result.
-
-**Tasks**
-1. **Decide the product question first.** Is "watch live" watching a match that is being simulated now, or
-   watching the replay the moment it exists? The second is what exists and it is honest; the first costs a
-   streaming layer. **Put this to the owner before writing a line.**
-2. If streaming: broadcast tick batches from `MatchOrchestrator` through `MatchEventWSHandler`, which is
-   already written and already routes by match id. The frontend needs a client — **none exists**.
-3. Skip-to-result: the simulation runs on `@Async` and the UI polls a status endpoint. `simulateInBackground`
-   already returns counts; a status endpoint already exists at `/simulation/current-round/status`.
-4. **Cost, stated plainly:** the whole world's matchday is the thing that must stay fast. Streaming one
-   human's match is cheap; streaming 7,440 matches is not, and must never be attempted.
-
-**Exit criteria**
-- [ ] The owner's ruling on live-vs-replay is recorded
-- [ ] If live: a match streams while it simulates, and Skip-to-result works
-- [ ] If replay: the copy says so on the screen, and the dead WebSocket endpoints are deleted
-
-### T0-BE-10 · Friendly matches for national teams
-
-**What exists:** `NationalFriendlyRequestService` with 7 tests over **every week of the season**, and the
-owner's rule settled — a club and a nation have **no slot in common**, so week 6 day 1 is national-against-
-national. **No endpoint and no UI**, and an accepted fixture carries no competition, so the day-1 job will
-not find it.
-
-**Tasks**
-1. REST endpoints mirroring `FriendlyController`.
-2. Write `competitionType` / `matchType` on the accepted fixture so the day-1 job can select it.
-3. "Not compulsory" needs national-team support inside `FriendlyRequestService`, which is club-only today.
-
-**Exit criteria**
-- [ ] A national side can request, accept and play a week-6 day-1 warm-up
-- [ ] **Proven able to fail:** remove the `matchType` write and watch the fixture fail to be found
-
-### T0-BE-11 · Market friction — sale tax and the anti-daytrade component
-
-**What exists:** the **listing fee** is done (2.5% of asking price, human clubs only, P2-4). **The player
-can refuse to be listed** (P2-3, with two resolutions: upheld or paid at 5%). **The seller chooses which
-offer to accept** (P2-2).
-
-**Still missing:** the **sale tax**. Sokker's model is 8% base plus a second component scaling with time at
-the club, charged on the **profit** and not the full price — an explicit anti-speculation design. This is
-the cheapest remaining mechanic that turns the market into a conversation.
-
-**Tasks**
-1. `TransferTaxService`: base rate plus a time-at-club multiplier on profit.
-2. New `FinanceCategory.SALE_TAX`, so it appears on the Finances page under its own row.
-3. **The agent fee already exists** (2-5%). Do not double-charge — read it first and tax the remainder.
-
-**Exit criteria**
-- [ ] A sale writes one ledger line naming the base and the profit component
-- [ ] A player sold within weeks of arriving is taxed materially less than one sold after three years
-- [ ] The ledger line is proved by breaking the tax calculation
-
-### T0-BE-12 · Debt, interest and bankruptcy
-
-**What exists:** a nine-category ledger, gate income, sponsorship, prize money, wages, FFP bands **shown to
-the player**. No debt entity, no interest accrual, no bankruptcy path.
-
-**Why it matters now:** the analysis recorded the irony — we are starting to generate exactly the
-complaints both competitors attract. Hattrick's biggest administrative complaint is that the board hoards
-your money; ours does the opposite and has no floor at all.
-
-**Tasks**
-1. `DebtService`: a credit line per club, interest accrued weekly, a warning band, a bankruptcy threshold.
-2. Bankruptcy is **a state, not a delete** — the club keeps its history and its players.
-3. Board cash ceiling with a weekly release rate (T0-BE-13) is the natural pair: without a floor and a
-   ceiling, money is only a scoreboard.
-
-**Exit criteria**
-- [ ] Interest accrues weekly and is visible on the Finances page
-- [ ] Crossing the threshold produces a warning with a deadline, not an instant failure
-- [ ] Bankruptcy preserves the club, its history and its players
-
-### T0-BE-13 · Board cash ceiling with a weekly release rate
-
-**What exists:** `BoardExpectationService` computes trust 0-100 from FFP, standing, unhappy players and
-squad size, and shows it. **The board never acts on money.**
-
-**Tasks**
-1. A ceiling above which the board withholds, and a measured weekly release.
-2. The board's own money is also hoarded, so hoarding is punished symmetrically — Hattrick's rule and the
-   reason it works.
-3. Wire it to trust: a club that spends to the ceiling and a club that sits on it are not the same club.
-
-**Exit criteria**
-- [ ] A club above the ceiling cannot spend the excess, and the screen says why
-- [ ] The withheld amount returns on a stated schedule
-- [ ] A test proves hoarding and overspending both cost something
-
-### T0-BE-14 · The manager can be sacked
-
-**What exists:** `BoardExpectationService.trustScore()` is real. `TRUST_SACKING_REVIEW = 20.0` has **three
-references, all inside that one class.** `sackingReview` is a **read-only boolean** surfaced on the finance
-page. There is **no `BoardExpectation` entity, no persistence, no end-of-season review, no
-replacement-manager flow.**
-
-**A number the player can see that nothing responds to is worse than no number**, because it invites the
-expectation of a consequence.
-
-**Tasks**
-1. `BoardExpectation` entity: trust, per-season history, the expectations set, and the objectives.
-2. End-of-season review: trust decays across seasons, objectives are set, and the outcome is a decision.
-3. Sacking: the club is released to the pool, another manager can be assigned, the season's record survives.
-4. Trust must change for **reasons the player can see** — results, finances, squad, supporter mood.
-
-**Exit criteria**
-- [ ] Trust persists across seasons and moves for stated reasons
-- [ ] A manager below the threshold at the review is removed, and the club becomes playable again
-- [ ] A manager who is sacked is told why, with the numbers
-
-### T0-BE-15 · Pre-match tactical preview
-
-**What exists:** `MatchPreviewService` computes a real prediction — the fix landed, 32 tests, competition-
-agnostic. **`MatchController/{id}/preview` returns `Map.of()`** — an empty stub, still.
-
-The owner calls this *"Hattrick's single best idea"*, and it is also **the cheapest way to make the tactics
-work visible on day one**: a manager who cannot see that his shape changed cannot believe that it did.
-
-**Tasks**
-1. The preview endpoint returns the real prediction.
-2. **Both sides' shapes**, from their own profiles, so it is a test of the wiring rather than a display of
-   one club.
-3. Sector ratings **as the lineup is built** — the manager sees the effect of each change, not a summary
-   at the end.
-
-**Exit criteria**
-- [ ] The endpoint returns data, not `Map.of()`
-- [ ] Both sides' shapes are shown, from their own tactics
-- [ ] Changing a lineup changes the ratings **on screen, before kickoff**
-
----
-
-## T0-UI — frontend
-
-Every T0-UI task has a **430px mobile pass** as part of its exit criteria. The repository has already lost
-a card to a table that fitted on desktop and vanished on a phone.
-
-### T0-UI-1 · The tactic library
-
-Save, rename, duplicate, delete and order tactics; set the default; see at a glance which one a fixture
-will use.
-
-- [ ] List of tactics with formation, style and version
-- [ ] Create, rename, duplicate, delete
-- [ ] Set default — **exactly one, enforced**
-- [ ] Delete is refused while a tactic is assigned to an unplayed fixture, and the refusal names the fixture
-- [ ] `authFetch` on every call, `response.ok` checked on every one
-- [ ] 430px pass
-
-### T0-UI-2 · Per-match tactic selection
-
-On the fixture screen: pick up to three tactics and set the condition on each.
-
-- [ ] Up to three, with the fourth refused **on screen**, not after a save
-- [ ] Condition dropdown per tactic: always · leading 1 · leading 3+ · drawing · trailing 1 · trailing 3+
-- [ ] Priority is visible and reorderable, because priority breaks ties
-- [ ] A preview line in plain words: *"Losing by 2 or more → 4-2-3-1 high press"*
-- [ ] A fixture with nothing set says **"your default tactic will be used"** — the manager forgetting is a
-      normal state, not an error
-- [ ] 430px pass
-
-### T0-UI-3 · Per-match lineup and bench
-
-Drag eleven starters and up to seven substitutes onto the formation, with the bench and the reasons a
-player cannot be selected.
-
-- [ ] Drag eleven onto the formation; the rest go to the bench, capped at seven
-- [ ] Injured, suspended and out-of-contract players are **shown with the reason**, not hidden
-- [ ] The goalkeeper constraint is a **message while building**, not a server error afterwards
-- [ ] "Use my default lineup" as one action
-- [ ] The fixture screen shows which XI is in force — per-match or template
-- [ ] 430px pass
+## T1-16b · ✅ CLOSED 2026-10-10 — the post-match outcome, seen in a browser
+
+The post-match substitution outcome has now been read on the running application, at 430 × 932, with the
+manager's own club: a fired condition shows **"Fired at 63'"** and a void one shows **"Void — nobody was
+left on the bench"**, read-only, with no Remove button and no add form.
+
+This was filed because the outcome could not be verified without simulating 5,209 fixtures. It was
+verified instead by writing one temporary `outcome_json` row against an already-played fixture, opening
+that match, and **deleting the row afterwards**. The table is back to the one row it started with.
+
+That attempt is also what uncovered **T0-UI-4b**: the panel was not there at all, because it was mounted
+on a page no route renders. T1-16 was not reachable either — the validation, the refusal and the outcome
+record were all real and none of them could be used. Closing this one depended on closing that one.
 
 ## T0-UI-4b · 🔴 The substitution plan is unreachable — the whole feature is dead code
 
@@ -1296,14 +1007,50 @@ green. Same shape as the other failures on this board: **the test proved the par
    (editable) and on **Match Report** after the whistle (read-only, with the outcome badges). That is
    where a manager is.
 
-**Exit criteria**
-- [ ] The backend can resolve a played match back to its fixture
-- [ ] The panel is reachable from the Preview tab before kickoff, in a browser, at 430px
-- [ ] The outcome is reachable from the Match Report after the whistle, in a browser, at 430px
-- [ ] **Proven able to fail:** a test that drives the real routing, not `loadPlan` in isolation
-- [ ] T0-UI-4 and T1-16 stay open until this is closed
+**Fixed 2026-10-10.** Both halves.
 
-### T0-UI-4 · ✅ DONE 2026-10-09 — the substitution screen — ❌ REOPENED, see T0-UI-4b
+- **BE.** `MatchFixtureRepository.findByPlayedMatchId`, and `GET /api/sim/matches/{matchId}/substitution-plan`.
+  The controller moved to a single `@RequestMapping("/api/sim")` so the plan has one home and one
+  `planView`, rather than two controllers each carrying a copy. A match with no fixture is **404**, not an
+  empty plan — an empty plan is what "no conditions set" looks like, and those must not look the same.
+- **BE.** `MatchDTO` now carries `homeTeamId` / `awayTeamId`. It already carried the two clubs as *names*,
+  so deciding "is the manager at home" meant comparing strings; and `match-view.js` read `homeTeamId` off
+  the lineups payload, which is null until kickoff, so an unplayed fixture reported no home club at all.
+- **BE.** A **played** fixture is never editable. `isStillEditable` had only the clock, so a fixture played
+  ahead of its slot still reported itself open and the screen would have offered to edit an instruction
+  for a match already in the record. Caught by `SubstitutionPlanByMatchTest` asserting `editable: false`.
+- **FE.** The panel is mounted in `match-view.js` on both surfaces, owned by the home club **by id**,
+  and `fixture-view.js` no longer mounts it — one mounting point, because two drift silently.
+
+**Exit criteria**
+- [x] The backend can resolve a played match back to its fixture
+- [x] The panel is reachable from the Preview tab before kickoff, in a browser, at 430px
+- [x] The outcome is reachable from the Match Report after the whistle, in a browser, at 430px
+- [x] **Proven able to fail:** a test that drives the real routing, not `loadPlan` in isolation
+- [x] T0-UI-4 and T1-16 closed
+
+**Verified in the running application**, at 430 × 932, against the owner's own club:
+
+| | |
+|---|---|
+| Unplayed fixture (OFK Omladinac v RFK Smederevo) | panel present, editable form, *"Decisions close an hour before kickoff."* |
+| A condition added through the UI | saved, and `substitution_plan.rules_json` read back from the database |
+| Played fixture (OFK Omladinac 1–1 TSK Budućnost 1919) | panel read-only, no Remove, no add form |
+| Outcome | green **"Fired at 63'"** and red **"Void — nobody was left on the bench"**, stacked under the sentence, no overflow |
+
+Every row written for that check was deleted; the table is back to the one row it started with.
+
+**The check that should have existed before T0-UI-4 was closed:**
+`SubstitutionPlanIsReachableTest` reads the real routing function and the real mount, then drives the real
+module through both routes. Both mutations were run against it: deleting the single line
+`void mountSubstitutionPlan();` turns `theMountIsCalled` red, and dropping the home-club test turns
+`onlyTheHomeClubIsOfferedThePlan` red. Both are the defect itself, not a paraphrase of it.
+
+It also has a guard on itself: the harness originally searched the *stripped* source for
+`'export function ...'`, got `-1`, and sliced from it — a one-character string that matches nothing, so
+every check passed vacuously. The guard now asserts the harness never does that.
+
+### T0-UI-4 · ✅ DONE 2026-10-09 — the substitution screen — ✅ closed 2026-10-10 via T0-UI-4b
 
 `substitution-plan-view.js`, mounted on the **fixture** page. **The screen itself was never reachable** —
 see T0-UI-4b. Everything below describes the module, which is sound; what is missing is the mounting.
@@ -1319,7 +1066,8 @@ see T0-UI-4b. Everything below describes the module, which is sound; what is mis
 - [x] Refuses a sixth rule with the reason — five subs and three windows are engine limits
 - [x] **Mounted only for a fixture the manager's club is playing at home, and only before it is played.**
       The plan is the home club's instruction; offering it on an away fixture, or on one with a result,
-      is a control with no meaning — **and, as T0-UI-4b records, mounted on a page no manager can reach**
+      is a control with no meaning — and, as T0-UI-4b records, was briefly mounted on a page no manager
+      could reach. It is mounted on the match view now, on both sides of the whistle.
 - [x] 430px — the remove control drops under the sentence rather than squeezing it
 - [ ] **Not verified in a browser**, and the panel has never been rendered by anyone
 

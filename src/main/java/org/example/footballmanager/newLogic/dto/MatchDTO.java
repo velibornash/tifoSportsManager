@@ -33,6 +33,21 @@ public class MatchDTO {
     private Long replayId;
 
     /**
+     * The two club ids, by name of the field.
+     *
+     * <p>The DTO already carried {@code homeTeam} and {@code awayTeam} as <em>names</em>, so a screen that
+     * needed to know whether the manager's own club was playing at home had to compare strings. Name
+     * comparison has been burned repeatedly in this codebase — T1-13b added a team id to the qualifying
+     * table for exactly this reason — and the match view was living with the consequence: it read
+     * {@code homeTeamId} off the lineups payload, which is null until the match is played, so an unplayed
+     * fixture reported no home club at all.
+     *
+     * <p>Both are read straight off the entity, so no call site changes and no lookup is introduced.
+     */
+    private Long homeTeamId;
+    private Long awayTeamId;
+
+    /**
      * The {@code Match} this thing was played into, or null if it has not been played.
      *
      * <p><b>Added because the frontend could not otherwise know.</b> {@code /matches/by-fixture/{id}} sets
@@ -67,6 +82,8 @@ public class MatchDTO {
         dto.setId(id);
         dto.setHomeTeam(fixture.getHomeTeam() != null ? fixture.getHomeTeam().getName() : null);
         dto.setAwayTeam(fixture.getAwayTeam() != null ? fixture.getAwayTeam().getName() : null);
+        dto.setHomeTeamId(fixture.getHomeTeam() != null ? fixture.getHomeTeam().getId() : null);
+        dto.setAwayTeamId(fixture.getAwayTeam() != null ? fixture.getAwayTeam().getId() : null);
         dto.setHomeGoals(null);
         dto.setAwayGoals(null);
         dto.setMatchDate(fixture.getMatchDate() != null ? fixture.getMatchDate().toString() : null);
@@ -137,6 +154,8 @@ public class MatchDTO {
         dto.setId(match.getId());
         dto.setHomeTeam(match.getHomeTeam() != null ? match.getHomeTeam().getName() : "TBD");
         dto.setAwayTeam(match.getAwayTeam() != null ? match.getAwayTeam().getName() : "TBD");
+        dto.setHomeTeamId(match.getHomeTeam() != null ? match.getHomeTeam().getId() : null);
+        dto.setAwayTeamId(match.getAwayTeam() != null ? match.getAwayTeam().getId() : null);
         dto.setHomeGoals(homeGoals);
         dto.setAwayGoals(awayGoals);
         dto.setMatchDate(formattedDate);

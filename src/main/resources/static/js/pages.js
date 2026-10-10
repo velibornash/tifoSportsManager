@@ -27,6 +27,7 @@ import { createTrainingView } from './pages/views/training-view.js';
 import { createMedicalView } from './pages/views/medical-view.js';
 import { createLeagueView } from './pages/views/league-view.js';
 import { createFixtureView } from './pages/views/fixture-view.js';
+import { createSubstitutionPlanView } from './pages/views/substitution-plan-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createClubCupView } from './pages/views/club-cup-view.js';
 import { createNationalTournamentView, NATIONAL_COMPETITIONS } from './pages/views/national-tournament-view.js';
@@ -374,9 +375,18 @@ function buildPageNavState(page, options = {}) {
         buildCommunityActionsHtml,
     });
 
+    // The conditional-substitution plan, built here and handed to the match view as a factory.
+    //
+    // It was mounted by fixture-view.js, which no route reaches any more (T0-UI-4b), so the plan and
+    // everything behind it — the save validation, the fired/void report after the whistle — existed for
+    // no manager. The match view is where a manager opens a fixture and where they stand after the
+    // whistle, so that is where it belongs.
+    const substitutionPlanView = createSubstitutionPlanView({ authFetch, getTeamId: () => currentUserTeamId });
+
     const matchView = createMatchView({
         authFetch, getTeamId: () => currentUserTeamId, goBackSmart,
         getLeagueNavState: getActiveLeagueNavState,
+        createSubstitutionPlanView: () => substitutionPlanView,
         getNavigationDeps: () => ({ pushNavState })
     });
     const playerView = createPlayerView({

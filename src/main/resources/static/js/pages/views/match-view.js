@@ -113,8 +113,8 @@ export function createMatchView(deps) {
             const homeGoals = first.homeGoals ?? matchMeta?.homeGoals ?? null;
             const awayGoals = first.awayGoals ?? matchMeta?.awayGoals ?? null;
             const played = homeGoals !== null && awayGoals !== null;
-            const homeTeamId = lineupsPayload?.homeTeamId || null;
-            const awayTeamId = lineupsPayload?.awayTeamId || null;
+            const homeTeamId = lineupsPayload?.homeTeamId || matchMeta?.homeTeamId || null;
+            const awayTeamId = lineupsPayload?.awayTeamId || matchMeta?.awayTeamId || null;
 
             const matchDate = parseMatchDate(first.matchDate || matchMeta?.matchDate);
             // Time only, no date - there is no calendar in this game (owner, 2026-10-01). The season
@@ -186,6 +186,7 @@ export function createMatchView(deps) {
                     <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
+                <div id="fm-substitution-plan"></div>
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">Back</button>
                 </div>
@@ -577,6 +578,41 @@ export function createMatchView(deps) {
             if (initialTab === 'report') void showMatchReport();
             else if (initialTab === 'goals') showGoals();
             else void showPreview();
+
+            void mountSubstitutionPlan();
+
+            /**
+             * Puts the conditional-substitution plan on this screen, which is where a manager actually is.
+             *
+             * <p><b>This used to live on the fixture sheet, and the fixture sheet is gone.</b> Every
+             * fixture routes here — a played one directly, an unplayed one with `fixture: true` — so the
+             * panel was mounted on a page no manager could reach and the whole feature was dead code
+             * (T0-UI-4b). The module is unchanged; only where it is mounted moved.
+             *
+             * <p><b>Only for the home club.</b> The plan is the home club's instruction and the engine
+             * reads it for the home side, so offering it on an away fixture would be a control with no
+             * meaning. The test is on the club <em>id</em>, never on the name.
+             *
+             * <p>Failures are swallowed on purpose: the plan is one panel on a working screen, and a plan
+             * that will not load must not take the match down with it.
+             */
+            async function mountSubstitutionPlan() {
+                const host = document.getElementById('fm-substitution-plan');
+                if (!host) return;
+                const managerTeamId = getTeamId?.();
+                if (!managerTeamId || !homeTeamId || Number(managerTeamId) !== Number(homeTeamId)) return;
+                try {
+                    const planView = deps.createSubstitutionPlanView?.();
+                    if (!planView) return;
+                    // The two id spaces are kept apart on purpose. `matchId` above is a fixture id when
+                    // `isFixture` is true and a match id otherwise, and passing the wrong one to the
+                    // wrong endpoint is the defect the owner's P0 report was about.
+                    if (isFixture) await planView.loadPlan(matchId, host, managerTeamId);
+                    else await planView.loadPlanForMatch(matchId, host, managerTeamId);
+                } catch (error) {
+                    console.warn('Could not load the substitution plan:', error);
+                }
+            }
 
             document.getElementById("view-preview").addEventListener("click", () => void showPreview());
             document.getElementById("view-lineups").addEventListener("click", () => {

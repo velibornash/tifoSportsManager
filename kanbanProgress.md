@@ -1,5 +1,48 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-4b — the substitution plan is reachable, and the post-match outcome is on screen (2026-10-10)
+
+**What was done.** Both halves, because the feature was missing both.
+
+*Backend.* `MatchFixtureRepository.findByPlayedMatchId` plus `GET /api/sim/matches/{matchId}/substitution-plan`.
+The controller moved to one `@RequestMapping("/api/sim")` so the plan has one home and one `planView`
+rather than two controllers each holding a copy. A match with no fixture is 404, not an empty plan — an
+empty plan is exactly what "no conditions set" looks like.
+
+*Backend, found on the way.* `MatchDTO` carried the two clubs only as **names**, so "is the manager at
+home" meant comparing strings; and `match-view.js` read `homeTeamId` off the lineups payload, which is null
+until kickoff, so an unplayed fixture reported no home club at all. Both ids are now on the DTO.
+
+*Backend, caught by a test.* `SubstitutionPlanByMatchTest` asserted `editable: false` on a played fixture
+and got `true`. `isStillEditable` only looked at the clock, so a fixture played ahead of its slot still
+reported itself open — and the screen would have offered to edit an instruction for a match already in
+the record. A played fixture is now never editable.
+
+*Frontend.* The panel is mounted in `match-view.js` on both surfaces, owned by the home club **by id**,
+and `fixture-view.js` no longer mounts it. One mounting point, because two drift silently.
+
+**Verified in the running application at 430 × 932**, on the manager's own club:
+
+| | |
+|---|---|
+| Unplayed OFK Omladinac v RFK Smederevo | panel present, editable, "Decisions close an hour before kickoff." |
+| Condition added through the UI | saved; `substitution_plan.rules_json` read back from the database |
+| Played OFK Omladinac 1–1 TSK Budućnost 1919 | panel read-only: no Remove, no add form |
+| Outcome | green "Fired at 63'", red "Void — nobody was left on the bench" |
+
+Every row written for the check was deleted. The table is back to the one row it started with.
+
+**The check that should have existed before T0-UI-4 was closed.** `SubstitutionPlanIsReachableTest` reads
+the real routing function and the real mount, then drives the real module through both routes. Deleting
+the single line `void mountSubstitutionPlan();` turns `theMountIsCalled` red; dropping the home-club test
+turns `onlyTheHomeClubIsOfferedThePlan` red. Both mutations are the defect itself.
+
+**And a harness that had to be guarded against itself.** It originally searched the *stripped* source for
+`'export function ...'`, got `-1`, and sliced from it — one character, matching nothing, so every check
+passed vacuously while proving nothing. That is the same failure mode as the fixture-view guard from the
+previous commit, caught the same way: by reading what the harness actually did rather than whether it
+passed. There is now a check asserting the harness never does that.
+
 ## 🔴 T0-UI-4b — the substitution plan is unreachable: the feature is dead code (2026-10-10)
 
 **How it was found.** By opening a page. T1-16b could not be closed without a played fixture carrying an

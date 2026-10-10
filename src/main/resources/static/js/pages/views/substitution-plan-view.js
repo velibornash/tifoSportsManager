@@ -129,9 +129,31 @@ export function createSubstitutionPlanView(deps) {
 
     let rules = [];
 
+    /**
+     * The plan for a fixture, before kickoff.
+     *
+     * @param {number} fixtureId a **fixture** id
+     */
     async function loadPlan(fixtureId, host, teamId) {
+        return load(`/api/sim/fixtures/${fixtureId}/substitution-plan`, fixtureId, host, teamId);
+    }
+
+    /**
+     * The plan for a match, after the whistle.
+     *
+     * @param {number} matchId a **match** id
+     *
+     * <p>A separate entry point rather than a flag on {@link loadPlan}, because the two id spaces overlap
+     * — fixture 5 and match 5 are both 5 — and a caller holding one must not be able to pass it where the
+     * other is expected. That confusion is the defect the owner's P0 report was about.
+     */
+    async function loadPlanForMatch(matchId, host, teamId) {
+        return load(`/api/sim/matches/${matchId}/substitution-plan`, matchId, host, teamId);
+    }
+
+    async function load(url, planKey, host, teamId) {
         const [planResponse, playersResponse] = await Promise.all([
-            authFetch(`/api/sim/fixtures/${fixtureId}/substitution-plan`),
+            authFetch(url),
             teamId ? authFetch(`/teams/${teamId}/players`) : Promise.resolve(null)
         ]);
 
@@ -149,7 +171,7 @@ export function createSubstitutionPlanView(deps) {
         const playersById = new Map(squad.map(p => [String(p.id), p.name || p.fullName || `#${p.id}`]));
 
         rules = parseRules(plan.rulesJson);
-        render(host, { fixtureId, plan, squad, playersById });
+        render(host, { fixtureId: plan.fixtureId ?? planKey, plan, squad, playersById });
     }
 
     function parseRules(rulesJson) {
@@ -310,5 +332,5 @@ export function createSubstitutionPlanView(deps) {
         render(host, { fixtureId, plan, squad, playersById });
     }
 
-    return { loadPlan };
+    return { loadPlan, loadPlanForMatch };
 }

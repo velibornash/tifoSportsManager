@@ -38,7 +38,7 @@ import java.util.Optional;
  * button that accepts input which cannot have an effect is worse than one that refuses.
  */
 @RestController
-@RequestMapping("/api/sim/fixtures/{fixtureId}/substitution-plan")
+@RequestMapping("/api/sim")
 @RequiredArgsConstructor
 public class SubstitutionPlanController {
 
@@ -49,7 +49,30 @@ public class SubstitutionPlanController {
     private final MatchFixtureRepository fixtures;
     private final org.example.footballmanager.newLogic.service.SubstitutionRuleValidator validator;
 
-    @GetMapping
+    /**
+     * The plan for a played match, reached from the match rather than from the fixture.
+     *
+     * <p><b>Why this route exists at all.</b> The plan is keyed by fixture, and after the whistle a
+     * manager is standing on the match view — where the report, the lineups and the goals are — with no
+     * fixture id in hand. `MatchDTO` carries `playedMatchId` and not `fixtureId`, so the match could not
+     * ask for its own plan; it had to be made to ask. The link back is
+     * {@code MatchFixture.playedMatch}, which is unique, so this is an exact answer.
+     *
+     * <p>A match with no fixture — an exhibition, simulated inline — has no plan and is refused rather
+     * than answered with an empty one, because an empty plan is what a manager with no conditions looks
+     * like, and those are different situations that must not look the same.
+     */
+    @GetMapping("/matches/{matchId}/substitution-plan")
+    public ResponseEntity<Map<String, Object>> byMatch(@PathVariable Long matchId) {
+        Optional<MatchFixture> found = fixtures.findByPlayedMatchId(matchId);
+        if (found.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        MatchFixture fixture = found.get();
+        return ResponseEntity.ok(planView(fixture, findOrCreate(fixture)));
+    }
+
+    @GetMapping("/fixtures/{fixtureId}/substitution-plan")
     public ResponseEntity<Map<String, Object>> get(@PathVariable Long fixtureId) {
         Optional<MatchFixture> found = fixtures.findById(fixtureId);
         if (found.isEmpty()) return ResponseEntity.notFound().build();
@@ -62,7 +85,7 @@ public class SubstitutionPlanController {
      * and submitted as a set, and a merge would leave rules the manager believes they deleted still
      * queued to fire.
      */
-    @PutMapping
+    @PutMapping("/fixtures/{fixtureId}/substitution-plan")
     public ResponseEntity<Map<String, Object>> save(
             @PathVariable Long fixtureId,
             @RequestBody Map<String, Object> body) {
@@ -71,16 +94,14 @@ public class SubstitutionPlanController {
         if (found.isEmpty()) return ResponseEntity.notFound().build();
         MatchFixture fixture = found.get();
 
-        if (fixture.getMatchDate() != null) {
-            long minutesToKickoff = java.time.Duration.between(
-                    java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes();
-            if (minutesToKickoff <= CUTOFF.toMinutes()) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "error", "PLAN_CLOSED",
-                        "message", "Substitutions closed "
-                                + Math.max(0, minutesToKickoff) + " minute(s) before kickoff. "
-                                + "The team is already picked."));
-            }
+        if (!isStillEditable(fixture)) {
+            long minutesToKickoff = fixture.getMatchDate() == null ? CUTOFF.toMinutes()
+                    : java.time.Duration.between(java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes();
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "PLAN_CLOSED",
+                    "message", "Substitutions closed "
+                            + Math.max(0, minutesToKickoff) + " minute(s) before kickoff. "
+                            + "The team is already picked."));
         }
 
         // Parse, validate, and refuse — in that order. (T1-16.)
@@ -146,7 +167,7 @@ public class SubstitutionPlanController {
      * <p>Refused inside the window for the same reason a save is: clearing a plan an hour before kickoff
      * cannot change the match either, and accepting it would look like it had.
      */
-    @DeleteMapping
+    @DeleteMapping("/fixtures/{fixtureId}/substitution-plan")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> clear(@PathVariable Long fixtureId) {
         Optional<MatchFixture> found = fixtures.findById(fixtureId);
@@ -187,6 +208,15 @@ public class SubstitutionPlanController {
     }
 
     private boolean isStillEditable(MatchFixture fixture) {
+        // A fixture that has been played is never editable, whatever its clock says.
+        //
+        // The cutoff alone answers this correctly in the normal case, because a played fixture's kickoff
+        // is in the past. It is not correct on its own: a fixture played ahead of its slot — an early
+        // kickoff decided by the competition, or a date moved forward after the game — would still report
+        // itself open, and the screen would offer to edit an instruction for a match already in the
+        // record. Writing it would be accepted and would change nothing, which is the worst of the three
+        // outcomes: it looks like it worked.
+        if (fixture.isPlayed()) return false;
         return fixture.getMatchDate() == null || java.time.Duration.between(
                 java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes() > CUTOFF.toMinutes();
     }
