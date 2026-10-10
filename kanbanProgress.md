@@ -1,5 +1,27 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-7 — a national side can answer a warm-up (2026-10-10)
+
+Two of the three board items were already true. The panel already stated "Optional. A warm-up is an
+extra match in week 6 day 1; not playing one costs nothing and skips no rule", and the club-side invite
+button has been rendered all along. Only accept and decline were missing, and that was the real item:
+requests rendered as one sentence, "Side 9 - pending", so a side that had been asked for a warm-up had
+no way to answer. The backend has had /respond and /cancel since it was written; nothing called them.
+
+A fourth defect was hiding behind it. describeElection creates an election row on read and was annotated
+@Transactional, which joins the caller's transaction and inherits its read-only flag - and describe is
+readOnly - so every call of the national-team endpoint threw "cannot execute INSERT in a read-only
+transaction". The country page reads seniorNt to learn the side's team id, so the throw was swallowed
+into { failed: true } and the senior and U-21 tabs rendered with no squad, no selector and no warm-up
+panel while looking as though they had loaded fine. REQUIRES_NEW gives that write its own transaction.
+
+Browser at 430px against live PostgreSQL: accept turned a Belgium request into ACCEPTED and created
+fixture 5445 - Belgium v Serbia, season 2, week 6 day 1, exactly the slot. Decline turned one into
+DECLINED with a reason. All test data removed afterwards.
+
+Not extended: the Node render harness. This machine has no Node, so that test skips, and asserting
+something that has never run is worse than not asserting it. Recorded on the board as a known gap.
+
 ## ✅ T0-UI-8 — the preview shows both shapes, and how well each eleven fits them (2026-10-10)
 
 Six preview fields were hardcoded `null` with the comment "not knowable before a match". That was true

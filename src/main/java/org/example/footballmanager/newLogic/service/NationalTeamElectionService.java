@@ -381,7 +381,22 @@ public class NationalTeamElectionService {
      * is false for an undecided election unless the caller is an admin or the owner, so the counts
      * are absent from the payload rather than merely hidden on screen.
      */
-    @Transactional
+    // REQUIRES_NEW, and this one annotation is worth more than it looks.
+    //
+    // The default REQUIRED propagation JOINS the caller's transaction and inherits its read-only flag.
+    // `NationalTeamService.describe` is `@Transactional(readOnly = true)`, so the INSERT inside
+    // `ensureElection` below was running in a read-only transaction and PostgreSQL refused it with
+    // "cannot execute INSERT in a read-only transaction".
+    //
+    // The cost of that refusal was not a visible error on the election panel. It was the whole national
+    // team screen: the country page reads `seniorNt` to learn the side's team id, so every call threw,
+    // the loader swallowed it into `{ failed: true }`, and the senior and U21 tabs rendered with no squad,
+    // no selector and no warm-up panel while looking like they had loaded fine.
+    //
+    // REQUIRES_NEW suspends the outer transaction and gives this one its own, writable session. The
+    // write is intended - see the comment inside - so the transaction was what needed fixing, not the
+    // write.
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public Map<String, Object> describeElection(Country country, NationalTeamLevel level, int seasonYear,
                                                User viewer, boolean canSeeTallies) {
         // **An election is CREATED here if it is missing, rather than reported as absent.**

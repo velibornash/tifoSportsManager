@@ -239,6 +239,9 @@ export function createCountryView(deps) {
                 </section>`;
         }
         const list = Array.isArray(opponents) ? opponents : [];
+        // The request rows name the other side. A row reading "Side 3" is technically correct and
+        // useless to a manager deciding whether to accept a warm-up with Belgium.
+        const namesById = Object.fromEntries(list.map(o => [o.id, o.name || `Side ${o.id}`]));
         const week = slot.week ?? view.week;
         const day = slot.day ?? view.day;
         const mine = Array.isArray(view.outgoing) ? view.outgoing : [];
@@ -264,8 +267,8 @@ export function createCountryView(deps) {
                     <button type="button" class="fm-action-btn" data-warmup-request>Ask for a warm-up</button>
                 </div>
                 <p class="fm-subtle" data-warmup-note></p>
-                ${warmUpRequestListHtml('You have asked', mine, teamId)}
-                ${warmUpRequestListHtml('Asked of this team', theirs, teamId)}
+                ${warmUpRequestListHtml('You have asked', mine, teamId, namesById)}
+                ${warmUpRequestListHtml('Asked of this team', theirs, teamId, namesById)}
             </section>`;
     }
 
@@ -310,27 +313,87 @@ export function createCountryView(deps) {
                 }
             });
         }
+
+        // Accepting, declining and withdrawing are the same shape of action, and all three answer 409
+        // with a sentence written for a manager rather than a stack trace: the other side got there
+        // first, or the week has gone. That sentence is shown, not replaced with a generic failure.
+        const respond = async (path, verb) => {
+            say(`${verb}…`);
+            try {
+                const response = await authFetch(path, { method: 'POST' });
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    say(body.detail || body.error || `That warm-up could not be ${verb.toLowerCase()}d.`);
+                    return;
+                }
+                await loadCountryPage({ tab: activeTab });
+            } catch (err) {
+                say(`That warm-up could not be ${verb.toLowerCase()}d. ${err.message || ''}`);
+            }
+        };
+
+        const teamId = root.querySelector('[data-warmup-team-id]')?.dataset.warmupTeamId || '';
+
+        root.querySelectorAll('[data-warmup-accept]').forEach(el => el.addEventListener('click',
+            () => respond(`/api/national/friendly-requests/${encodeURIComponent(el.dataset.warmupAccept)}`
+                + `/respond?teamId=${encodeURIComponent(teamId)}&accept=true`, 'Accepting')));
+        root.querySelectorAll('[data-warmup-decline]').forEach(el => el.addEventListener('click',
+            () => respond(`/api/national/friendly-requests/${encodeURIComponent(el.dataset.warmupDecline)}`
+                + `/respond?teamId=${encodeURIComponent(teamId)}&accept=false`, 'Declining')));
+        root.querySelectorAll('[data-warmup-withdraw]').forEach(el => el.addEventListener('click',
+            () => respond(`/api/national/friendly-requests/${encodeURIComponent(el.dataset.warmupWithdraw)}`
+                + `/cancel?teamId=${encodeURIComponent(teamId)}`, 'Withdrawing')));
     }
 
-    /** One warm-up request: who it is with, and what it is waiting for. */
-    function warmUpRequestListHtml(title, rows, teamId) {
+    /**
+     * One warm-up request, with the buttons its status allows.
+     *
+     * This used to render every request as a single sentence - `Side 3 · pending` - which meant a side
+     * that had been asked for a warm-up had no way to answer. The backend has had
+     * `/respond` and `/cancel` since it was written; nothing called them, so a request could be made
+     * and then could only be waited on. An incoming pending row now answers, an outgoing one withdraws,
+     * and a settled one says so and offers nothing, because a decision that is already made cannot be
+     * unmade from this screen.
+     *
+     * <p>Settled rows keep their decline reason. "Declined" without saying why is the one thing a
+     * manager cannot act on, and the controller already returns it.
+     */
+    function warmUpRequestListHtml(title, rows, teamId, names) {
         if (!rows.length) {
             return `<p class="fm-subtle">${htmlEscape(title)}: nothing.</p>`;
         }
-        const statusText = (r) => {
-            const other = String(r.requesterTeamId) === String(teamId)
-                ? (r.opponentTeamId ?? '—')
-                : (r.requesterTeamId ?? '—');
-            const status = String(r.status || 'PENDING').replace(/_/g, ' ').toLowerCase();
-            return `Side ${other} · ${status}`;
-        };
-        return `
-            <div class="club-profile-detail-list">
-                <div class="club-profile-detail-row">
-                    <span>${htmlEscape(title)}</span>
-                    <strong>${htmlEscape(rows.map(statusText).join(' · '))}</strong>
-                </div>
-            </div>`;
+        const nameOf = id => names?.[id] || `Side ${id ?? '—'}`;
+
+        const rowsHtml = rows.map(r => {
+            const mine = String(r.requesterTeamId) === String(teamId);
+            const other = mine ? r.opponentTeamId : r.requesterTeamId;
+            const status = String(r.status || 'PENDING').toUpperCase();
+            const settled = status !== 'PENDING';
+
+            let actions = '';
+            if (!settled && !mine) {
+                actions = `
+                    <div class="fm-country-select-row fm-warmup-actions">
+                        <button type="button" class="fm-action-btn" data-warmup-accept="${htmlEscape(String(r.id))}">Play them</button>
+                        <button type="button" class="fm-action-btn" data-warmup-decline="${htmlEscape(String(r.id))}">Cannot make it</button>
+                    </div>`;
+            } else if (!settled && mine) {
+                actions = `<div class="fm-country-select-row fm-warmup-actions">
+                    <button type="button" class="fm-action-btn" data-warmup-withdraw="${htmlEscape(String(r.id))}">Withdraw</button>
+                </div>`;
+            }
+
+            const reason = r.declineReason
+                ? `<p class="fm-subtle fm-warmup-reason">${htmlEscape(r.declineReason)}</p>` : '';
+
+            return `
+                <div class="club-profile-detail-row fm-warmup-row">
+                    <span>${htmlEscape(nameOf(other))} · ${htmlEscape(status.toLowerCase())}</span>
+                    ${actions}${reason}
+                </div>`;
+        }).join('');
+
+        return `<div class="club-profile-detail-list">${rowsHtml}</div>`;
     }
 
     /**

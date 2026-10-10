@@ -5976,3 +5976,22 @@ body {
         height: 8px;
     }
 }
+
+/* T0-UI-7 - answering a national warm-up. */
+.fm-warmup-actions {
+    margin-top: 8px;
+    gap: 8px;
+}
+
+.fm-warmup-row {
+    align-items: flex-start;
+    flex-direction: column;
+}
+
+.fm-warmup-row .fm-country-select-row {
+    width: 100%;
+}
+
+.fm-warmup-reason {
+    margin: 6px 0 0;
+}

@@ -1409,48 +1409,67 @@ rows, T2-9). xG is computed from that position and persisted as a *number*; the 
 - [ ] An owner decision: persist shot and pass positions, or close these three as not being built
 - [ ] If persisted: a shot map, progressive passes, and a momentum strip, each with its reading
 
-### T0-UI-7 · Friendly requests for national teams
+### T0-UI-7 · DONE 2026-10-10 — a national side can answer a warm-up, and the senior tab works at all
 
-- [ ] Request, accept and decline a week-6 day-1 warm-up
-- [ ] **Optional is stated as optional** — the panel says what not playing costs, which is nothing
-- [ ] The club-side invite button that exists in the service but is never rendered
+**Two of the three board items were already true, and the third was hiding behind a crash.**
 
-### T0-UI-8 · DONE 2026-10-10 — the preview shows both shapes, and how well each eleven fits them
+- [x] Request — the "Ask for a warm-up" button and opponent list have been there since the panel was
+      written. No change needed.
+- [x] **Optional is stated as optional** — the panel reads, verbatim: *"Optional. A warm-up is an extra
+      match in week 6 day 1; not playing one costs nothing and skips no rule."* No change needed.
+- [x] The club-side invite button is rendered, at `country-view.js` `[data-warmup-request]`.
+- [x] **Accept and decline now exist.** This is the real gap, and it was the only one.
 
-**Six preview fields were hardcoded `null`** — formation fitness, bench quality, position mismatches —
-with the comment *"still null on purpose… not knowable before a match."*
+### What was actually broken
 
-That was true while a fixture had neither a lineup nor a tactic, and it stopped being true the moment a
-manager could save both. **Both now can.** It was also the preview reporting the club's standing
-`team.formation` column while the manager picked a different shape on the same screen.
+`warmUpRequestListHtml` rendered every request as one sentence — **`Side 9 · pending`**. A side that had
+been asked for a warm-up had no way to answer it: the backend has had `/respond` and `/cancel` since it
+was written and **nothing called them**. A request could be made and then only waited on.
 
-### What it does now
+An incoming pending row now answers, an outgoing one withdraws, and a settled one shows its reason and
+offers nothing, because a decision that is already made cannot be unmade from this screen. Rows name the
+other side — *"Side 9"* is technically correct and useless to a manager deciding whether to accept.
 
-- `ShapePreviewService` resolves the shape actually in force — **per-match tactic, then the chosen lineup,
-  then the club's column** — and measures the eleven against it.
-- **Fitness is capacity-based, not membership-based.** Asking only "does this shape have a D slot" scores
-  a 4-4-2 fielding seven centre backs at 100%. 4-4-2 has four defenders, so the question is whether they
-  *fit*.
-- The two shapes are drawn **side by side as pitches**, dots from the formation's own digits — first is
-  defenders, last is strikers, the middle is midfield — so the picture and the engine cannot drift.
-- Bench quality is the mean of the named substitutes; an empty bench reads *"No bench named"*, never 0.0.
-- An unpicked side reads *"Eleven not picked yet"* rather than a dash, so *"picked and fits perfectly"* is
-  never confused with *"nothing chosen"*.
+### 🔴 Found on the way: the senior and U-21 tabs were dead
 
-**`homeAvailabilityScore` is left `null` on purpose** and is the only one of the six that still is:
-it depends on injuries that may happen during the match.
+The panel never rendered at all, because `NationalTeamElectionService.describeElection` **creates an
+election row on read** and was annotated `@Transactional` — the default `REQUIRED`, which **joins the
+caller's transaction and inherits its read-only flag**. `NationalTeamService.describe` is
+`@Transactional(readOnly = true)`, so every call threw `cannot execute INSERT in a read-only transaction`.
+
+The damage was not a visible error. The country page reads `seniorNt` to learn the side's team id, so
+every read threw, the loader swallowed it into `{ failed: true }`, and **the senior and U-21 tabs rendered
+with no squad, no selector and no warm-up panel while looking as though they had loaded fine.**
+
+`REQUIRES_NEW` suspends the outer transaction and gives this one a writable session. The write is
+intended and documented, so the transaction was what needed fixing — not the write.
 
 ### Evidence
 
-- `ShapePreviewServiceTest` — 5 tests, **proven able to fail**: making the striker slot unmatchable turns
-  the full-fit check red (*expected 1.0, was 0.82*).
-- **It caught a real bug in its own first version.** Truncating slot keys to two characters grouped `DCL`
-  with `DR` under `DC`, so *every centre back scored as a mismatch* and a **correct 4-4-2 came out at
-  64%**. Slot keys are positional, so the kind is now taken from their leading letters.
-- Browser at **430px**: OFK Omladinac 3-4-3 at **92% fit / 14.8 bench** v OFK Proleter Apatin 4-4-2 at
-  **91% / 12.9**, two 190px columns, no horizontal overflow, 11 dots a side, keeper filled.
+Browser at **430px**, against live PostgreSQL, on Serbia's senior tab:
 
-**Live DB untouched** — `lineup` rows with a `match_id`: still 0.
+- Incoming PENDING from Belgium → **Play them** / **Cannot make it**, naming *BELGIUM · PENDING*.
+- **Play them** → request `ACCEPTED` **and fixture 5445 created**: Belgium (47) v Serbia (3), season 2,
+  **week 6 day 1** — exactly the slot, confirming the whole path end to end.
+- **Cannot make it** → request `DECLINED`, reason recorded.
+- The panel reads *"Optional. A warm-up is an extra match in week 6 day 1; not playing one costs nothing
+  and skips no rule."* — the week comes from `/slot`, so the page never restates it.
+- The 409 guard fires correctly: asking a side that already has a match that week returns the sentence,
+  which is shown rather than replaced.
+
+**All test data removed** — `friendly_request` rows: 0; fixture 5445 deleted; live DB as found.
+
+### Known gap
+
+- The Node render harness (`render-country-view.mjs`, driven by
+  `CountryPageRendersWithoutReferenceErrorTest`) is where these three states should be asserted. **It was
+  not extended: this machine has no Node, so `assumeTrue(nodeIsAvailable())` skips it and the new
+  assertions could not have been executed even once.** Shipping assertions never run is the
+  "a test that cannot fail proves less than no test" trap, so the coverage is browser evidence only until
+  someone with Node adds it.
+- The decline reason reaches the **requester**, not the responder: `incoming()` filters to `PENDING` only
+  while `outgoing()` returns everything. Verified in code, not in a browser — no Northern Ireland
+  account exists to log in as.
 
 ## T1-1 · 🔴 `ConditionalSubstitutionRules` is dead in production
 
