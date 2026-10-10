@@ -780,6 +780,16 @@ async function seedOtherNations() {
     await startAdminDatabaseJob('/admin/seed-other-nations', 'Seeding the other nations in progress...');
 }
 
+/**
+ * Gives every club a default tactic (owner ruling, 2026-10-10).
+ *
+ * A job like the other world-building buttons rather than a repair: it writes a row per club, so it is one
+ * of the longer writes in this panel and must not block the request that asked for it.
+ */
+async function seedDefaultTactics() {
+    await startAdminDatabaseJob('/admin/seed-tactics', 'Giving every club a default tactic in progress...');
+}
+
 async function initializeDatabase() {
     const confirmInit = confirm('Initialize database now? This may take a few seconds.');
     if (!confirmInit) return;
@@ -1034,5 +1044,6 @@ window.loadDashboard = loadDashboard;
 window.resetDatabase = resetDatabase;
 window.initializeDatabase = initializeDatabase;
 window.seedOtherNations = seedOtherNations;
+window.seedDefaultTactics = seedDefaultTactics;
 window.loadRecentMatches = loadRecentMatches;
 window.loadHomeTeamStats = loadHomeTeamStats;

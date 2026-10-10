@@ -387,6 +387,23 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             }
             return;
         }
+        if (action === 'seed-tactics') {
+            // A job, not a repair: one row per club, so it goes through the polling job path rather than
+            // runRepair(), which expects a reply now.
+            const confirmSeed = window.confirm(
+                'Give every club a default tactic?\n\n' +
+                'Every club that has no tactics of its own is given the same default, copied from the club ' +
+                'that already has tactics.\n\n' +
+                'Clubs that already have tactics are left exactly as they are, so this is safe to run ' +
+                'twice. Nothing is deleted and no match is played.');
+            if (!confirmSeed) return;
+            if (typeof window.seedDefaultTactics === 'function') {
+                await window.seedDefaultTactics();
+            } else {
+                window.alert('This admin action is not available right now.');
+            }
+            return;
+        }
         if (action === 'redraw-cup') {
             await runRepair(button, {
                 confirmText: 'Re-draw the cup?\n\nRounds that already have ties are left alone, so this only fills in rounds that never got drawn.',
@@ -1127,6 +1144,13 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             body: 'Builds every country that is not activated: divisions, clubs, ratings and a standing table. No players, no matches. Safe to run twice.',
                             action: 'seed-other-nations',
                             label: 'Seed other nations',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Give every club a default tactic',
+                            body: 'Copies the club that already has tactics into every club that has none, so all of them have something to pick from. Clubs with tactics are left alone, so it is safe to run twice.',
+                            action: 'seed-tactics',
+                            label: 'Give every club a default tactic',
                             variant: ''
                         })}
                         ${toolCard({

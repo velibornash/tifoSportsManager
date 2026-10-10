@@ -126,6 +126,25 @@ public class AdminController {
         ));
     }
 
+    /**
+     * Gives every club a default tactic, using the club that already has one as the template
+     * (owner ruling, 2026-10-10).
+     *
+     * <p>An admin action and not a boot action, per the standing rule that boot writes nothing. It writes a
+     * row per club, so it is one of the longest writes in this panel, and it runs through the same job
+     * queue as the other world-building buttons rather than blocking the request.
+     *
+     * <p>Idempotent: a club that already holds any tactic is skipped, so a second press reports zero
+     * instead of duplicating the world. That matters because the natural way to use this button is to
+     * press it, look, and press it again.
+     */
+    @PostMapping("/seed-tactics")
+    public ResponseEntity<Map<String, Object>> seedDefaultTactics() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("seed-tactics")
+        ));
+    }
+
     @PostMapping("/reset-db")
     public ResponseEntity<Map<String, Object>> resetDatabase() {
         return ResponseEntity.accepted().body(toDatabaseJobResponse(

@@ -92,6 +92,17 @@ class AdminAuthorizationTest extends BaseTest {
     }
 
     @Test
+    @DisplayName("a regular manager cannot give every club a default tactic")
+    void aRegularManagerCannotSeedTactics() throws Exception {
+        // This one writes a row per club. It belongs to the same class of action as the others above — an
+        // owner decision applied to the world — and it is exactly the kind of route that looks harmless
+        // because it is idempotent.
+        mockMvc.perform(post("/admin/seed-tactics")
+                        .header("Authorization", auth.bearer(UserRole.REGULAR)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("a regular manager cannot re-seed national teams or re-draw the cup")
     void aRegularManagerCannotReseed() throws Exception {
         mockMvc.perform(post("/admin/world-reseed")

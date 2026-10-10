@@ -781,13 +781,19 @@ a library to select from.
    list shape. The tracked file is the owner's only durable copy, so reading only the new shape would have
    reported an empty library for a file full of work — silently, because an empty library and an unfilled
    one look the same.
-5. **An explicit admin action, never a boot step**, that gives every club a default tactic. Boot writes
-   nothing here by standing rule, and this writes a row per club: it should be visible and repeatable, not
-   something that happened to somebody on a restart.
+5. **An explicit admin action, never a boot step** — *Give every club a default tactic*, in the Admin
+   panel beside Seed other nations. Boot writes nothing here by standing rule, and this writes a row per
+   club: it should be visible, countable and repeatable, not something that happened to somebody on a
+   restart. It runs on the job queue with a progress message, and it **refuses to invent a template**: with
+   no authored profile to copy it logs that and leaves the world alone, rather than writing rules nobody
+   wrote to 14,723 clubs under a button labelled "give every club a default".
 
 **Exit criteria**
 - [x] A club holds several tactics, each with its own formation and rules
-- [ ] The seeding action has not been pressed on the owner's database — **that is the owner's button**
+- [x] The seeding action is wired as an admin button — `POST /admin/seed-tactics`, through the same job
+      queue as Reset and Seed other nations, refused for a non-admin
+- [ ] **The button has not been pressed on the owner's database.** It will write a row for each of 14,723
+      clubs, and that is the owner's world to change
 - [x] The backup round-trips a club with three tactics and reads the existing one-entry file
 - [x] **Proven able to fail:** a provider that ignores the tactic id and answers with the default turns
       `aSecondTacticHasItsOwnRules` red; removing the old-shape read turns

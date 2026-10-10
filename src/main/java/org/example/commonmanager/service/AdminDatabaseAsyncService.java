@@ -31,6 +31,9 @@ public class AdminDatabaseAsyncService {
     private final org.example.footballmanager.newLogic.repository.CompetitionRepository competitionRepository;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teamRepository;
     private final org.example.footballmanager.newLogic.service.ClubRatingService clubRatingService;
+    private final org.example.footballmanager.newLogic.service.TacticLibraryService tacticLibraryService;
+    private final org.example.footballmanager.newLogic.repository.TacticRepository tacticRepository;
+    private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository tacticsProfileRepository;
 
     private final AtomicLong jobSequence = new AtomicLong(0L);
     private final AtomicReference<AdminDatabaseSnapshot> currentSnapshot = new AtomicReference<>(
@@ -132,6 +135,7 @@ public class AdminDatabaseAsyncService {
                 seedOtherNations();
                 seedClubRatings();
             }
+            case "seed-tactics" -> seedDefaultTacticForEveryClub();
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
     }
@@ -196,6 +200,38 @@ public class AdminDatabaseAsyncService {
      * <p>Best-effort, unlike the rest of the job: a club rating is one column, and failing the whole
      * Initialise over it would undo a pyramid that is already built.
      */
+    /**
+     * Gives every club a default tactic, using the club that already has one as the template.
+     *
+     * <p><b>Owner ruling, 2026-10-10: the current tactical profile is the default for all teams.</b> The
+     * world held one profile against 14,723 clubs, so every club but one was playing the bundled fallback
+     * and a tactic library had nothing in it to select from.
+     *
+     * <p><b>The template is an existing profile, and nothing else.</b> If there is no profile to copy, this
+     * does not invent one: rules nobody authored, written to 14,723 clubs under a button labelled "give
+     * every club a default", is exactly the kind of quiet authorship that is hard to notice and harder to
+     * undo. It reports that there was nothing to copy and leaves the world alone.
+     *
+     * <p>Idempotent, because the button will be pressed more than once: a club already holding any tactic
+     * is skipped, and the (club, name) unique constraint backs that up in the database. Pressing it twice
+     * reports zero and duplicates nothing.
+     */
+    private void seedDefaultTacticForEveryClub() {
+        var template = tacticsProfileRepository.findAll().stream().findFirst();
+        if (template.isEmpty()) {
+            log.warn("No tactical profile exists to use as a template; no club was given a default tactic. "
+                    + "Author one club's tactics in the Tactic Editor, then press this again.");
+            return;
+        }
+        var source = template.get();
+        var report = tacticLibraryService.giveEveryClubADefaultTactic(
+                source.getFormation(), source.getFormation(), source.getStyle(),
+                source.getRulesJson(), source.getSetPiecesJson());
+        log.info("Default tactic for {} of {} club(s) from '{}' ({}); {} already had one; {} tactic(s) in total.",
+                report.created(), report.totalClubs(), source.getFormation(),
+                source.getFormation(), report.skipped(), tacticRepository.countAll());
+    }
+
     private void seedClubRatings() {
         try {
             var rated = clubRatingService.recomputeDurably();
@@ -212,6 +248,7 @@ public class AdminDatabaseAsyncService {
             case "reset" -> 3;
             case "initialize" -> 4;
             case "seed-other-nations" -> 2;
+            case "seed-tactics" -> 2;
             default -> 1;
         };
     }
@@ -221,6 +258,7 @@ public class AdminDatabaseAsyncService {
             case "reset" -> "Clearing database (preserves user + tactics).";
             case "initialize" -> "Database initialization in progress.";
             case "seed-other-nations" -> "Seeding the simulated nations in progress.";
+            case "seed-tactics" -> "Giving every club a default tactic in progress.";
             default -> "Database job in progress.";
         };
     }

@@ -1,5 +1,22 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-1 (button) — "give every club a default tactic", wired but not pressed (2026-10-10)
+
+**The button.** Admin → *Give every club a default tactic*, beside *Seed other nations*. It posts to
+`/admin/seed-tactics` and runs on the same job queue as Reset and Seed other nations, with a progress
+message, because it writes a row per club and must not block the request that asked for it. A regular
+manager is refused, and that is asserted in `AdminAuthorizationTest` — the route looks harmless precisely
+because it is idempotent.
+
+**It will not invent a template.** The button copies the club that already has tactics into every club
+that has none. If no authored profile exists it logs that and leaves the world alone, because writing rules
+nobody authored to 14,723 clubs under a button labelled "give every club a default" is the kind of quiet
+authorship that is hard to notice and harder to undo.
+
+**Not pressed.** It will write a row for each of 14,723 clubs. That is the owner's world to change, and
+the natural way to use the button is to press it, look, and press it again — which is safe, and which is
+why its idempotency is the tested property rather than a comment.
+
 ## ✅ T1-18 — the manual matches the Club menu, and a test keeps it there (2026-10-10)
 
 **Owner ruling: correct the manual, do not add menu entries.**
