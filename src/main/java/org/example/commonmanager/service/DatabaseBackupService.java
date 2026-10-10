@@ -115,6 +115,7 @@ public class DatabaseBackupService {
                 "--format=custom",
                 "--no-owner",
                 "--no-privileges",
+                "--no-large-objects",
                 "--host=" + host(),
                 "--port=" + port(),
                 "--username=" + username,
@@ -174,11 +175,20 @@ public class DatabaseBackupService {
         run(psql(List.of("--command", "select current_user")), "check the connection");
         int objects = countArchiveObjects(archive);
 
-        // A clean slate. `pg_restore --clean` drops objects one at a time in the archive's own order
-        // and can stop halfway through a dependency chain, which is how a restore ends with half the
-        // old world and half the new one. Dropping the schema is one statement and it cannot.
-        run(psql(List.of("--command",
-                "drop schema if exists public cascade; create schema public;")), "clear the current schema");
+        // A clean slate. Drop and recreate the entire database to clear all system catalogs
+        // including pg_largeobject and pg_largeobject_metadata, which are not part of the public schema.
+        // Must connect to 'postgres' database to drop the target database (cannot drop from within).
+        run(List.of(
+                tool("psql"),
+                "--no-psqlrc",
+                "--quiet",
+                "--host=" + host(),
+                "--port=" + port(),
+                "--username=" + username,
+                "--dbname=postgres",
+                "--command",
+                "drop database if exists " + database() + "; create database " + database() + ";"),
+                "drop and recreate database");
 
         run(List.of(
                 tool("pg_restore"),
