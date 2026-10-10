@@ -273,7 +273,15 @@ public class NationalTeamSeeder {
         // from the same clubs, and forty-eight countries are drawn in one pass, so a per-country scan
         // of every club in the world is a scan of the world forty-eight times over.
         for (Team club : clubsIn(country)) {
-            eligible.addAll(players.findByTeamId(club.getId()));
+            for (Player p : players.findByTeamId(club.getId())) {
+                // U-21 squad: only players aged 21 or younger. The pool already filters by team;
+                // this keeps a 29-year-old real player from being copied into the U-21 side (owner
+                // report: Serbia U-21 had 29-year-olds in the squad).
+                if (youth && p.getAge() > 21) {
+                    continue;
+                }
+                eligible.add(p);
+            }
         }
 
         // **A generated squad is not a squad.** The owner's report: *"zasto su u u-21 i prvom timu
