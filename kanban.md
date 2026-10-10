@@ -311,8 +311,18 @@ configuration.
 - [x] The league name is resolved through `teamRepository.findById`, which has
       `@EntityGraph(attributePaths = {"competition"})` and eagerly loads the association
 - [x] All three occurrences of the detached-entity pattern fixed (lines 172, 624, and `isUserLeague`)
-- [ ] **Still blocked by a separate pre-existing bug:** `prepare` throws
-      `Cannot invoke "Position.getRow()" because "desired" is null` — filed as **T-REST-0d**
+- [x] **The blocking bug does not exist.** Checked (2026-10-10), because this entry was the last thing
+      standing between T-REST-0c and done, and it names things that are not there:
+  - **There is no `prepare` method** anywhere in `src/main/java`. `grep -rn "\bprepare\b"` over the sim
+    package returns no declaration. Whatever was being called did not have that name.
+  - **The NPE it quotes is guarded in production.** `newLogic`'s `TacticalIntentEngine` checks
+    `if (desired == null) desired = p.getPosition();` at **both** sites (lines 119 and 203). The unguarded
+    `desired.getRow()` is in the **frozen `demo/` engine**, which production does not call.
+  - **`simulate-all` was run live** and returned **200**, completing **472 of 472 fixtures with zero
+    exceptions**. See T-REST-3.
+
+**T-REST-0d was never filed**, which is consistent: the bug it was to track is not reachable from
+production code.
 
 ## T-REST-1 — 🌍 P1-CUPS-6 · OPEN QUESTION: do `SIMULATED` countries play their own league?
 

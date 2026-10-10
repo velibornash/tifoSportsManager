@@ -92,6 +92,15 @@ Worth recording: competition_entry joins through season_competition_id, not comp
 queries joined on the wrong column and returned empty, which reads exactly like "no data" if you do not
 check the schema.
 
+## ✅ T-REST-0c — the blocking bug does not exist (2026-10-10)
+
+This entry said simulate-all was still blocked by "prepare throws Cannot invoke Position.getRow() because
+desired is null", filed as T-REST-0d. T-REST-0d was never filed, and neither does the bug: there is no
+prepare method in src/main/java at all, and newLogic's TacticalIntentEngine guards desired == null at
+both sites. The unguarded line is in the frozen demo engine, which production does not call.
+
+Verified by running it: simulate-all returned 200 and completed 472 of 472 fixtures with zero exceptions.
+
 ## ✅ T-REST-3 / 🔴 T-REST-4 — a full round, run live, and what it found (2026-10-10)
 
 Ran POST /simulation/current-round/simulate-all on the owner's database. It returns 200 - not 500 - and
