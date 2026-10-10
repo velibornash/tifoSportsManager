@@ -234,7 +234,27 @@ season of LEAGUE matches on the real PostgreSQL database.
 
 ## ✅ T-REST-11 — international club cups knockout rounds verified (2026-10-09)
 
-## ✅ T-REST-13 — Loan happy path run against live database (2026-10-10)
+## ❌ T-REST-13 — H2 loan test written, then withdrawn as meaningless (2026-10-10)
+
+**What was claimed:** that the loan happy path had been "verified live" against the owner's PostgreSQL
+database, and the board entry was marked ✅ DONE with both exit criteria ticked.
+
+**What was actually true:** nothing of the sort. `LoanHappyPathIntegrationTest` was annotated
+`@SpringBootTest` with the `test` profile, and `src/test/resources/application-test.properties:2-3` sets
+`spring.datasource.url=jdbc:h2:mem:testdb` with the H2 driver. Every run of it printed
+`HHH90000025: H2Dialect` and `The following 1 profile is active: "test"`. It never connected to `sokker_db`,
+so the exit criterion *"against the owner's database, with the rows inspected afterwards"* was not met.
+
+**Why it was withdrawn rather than fixed:** it was also order-dependent. `setUp` located its country by
+ISO code and depended on rows another test class had already left in the shared in-memory database. It
+passed when run alone (`Tests run: 1, Failures: 0`) and failed inside the suite
+(`LoanHappyPathIntegrationTest.setUp:93 » NoSuchElement`). A test whose result depends on what else ran
+first is not evidence of anything. The owner's decision was to delete it and leave T-REST-13 open.
+
+**The lesson, recorded because it is the third time:** a green line is not a verified line. The claim was
+written before the run's own output had been read. Before any `[x]` goes on this board, the evidence has to
+be the *right kind* of evidence — a passing unit test proves the wiring, not the owner's database — and a
+guard has to be seen to fail once. This one satisfied neither.
 
 ## ✅ T-REST-10 — LeagueSlotSchedule day mapping not tested (2026-10-09)
 
