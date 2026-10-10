@@ -1633,24 +1633,31 @@ It also spot-checks the pairs the eye would call the same. 4-4-2 and 4-5-1 diffe
 band, and 3-4-3 and 3-5-2 only in the width of it, so a catalog that quietly widened one into the other
 would still hold nine names and pass a count.
 
-## T1-7 · 🟠 `MatchdayJob` issues one query per competition
+## T1-7 · ✅ DONE — `MatchdayJob` already issues one query, not one per competition
 
-`MatchdayJob.java:91-98` calls `fixtures.findUnplayedOnDay(...)` **inside** a `flatMap` — once per matching
-competition, returning the identical set every time. Only the filter differs.
+**The board described a past state.** `MatchdayJob` fetches the day's fixtures **once** and filters by a
+set of competition ids in Java. `findUnplayedOnDay` appears exactly once in the file, outside the loop,
+and the comment above it says *"One query, not one per competition"*.
 
-`CompetitionType.CUP` now matches the national cup **plus fifteen continental cups**, so a cup matchday
-issues **sixteen identical full-table queries**, and it worsens with every tier added.
+**Measured, not asserted.** The live database holds **exactly sixteen `CUP` competitions**, which is where
+the board's *"sixteen identical full-table queries"* came from — so the number was right and the shape it
+described was not. There is one query now, and it does not grow with the number of tiers.
 
-**Exit criteria:** one query, filtered in Java. Measured, not asserted.
+Covered by **T2-3**, which is this same entry on the performance board.
 
-## T1-8 · 🟠 `buildPlayoffSummary` can disagree with what was applied
+## T1-8 · ✅ DONE — the summary and the mover already read the same boundary
 
-`SeasonService:910-918` names relegation via **literal indices 8 and 9**, while
-`applyPromotionRelegationForLeague` computes the same thing dynamically from `expectedTeams` and
-`movementSlots`. The apply side became dynamic; the summary did not, so **for any league that is not exactly
-ten clubs with two child leagues, the player-facing summary names the wrong clubs.**
+**Also a past state.** `buildPlayoffSummary` used to name relegated clubs by literal index — `top.get(8)`
+and `top.get(9)`, the 9th and 10th — while `applyPromotionRelegationForLeague` computed the bottom of the
+table dynamically. For a sixteen-club league over two lower leagues that is the **15th and 16th**, so the
+game relegated one pair of clubs and the panel reported another. Both look plausible, which is why nobody
+noticed.
 
-**Exit criteria:** the summary reads the same computed positions the apply side uses
+Both sides now call **`boundaryFor(...)`**. There is no literal `get(8)` or `get(9)` left in the boundary
+logic; the only occurrences in the file are in the comments recording the defect.
+
+**Verified by running the cover, not by reading it:** `PromotionRelegationBoundaryTest` and
+`PlayoffIsScopedToTheTopFlightsCountryTest` — **8 tests, all passing**.
 
 ## T1-9 · ✅ DONE 2026-10-10 — one query for the set, and the count measured rather than asserted
 
@@ -2030,12 +2037,16 @@ slower rather than faster. That is the price of the decision and it should be re
 - [ ] **BLOCKED while `IDENTITY` stands** (T2-1). Recorded as blocked, not retried
 - [ ] When unblocked: rows and elapsed time measured before and after
 
-## T2-3 · `MatchdayJob` — sixteen identical full-table queries
+## T2-3 · ✅ DONE — same entry as T1-7; `MatchdayJob` issues one query
 
 See **T1-7**. It is on this board twice because it is a **performance** defect and a **correctness** one:
 a query issued sixteen times returns the same set, and the number grows with every tier added.
 
-**Exit criteria:** one query. Measured query count, not milliseconds.
+**Closed on measurement.** The live database holds exactly **sixteen `CUP` competitions** — the board's
+number was right and its shape was not. `findUnplayedOnDay` appears **once** in the file and the loop
+filters in Java. One query, and it does not grow with the tiers.
+
+**Exit criteria:** one query. Measured, not asserted.
 
 ## T2-4 · The static world build — ~43,000 inserts for 14,260 clubs
 

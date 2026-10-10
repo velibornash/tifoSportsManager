@@ -1,5 +1,20 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-7 / T2-3 / T1-8 — two more entries describing a past state (2026-10-10)
+
+MatchdayJob issues one query, not one per competition: findUnplayedOnDay appears exactly once and the
+loop filters by competition id in Java. The live database holds exactly sixteen CUP competitions, so the
+board's "sixteen identical full-table queries" had the right number and the wrong shape. This is the
+entry on both the performance and the correctness board, and both now say so.
+
+buildPlayoffSummary no longer names relegated clubs by literal index. It and applyPromotionRelegationForLeague
+both call boundaryFor; no get(8)/get(9) remains in the logic. Verified by running the cover rather than
+reading it - PromotionRelegationBoundaryTest and PlayoffIsScopedToTheTopFlightsCountryTest, 8 passing.
+
+That is seven board entries in a row whose stated symptom was a missing feature or a live defect and
+whose cause was that the work had already been done. Every one of them closed with a grep, a test run or
+a query count. None needed code.
+
 ## ✅ T1-9 — one query for the set, measured rather than asserted (2026-10-10)
 
 seedAllClubs asked staff.countByTeamId inside the loop and seedClub asked sponsors the same question.
