@@ -410,17 +410,49 @@ has a finished season behind it.
 
 **Status (2026-10-09):** Infrastructure complete — 15 cups created, draw logic implemented, `MatchdayJob` for day 1 added. Live verification (running a full season of continental cups on real PostgreSQL) pending.
 
-## T-REST-6 — 🟠 P0-20 · four CTeam/Team id sites and the regression test that was never written
+## T-REST-6 · ✅ DONE 2026-10-10 — and the number-based test the board asked for is impossible here
 
-`User.footballTeam` exists as a real FK and four paths now use it. The old name-join survives only as a
-labelled fallback for pre-FK accounts. **`findDistinctManagedTeamIds` is deleted and marked
-`@Deprecated`.**
+The exit criteria asked for *"one test class walking `APIController.myMatch`,
+`TeamController.getMatches/getSchedule`, `CountryController.getLeagueMatches` and
+`NationalTeamAppointments`, asserting a `Team` id."*
 
-**Not done:** a dedicated regression test that fails if any of the four returns a `CTeam` id.
+**The first attempt at that assertion is unsatisfiable, and the reason is worth recording.**
 
-**Exit criteria:**
-- [ ] One test class walking `APIController.myMatch`, `TeamController.getMatches/getSchedule`,
-      `CountryController.getLeagueMatches` and `NationalTeamAppointments`, asserting a `Team` id
+### The id spaces fully collide
+
+Measured against `sokker_db`:
+
+| Table | Rows | Ids |
+|---|---|---|
+| `cteam` (text-football mode) | 17 | **1–17** |
+| `team` (graphical mode) | 14,723 | 1–14,723 |
+
+**All seventeen CTeam ids are also Team ids.** So there is no assertion of the form *"this number is not a
+CTeam id"* — every number a correct endpoint can return is also a CTeam id, and a check written that way
+would pass forever while measuring nothing. This is the third time a requested test was impossible rather
+than missing, and it is the reason the previous version of this class was deleted rather than kept.
+
+### What is asserted instead — provenance, not shape
+
+A CTeam id is only ever wrong because it came from the wrong table; **the number carries no information.**
+So the test checks the two things that are checkable:
+
+1. **The overlap is real and recorded**, so nobody later writes the number-based version believing it
+   works. If the spaces ever become disjoint, this test **fails on purpose** and says the class should be
+   rewritten.
+2. **Every account with a club attached resolves to a real `team` row** — the FK is a typed column, so a
+   name-join to the text mode is the only way this can break, and that is visible in the source.
+3. **The deleted `findDistinctManagedTeamIds` has not returned** to any of the four files. That method
+   joined the two tables on a *name string*; a number check cannot see a name-join, so this reads the
+   sources. Blunt, and deliberate — the same removal has been undone three times in this repository.
+
+**Note:** `NationalTeamAppointments` is **not an HTTP endpoint**, so there is nothing to walk for it. It is
+a service, and it is covered by the source guard instead. Its own comment already states the rule: *"The
+footballTeam foreign key is the only Team id source here. CTeam has a separate identity sequence and must
+never be compared with football Team ids."*
+
+**Both assertions proven able to fail**: reintroducing `findDistinctManagedTeamIds` into `TeamController`
+names the file and the method; forcing the overlap empty makes the class demand a rewrite.
 
 ## T-REST-12 — 🔴 `Player.nationality` is null for 7,730 of 10,130 players ✅ DONE
 

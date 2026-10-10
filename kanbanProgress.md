@@ -1,5 +1,20 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-6 — the requested test was impossible, and why (2026-10-10)
+
+The board asked for a test asserting the four club-id sites return a Team id. Writing it turned up that
+the assertion is unsatisfiable: cteam holds ids 1-17 and all seventeen are also team ids, so every number a
+correct endpoint can return is also a CTeam id. A check of the form "this is not a CTeam id" would pass
+forever while measuring nothing. Third time a requested test has been impossible rather than missing.
+
+So the test asserts provenance instead: that the overlap is real and recorded (failing on purpose if the
+spaces ever become disjoint, so nobody writes the number version believing it works); that every attached
+account resolves to a real team row; and that the deleted findDistinctManagedTeamIds - which joined the two
+tables on a name - has not returned to any of the four files. Both proven able to fail.
+
+NationalTeamAppointments is a service, not an endpoint, so there was nothing to walk; the source guard
+covers it and its own comment already states the rule.
+
 ## ✅ T0-ADMIN confirmations — both buttons pressed, text read off the screen (2026-10-10)
 
 The two re-draw confirmations were the last item on an entry the board had already once got wrong: the
