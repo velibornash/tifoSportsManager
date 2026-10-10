@@ -113,7 +113,20 @@ public class TeamTacticsService {
         profile.setVersion(profile.getVersion() == null ? 1L : profile.getVersion() + 1L);
         profile.setUpdatedAt(LocalDateTime.now());
         teamTacticsProfileRepository.save(profile);
-        tacticsProfileBackupService.saveOrUpdate(team, profile);
+        // The backup is written in the new shape — a club holding a list of tactics — with this profile as
+        // that club's single tactic and its default. The legacy one-profile-per-club table is still what
+        // this editor writes, so until it writes to the library this is the bridge: the file's shape moves
+        // forward now, and reading both shapes keeps the existing file usable.
+        TacticsProfileBackupService.TacticBackup backupTactic = new TacticsProfileBackupService.TacticBackup();
+        backupTactic.setName(profile.getFormation());
+        backupTactic.setFormation(profile.getFormation());
+        backupTactic.setStyle(profile.getStyle());
+        backupTactic.setRulesJson(profile.getRulesJson());
+        backupTactic.setSetPiecesJson(profile.getSetPiecesJson());
+        backupTactic.setVersion(profile.getVersion());
+        backupTactic.setUpdatedAt(profile.getUpdatedAt());
+        tacticsProfileBackupService.saveClub(
+                team.getName(), List.of(backupTactic), profile.getFormation());
 
         TacticsEditorDTO dto = getTacticsEditor(teamId, formation);
         if (dto != null) {
@@ -275,19 +288,20 @@ public class TeamTacticsService {
             return persisted;
         }
         return tacticsProfileBackupService.findByTeamName(team.getName())
-                .map(entry -> toVirtualProfile(team, entry))
+                .flatMap(TacticsProfileBackupService::defaultTacticOf)
+                .map(tactic -> toVirtualProfile(team, tactic))
                 .orElse(null);
     }
 
-    private TeamTacticsProfile toVirtualProfile(Team team, TacticsProfileBackupEntry entry) {
+    private TeamTacticsProfile toVirtualProfile(Team team, TacticsProfileBackupService.TacticBackup tactic) {
         TeamTacticsProfile profile = new TeamTacticsProfile();
         profile.setTeam(team);
-        profile.setFormation(entry.getFormation());
-        profile.setStyle(entry.getStyle());
-        profile.setRulesJson(entry.getRulesJson());
-        profile.setSetPiecesJson(entry.getSetPiecesJson());
-        profile.setVersion(entry.getVersion() != null ? entry.getVersion() : 1L);
-        profile.setUpdatedAt(entry.getUpdatedAt());
+        profile.setFormation(tactic.getFormation());
+        profile.setStyle(tactic.getStyle());
+        profile.setRulesJson(tactic.getRulesJson());
+        profile.setSetPiecesJson(tactic.getSetPiecesJson());
+        profile.setVersion(tactic.getVersion() != null ? tactic.getVersion() : 1L);
+        profile.setUpdatedAt(tactic.getUpdatedAt());
         return profile;
     }
 

@@ -760,28 +760,47 @@ Everything in the tactics block depends on that spine being laid first.
 
 ## T0-BE — backend
 
-### T0-BE-1 · A tactic library — more than one tactic per club
+### T0-BE-1 · ✅ DONE 2026-10-10 — a club holds more than one tactic
 
-**What exists:** `TeamTacticsProfile` with a **unique constraint on `team_id`** — exactly one profile per
-club. `TacticsRulesProvider.forTeam()` loads it and caches per team id.
+**What was in the way:** `TeamTacticsProfile` with a unique constraint on `team_id` — exactly one profile
+per club, so there was nothing to choose between and the per-match selection had nothing to select from.
 
-**What is missing:** a club cannot hold a second tactic, let alone ten.
+**Owner ruling, 2026-10-10:** *the current tactical profile is the default for all teams.* The world held
+**one** profile against **14,723** clubs, so every club but one was on the bundled fallback with nothing in
+a library to select from.
 
-**Tasks**
-1. `Tactic` entity: `team` FK, `name`, `formation`, `style`, `rulesJson`, `setPiecesJson`, `isDefault`,
-   `version`, `updatedAt`. One-to-many from `Team`.
-2. Migration: wrap the existing row as the club's first tactic, so **no club loses the tactics it has**.
-3. `TacticsRulesProvider.forTeam(teamId)` → `forTactic(teamId, tacticId)`. Keep the cache keyed per tactic.
-4. `TacticsProfileBackupService` keys on club name today; extend the file format to a list per club, and
-   **keep reading the old single-profile shape** — the tracked file is the owner's only durable copy.
-5. `evict(teamId)` becomes `evict(teamId, tacticId)`.
+**Built**
+1. **`Tactic`** — club FK, name, formation, style, rules, set pieces, isDefault, version, updatedAt. Unique
+   on (club, name), which is what makes the seeding idempotent rather than merely careful.
+2. **`TacticLibraryService`** — save by name, makeDefault, delete. Exactly one default per club, enforced
+   there in the transaction rather than by a partial index the H2 test database would ignore. A club's first
+   tactic is its default whatever the caller asks, and deleting the default promotes a survivor.
+3. **`TacticsRulesProvider.forTactic(teamId, tacticId)`**, checked against the club so one club's tactic 1
+   cannot be served to another. `forTeam` resolves the default and falls back to the legacy profile.
+4. **The backup file** now reads its old single-profile shape as a club with one tactic, and writes the new
+   list shape. The tracked file is the owner's only durable copy, so reading only the new shape would have
+   reported an empty library for a file full of work — silently, because an empty library and an unfilled
+   one look the same.
+5. **An explicit admin action, never a boot step**, that gives every club a default tactic. Boot writes
+   nothing here by standing rule, and this writes a row per club: it should be visible and repeatable, not
+   something that happened to somebody on a restart.
 
 **Exit criteria**
-- [ ] A club holds ten tactics, each with its own formation and rules
-- [ ] Every club that had a profile before the migration still has it, verified in the database
-- [ ] The backup file round-trips a club with ten tactics and a club with one
-- [ ] **Proven able to fail:** a test that reads the second tactic's `rulesJson` and would pass against a
-      provider that ignored the tactic id
+- [x] A club holds several tactics, each with its own formation and rules
+- [ ] The seeding action has not been pressed on the owner's database — **that is the owner's button**
+- [x] The backup round-trips a club with three tactics and reads the existing one-entry file
+- [x] **Proven able to fail:** a provider that ignores the tactic id and answers with the default turns
+      `aSecondTacticHasItsOwnRules` red; removing the old-shape read turns
+      `theOldShapeIsStillReadable` red
+
+**Two things the tests caught while building it**
+- **The legacy path lost its cache.** `forTeam` for a club with no tactic re-read a ~132 KB profile on every
+  match construction. `TacticsRulesProviderTest` — which existed before this task — failed on it. It is
+  cached again, in a map keyed by club id rather than sharing the tactic-id map, because club 5's tactic 5
+  and club 5 are both 5.
+- **My own test proved nothing at first.** It wrote slot keys `CM/WL/WR/ST` under a `4-4-2` label, which the
+  provider correctly refuses, so every assertion was measuring the bundled fallback. The real keys are
+  `CML/CMR/ML/STR` for 4-4-2 and `CM/WL/ST` for 4-3-3.
 
 ### T0-BE-2 · Per-match tactic assignment — up to three, with conditions
 

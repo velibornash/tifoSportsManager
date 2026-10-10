@@ -989,7 +989,7 @@ public class DatabaseInitializer {
                 snapshots == null ? List.of() : snapshots);
         java.util.Set<String> alreadyNamed = new java.util.HashSet<>();
         wanted.forEach(snapshot -> alreadyNamed.add(snapshot.teamName));
-        for (TacticsProfileBackupEntry entry : backupService.loadAll()) {
+        for (TacticsProfileBackupService.ClubBackup entry : backupService.loadAll()) {
             if (entry != null && entry.getTeamName() != null && !alreadyNamed.contains(entry.getTeamName())) {
                 TacticsProfileSnapshot fromFile = toTacticsSnapshot(entry);
                 if (fromFile != null) {
@@ -1036,17 +1036,29 @@ public class DatabaseInitializer {
         }
     }
 
-    private TacticsProfileSnapshot toTacticsSnapshot(TacticsProfileBackupEntry entry) {
-        if (entry == null || entry.getTeamName() == null || entry.getTeamName().isBlank()) {
+    /**
+     * One club's tactics, as a snapshot of its default.
+     *
+     * <p>A club can hold several tactics in the backup file now, and a snapshot is the single-record shape
+     * the restore path works in — so this takes the club's default and nothing else. The other tactics are
+     * not dropped from the file; they are simply not representable in a one-profile snapshot, which is the
+     * pre-library model this restore path implements.
+     */
+    private TacticsProfileSnapshot toTacticsSnapshot(TacticsProfileBackupService.ClubBackup club) {
+        if (club == null || club.getTeamName() == null || club.getTeamName().isBlank()) {
+            return null;
+        }
+        var tactic = TacticsProfileBackupService.defaultTacticOf(club).orElse(null);
+        if (tactic == null) {
             return null;
         }
         TacticsProfileSnapshot snapshot = new TacticsProfileSnapshot();
-        snapshot.teamName = entry.getTeamName();
-        snapshot.formation = entry.getFormation();
-        snapshot.style = entry.getStyle();
-        snapshot.rulesJson = entry.getRulesJson();
-        snapshot.setPiecesJson = entry.getSetPiecesJson();
-        snapshot.version = entry.getVersion();
+        snapshot.teamName = club.getTeamName();
+        snapshot.formation = tactic.getFormation();
+        snapshot.style = tactic.getStyle();
+        snapshot.rulesJson = tactic.getRulesJson();
+        snapshot.setPiecesJson = tactic.getSetPiecesJson();
+        snapshot.version = tactic.getVersion();
         return snapshot;
     }
 

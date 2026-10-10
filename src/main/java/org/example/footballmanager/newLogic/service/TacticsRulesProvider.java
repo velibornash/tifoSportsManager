@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -101,12 +102,46 @@ public class TacticsRulesProvider {
 
     private final TeamTacticsProfileRepository profiles;
     private final TeamRepository teams;
+    private final org.example.footballmanager.newLogic.repository.TacticRepository tactics;
     private final TacticsRules fallback;
+
+    /**
+     * Parsed rules, keyed by <b>tactic id</b>.
+     *
+     * <p>Keyed by tactic rather than by club because a club now has several: one cache slot per club
+     * would make the second tactic evict the first and every match would re-parse whichever it happened
+     * not to want. The id space is separate from the team id space, which matters here — this is the same
+     * class of confusion that produced the P0 fixture/match defect, and the keys are different kinds of
+     * thing, so they are never mixed in one map.
+     */
     private final Map<Long, TacticsRules> cache = new ConcurrentHashMap<>();
 
-    public TacticsRulesProvider(TeamTacticsProfileRepository profiles, TeamRepository teams) {
+    /** Which tactic is a club's default, or absent when it has none. Kept out of {@link #cache}. */
+    private final Map<Long, Long> defaultTacticByTeam = new ConcurrentHashMap<>();
+
+    /** Which club a cached tactic belongs to, so one club's edit can drop all of its entries. */
+    private final Map<Long, Long> tacticOwner = new ConcurrentHashMap<>();
+
+    /**
+     * Rules for clubs that hold no tactic, keyed by <b>club id</b>.
+     *
+     * <p>A second map rather than a shared one, because the two id spaces overlap: club 5's tactic 5 and
+     * club 5 itself are both 5, and putting both in one map would let a club's cached legacy profile be
+     * served as though it were a tactic's rules. Nothing about this feature should reintroduce the
+     * confusion the P0 defect came from.
+     *
+     * <p>It exists because dropping the legacy read path would switch the one club that has a profile back
+     * to the bundled rules, and because that path was cached and must stay cached: it reads a profile of
+     * around 132 KB, and uncached it would be re-read on every match construction for every club that has
+     * not been given a tactic.
+     */
+    private final Map<Long, TacticsRules> legacyCache = new ConcurrentHashMap<>();
+
+    public TacticsRulesProvider(TeamTacticsProfileRepository profiles, TeamRepository teams,
+                                org.example.footballmanager.newLogic.repository.TacticRepository tactics) {
         this.profiles = profiles;
         this.teams = teams;
+        this.tactics = tactics;
         // The bundled export the owner produced while building the engine. It is the engine's floor, not
         // a club's tactics, and the log line below says so once rather than on every match.
         this.fallback = new TacticsRules();
@@ -115,40 +150,106 @@ public class TacticsRulesProvider {
     }
 
     /**
-     * The rules for a team, or the bundled fallback when it has none it can be given.
+     * The rules for a team's <b>default</b> tactic, or the bundled fallback.
      *
      * <p>Never null: the engine has to run a match whatever the editor holds, and a null here would put
-     * the choice back where it started.
+     * the choice back where it started. A club with no default falls back exactly as it did before the
+     * library existed — forgetting to set one is not an error state, it is the ordinary state of a club
+     * nobody has configured.
      */
     @Transactional(readOnly = true)
     public TacticsRules forTeam(Long teamId) {
         if (teamId == null) {
             return fallback;
         }
-        return cache.computeIfAbsent(teamId, this::load);
+        Long tacticId = defaultTacticByTeam.computeIfAbsent(teamId, this::resolveDefaultTacticId);
+        if (tacticId == null) {
+            return legacyCache.computeIfAbsent(teamId, this::loadFromLegacyProfile);
+        }
+        return forTactic(teamId, tacticId);
     }
 
-    private TacticsRules load(Long teamId) {
+    /**
+     * The rules for one named tactic of one club.
+     *
+     * <p>The tactic id is checked against the club, so a caller holding a tactic from another club is
+     * refused rather than quietly given another club's rules. The two id spaces overlap — club 1's tactic
+     * 1 and club 2's tactic 1 are both 1 — and a simulation that picked up the wrong one would be a
+     * manager's team playing somebody else's shape, which is the exact shape of the P0 defect.
+     */
+    @Transactional(readOnly = true)
+    public TacticsRules forTactic(Long teamId, Long tacticId) {
+        if (teamId == null || tacticId == null) {
+            return fallback;
+        }
+        return cache.computeIfAbsent(tacticId, id -> load(teamId, id));
+    }
+
+    /** The club's default tactic id, or null when it has none. */
+    private Long resolveDefaultTacticId(Long teamId) {
+        List<org.example.footballmanager.newLogic.model.tactics.Tactic> defaults =
+                tactics.findDefaultsForTeam(teamId);
+        if (defaults.isEmpty()) {
+            return null;
+        }
+        if (defaults.size() > 1) {
+            // The service makes this impossible. If it has happened anyway, taking the lowest id is a
+            // decision rather than a preference, and the warning says the invariant is broken.
+            log.warn("{} has {} default tactics; the service allows one. Using the oldest.",
+                    teamName(teamId, null), defaults.size());
+        }
+        return defaults.get(0).getId();
+    }
+
+    private TacticsRules load(Long teamId, Long tacticId) {
+        var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
+        if (tactic == null) {
+            log.warn("{} has no tactic {}; the bundled fallback applies.", teamName(teamId, null), tacticId);
+            return fallback;
+        }
+        tacticOwner.put(tacticId, teamId);
+        return rulesFor(teamId, tactic.getFormation(), tactic.getRulesJson(),
+                "tactics editor (" + tactic.getName() + ")");
+    }
+
+    /**
+     * The pre-library read path: one {@code TeamTacticsProfile} per club.
+     *
+     * <p>Still here because {@link #forTeam} falls back to it while a club holds no tactic, and dropping
+     * it would silently switch the one club that has a profile back to the bundled rules. It goes when
+     * every club holds a tactic, not before.
+     */
+    private TacticsRules loadFromLegacyProfile(Long teamId) {
         TeamTacticsProfile profile = profiles.findByTeamId(teamId).orElse(null);
         if (profile == null) {
             log.debug("{} has no tactical profile; the bundled fallback applies.",
                     teamName(teamId, null));
             return fallback;
         }
+        return rulesFor(teamId, profile.getFormation(), profile.getRulesJson(),
+                "tactics editor (" + profile.getFormation() + ")");
+    }
 
-        String formation = profile.getFormation();
-        TacticsRules rules = TacticsRules.fromProfileJson(
-                profile.getRulesJson(), formation, "tactics editor (" + formation + ")");
+    /**
+     * The rule a set of authored rules produces, or the fallback when they cannot be played.
+     *
+     * <p>Formation validation is here, once, rather than in each of the two readers above: a profile keyed
+     * to slots its own formation does not have is a rule nothing will ever read, and it is reported and
+     * refused rather than quietly played in the wrong shape.
+     */
+    private TacticsRules rulesFor(Long teamId, String formation, String rulesJson, String sourceLabel) {
+        String formationLabel = formation == null ? null : formation.trim();
+        TacticsRules rules = TacticsRules.fromProfileJson(rulesJson, formationLabel, sourceLabel);
         if (rules == null) {
             log.warn("{} has a tactical profile for {} whose rules could not be read; the bundled "
-                            + "fallback applies.", teamName(teamId, formation), formation);
+                            + "fallback applies.", teamName(teamId, formationLabel), formationLabel);
             return fallback;
         }
 
         // Against ITS OWN formation, not the union of all nine. A 4-3-3 profile keyed CM/WL/WR/ST is
         // perfectly playable in 4-3-3 and nonsense in 4-4-2.
-        java.util.Set<String> playable = playableKeys(formation);
-        var unknown = slotKeysIn(profile.getRulesJson()).stream()
+        java.util.Set<String> playable = playableKeys(formationLabel);
+        var unknown = slotKeysIn(rulesJson).stream()
                 .filter(key -> !playable.contains(key))
                 .sorted()
                 .toList();
@@ -158,12 +259,12 @@ public class TacticsRulesProvider {
             log.warn("{} is authored in {} with slot keys that formation does not have ({}). Its shape is "
                             + "not applied; the bundled 4-4-2 fallback is. Named so it is a visible gap "
                             + "rather than a club that quietly plays the wrong formation.",
-                    teamName(teamId, formation), formation, unknown);
+                    teamName(teamId, formationLabel), formationLabel, unknown);
             return fallback;
         }
 
         log.info("{} plays its own {} tactics: {} rules from the tactical editor.",
-                teamName(teamId, formation), formation, rules.getRuleCount());
+                teamName(teamId, formationLabel), formationLabel, rules.getRuleCount());
         return rules;
     }
 
@@ -186,10 +287,58 @@ public class TacticsRulesProvider {
                 .orElse("team " + teamId);
     }
 
-    /** Drops a club's cached rules so an edit takes effect without a restart. */
+    /**
+     * Drops a club's cached rules so an edit takes effect without a restart.
+     *
+     * <p>Drops the default resolution <b>and</b> every tactic cached for that club. Dropping only the
+     * default would leave the edited tactic's rules sitting in the cache under its own id, and the next
+     * match would read the old shape — an edit that saved and did nothing, which is the failure mode this
+     * class has already had once.
+     *
+     * <p>Precise, not {@code cache.clear()}: with 14,723 clubs the parsed rules are shared, and one
+     * club's edit throwing away every other club's would turn a save into a full re-parse of the world.
+     * Every cached tactic has an owner entry — {@link #load} records it before returning — so the club's
+     * own entries can be found and only those dropped.
+     */
     public void evict(Long teamId) {
-        if (teamId != null) {
-            cache.remove(teamId);
+        if (teamId == null) {
+            return;
+        }
+        defaultTacticByTeam.remove(teamId);
+        legacyCache.remove(teamId);
+        tacticOwner.forEach((tacticId, owner) -> {
+            if (java.util.Objects.equals(owner, teamId)) {
+                cache.remove(tacticId);
+            }
+        });
+        tacticOwner.entrySet().removeIf(entry -> java.util.Objects.equals(entry.getValue(), teamId));
+    }
+
+    /**
+     * Drops every club's cached rules.
+     *
+     * <p>For a whole-world change — every club being given its first default tactic — where evicting one
+     * club at a time would mean one pass over the world to find out which clubs exist and another to evict
+     * them. Deliberately blunt and deliberately rare: the ordinary edit path calls {@link #evict(Long)},
+     * which touches one club.
+     */
+    public void evictAll() {
+        cache.clear();
+        legacyCache.clear();
+        defaultTacticByTeam.clear();
+        tacticOwner.clear();
+    }
+
+    /**
+     * Drops one tactic, for an edit to that tactic.
+     *
+     * <p>Does not touch the club's default resolution: editing a tactic cannot change which one it is, and
+     * resolving that again on the next match would be a query for nothing.
+     */
+    public void evict(Long teamId, Long tacticId) {
+        if (tacticId != null) {
+            cache.remove(tacticId);
+            tacticOwner.remove(tacticId);
         }
     }
 }
