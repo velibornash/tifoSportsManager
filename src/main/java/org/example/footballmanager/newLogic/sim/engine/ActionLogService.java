@@ -51,14 +51,13 @@ public class ActionLogService {
             "GOAL", "GOAL_DISALLOWED", "KICKOFF",
             "SHOT", "SHOT_SAVED", "SHOT_MISSED", "SHOT_BLOCKED", "SHOT_POST",
             "PENALTY_KICK", "PENALTY_MISS", "PENALTY_SAVED",
-            "DUL", "OFF", "RST",
+            "OFF",
             "FOUL", "CARD", "YELLOW_CARD", "RED_CARD",
             "POSSESSION_CHANGE", "CHASE_POSSESSION",
             "VAR_OFFSIDE_CONFIRMED", "VAR_OFFSIDE_OVERTURNED",
             "VAR_GOAL_CONFIRMED", "VAR_GOAL_OVERTURNED",
             "VAR_RED_CONFIRMED", "VAR_RED_OVERTURNED",
-            "VAR_PENALTY_CONFIRMED", "VAR_PENALTY_OVERTURNED",
-            "DEC", "EXE");
+            "VAR_PENALTY_CONFIRMED", "VAR_PENALTY_OVERTURNED");
 
     private static final boolean COMPACT_CONSOLE =
             !"full".equalsIgnoreCase(System.getProperty("proposal.log.console", "compact"));
