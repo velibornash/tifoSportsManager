@@ -78,6 +78,7 @@ public class SimMatchService {
     private final ZoneLoadRecorder zoneLoadRecorder;
     private final NationalRatingService nationalRatingService;
     private final org.example.footballmanager.newLogic.service.TacticsRulesProvider tacticsRules;
+    private final org.example.footballmanager.newLogic.service.MatchTacticsPreparationService matchTacticsPreparation;
     private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository
             teamTacticsProfileRepository;
 
@@ -145,11 +146,18 @@ public class SimMatchService {
         // a list that was always empty, because nothing could put anything in it: the rules holder was
         // private and the orchestrator was constructed and simulated inside one static call. Ten unit
         // tests were green throughout — they built the object themselves and called add() directly.
+        // The club's conditional instructions for this fixture, read once here and consulted every tick
+        // inside the orchestrator (T0-BE-2). Null when nobody planned the fixture, which is the ordinary
+        // case — the match then keeps the shape it was built with and costs nothing per tick.
+        var liveTactics = matchTacticsPreparation == null ? null
+                : matchTacticsPreparation.forFixture(fixture, homeTeam.getId(), awayTeam.getId());
+
         var orchestrator = SimMatchRunner.build(homeName, awayName,
                 homeSquad, awaySquad, homeBench, awayBench,
                 new org.example.footballmanager.newLogic.sim.tactics.SideTactics(
                         tacticsRules.forTeam(homeTeam.getId()),
-                        tacticsRules.forTeam(awayTeam.getId())));
+                        tacticsRules.forTeam(awayTeam.getId())),
+                liveTactics);
 
         applySubstitutionPlan(fixture, orchestrator);
 

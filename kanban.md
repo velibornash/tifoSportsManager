@@ -834,8 +834,19 @@ cover it, and the gap belongs to the default.
 5. **The orchestrator resolves each tick**, immediately before `refreshTargets`, guarded by a null so a
    match with no instructions pays nothing.
 
+**The last mile, added 2026-10-10 after the first pass of this task was committed.** Everything above
+existed — the entity, the condition logic, the resolver, the tick hook, the engine setter — and **nothing
+in production handed any of it an assignment.** `SimMatchRunner.run` simulates inside itself, so the
+instructions had to be attached to the orchestrator before the first tick, the same seam the substitution
+plan needed and the same one it got. `SimMatchService` now asks
+`MatchTacticsPreparationService.forFixture(...)` and passes the resolver through. This is precisely the
+shape the substitution feature had when ten unit tests were green and no manager could reach it.
+
 **Exit criteria**
 - [x] A fixture carries up to three instructions per club, in priority order
+- [x] A saved instruction reaches the orchestrator **before kickoff**, through the real runner
+- [x] **Proven able to fail:** passing `null` at the production call site leaves all 33 other tests green —
+      the guard exists because that was measured, not assumed
 - [x] Priority decides when two conditions are true at once
 - [x] `minuteFrom` gates an instruction, and is checked with the score condition rather than instead of it
 - [x] A fixture with no instructions plays the club's default for all ninety minutes
@@ -851,6 +862,11 @@ cover it, and the gap belongs to the default.
   service at all. The count check stays as defence in depth — priority is a position, the count is a cap,
   and they only agree today — and its comment says it cannot currently fire rather than implying it holds
   the line.
+- **The production call site failed silently too.** Replacing the passed resolver with `null` — so the
+  simulation built it and discarded it — left all 33 tests green, for the same reason: none of them starts
+  a simulation. `MatchTacticsReachTheMatchTest` builds a real orchestrator through the real runner and
+  asserts it was given the resolver; the production hand-off is guarded structurally, because running
+  `SimMatchService.simulate` needs a whole fixture and season.
 - **The tick-loop wiring failed silently, and I only found it because I deleted it.** Removing the
   per-tick resolution left every behavioural test green: the engine simply kept the shape it was built
   with. `OrchestratorConsultsTheResolverTest` now guards it — **as a structural guard, and labelled as

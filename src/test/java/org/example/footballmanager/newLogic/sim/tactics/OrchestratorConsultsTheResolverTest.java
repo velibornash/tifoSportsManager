@@ -68,6 +68,24 @@ class OrchestratorConsultsTheResolverTest {
     }
 
     @Test
+    @DisplayName("the simulation actually hands its resolver to the match")
+    void theSimulationHandsTheResolverOver() throws IOException {
+        // The gap this task had when it was first closed. The resolver was built, tested and wired into
+        // the runner — and SimMatchService passed `null`, so no saved instruction reached any match. Every
+        // behavioural test stayed green, because none of them starts a simulation.
+        String source = Files.readString(
+                Path.of("src/main/java/org/example/footballmanager/newLogic/sim/SimMatchService.java"),
+                StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("matchTacticsPreparation.forFixture("),
+                "the simulation must ask for the fixture's instructions");
+        assertTrue(source.contains("liveTactics);"),
+                "and must pass that resolver to the runner. Building it and then passing null is the "
+                        + "exact shape of the defect this asserts against: every unit test green, and no "
+                        + "manager's instruction ever read by a match");
+    }
+
+    @Test
     @DisplayName("the guard is reading the real orchestrator")
     void theGuardReadsTheRealOrchestrator() throws IOException {
         assertTrue(Files.exists(ORCHESTRATOR),

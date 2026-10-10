@@ -219,6 +219,17 @@ public class MatchOrchestrator {
         this.liveTactics = resolver;
     }
 
+    /**
+     * What this match was actually given, for a caller that has to know rather than assume.
+     *
+     * <p>Exposed because the alternative was a test that asserted the field was private and called that
+     * coverage. The seam that matters is "did a saved instruction reach this match", and this is the only
+     * honest way to ask it without simulating ninety minutes and inspecting player positions afterwards.
+     */
+    public org.example.footballmanager.newLogic.sim.tactics.MatchTacticsResolver getLiveTactics() {
+        return liveTactics;
+    }
+
     public MatchOrchestrator(MatchState state, SideTactics tactics) {
         this.state = state;
         this.actionLog = new ActionLogService(state, eventLog);

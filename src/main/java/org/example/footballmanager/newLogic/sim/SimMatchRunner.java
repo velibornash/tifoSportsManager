@@ -105,6 +105,25 @@ public final class SimMatchRunner {
                                           List<Player> homeSquad, List<Player> awaySquad,
                                           List<Player> homeBench, List<Player> awayBench,
                                           org.example.footballmanager.newLogic.sim.tactics.SideTactics tactics) {
+        return build(homeName, awayName, homeSquad, awaySquad, homeBench, awayBench, tactics, null);
+    }
+
+    /**
+     * Builds a match that can change shape when the score says so (T0-BE-2).
+     *
+     * <p>The same seam the conditional substitution plan uses, and for the same reason: {@link #run}
+     * simulates inside itself, so an instruction that has to be attached <em>before the first tick</em> had
+     * nowhere to go. Ten unit tests were green for that plan while it was unreachable, and this one would
+     * have been the same — a feature with rules, a resolver and a tick loop, and no path from a saved
+     * assignment to any of them.
+     *
+     * @param liveTactics the fixture's instructions, or null when nobody planned this fixture
+     */
+    public static MatchOrchestrator build(String homeName, String awayName,
+                                          List<Player> homeSquad, List<Player> awaySquad,
+                                          List<Player> homeBench, List<Player> awayBench,
+                                          org.example.footballmanager.newLogic.sim.tactics.SideTactics tactics,
+                                          org.example.footballmanager.newLogic.sim.tactics.MatchTacticsResolver liveTactics) {
         MatchState state = new MatchState();
         boolean homeReal = homeSquad != null && homeSquad.size() >= 11;
         boolean awayReal = awaySquad != null && awaySquad.size() >= 11;
@@ -118,6 +137,11 @@ public final class SimMatchRunner {
                 ? new MatchOrchestrator(state)
                 : new MatchOrchestrator(state, tactics);
         orchestrator.getStats().setDisplayNames(homeName, awayName);
+        if (liveTactics != null) {
+            // Before kickoff, not after: the first tick already resolves, and a shape change that started
+            // a second late would be a rule that fired late in a match nobody noticed.
+            orchestrator.setLiveTactics(liveTactics);
+        }
         orchestrator.getRestartManager().handleKickoff(state, "HOME");
 
         for (Player p : state.getPlayers()) {

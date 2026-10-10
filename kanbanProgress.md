@@ -1,5 +1,25 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-2 (last mile) — a saved instruction now reaches a real match (2026-10-10)
+
+The first pass of T0-BE-2 was committed with everything except the one line that mattered. The entity, the
+six conditions, the priority rule, the resolver, the tick hook and the engine setter all existed, 27 tests
+were green — and `SimMatchService` never handed any of it an assignment.
+
+`SimMatchRunner.run` simulates inside itself, so an instruction has to be attached to the orchestrator
+before the first tick. That is the same seam the conditional substitution plan needed and the same one it
+had to be given; the difference here is that I noticed, because the task had just been through it.
+
+**How it was found: by breaking it.** Replacing the resolver at the production call site with `null` — so
+the simulation builds it and throws it away — left all 33 tests green. That is not a near miss, it is the
+whole failure mode: the feature was complete except for being switched on, and nothing in the suite could
+see the difference.
+
+**Two guards now.** `MatchTacticsReachTheMatchTest` builds a real orchestrator through the real runner and
+asserts it was handed the resolver, and that an unplanned fixture carries none. The production hand-off is
+guarded structurally, because proving it behaviourally means simulating a fixture through the whole
+service. Both mutations were run and both turned a check red.
+
 ## ✅ T0-BE-2 — a match can change shape mid-match (2026-10-10)
 
 A match had one shape for ninety minutes. `TacticalIntentEngine` held a single `SideTactics` and nothing
