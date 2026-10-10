@@ -1250,9 +1250,63 @@ player cannot be selected.
 - [ ] The fixture screen shows which XI is in force — per-match or template
 - [ ] 430px pass
 
-### T0-UI-4 · ✅ DONE 2026-10-09 — the substitution screen
+## T0-UI-4b · 🔴 The substitution plan is unreachable — the whole feature is dead code
 
-`substitution-plan-view.js`, mounted on the **fixture** page.
+**Found 2026-10-10, while trying to close T1-16b in a browser.** This is the most serious thing on the
+board, and it was found by looking rather than by testing.
+
+`substitution-plan-view.js` is mounted by exactly one place: `fixture-view.js`, which renders
+`<div id="fm-substitution-plan">`. **No route reaches `fixture-view.js` for a fixture.**
+
+Every fixture card is built by one function (`pages-renderers.js:147-148`), and both branches avoid it:
+
+- a **played** fixture gets `js-load-match` → `loadMatch(matchId)` → **match view**
+- an **unplayed** fixture gets `js-load-fixture`, whose handler (`pages-renderers.js:308-318`) tries
+  `onLoadMatch` **first** and only falls back to `onLoadFixture` when that is absent. Both call sites
+  (`pages-renderers.js:1211`, `:1320`) pass **both**, so `onLoadMatch` always wins and `loadFixture` is
+  never called.
+
+The comment at `pages-renderers.js:301-307` says this was deliberate and cites the owner: *"An unplayed
+match opens the match view on its Preview tab, not the fixture sheet (owner, 2026-10-01). Both used to
+exist and a manager met two different surfaces for one thing."* That decision merged the fixture sheet
+into the match view's Preview tab — and the substitution panel went with it, because it had been bolted to
+the surface that was retired.
+
+**Seen in the running application**, not inferred. At 430px an unplayed OFK Omladinac fixture opens
+**Match Preview**, with tabs Preview / Lineups / Stats / Goals / Replay / Match Report, and
+`#fm-substitution-plan` does not exist. A played one opens the same view.
+
+**What this means for the board:**
+- **T0-UI-4** is not done. The API and the engine work; the screen does not exist for a manager.
+- **T1-16** — the validation, the refusal with a reason, the outcome record — all work, and none of it is
+  reachable. A manager cannot set a rule, so cannot make the mistake the validator prevents.
+- The P0 fixture/match work is unaffected: it fixed the *id confusion*, which was real and is fixed.
+
+**Why every test was green.** `SubstitutionRuleIsRefusedWhenItCannotFireTest` drives the controller with
+`MockMvc`. `SubstitutionOutcomeIsShownTest` drives `loadPlan` directly. Neither goes near the routing that
+decides which view a manager actually sees, so the feature can be entirely unreachable with both suites
+green. Same shape as the other failures on this board: **the test proved the part it looked at.**
+
+**The fix, and it is both halves:**
+
+1. **BE.** `MatchDTO` carries `playedMatchId` but **no `fixtureId`**, so from a played match opened
+   directly (`isFixture === false`) there is no way to reach `/api/sim/fixtures/{id}/substitution-plan`.
+   The outcome cannot be fetched from the match view at all until the backend exposes that link.
+2. **FE.** Mount `substitution-plan-view.js` in `match-view.js` — on **Preview** for an unplayed fixture
+   (editable) and on **Match Report** after the whistle (read-only, with the outcome badges). That is
+   where a manager is.
+
+**Exit criteria**
+- [ ] The backend can resolve a played match back to its fixture
+- [ ] The panel is reachable from the Preview tab before kickoff, in a browser, at 430px
+- [ ] The outcome is reachable from the Match Report after the whistle, in a browser, at 430px
+- [ ] **Proven able to fail:** a test that drives the real routing, not `loadPlan` in isolation
+- [ ] T0-UI-4 and T1-16 stay open until this is closed
+
+### T0-UI-4 · ✅ DONE 2026-10-09 — the substitution screen — ❌ REOPENED, see T0-UI-4b
+
+`substitution-plan-view.js`, mounted on the **fixture** page. **The screen itself was never reachable** —
+see T0-UI-4b. Everything below describes the module, which is sound; what is missing is the mounting.
 
 - [x] Per-rule: minute · condition · player on · player off
 - [x] **The bench is a dropdown.** The failure this prevents is concrete: a rule naming a player who is
@@ -1265,7 +1319,7 @@ player cannot be selected.
 - [x] Refuses a sixth rule with the reason — five subs and three windows are engine limits
 - [x] **Mounted only for a fixture the manager's club is playing at home, and only before it is played.**
       The plan is the home club's instruction; offering it on an away fixture, or on one with a result,
-      is a control with no meaning
+      is a control with no meaning — **and, as T0-UI-4b records, mounted on a page no manager can reach**
 - [x] 430px — the remove control drops under the sentence rather than squeezing it
 - [ ] **Not verified in a browser**, and the panel has never been rendered by anyone
 

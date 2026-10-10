@@ -1,5 +1,43 @@
 # kanbanProgress.md — the append-only log
 
+## 🔴 T0-UI-4b — the substitution plan is unreachable: the feature is dead code (2026-10-10)
+
+**How it was found.** By opening a page. T1-16b could not be closed without a played fixture carrying an
+outcome, and producing one means `simulate-all` — 5,209 unplayed fixtures across 48 countries. Instead a
+temporary `outcome_json` row was written for an already-played fixture (OFK Omladinac v TSK Budućnost 1919,
+fixture 1), opened in a browser, and **the panel was not there**. The row was deleted and the table left
+with the one row it started with.
+
+**The cause.** `substitution-plan-view.js` is mounted only by `fixture-view.js`, and nothing routes to
+`fixture-view.js` for a fixture. One function builds every fixture card (`pages-renderers.js:147-148`): a
+played fixture gets `js-load-match`, an unplayed one `js-load-fixture`, and that handler tries
+`onLoadMatch` before `onLoadFixture` (`pages-renderers.js:308-318`). Both call sites pass both handlers,
+so `onLoadMatch` always wins.
+
+This was a consequence of a decision, not an accident. `pages-renderers.js:301-307` records the owner
+merging the fixture sheet into the match view's Preview tab on 2026-10-01, so that "the fixture I am about
+to play" and "the match before kickoff" stopped being two screens. The substitution panel was bolted to
+the screen that was retired and went quiet. Nothing flagged it because nothing failed.
+
+**Confirmed in the browser, at 430px.** An unplayed OFK Omladinac fixture opens **Match Preview** — tabs
+Preview / Lineups / Stats / Goals / Replay / Match Report — and `#fm-substitution-plan` does not exist. A
+played fixture opens the same view.
+
+**The honest part.** Two commits earlier this was "fixed" by removing an early return in `fixture-view.js`
+that bailed out on played fixtures, plus a static source guard that passed. Both were green. Both were
+worthless: they edited a file the application never renders. The guard asserted that a line was absent
+from a file nobody opens. A test that cannot fail proves less than no test, and this one could not fail
+because it was not looking at anything reachable.
+
+**A backend half, too.** `MatchDTO` has `playedMatchId` but no `fixtureId`. From a played match opened
+directly there is no route to `/api/sim/fixtures/{id}/substitution-plan`, so the outcome cannot be
+fetched from the match view at all until the backend exposes the link. That is why this is filed as both BE
+and FE rather than a mounting fix.
+
+**Reverted.** The `fixture-view.js` change was undone rather than left in place — fixing unreachable code
+makes the diff lie about what was fixed. `substitution-plan-view.js` is kept, because the module is sound
+and is what the real fix will mount.
+
 ## 🔴 T-REST-0 — a fixture rendered another fixture's lineups and statistics (2026-10-09)
 
 Reported by the owner from Club → Schedule. The fixture **OFK Omladinac v SK Teleoptik City** (unplayed)

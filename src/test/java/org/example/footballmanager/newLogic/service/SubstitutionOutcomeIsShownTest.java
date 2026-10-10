@@ -82,30 +82,6 @@ class SubstitutionOutcomeIsShownTest {
     }
 
     @Test
-    @DisplayName("the plan panel is mounted for a fixture that has already been played")
-    void thePanelIsMountedAfterTheMatch() throws IOException {
-        // A source-level guard, and deliberately described as one. Driving fixture-view.js needs the whole
-        // module graph and a browser; what this protects is a single early return that would make every
-        // other check in this class unreachable in the running application.
-        String fixtureView = Files.readString(
-                Path.of("src/main/resources/static/js/pages/views/fixture-view.js"), StandardCharsets.UTF_8);
-
-        int guard = fixtureView.indexOf("async function mountSubstitutionPlan");
-        assertTrue(guard >= 0, "mountSubstitutionPlan is missing from fixture-view.js");
-        String body = fixtureView.substring(guard, fixtureView.indexOf("\n    }", guard));
-
-        assertTrue(!body.contains("fixture?.played") && !body.contains("fixture.played"),
-                "mountSubstitutionPlan bails out once a fixture is played, which is where the outcome is:\n"
-                        + body
-                        + "\n\nThis was the defect. The panel was written as an input, so there was nothing "
-                        + "to show once the team was picked — but the engine records how each condition went, "
-                        + "and the only place that record could be shown is here.");
-        assertTrue(body.contains("if (!isHome) return;"),
-                "the panel must still be refused for a fixture the manager is not playing at home: the plan "
-                        + "is the home club's instruction and the engine reads it for the home side only");
-    }
-
-    @Test
     @DisplayName("the harness is wired to the real view, not to a copy")
     void theHarnessCanFail() throws IOException {
         String harness = Files.readString(HARNESS, StandardCharsets.UTF_8);
