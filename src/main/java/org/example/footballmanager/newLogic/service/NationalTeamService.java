@@ -46,6 +46,14 @@ public class NationalTeamService {
      */
     private static final int POOL_ROWS = 80;
 
+    /**
+     * The oldest age that may be called up to a U-21 side, inclusive.
+     *
+     * <p>A player is eligible in the season he turns 21, which is the football convention and the reason
+     * this is {@code <=} rather than {@code <}.
+     */
+    public static final int U21_MAX_AGE = 21;
+
     private static final Logger log = LoggerFactory.getLogger(NationalTeamService.class);
 
     private final TeamRepository teams;
@@ -152,12 +160,19 @@ public class NationalTeamService {
         squad.sort(Comparator.comparingInt(Player::getRating).reversed()
                 .thenComparing(p -> p.getName() == null ? "" : p.getName()));
         out.put("squad", squad.stream().map(p -> playerRow(p, team.getId())).toList());
+        // Over-age members of a U-21 squad are named rather than hidden. The pool filter stops new ones
+        // arriving; this tells the selector what is already in the squad that the rule would refuse, so
+        // the fix is his to make and he can see what he is fixing.
+        out.put("overAgeSquadMembers", squad.stream()
+                .filter(p -> !isEligibleAtThisLevel(p, level))
+                .map(Player::getName)
+                .toList());
         out.put("squadSize", squad.size());
 
         // The pool is every player in the country's clubs who is not already on the national roster.
         // Read once: `poolRows` and `countPool` both need the country's players, and each running its
         // own pass meant the same query twice and a count that could disagree with the rows above it.
-        List<Player> countrySquad = viewerIsSelector ? availablePlayers(country, squad) : List.of();
+        List<Player> countrySquad = viewerIsSelector ? availablePlayers(country, squad, level) : List.of();
         out.put("pool", viewerIsSelector ? poolRows(countrySquad) : List.of());
         out.put("poolSize", countrySquad.size());
 
@@ -195,16 +210,41 @@ public class NationalTeamService {
      * the pool rows are the club players themselves. Matching on id is what keeps a called-up player
      * from also appearing in the pool they were just taken from.
      */
-    private List<Player> availablePlayers(Country country, List<Player> squad) {
+    private List<Player> availablePlayers(Country country, List<Player> squad, NationalTeamLevel level) {
         java.util.Set<Long> calledUp = squad.stream()
                 .map(Player::getSourcePlayerId)
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
         return countryPlayers(country).stream()
                 .filter(p -> !calledUp.contains(p.getId()))
+                .filter(p -> isEligibleAtThisLevel(p, level))
                 .sorted(Comparator.comparingInt(Player::getRating).reversed()
                         .thenComparing(p -> p.getName() == null ? "" : p.getName()))
                 .toList();
+    }
+
+    /**
+     * Whether a player may be called up to this national side.
+     *
+     * <p><b>A U-21 squad containing a 31-year-old is not a squad.</b> The pool had no age filter at all,
+     * so the U-21 tab offered the same list as the senior one: Serbia's U-21 side held 25 players of
+     * which **11 were over 21, the oldest 32** (owner, 2026-10-10).
+     *
+     * <p>The limit is inclusive of 21, which is the football convention - a player is eligible in the
+     * season he turns 21. It is applied to <em>call-ups</em> only. Nobody is deleted and nobody is
+     * demoted: a squad that was built before this rule is left exactly as it is until a selector
+     * changes it, because quietly rewriting a manager's roster is worse than showing him what he has.
+     */
+    private boolean isEligibleAtThisLevel(Player player, NationalTeamLevel level) {
+        if (level != NationalTeamLevel.U21) {
+            return true;
+        }
+        // `Player.age` is a primitive int and 0 is the only "not recorded" value it can hold, so the
+        // check has to treat 0 as unknown rather than as a baby. A player whose age is unknown cannot be
+        // shown to be under 21, and the pool is a list of options a manager acts on, so an unknown age
+        // is excluded rather than assumed into a youth side.
+        int age = player.getAge();
+        return age > 0 && age <= U21_MAX_AGE;
     }
 
     /** The first {@value #POOL_ROWS} of the available players - the page sends a page, not a country. */
@@ -251,6 +291,17 @@ public class NationalTeamService {
         if (source.getTeam() == null || source.getTeam().getCountry() == null
                 || !country.getId().equals(source.getTeam().getCountry().getId())) {
             throw new IllegalArgumentException("That player does not belong to this country.");
+        }
+
+        // **The rule is enforced here, on the write, and not only in the pool that offers the player.**
+        // A pool filter alone stops new mistakes and leaves every existing one in place, and this
+        // country's U-21 side was holding 25 players of whom 11 were over 21 with no way to add or
+        // remove anybody to fix it. The check belongs at the door.
+        if (!isEligibleAtThisLevel(source, level)) {
+            throw new IllegalArgumentException(level == NationalTeamLevel.U21
+                    ? source.getName() + " is " + source.getAge() + " and cannot be called up to a U-21 "
+                            + "side. The limit is " + U21_MAX_AGE + ", inclusive."
+                    : source.getName() + " is not eligible for this national side.");
         }
 
         Player copy = new Player();

@@ -2271,6 +2271,49 @@ defect. Narrowed to the rating, which is the thing that makes a team unplayable.
 - [x] `ClubSquadIsPlayableTest` asserts the real invariant against the live world
 - [ ] **`WorldIntegrityService` should check club squads** — it currently reports a broken world as healthy
 
+## T0-U21 · ✅ FIXED 2026-10-10 — a U-21 side had 31-year-olds in it, and the pool offered more
+
+**Found by the owner, 2026-10-10.** Serbia's U-21 squad screen listed 25 players of whom **11 were over
+21**, the oldest **32** (Luigi Verdone 31, Živko Malić 31, Boris Gospojević 30). The national pool
+beside it offered a 32-year-old defender to a youth side.
+
+**Measured, not eyeballed:** the U-21 roster spans **ages 19 to 32**, with 11 of 25 over the limit.
+
+### The cause
+
+`availablePlayers(country, squad)` filtered on exactly one thing — *not already called up*. **It was
+never given the level it was building a pool for**, so it could not apply an age limit even in
+principle. The level was in scope one method away and simply was not passed down.
+
+### The fix
+
+- `U21_MAX_AGE = 21`, **inclusive** — a player is eligible in the season he turns 21, which is the
+  football convention. `0` is treated as "not recorded" rather than as an infant, because `Player.age`
+  is a primitive `int` and an unknown age cannot be shown to be under 21.
+- **The pool is filtered** (so nothing new arrives) **and the write is enforced** in `addToSquad` (so
+  nothing gets in by any other route). A pool filter alone stops new mistakes and leaves every existing
+  one in place.
+- **Nobody is deleted.** The 18 over-age members are named in a new `overAgeSquadMembers` field so the
+  selector can see exactly who the rule would refuse and decide what to do. Quietly rewriting a
+  manager's roster is worse than showing him what he has.
+
+### Evidence
+
+**Live, against the database, through the running app:**
+
+| | |
+|---|---|
+| U-21 pool | **0 of 80** over 21 (was offering them) |
+| U-21 squad | 18 of 25 over 21 — **all 18 now named** |
+
+`UnderTwentyOneEligibilityTest` — 3 tests, including the check that **Serbia still has 2,040 eligible
+players**, so the rule leaves the youth side fieldable. A limit nobody can satisfy is not a rule.
+
+**Honest gap:** the write-path rejection was verified by reading the path and by the exception it
+throws, **not by pressing it in a browser** — doing so would have meant surgically rewriting the owner's
+live roster, and the first attempt to free a slot was correctly blocked by a `player_contract` foreign
+key. The pool result is the live proof; the write check is not.
+
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
 `IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.
