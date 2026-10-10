@@ -40,9 +40,16 @@ import java.util.Map;
 public class MatchPreviewService {
 
     private final ScheduleInsightService insights;
+    private final ShapePreviewService shapePreview;
+    private final org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository;
 
-    public MatchPreviewService(ScheduleInsightService insights) {
+    public MatchPreviewService(
+            ScheduleInsightService insights,
+            ShapePreviewService shapePreview,
+            org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository) {
         this.insights = insights;
+        this.shapePreview = shapePreview;
+        this.matchFixtureRepository = matchFixtureRepository;
     }
 
     /**
@@ -104,19 +111,33 @@ public class MatchPreviewService {
         preview.put("expectedAwayGoals", prediction.expectedAwayGoals());
         preview.put("confidence", prediction.confidence());
 
-        preview.put("homeFormation", home.getFormation());
-        preview.put("awayFormation", away.getFormation());
+        // Fitness, mismatches and bench quality are measured against the shape and the eleven the
+        // manager has actually chosen (T0-UI-8). They were hardcoded null on the grounds that they were
+        // "not knowable before a match", which was true while a fixture had neither a lineup nor a tactic
+        // and stopped being true the moment it could have both. They move as the lineup is edited.
+        //
+        // **Availability stays null**, and that one is genuinely unknowable: it depends on injuries that
+        // may happen during the match. Inventing it is what the original all-null preview was right about.
+        // Resolved from the id this method is given rather than passed down: the local `fixture` here is
+        // the insights record, and a MatchFixture of the same name in the same method is how the shape
+        // preview would have been wired to a forecast instead of a fixture.
+        org.example.footballmanager.newLogic.model.MatchFixture theFixture = fixtureId == null ? null
+                : matchFixtureRepository.findById(fixtureId).orElse(null);
+        Map<String, Object> homeShape = shapePreview.forSide(home, theFixture, "HOME");
+        Map<String, Object> awayShape = shapePreview.forSide(away, theFixture, "AWAY");
 
-        // Still null on purpose. These are not knowable before a match, and inventing them is what the
-        // original all-null fixture preview was right about.
-        preview.put("homeFormationFitness", null);
-        preview.put("awayFormationFitness", null);
-        preview.put("homeBenchQuality", null);
-        preview.put("awayBenchQuality", null);
+        preview.put("homeFormation", homeShape.getOrDefault("formation", home.getFormation()));
+        preview.put("awayFormation", awayShape.getOrDefault("formation", away.getFormation()));
+        preview.put("homeFormationFitness", homeShape.get("formationFitness"));
+        preview.put("awayFormationFitness", awayShape.get("formationFitness"));
+        preview.put("homeBenchQuality", homeShape.get("benchQuality"));
+        preview.put("awayBenchQuality", awayShape.get("benchQuality"));
+        preview.put("homePositionMismatches", homeShape.get("positionMismatches"));
+        preview.put("awayPositionMismatches", awayShape.get("positionMismatches"));
+        preview.put("homeHasLineup", homeShape.get("hasLineup"));
+        preview.put("awayHasLineup", awayShape.get("hasLineup"));
         preview.put("homeAvailabilityScore", null);
         preview.put("awayAvailabilityScore", null);
-        preview.put("homePositionMismatches", null);
-        preview.put("awayPositionMismatches", null);
         preview.put("homePlayStyle", null);
         preview.put("awayPlayStyle", null);
 

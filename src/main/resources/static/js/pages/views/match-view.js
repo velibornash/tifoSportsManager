@@ -300,8 +300,17 @@ export function createMatchView(deps) {
                     <div class="fm-mpv">
                         <header class="fm-mpv-band">
                             <span class="fm-mpv-band-kicker">Match preview</span>
-                            <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} <span>${htmlEscape(String(previewPayload?.homeFormation || '–'))}</span> v <span>${htmlEscape(String(previewPayload?.awayFormation || '–'))}</span> ${htmlEscape(awayTeamName)}</h3>
+                            <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} v ${htmlEscape(awayTeamName)}</h3>
                         </header>
+
+                        <div class="fm-mpv-shapes">
+                            ${shapePanel('Home', homeTeamName, previewPayload?.homeFormation,
+                                previewPayload?.homeFormationFitness, previewPayload?.homeBenchQuality,
+                                previewPayload?.homePositionMismatches, previewPayload?.homeHasLineup)}
+                            ${shapePanel('Away', awayTeamName, previewPayload?.awayFormation,
+                                previewPayload?.awayFormationFitness, previewPayload?.awayBenchQuality,
+                                previewPayload?.awayPositionMismatches, previewPayload?.awayHasLineup)}
+                        </div>
 
                         <div class="fm-mpv-row-3">
                             <section class="fm-mpv-card fm-mpv-card--home">
@@ -875,4 +884,68 @@ export function createMatchView(deps) {
     }
 
     return { loadMatch };
+}
+
+/**
+ * One side's shape: the eleven drawn on a pitch, and how well they fit it.
+ *
+ * The rows come from the formation's own digits - first is defenders, last is strikers, and anything
+ * between is a midfield line, read from the back. That is the same reading the engine gives the shape,
+ * so the picture and the engine cannot drift apart.
+ */
+function pitchRowsFor(formation) {
+    const nums = String(formation || '').split('-').map(n => parseInt(n, 10)).filter(n => Number.isFinite(n));
+    if (!nums.length) {
+        return [];
+    }
+    const defenders = nums[0];
+    const strikers = nums.length > 1 ? nums[nums.length - 1] : 0;
+    const middle = nums.slice(1, Math.max(1, nums.length - 1));
+    const rows = [];
+    if (strikers > 0) rows.push({ kind: 'ST', count: strikers });
+    if (middle.length === 1) rows.push({ kind: 'M', count: middle[0] });
+    if (middle.length > 1) {
+        for (let i = 0; i < middle.length; i++) {
+            rows.push({ kind: i === 0 ? 'DM' : 'M', count: middle[i] });
+        }
+    }
+    rows.push({ kind: 'D', count: defenders });
+    rows.push({ kind: 'GK', count: 1 });
+    return rows;
+}
+
+function shapePanel(side, teamName, formation, fitness, benchQuality, mismatches, hasLineup) {
+    // `fixed1` and `pctOfFraction` are locals of the renderer above, so they are repeated rather than
+    // hoisted: moving them would touch every other card in the preview for no benefit here.
+    const one = value => (value === null || value === undefined ? null : Number(value).toFixed(1));
+    const asPercent = value => (value === null || value === undefined ? null : `${Math.round(Number(value) * 100)}`);
+    const rows = pitchRowsFor(formation);
+    const pitch = rows.length
+        ? `<div class="fm-mpv-pitch">${rows.map(row => `
+                <div class="fm-mpv-line fm-mpv-line--${row.kind.toLowerCase()}">
+                    ${Array.from({ length: row.count }, () => '<span class="fm-mpv-dot"></span>').join('')}
+                </div>`).join('')}
+            </div>`
+        : '<div class="fm-mpv-sub">Shape not known</div>';
+
+    // "Not picked" and "picked and fits perfectly" are different things, and a dash would hide the first
+    // behind the second. Nothing chosen reads as nothing chosen.
+    const fit = fitness === null || fitness === undefined
+        ? 'Eleven not picked yet'
+        : `${asPercent(fitness)}% fit${mismatches > 0 ? ` &middot; ${mismatches} out of place` : ''}`;
+    const bench = benchQuality === null || benchQuality === undefined
+        ? 'No bench named'
+        : `${one(benchQuality)} bench`;
+
+    return `
+        <section class="fm-mpv-shape fm-mpv-shape--${side.toLowerCase()}">
+            <header class="fm-mpv-shape-head">
+                <span class="fm-mpv-label">${htmlEscape(side)}</span>
+                <span class="fm-mpv-shape-formation">${htmlEscape(String(formation || '–'))}</span>
+            </header>
+            <div class="fm-mpv-shape-team">${htmlEscape(String(teamName || ''))}</div>
+            ${pitch}
+            <div class="fm-mpv-shape-fit">${fit}</div>
+            <div class="fm-mpv-sub">${bench}</div>
+        </section>`;
 }

@@ -1,5 +1,26 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-8 — the preview shows both shapes, and how well each eleven fits them (2026-10-10)
+
+Six preview fields were hardcoded `null` with the comment "not knowable before a match". That was true
+while a fixture had neither a lineup nor a tactic; both can now be saved, so the preview was refusing to
+answer questions it could answer. It was also showing the club's standing `team.formation` column while
+the manager picked a different shape on the same screen.
+
+Fitness turned out to be the one non-obvious part. Membership testing - "does this shape have a D slot" -
+scores a 4-4-2 fielding seven centre backs at 100%, because it has one D and it has four. The question is
+whether they fit, so the shape is read as a count per line and the surplus is the mismatch.
+
+The test caught a bug in the first version of that: slot keys are positional (`DCL`, `CML`, `AMR`), and
+truncating them to two characters grouped `DCL` with `DR` under `DC`, so every centre back scored as a
+mismatch and a correct 4-4-2 came out at 64%. The kind now comes from the key's leading letters.
+
+Second mutation check: unmatchable striker slots turn the full-fit check red (expected 1.0, was 0.82).
+
+Browser at 430px: 3-4-3 at 92% fit / 14.8 bench v 4-4-2 at 91% / 12.9, two 190px columns, no overflow.
+
+`homeAvailabilityScore` stays null - it genuinely depends on injuries during the match. Live DB untouched.
+
 ## ✅ T1-6 — "9 in catalog, 1 applied" is not true (2026-10-10)
 
 The archive said nine formations in the catalog and one applied. All nine exist, each fields a distinct

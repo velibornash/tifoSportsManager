@@ -5885,3 +5885,94 @@ body {
 .fm-analytics-panel--missing h4 {
     opacity: 0.7;
 }
+
+/* T0-UI-8 - the two shapes, side by side, each on its own pitch. */
+.fm-mpv-shapes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.fm-mpv-shape {
+    border: 1px solid var(--fm-border, rgba(255, 255, 255, 0.12));
+    border-radius: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.fm-mpv-shape-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fm-mpv-shape-formation {
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+}
+
+.fm-mpv-shape-team {
+    font-size: 12px;
+    opacity: 0.75;
+    margin-bottom: 8px;
+}
+
+/* The pitch: attacking end at the top, own goal at the bottom. */
+.fm-mpv-pitch {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 4px;
+    min-height: 132px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.035) 0 26px,
+        rgba(255, 255, 255, 0.06) 26px 52px);
+}
+
+.fm-mpv-line {
+    display: flex;
+    justify-content: space-around;
+    gap: 4px;
+}
+
+.fm-mpv-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.85;
+}
+
+/* The keeper's dot is filled, everyone else is hollow - the one distinction the pitch needs. */
+.fm-mpv-line--gk .fm-mpv-dot {
+    background: var(--fm-accent, #7dd3a0);
+    opacity: 1;
+}
+
+.fm-mpv-shape-fit {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+@media (max-width: 430px) {
+    .fm-mpv-shapes {
+        gap: 8px;
+    }
+
+    .fm-mpv-pitch {
+        min-height: 112px;
+        padding: 6px;
+    }
+
+    .fm-mpv-dot {
+        width: 8px;
+        height: 8px;
+    }
+}

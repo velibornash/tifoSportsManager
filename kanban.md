@@ -1415,17 +1415,42 @@ rows, T2-9). xG is computed from that position and persisted as a *number*; the 
 - [ ] **Optional is stated as optional** — the panel says what not playing costs, which is nothing
 - [ ] The club-side invite button that exists in the service but is never rendered
 
-### T0-UI-8 · Pre-match preview showing both shapes
+### T0-UI-8 · DONE 2026-10-10 — the preview shows both shapes, and how well each eleven fits them
 
-- [ ] Both sides' shapes side by side, from their own tactics
-- [ ] Sector ratings that move **as the lineup is edited**
-- [ ] 430px pass
+**Six preview fields were hardcoded `null`** — formation fitness, bench quality, position mismatches —
+with the comment *"still null on purpose… not knowable before a match."*
 
----
+That was true while a fixture had neither a lineup nor a tactic, and it stopped being true the moment a
+manager could save both. **Both now can.** It was also the preview reporting the club's standing
+`team.formation` column while the manager picked a different shape on the same screen.
 
-# 🟠 T1 — existing features that are incomplete or wrong
+### What it does now
 
-Not new work. Work on something already built that does not do what it claims.
+- `ShapePreviewService` resolves the shape actually in force — **per-match tactic, then the chosen lineup,
+  then the club's column** — and measures the eleven against it.
+- **Fitness is capacity-based, not membership-based.** Asking only "does this shape have a D slot" scores
+  a 4-4-2 fielding seven centre backs at 100%. 4-4-2 has four defenders, so the question is whether they
+  *fit*.
+- The two shapes are drawn **side by side as pitches**, dots from the formation's own digits — first is
+  defenders, last is strikers, the middle is midfield — so the picture and the engine cannot drift.
+- Bench quality is the mean of the named substitutes; an empty bench reads *"No bench named"*, never 0.0.
+- An unpicked side reads *"Eleven not picked yet"* rather than a dash, so *"picked and fits perfectly"* is
+  never confused with *"nothing chosen"*.
+
+**`homeAvailabilityScore` is left `null` on purpose** and is the only one of the six that still is:
+it depends on injuries that may happen during the match.
+
+### Evidence
+
+- `ShapePreviewServiceTest` — 5 tests, **proven able to fail**: making the striker slot unmatchable turns
+  the full-fit check red (*expected 1.0, was 0.82*).
+- **It caught a real bug in its own first version.** Truncating slot keys to two characters grouped `DCL`
+  with `DR` under `DC`, so *every centre back scored as a mismatch* and a **correct 4-4-2 came out at
+  64%**. Slot keys are positional, so the kind is now taken from their leading letters.
+- Browser at **430px**: OFK Omladinac 3-4-3 at **92% fit / 14.8 bench** v OFK Proleter Apatin 4-4-2 at
+  **91% / 12.9**, two 190px columns, no horizontal overflow, 11 dots a side, keeper filled.
+
+**Live DB untouched** — `lineup` rows with a `match_id`: still 0.
 
 ## T1-1 · 🔴 `ConditionalSubstitutionRules` is dead in production
 
