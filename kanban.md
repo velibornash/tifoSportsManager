@@ -2478,6 +2478,50 @@ for the Schedule page — and a filter that silently fell back to the league wou
 for it, so the card reads *"Schedule updating"*. That is true rather than broken — the cups were drawn for
 seasons 1 and 2.
 
+## T0-TACTICS · 🔴 OPEN 2026-10-10 — tactics cannot be listed, loaded, copied or chosen
+
+**Found by the owner, who compared it with sokker.org** (logged in, reviewed, logged out).
+
+### The reference, observed
+
+Match settings on sokker.org is one screen carrying three things:
+
+| | sokker.org | here |
+|---|---|---|
+| **Basic tactic** | dropdown — `V4312` | **absent** |
+| **Additional tactic** | dropdown — `4312V` | **absent** |
+| **Squad setup → "Based on"** | dropdown, sets **position order** | **absent** |
+| Pitch + draggable players | yes | yes |
+| Suggest lineup | yes | no |
+
+The screen reads *"Squad setup · Suggest lineup · **Based on: tactic** · position order"*, followed by the
+numbered eleven. **A tactic is a saved, named thing you choose, and choosing one sets the position order
+of the squad.** That is the whole of the difference.
+
+### What exists here, and why it cannot do any of this
+
+`tactics-editor-view.js` **PUTs to `/teams/{id}/tactics-editor` with no tactic id**, and the row behind it
+is `TeamTacticsProfile` — **one profile per club**. So there is no list to render, nothing to load, no id
+to save under, and nothing for a match-setup screen to select.
+
+**The consequence the owner hit:** a tactic cannot be selected in match settings, because there is only
+ever one and it is not offered.
+
+**This is not the same as the `Tactic` library from T0-BE-1.** That is a *conditional* tactic — a rule set
+with six score-based conditions for the match plan. This is the **basic/additional tactical grid**: the
+formation, the style, the movement rules and the set pieces, which is what sokker.org's dropdowns hold.
+
+### What is needed
+
+1. **A named tactic list per club**, with an id — so a tactic can be opened, changed and saved.
+2. **"New tactic"**, optionally **"based on"** an existing one, so a manager copies rather than starting
+   from zero.
+3. **Save-as under a new name**, leaving the original untouched.
+4. **A tactic selector in match settings**, which also carries the position order — sokker's "Based on".
+
+**Decisions that are the owner's, not mine:** whether "additional tactic" is one more saved tactic or a
+distinct second slot in a match, and what a copied tactic inherits beyond the grid (name? set pieces? both?).
+
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
 `IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.
