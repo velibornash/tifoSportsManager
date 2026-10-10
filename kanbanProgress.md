@@ -18,6 +18,27 @@ source check on a control-flow claim, and is written as such rather than dressed
 It also caught a trap this repository keeps falling into: the comment explaining the defect quotes
 simulatedCount.incrementAndGet() verbatim, and two of my own checks found that comment before the code.
 
+## ✅ T-REST-3 / 🔴 T-REST-4 — a full round, run live, and what it found (2026-10-10)
+
+Ran POST /simulation/current-round/simulate-all on the owner's database. It returns 200 - not 500 - and
+completed 472 of 472 fixtures with zero exceptions. supporter_mood is now populated for 14,731 of 14,731
+teams; it was null everywhere before, so the matchday that had "never been played end to end" has now been.
+Club Elo rebuilt: 707 matches replayed, 14,627 clubs rated, 956 off their seed.
+
+The ranking rebuild does not finish. club_season_ranking_points is still 0 and "Ranking after the batch"
+never appears in the log - not as success, not as the failure it would log. jstack showed the thread
+RUNNABLE at 100% CPU after twenty minutes, inside a Hibernate dirty check, reached from
+ClubRankingPointsService.recompute -> ScheduleInsightService.buildTeamSnapshots -> buildTeamSnapshot.
+
+The cause is an N+1 inside a flush: recompute builds one snapshot per club for all 14,731 clubs, and each
+snapshot runs findByHomeTeamIdOrAwayTeamId inside the transaction about to flush. Every load adds to the
+persistence context, and the flush then dirty-checks the accumulated graph. So it is not 14,731 queries,
+it is 14,731 queries plus a flush that grows with everything they load.
+
+The wiring is committed and the guard is proved, and the feature still cannot complete on the real world.
+Found by running the thing rather than by reasoning about it - which is the argument for the item being
+open at all.
+
 ## ✅ T-REST-6 — the requested test was impossible, and why (2026-10-10)
 
 The board asked for a test asserting the four club-id sites return a Team id. Writing it turned up that

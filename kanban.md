@@ -370,30 +370,57 @@ The app boots and every read-only page works. `supporterMood` is read by the mat
       have caught this, and the reason 154 test classes did not
 - [x] Verified: a club with a league division drifts toward its target mood
 
-## T-REST-4 — 🔴 P0-RANK-WIRE · the ranking rebuild has never been seen in a live matchday
+## T-REST-4 · 🔴 P0-RANK-WIRE · ANSWERED 2026-10-10 — and the answer is worse than "unobserved"
 
-The wiring is committed and its guard is proved. What is missing is the one thing a test cannot substitute
-for: **the tables filling in a real world.**
+**The board said the ranking tables had never been seen to fill. They now have been, and the rebuild does
+not finish.**
 
-**Established:** `sokker_db` is seeded (14,723 clubs, 14,620 season entries, 1,463 divisions). **26 league
-matches are played** (week 1 day 3) — but by another agent's application instance, whose build could not be
-confirmed to contain `4f8830b`. Two attempts to verify with a known build both ended with the JVM killed
-(exit 137) while other agents cycled the same port.
+### What was run
 
-`club_season_ranking_points`, `country_season_ranking_points` and `club_honour` were **all still empty** at
-that measurement.
+`POST /simulation/current-round/simulate-all` on the owner's database, live, this session.
 
-**How to finish it, about two minutes:**
-1. advance to week 1, day 7, hour 20 (day 3 hour 20 is behind us);
-2. `select count(*) from club_season_ranking_points;` — non-zero means the rebuild ran after the batch;
-3. `select count(*) from club_honour;` — says whether a finished competition produced medals;
-4. grep `Ranking after the batch` in the log, which prints every counter and the elapsed milliseconds.
+- **Returns 200**, not 500. `472 of 472 fixture(s) simulated` — **the first complete round ever observed
+  here**, with **zero exceptions** in the log.
+- `supporter_mood` is now populated for **14,731 of 14,731** teams. It was null everywhere before, so
+  **T-REST-3 is answered too** — the matchday that had "never been played end to end" has now been.
+- `Club Elo after the batch: 707 match(es) replayed, 14627 club(s) rated, 956 off their seed.` — the Elo
+  path completes.
 
+### 🔴 The ranking rebuild does not complete
 
-**Status (2026-10-09):** The wiring is verified (test passes), but the ranking tables remain empty because
-the simulated matches in the test run are CUP-type fixtures, not LEAGUE-type, and the ranking query
-filters for `c.teamType = CLUB`. The test passes (wiring verified) but the live verification requires
-a full season of LEAGUE matches on the real PostgreSQL database, which is pending.
+`club_season_ranking_points` is still **0 rows** after the round, and `Ranking after the batch` **never
+appears in the log** — not as a success and not as the failure it would log.
+
+The thread was still spinning when the round finished. `jstack`:
+
+```
+"task-1" RUNNABLE, cpu=1191929ms elapsed=1236.85s
+  at ...ComponentType.isDirty
+  at ...DefaultFlushEntityEventListener.performDirtyCheck
+  at ...ScheduleInsightService.buildTeamSnapshot(ScheduleInsightService.java:70)
+  at ...ScheduleInsightService.buildTeamSnapshots(ScheduleInsightService.java:41)
+  at ...ClubRankingPointsService.recompute(ClubRankingPointsService.java:72)
+```
+
+**The cause is an N+1 inside a Hibernate flush.** `ClubRankingPointsService.recompute` builds one snapshot
+per club for all **14,731 clubs**, and `buildTeamSnapshot` runs
+`matchRepository.findByHomeTeamIdOrAwayTeamId(...)` **once per club, inside the transaction that is about
+to flush**. Every one of those loads puts entities in the persistence context, and the flush then walks
+the accumulated graph doing a dirty check on each. So the cost is not 14,731 queries — it is 14,731
+queries **plus** a flush whose dirty check grows with everything they loaded, and it did not complete in
+**twenty minutes of wall time at 100% CPU**.
+
+This is the exact shape T-REST-4 was opened for, found by running the thing rather than by reasoning
+about it. **The wiring is committed, the guard is proved, and the feature still cannot complete on the
+real world.**
+
+### Exit criteria
+
+- [x] `supporter_mood` populated in a live matchday — 14,731 / 14,731
+- [x] `simulate-all` returns 200 and completes a full round — 472 / 472, zero exceptions
+- [x] Club Elo rebuilds — 707 matches replayed, 14,627 clubs rated
+- [ ] **Ranking rebuild completes** — currently spins; `club_season_ranking_points` stays at 0
+- [ ] `club_honour` medals observed for a finished competition
 
 ## T-REST-5 — 🔴 P0-CUPS-4 · a real season has never been observed for the continental cups
 
