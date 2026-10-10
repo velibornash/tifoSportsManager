@@ -21,10 +21,23 @@ friendly is a fixture that belongs to no competition at all. The first version o
 `FRIENDLY` constant that does not exist; that was caught at compile time and corrected rather than
 papered over.
 
-**Recorded rather than declared done.** Nothing calls `record(...)` after a match or `serve(...)` before
-one. The engine already awards cards and the outcome already carries the per-player totals, so the input
-is there and unwired — the same shape as `ConditionalSubstitutionRules` was, and the same trap this log
-keeps recording. A manager whose player takes a red card today still plays the next match.
+**Recorded rather than declared done** — and then wired, same day. Nothing called `record(...)` after a
+match or `serve(...)` before one. The engine already awards cards and the outcome already carries the
+per-player totals, so the input was there and unwired: the same shape as `ConditionalSubstitutionRules`,
+and the same trap this log keeps recording.
+
+- **After the match**, the cards are written from the same `PlayerOutcome`s the match stats come from, so
+  the two cannot disagree about who was carded. Synthetic engine players are skipped.
+- **Before the match**, bans are spent for both clubs, before the squads are built, and a suspended player
+  is kept out of the auto-picked eleven. A manager's own saved lineup is left alone — the screen tells him
+  who is unavailable, and quietly editing his XI behind his back is worse than showing it to him.
+- **Served by the fixture, not by the selection.** A match a player is banned from is a match the ban is
+  spent on. Tying it to selection would let a manager keep someone out of the XI and reset his suspension.
+
+**The guard that proves the difference.** Removing the `record(...)` call turns
+`DisciplineIsAppliedInASimulationTest` red **while all thirteen `DisciplineServiceTest` cases stay
+green**. The arithmetic was always tested; that a match applies it never was, and that was the actual
+defect.
 
 ## ✅ T0-BE-3 — a club can pick a team for one fixture (2026-10-10)
 

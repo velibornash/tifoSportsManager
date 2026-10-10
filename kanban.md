@@ -977,12 +977,32 @@ can bite on.
 - [x] **Proven able to fail:** collapsing the 6 and 9 bands turns **3** tests red; resetting the counter at
       three turns `theCounterWaitsForTheBansToBeServed` red
 
-**Not yet done.** Nothing calls `record(...)` after a match, and nothing calls `serve(...)` before one. The
-engine already awards cards — `DuelService` calls `stats.onYellowCard` / `onRedCard`, and
-`ProposalMatchOutcome.PlayerOutcome` carries the per-player totals — so the input is there and unwired, in
-the same shape as `ConditionalSubstitutionRules` was. **This is exactly the "green but unreachable"
-pattern this log keeps recording**, so it is recorded rather than declared done: a manager whose player
-takes a red card today still plays the next match.
+**Wired, 2026-10-10 — the part that was missing and is now closed.**
+- **After the match**, `recordDiscipline(fixture, outcome)` writes the cards the engine already awards:
+  `DuelService` calls `stats.onYellowCard` / `onRedCard` and each `PlayerOutcome` carries the totals, so
+  this is a write and not an invention. Synthetic engine players (`HOME-1`) are skipped — their ids
+  resolve to nobody.
+- **Before the match**, `serveSuspensions(fixture)` spends every ban this fixture is serving, for both
+  clubs, **before** the squads are built so the players it frees are the ones the auto-pick sees.
+- **A suspended player is kept out of the auto-picked eleven.** A manager's own saved lineup is left alone
+  — the screen tells him who is unavailable, and silently editing a manager's XI behind his back is worse
+  than showing it to him.
+- **Recording is best-effort.** The match is already played when it runs, so a failure is logged and the
+  match stands.
+
+**Served by the fixture, not by the selection.** The owner's rule is that a red card bars the first next
+official match *of the club* — a match he is banned from is a match the ban is spent on whether or not he
+would otherwise have been picked. Tying it to selection would let a manager keep a player out of the XI and
+quietly reset his suspension.
+
+**Proven able to fail:** removing the `discipline.record(...)` call turns
+`DisciplineIsAppliedInASimulationTest` red **while `DisciplineServiceTest` stays green** — which is the
+point of having it. The rules' arithmetic was always tested; that they are applied by a match was not, and
+that is precisely what was missing.
+
+**These are structural guards and labelled as such.** Proving the wiring behaviourally means seeding a
+competition, drawing a fixture and running ninety minutes of engine. The arithmetic behind 3/6/9 is covered
+behaviourally; the three call sites are covered by reading them.
 
 ### T0-BE-3 · ✅ DONE 2026-10-10 — a club can pick a team for one fixture
 

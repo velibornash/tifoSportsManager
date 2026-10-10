@@ -80,6 +80,7 @@ public class SimMatchService {
     private final org.example.footballmanager.newLogic.service.TacticsRulesProvider tacticsRules;
     private final org.example.footballmanager.newLogic.service.MatchTacticsPreparationService matchTacticsPreparation;
     private final org.example.footballmanager.newLogic.service.MatchLineupService matchLineups;
+    private final org.example.footballmanager.newLogic.service.DisciplineService discipline;
     private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository
             teamTacticsProfileRepository;
 
@@ -112,6 +113,10 @@ public class SimMatchService {
 
         List<Player> homeBench = new ArrayList<>();
         List<Player> awayBench = new ArrayList<>();
+        // Bans are spent before the squads are chosen, so the players this fixture frees are the ones
+        // the auto-pick sees (T-DISC).
+        serveSuspensions(fixture);
+
         // The fixture is threaded through so a club's pick for THIS match wins over its template.
         List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench, fixture);
         List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench, fixture);
@@ -242,16 +247,58 @@ public class SimMatchService {
                         coachFactorFor(team) * cohesionFactorFor(team), formationOf(lineup, team));
             }
         }
-        // No usable lineup template → build the XI from the team's real DB
-        // players (position-sorted fallback) so real names/ids reach the sim,
-        // the detail view and MatchPlayerStats even without a saved lineup.
-        // Owned plus loaned in. Without the union a club whose manager saved no lineup fields a
-        // fallback XI that does not contain the player he went to the trouble of borrowing.
-        List<org.example.footballmanager.newLogic.model.Player> squad =
+        // A banned player cannot play (T-DISC), so the auto-pick pool excludes him. He is dropped here
+        // rather than from the saved lineup above because that one is the manager's own pick and the
+        // screen already tells him who is unavailable; this pool is the club picking for itself.
+        List<org.example.footballmanager.newLogic.model.Player> available =
                 squadRegistration.availablePlayers(team.getId());
-        if (squad == null || squad.size() < 11) return null;
-        return RealSquadFactory.buildSquadFromPlayers(squad, side,
+        if (available == null) return null;
+        List<org.example.footballmanager.newLogic.model.Player> pool = available.stream()
+                .filter(player -> !isSuspended(player, fixture))
+                .toList();
+        if (pool.size() < 11) return null;
+        return RealSquadFactory.buildSquadFromPlayers(pool, side,
                 coachFactorFor(team) * cohesionFactorFor(team), formationOf(null, team));
+    }
+
+    /**
+     * Whether this player is barred from this fixture by a red card or by the yellow accumulation.
+     *
+     * <p>The <b>database</b> Player, and not the engine's: the squad comes from the repository and the
+     * discipline record is keyed on the database id. This file's bare {@code Player} is the engine's sim
+     * type, which is why the import here is spelled out — the two are different models with overlapping
+     * names, and picking the wrong one fails to compile rather than quietly doing the wrong thing.
+     */
+    private boolean isSuspended(org.example.footballmanager.newLogic.model.Player player, MatchFixture fixture) {
+        return discipline != null && player != null && player.getId() != null && fixture != null
+                && discipline.suspensionFor(player.getId(), fixture.getSeasonYear(), fixture).isPresent();
+    }
+
+    /**
+     * Serves every ban this fixture is serving, for both clubs.
+     *
+     * <p><b>Served by the fixture, not by the selection.</b> The owner's rule is that a red card bars the
+     * first next official match <em>of the club</em> — a match he is banned from is a match the ban is
+     * spent on whether or not he would otherwise have been picked. Tying it to selection would let a
+     * manager keep a player out of the XI and quietly reset his suspension, which is not a thing the
+     * rules allow.
+     *
+     * <p>Called before the squads are built, so the players it frees are the ones the auto-pick sees.
+     */
+    private void serveSuspensions(MatchFixture fixture) {
+        if (fixture == null || discipline == null) return;
+        Integer season = fixture.getSeasonYear();
+        for (Team club : java.util.List.of(fixture.getHomeTeam(), fixture.getAwayTeam())) {
+            if (club == null || club.getId() == null) continue;
+            List<org.example.footballmanager.newLogic.model.Player> squad =
+                    squadRegistration.availablePlayers(club.getId());
+            if (squad == null) continue;
+            for (org.example.footballmanager.newLogic.model.Player player : squad) {
+                if (discipline.suspensionFor(player.getId(), season, fixture).isPresent()) {
+                    discipline.serve(player.getId(), season, fixture);
+                }
+            }
+        }
     }
 
     /**
@@ -405,6 +452,7 @@ public class SimMatchService {
                 // The per-match rows are written for every type: a manager who played an exhibition
                 // should be able to read back what happened in it.
                 persistPlayerStats(match, outcome);
+                recordDiscipline(fixture, outcome);
                 if (match.resolvedMatchType().countsForCareer()) {
                     bumpCareerStats(outcome);
                 } else {
@@ -488,6 +536,34 @@ public class SimMatchService {
 
     /** Writes one MatchPlayerStats row per real DB player who took part (synthetic
      *  fallback ids like "HOME-1" cannot resolve and are skipped). */
+    /**
+     * Writes the cards the engine awarded into the disciplinary record (T-DISC).
+     *
+     * <p><b>The engine already awards them.</b> {@code DuelService} calls {@code stats.onYellowCard} and
+     * {@code stats.onRedCard}, and each {@code PlayerOutcome} carries the totals — so this is a write, not
+     * an invention. It sat unwired while the rules existed and the tests were green, which is the shape of
+     * {@code ConditionalSubstitutionRules} and the reason the board records such things rather than
+     * declaring them done.
+     *
+     * <p><b>Best-effort.</b> A failure here must not cost the match that has already been played; the same
+     * reasoning as the substitution plan's reader. It is logged and the match stands.
+     */
+    private void recordDiscipline(MatchFixture fixture, ProposalMatchOutcome outcome) {
+        if (discipline == null || fixture == null || outcome == null || outcome.players() == null) return;
+        Competition competition = fixture.getCompetition();
+        Integer season = fixture.getSeasonYear();
+        try {
+            for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
+                if (po.yellowCards() <= 0 && po.redCards() <= 0) continue;
+                Long playerId = parsePlayerId(po.playerId());
+                if (playerId == null) continue;   // a synthetic engine player, not a squad member
+                discipline.record(playerId, season, competition, po.yellowCards(), po.redCards());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not record cards for fixture {}: {}", fixture.getId(), e.getMessage());
+        }
+    }
+
     private void persistPlayerStats(Match match, ProposalMatchOutcome outcome) {
         Team homeTeam = match.getHomeTeam();
         Team awayTeam = match.getAwayTeam();
