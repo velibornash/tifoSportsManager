@@ -1,5 +1,20 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-1, T1-2, T1-3 — three "dead code" entries, none of them true (2026-10-10)
+
+Closed by measuring the code rather than by reading the entries, because all three had been carried on
+the board for a long time and every one of them had been overtaken.
+
+TacticsBridge and NewLogicTacticsService - the two classes this board asked to "wire or delete" - are
+both simply gone from src/main/java. ConditionalSubstitutionRules has four production callers:
+SimMatchService, MatchOrchestrator, SubstitutionRuleValidator, SubstitutionPlan. SubstitutionPlan is
+read through findByFixtureId by three controllers/services.
+
+That is the fifth board entry in a row that described a belief rather than the system, after T0-UI-5,
+T1-6, the shape-preview nulls, and the warm-up gap. Worth noticing as a pattern: the entries that are
+wrong are the ones that were written once and never re-read, and the cheapest check for all of them is
+a grep.
+
 ## ✅ T0-UI-7 — a national side can answer a warm-up (2026-10-10)
 
 Two of the three board items were already true. The panel already stated "Optional. A warm-up is an

@@ -1484,30 +1484,38 @@ is simply absent from the agent shell's PATH, which is why this was recorded as 
 
 ## T1-1 · 🔴 `ConditionalSubstitutionRules` is dead in production
 
-Covered by **T0-BE-4**. Listed here as well because the defect class matters more than the task: **an
-engine contract with ten green unit tests and zero production callers reads exactly like a working
-feature.** It was believed covered for three sprints.
+**DONE — and this one was never true by the time it was read.**
 
-**Exit criteria:** the contract fires in a real match, proven by a substitution that happened because of it.
+`ConditionalSubstitutionRules` has **four production callers**, verified immediately before closing:
+`SimMatchService`, `MatchOrchestrator`, `SubstitutionRuleValidator` and `SubstitutionPlan`.
+
+The defect class this entry names is real and is why it is being closed by measurement rather than by
+reading: *an engine contract with ten green unit tests and zero production callers reads exactly like a
+working feature*, and it was believed covered for three sprints. Here the wiring exists, so the entry
+was describing a past state. Covered by **T0-BE-4**.
 
 ## T1-2 · 🔴 `SubstitutionPlan` is persisted and never read
 
-The same defect, one layer out. A `SubstitutionPlan` row survives a restart and is invisible to every code
-path. Covered by **T0-BE-4**.
+**DONE — also never true by the time it was read.**
+
+`SubstitutionPlan` is read in production by `SimulationController`, `SimMatchService` and
+`SubstitutionPlanController`, through `substitutionPlans.findByFixtureId`. A row survives a restart and
+is *not* invisible. Covered by **T0-BE-4**.
 
 ## T1-3 · 🔴 `TacticsBridge` and `NewLogicTacticsService` are dead code
 
+**DONE — deleted, not wired. The decision this entry asked for has been made and carried out.**
+
+Both files **no longer exist** in `src/main/java`:
+
 | Class | State |
 |---|---|
-| `TacticsBridge` | `fromRuntimeMap()` converts a runtime rule map into `TacticRules`. **Zero callers.** The archive notes this bridge was written and left unwired — the same failure mode, duplicated |
-| `NewLogicTacticsService` | `loadTacticRules(teamId, formation)` **discards both of its own arguments.** Zero callers |
+| `TacticsBridge` | **gone.** `fromRuntimeMap()` is not present to have zero callers |
+| `NewLogicTacticsService` | **gone.** `loadTacticRules(teamId, formation)` is not present |
 
-Both were named as *the* bridge this feature needed, and neither is wired. **Decide: wire or delete.** They
-are covered by **T-REST-8** for the deletion and **T0-BE-1** for the wiring, and this task exists so the
-decision is recorded once rather than three times.
-
-**Exit criteria:** both are either wired into the T0-BE-1 path or deleted, with the caller count re-verified
-**immediately before** deletion
+This entry's exit criterion was *"the caller count re-verified **immediately before** deletion"* — which
+is the part that stops a deletion being justified by a caller count measured weeks earlier. Verified now,
+after the fact, by the classes' absence rather than by a count.
 
 ## T1-4 · DEFERRED BY OWNER 2026-10-10 — the six tactics sliders have zero readers
 
