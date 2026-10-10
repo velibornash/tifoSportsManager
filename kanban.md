@@ -1326,14 +1326,37 @@ viewer, and the owner — who uses the game — knew the answer immediately. A b
 distinction cost real time. **Nothing goes on the board as work until someone has looked at the thing it
 describes.**
 
-### T0-UI-6 · The analytics panels
+### T0-UI-6 · The analytics panels — audited 2026-10-10, scoped in three parts
 
-- [ ] xG and xA per side, with the shot map
-- [ ] PPDA and field tilt as two numbers with a plain-words reading
-- [ ] Progressive passes and a momentum strip across the 90 minutes
-- [ ] **Every number carries its own explanation.** A number the manager cannot interpret is a number they
-      will not act on
-- [ ] 430px pass
+**The task as written asked for six things. The audit says two are nearly free, one is already shipped,
+and three need data that does not exist.**
+
+| | State, verified against the source and the database |
+|---|---|
+| **xG per side** | **Already done and already displayed.** `ProposalMatchOutcomeBuilder.computeExpectedGoals` scores every shot from its distance to goal, and the Stats tab has shown `['xG', …]` all along. Nothing to build. |
+| **Field tilt** | **Derivable from data that exists.** `player_zone_load` holds **27,757 rows across 235 matches** — nine zones per team (`ATTACKING/MIDFIELD/DEFENSIVE` × `LEFT/CENTRE/RIGHT`) with minutes and intensity. Field tilt is the attacking share of it. |
+| **PPDA** | **Cheap, with one gap.** Passes attempted is team-level; `tackles`, `duelsWon`, `blocks`, `interceptions` are all counted but only reach the payload **per player**, never summed per side. One aggregation away. |
+| **xA** | **Does not exist.** No expected-assist model anywhere. It is the same shape as the xG model and would be built the same way — a probability from distance and angle. |
+| **Shot map** | **The data does not survive the match.** `positionRow` / `positionColumn` exist on `sim/recording/MatchEvent` — the **in-memory recorder** — and on nothing else. No table stores where a shot was taken. xG is computed from that position and then persisted as a number; the position itself is gone. Every event table is 0 rows. |
+| **Progressive passes** | **Same gap.** Pass positions are not persisted. |
+| **Momentum strip** | **Same gap.** There is no per-tick or per-minute timeline in the database — `match_tick_states` is 0 rows and nothing writes it (T2-9). |
+
+**So the shot map, progressive passes and momentum are not UI work.** They are data-layer work: a shot's
+and a pass's cell has to be written down at the moment it happens, across 14,723 clubs and 3,600 ticks a
+match. That is a decision about what the database stores, and it belongs beside T2-9 rather than inside a
+screen.
+
+**The zones are named from the player's own perspective** — `ATTACKING` means the attacking third *for that
+player*, so the two sides must be read through the same perspective discipline as the tactical mirror
+(T-REST-14) or a home side's attacking third would be compared against the away side's defensive one.
+
+**Recommended order, if the owner agrees**
+1. **Field tilt and PPDA**, each as a number **with its plain-words reading** — the existing data, no new
+   persistence, and the two a manager would actually act on.
+2. **xA**, built on the same model as the xG that is already there.
+3. **Shot map, progressive passes, momentum** — filed as their own data-layer task, not here.
+
+Every number carries its own explanation, and a 430px pass, as the task already requires.
 
 ### T0-UI-7 · Friendly requests for national teams
 
