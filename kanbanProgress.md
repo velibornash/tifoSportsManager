@@ -1,5 +1,21 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-6 — "9 in catalog, 1 applied" is not true (2026-10-10)
+
+The archive said nine formations in the catalog and one applied. All nine exist, each fields a distinct
+eleven, and two formations are already in use in the world — 4-4-2 and 3-4-3, both saved on real clubs.
+
+Counting nine layouts would have proved nothing: `getOrDefault(..., layouts.get("4-4-2"))` falls through
+for any name the catalog does not know, so a catalog can hold nine and hand every club the same eleven.
+That is precisely the shape of the claim being retired, so the test asserts the nine produce nine
+different XIs.
+
+Proven able to fail: collapsing the lookup so every formation falls through to 4-4-2 turns two checks
+red, one of them saying "4-3-3 and 4-4-2 field exactly the same players in the same slots". The pairs the
+eye would call the same — 4-4-2 against 4-5-1, 3-4-3 against 3-5-2 — are spot-checked too.
+
+Second time this session a board entry has described a belief rather than the system, after T0-UI-5.
+
 ## ✅ T0-UI-6 (part 1) — field tilt and PPDA, each with its reading (2026-10-10)
 
 xA dropped by owner decision. Field tilt came out of data that already existed: `player_zone_load` holds

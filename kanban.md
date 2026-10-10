@@ -1479,17 +1479,24 @@ means the editor's out-of-possession data is unreachable, and the current source
 **Exit criteria:** the decision is written down in the entity's javadoc, and the UI says which shape is in
 force. **Do not "fix" the mirroring** — see the traps.
 
-## T1-6 · 🟠 Formation variety — verify, then close
+## T1-6 · DONE 2026-10-10 — "9 in catalog, 1 applied" is not true
 
-The archive records *"9 in catalog, 1 applied"*. **The code says the formation is applied:**
-`RealSquadFactory.slotOrderFor(formation)` reads the catalog and assigns role keys from it, and
-`TacticsRules.anchorsFor(formation)` reads the right anchor cells. `SimMatchService.formationOf()` prefers
-the lineup template, then the tactics profile.
+**The claim being retired.** The archive records *"9 in catalog, 1 applied"*, and the board carried it as
+an open item. **It is false.** All nine layouts exist, each fields a distinct eleven, and **two formations
+are already in use in the world** — 4-4-2 and 3-4-3 are both saved on real clubs.
 
-**So this is a verification task, not a defect.** Either all nine formations work — which needs a test per
-formation, not one test on 4-4-2 — or the claim is stale.
+**Why it needed a test rather than a reading.** A catalog can hold nine layouts and still hand every club
+the same eleven, because {@code getOrDefault(..., layouts.get("4-4-2"))} falls through for any name it
+does not recognise. Counting nine layouts proves nothing; what had to be shown is that the nine produce
+nine different XIs.
 
-**Exit criteria:** one test per formation in the catalog, asserting the eleven role keys it produces
+** now asserts that**, and **proven able to fail**: collapsing the lookup so every
+formation falls through to 4-4-2 — the exact defect the entry describes — turns **2** checks red,
+including *"4-3-3 and 4-4-2 field exactly the same players in the same slots"*.
+
+It also spot-checks the pairs the eye would call the same. 4-4-2 and 4-5-1 differ only in the middle
+band, and 3-4-3 and 3-5-2 only in the width of it, so a catalog that quietly widened one into the other
+would still hold nine names and pass a count.
 
 ## T1-7 · 🟠 `MatchdayJob` issues one query per competition
 
