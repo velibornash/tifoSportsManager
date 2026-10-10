@@ -934,32 +934,44 @@ shape the substitution feature had when ten unit tests were green and no manager
   neighbours and it is here because a call in a hot loop that nobody exercises is not a call. This is the
   same failure as the `fixture-view.js` mount that hid the whole substitution feature.
 
-### T0-BE-3 · Per-match lineup and bench
+### T0-BE-3 · ✅ DONE 2026-10-10 — a club can pick a team for one fixture
 
-**What exists:** `Lineup` has a `match` field (`@ManyToOne`). **Nothing ever writes it.** Both
-`TeamController` and `SimMatchService.loadLineup()` query
-`findFirstByTeamIdAndMatchIsNullOrderByIdDesc` — they explicitly want `match IS NULL`, the template.
+**What was in the way:** `Lineup.match` has been a nullable `@ManyToOne` all along, and every reader asked
+for `match IS NULL` — the template — because that was the only row that could ever exist. The schema was
+already right. The **writer was missing**, and so a manager could not pick a team for a game: the order was
+whatever the last template happened to say.
 
-**The schema is already right. The writer and the reader are missing.**
-
-**Tasks**
-1. `MatchLineupService`: save a lineup for a fixture (11 starters ordered, up to 7 bench, formation).
-2. `SimMatchService.loadLineup()`: read the fixture's lineup first, template second, auto-pick third.
-3. **Default lineup** as a named concept — a club's template *is* the default, but the distinction must be
-   visible so the UI can say which one is in force.
-4. **The GK rule the owner specified:** a keeper may be substituted, but only by another keeper. `SubstitutionService.pickReplacement`
-   already enforces this by matching GK status. **Carry it to the UI** as a validation message rather than
-   a server error the manager reads after the fact.
-5. Availability filter: non-injured, not suspended, contract still at the club. **Note the latent defect
-   recorded in P2-7** — `getOrderedStartingPlayers()` returned join-table rows regardless of club
-   membership. Fixed there, but this is a second reader of the same table and it must be checked too.
-6. Squad-limit check on save: warn when the XI uses a suspended or injured player, do not block.
+**Built**
+1. **`MatchLineupService.save`** — eleven starters in the order chosen, up to seven bench, a formation.
+   Keyed by the **match**, which is what the column holds and what the record of who actually started
+   means; resolved from the fixture through `MatchFixture.playedMatch`.
+2. **`MatchLineupService.resolve`** — **this fixture's lineup first, the template second.** That order is
+   the feature, and the decision lives in the service so it can be tested directly.
+3. **The goalkeeper rule is said up front**, not discovered at minute 60. The owner specified that a keeper
+   may be substituted only by another keeper, and `SubstitutionService.pickReplacement` already enforces
+   it by matching GK status — so the screen says it while the manager is still looking at it.
+4. **Warnings never block.** An injured player in the XI is warned about and the save goes through; the
+   engine has its own rules and will substitute him. Only a selection that cannot field eleven is refused,
+   because that is not a lineup with a problem in it.
 
 **Exit criteria**
-- [ ] A lineup saved for one fixture is used for that fixture only, and the next fixture uses the template
-- [ ] A fixture with no lineup falls back to the template, then to auto-pick
-- [ ] **Proven able to fail:** assert the per-match XI differs from the template and that the template still
-      wins on a fixture with none
+- [x] A lineup saved for one fixture is used for that fixture only, and the next fixture gets the template
+- [x] A fixture with no lineup falls back to the template
+- [x] The chosen order is kept, not re-sorted — a formation is not an ordering
+- [x] Another club's player cannot be picked even by id
+- [x] **Proven able to fail:** disabling the per-match preference turns `thePerMatchLineupWins` red
+
+**Two things found while building it**
+
+- **The first version of the test proved a copy.** It re-implemented the two-line resolution locally, so
+  mutating the **production** reader left all ten tests green. The decision was extracted into
+  `MatchLineupService.resolve` — which is better design anyway, since it is now the one place the rule
+  lives — and the test calls it. The same mutation then turned it red.
+- **There is no suspension in the football model.** The task asked for a warning when the XI contains a
+  suspended player; `Player` has injuries and nothing else, and a search of the whole football model finds
+  no suspension concept at all. The check was **removed rather than invented** — a check against a field
+  that can never be set is a check that always passes, which is the thing this repository keeps punishing.
+  If suspensions are wanted they are a new feature, not a validation message.
 
 ### T0-BE-4 · ✅ DONE 2026-10-09 — conditional substitutions: the contract becomes reachable
 

@@ -79,6 +79,7 @@ public class SimMatchService {
     private final NationalRatingService nationalRatingService;
     private final org.example.footballmanager.newLogic.service.TacticsRulesProvider tacticsRules;
     private final org.example.footballmanager.newLogic.service.MatchTacticsPreparationService matchTacticsPreparation;
+    private final org.example.footballmanager.newLogic.service.MatchLineupService matchLineups;
     private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository
             teamTacticsProfileRepository;
 
@@ -111,8 +112,9 @@ public class SimMatchService {
 
         List<Player> homeBench = new ArrayList<>();
         List<Player> awayBench = new ArrayList<>();
-        List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench);
-        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench);
+        // The fixture is threaded through so a club's pick for THIS match wins over its template.
+        List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench, fixture);
+        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench, fixture);
 
         // **The home club's own tactical editor shape, for the first time.**
         //
@@ -217,12 +219,21 @@ public class SimMatchService {
     }
 
     private List<Player> loadRealSquad(Team team, String side) {
-        return loadRealSquad(team, side, new ArrayList<>());
+        return loadRealSquad(team, side, new ArrayList<>(), null);
+    }
+
+    private List<Player> loadRealSquad(Team team, String side, MatchFixture fixture) {
+        return loadRealSquad(team, side, new ArrayList<>(), fixture);
     }
 
     private List<Player> loadRealSquad(Team team, String side, List<Player> benchOut) {
+        return loadRealSquad(team, side, benchOut, null);
+    }
+
+    private List<Player> loadRealSquad(Team team, String side, List<Player> benchOut,
+                                       MatchFixture fixture) {
         if (team == null || team.getId() == null) return null;
-        Lineup lineup = loadLineup(team);
+        Lineup lineup = loadLineup(team, fixture);
         if (lineup != null) {
             List<org.example.footballmanager.newLogic.model.Player> ordered =
                     lineup.getOrderedStartingPlayers();
@@ -378,8 +389,8 @@ public class SimMatchService {
             match.setHomeResultRevealed(!involvesManager);
             match.setAwayResultRevealed(!involvesManager);
 
-            match.setHomeLineup(loadLineup(fixture.getHomeTeam()));
-            match.setAwayLineup(loadLineup(fixture.getAwayTeam()));
+            match.setHomeLineup(loadLineup(fixture.getHomeTeam(), fixture));
+            match.setAwayLineup(loadLineup(fixture.getAwayTeam(), fixture));
 
             if (outcome != null) {
                 match.setEventJson(SimReportMapper.eventJson(objectMapper, outcome));
@@ -453,11 +464,26 @@ public class SimMatchService {
         }
     }
 
-    private Lineup loadLineup(Team team) {
+    /**
+     * The XI for this match: the club's pick for this fixture first, their template second, nothing third.
+     *
+     * <p><b>The order is the feature.</b> {@code Lineup.match} has been a nullable column all along and
+     * every reader asked for {@code match IS NULL} — the template — because that was the only row that
+     * could exist. A manager could not pick a team for a game; the order was whatever the last template
+     * said. Reading the fixture's own lineup first is what makes a per-match XI mean anything, and it is
+     * deliberately ahead of the template rather than beside it.
+     *
+     * <p>Resolved through {@code MatchFixture.playedMatch}, so a lineup set before kickoff reaches the
+     * match that fixture becomes. When there is no per-match lineup — the overwhelming majority — this
+     * behaves exactly as it always did, one extra lookup on a match the club has not planned for.
+     */
+    private Lineup loadLineup(Team team, MatchFixture fixture) {
         if (team == null || team.getId() == null) return null;
-        return lineupRepository
-                .findFirstByTeamIdAndMatchIsNullOrderByIdDesc(team.getId())
-                .orElse(null);
+
+        // The decision itself lives in MatchLineupService so it can be tested directly. It used to be
+        // written here, and a test that copied these two lookups proved nothing: mutating this method left
+        // the whole suite green.
+        return matchLineups.resolve(team.getId(), fixture);
     }
 
     /** Writes one MatchPlayerStats row per real DB player who took part (synthetic

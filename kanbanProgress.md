@@ -1,5 +1,26 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-3 — a club can pick a team for one fixture (2026-10-10)
+
+The schema was already right and nothing wrote it. `Lineup.match` has been a nullable column all along and
+every reader asked for `match IS NULL` — the template — because that was the only row that could exist. A
+manager could not pick a team for a game.
+
+**The order is the feature:** this fixture's lineup first, the template second.
+
+**The finding worth recording.** The first version of the test re-implemented that two-line resolution
+locally, in order to assert it. Mutating the *production* reader therefore left all ten tests green — the
+test proved a copy of the decision rather than the decision. That is the same failure as the fixture-view
+mount and the SimMatchService hand-off, and the same cure: the decision was extracted into
+`MatchLineupService.resolve`, which is better design because it is now the one place the rule lives, and
+the test calls it. The mutation then turned it red.
+
+**A task instruction that could not be carried out, and was not faked.** The board asked for a warning when
+the XI contains a suspended player. There is no suspension concept in the football model — `Player` has
+injuries and nothing else, and a search of the whole model finds nothing. The check was removed rather
+than invented against a field that can never be set, because a check that always passes is the exact thing
+this log keeps recording. Suspensions would be a new feature.
+
 ## ✅ T-REST-14 — the away-side mirror: verified, and now asserted (2026-10-10)
 
 **The owner's concern:** every club's grid is authored in the editor's single frame, from the home
