@@ -65,6 +65,21 @@ const check = (name, condition, detail) => {
             && /else await planView\.loadPlanForMatch\(/.test(matchView),
         'the two id spaces are not both handled, so one of the two surfaces is dead');
 
+    // The ownership guard reads the manager's club id. Reading it alone gave `null` on a cold page —
+    // before /auth/me had answered — and the guard then returned silently: no panel, no error, no
+    // warning, an empty host. The check below looks for the RESOLVER, because the defect is precisely
+    // that a guard ran on a value that had not arrived yet.
+    check('the ownership guard resolves the club id instead of reading it cold',
+        /const managerTeamId = await resolveTeamId\(\)/.test(matchView)
+            && /async function resolveTeamId\(\)/.test(matchView),
+        'the guard reads getTeamId(), which is null until /auth/me answers, so the panel silently '
+            + 'never mounts on a cold page');
+
+    check('all three gated panels resolve, not just this one',
+        (matchView.match(/await resolveTeamId\(\)/g) || []).length === 3,
+        'the substitution, game-plan and lineup mounts share this guard; fixing one and leaving the '
+            + 'other two reading a cold value leaves the same defect in two places');
+
     check('the panel is offered only to the home club',
         /Number\(managerTeamId\) !== Number\(homeTeamId\)\) return;/.test(matchView),
         'the ownership test is missing or compares something other than the two club ids');

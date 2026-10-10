@@ -387,6 +387,9 @@ function buildPageNavState(page, options = {}) {
 
     const matchView = createMatchView({
         authFetch, getTeamId: () => currentUserTeamId, goBackSmart,
+        // The match view's three panels are gated on the manager's club id, and reading it alone gave
+        // null on a cold page - which mounted nothing, silently. This is the existing resolver.
+        ensureTeamId: () => ensureUserTeamId(),
         getLeagueNavState: getActiveLeagueNavState,
         createSubstitutionPlanView: () => substitutionPlanView,
         createMatchTacticPlanView: () => createMatchTacticPlanView({ authFetch, getTeamId: () => currentUserTeamId }),

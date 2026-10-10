@@ -1,5 +1,23 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-4 — the substitution panel renders, and three panels were mounting nothing (2026-10-10)
+
+The board said "not verified in a browser, and the panel has never been rendered by anyone". Opening it
+was worth more than the checkbox: the panel could not render at all on a cold page, and nothing said so.
+
+The substitution plan, the game plan and the lineup are all gated on "is this the manager's own club",
+and all three read the id with getTeamId(), which is null until /auth/me answers. A guard that returns on
+null mounted nothing - no panel, no error, no warning, an empty host. The existing ensureUserTeamId()
+resolver was never passed into the match view. All three mounts now await it.
+
+This is the sixth entry in a row whose stated symptom was a missing feature and whose real cause was
+somewhere else. route-to-substitution-plan.mjs exists for precisely this class of defect and missed it,
+because every case it drove supplied a club id that was already loaded - a harness that cannot fail.
+
+Browser at 430px against live PostgreSQL: the panel renders 3386 characters, identical to calling
+loadPlan directly. DELETE returns 204 rather than 500. Add condition writes a rule, Remove empties it,
+and both were cleaned up afterwards.
+
 ## ✅ T1-1, T1-2, T1-3 — three "dead code" entries, none of them true (2026-10-10)
 
 Closed by measuring the code rather than by reading the entries, because all three had been carried on

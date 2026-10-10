@@ -1299,7 +1299,41 @@ see T0-UI-4b. Everything below describes the module, which is sound; what is mis
       is a control with no meaning — and, as T0-UI-4b records, was briefly mounted on a page no manager
       could reach. It is mounted on the match view now, on both sides of the whistle.
 - [x] 430px — the remove control drops under the sentence rather than squeezing it
-- [ ] **Not verified in a browser**, and the panel has never been rendered by anyone
+- [x] **Verified in a browser**, and doing so found a defect that had kept the panel from ever rendering.
+
+### 🔴 Found by opening it: three panels mounted nothing, silently
+
+The panel was not "never verified" — it **could not render at all on a cold page**, and no test said so.
+
+All three mounts on the match view (substitution plan, game plan, lineup) gate on *"is this the
+manager's own club"*, and all three read the id:
+
+```js
+const managerTeamId = getTeamId?.();   // null until /auth/me answers
+if (!managerTeamId) return;            // …so this returns, silently
+```
+
+`getTeamId()` returns a variable that is `null` until `/auth/me` resolves. Opening a fixture before that
+answered meant **no panel, no error, no warning and an empty host** — a green endpoint behind a guard
+that ran on a value that had not arrived. `deps.ensureTeamId` — the existing `ensureUserTeamId()` — was
+never passed in, and all three mounts now await it.
+
+The panel now renders **3386 characters** from a cold page, identical to calling `loadPlan` directly.
+
+### Evidence, all in a browser at 430px, against live PostgreSQL
+
+- **Substitutions** panel renders for fixture 16 (OFK Omladinac v TSK Javor Zaječar Sport, unplayed,
+  home), no horizontal overflow.
+- **Game plan** and **lineup** panels render on the same fixture — **8039** and **5259** characters. All
+  three were empty before the fix.
+- **`DELETE` returns 204, not 500.** The route this entry exists for.
+- Full round trip through the UI buttons: **Add condition** → row created with
+  `[{"team":"HOME","triggerMinute":60,"condition":"ANYTIME",…}]`; **Remove** → `rules_json` becomes `[]`;
+  `DELETE` → **204**.
+
+**Regression cover** in `route-to-substitution-plan.mjs`, which already existed for exactly this class of
+defect and had missed it because every one of its cases supplied a club id that was already loaded.
+**Proven able to fail**: reverting the three guards to the cold read turns both new checks red.
 
 **Found while testing it: `DELETE /substitution-plan` was always a 500.** `deleteByMatchId` is a derived
 delete and needs a transaction, which the controller had not. It survived because the four tests that

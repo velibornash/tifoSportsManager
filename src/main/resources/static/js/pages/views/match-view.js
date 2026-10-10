@@ -691,6 +691,24 @@ export function createMatchView(deps) {
                 infoDiv.innerHTML = html;
             }
 
+
+    /**
+     * The manager's own club id, resolved rather than merely read.
+     *
+     * <p>The three panels below are all gated on "is this my club", and all three used `getTeamId()`,
+     * which returns a variable that is `null` until `/auth/me` has answered. Opening a fixture from a
+     * cold page therefore mounted nothing: no panel, no error, no warning — just an empty host. The
+     * endpoints were fine and the guard was doing its job on a value that had not arrived yet.
+     *
+     * <p>`deps.ensureTeamId` is the existing `ensureUserTeamId()`, which loads the user context if it
+     * is not already in hand. Awaiting it turns a silent no-op into a panel, and costs one request only
+     * when the id is genuinely unknown.
+     */
+    async function resolveTeamId() {
+        const resolved = await deps.ensureTeamId?.();
+        return resolved ?? getTeamId?.() ?? null;
+    }
+
             if (initialTab === 'report') void showMatchReport();
             else if (initialTab === 'goals') showGoals();
             else void showPreview();
@@ -729,7 +747,7 @@ export function createMatchView(deps) {
             async function mountLineup() {
                 const host = document.getElementById('fm-match-lineup');
                 if (!host) return;
-                const managerTeamId = getTeamId?.();
+                const managerTeamId = await resolveTeamId();
                 if (!managerTeamId) return;
                 try {
                     const lineupView = deps.createMatchLineupView?.();
@@ -743,7 +761,7 @@ export function createMatchView(deps) {
             async function mountTacticPlan() {
                 const host = document.getElementById('fm-match-tactic-plan');
                 if (!host) return;
-                const managerTeamId = getTeamId?.();
+                const managerTeamId = await resolveTeamId();
                 if (!managerTeamId) return;
                 try {
                     const planView = deps.createMatchTacticPlanView?.();
@@ -757,7 +775,7 @@ export function createMatchView(deps) {
             async function mountSubstitutionPlan() {
                 const host = document.getElementById('fm-substitution-plan');
                 if (!host) return;
-                const managerTeamId = getTeamId?.();
+                const managerTeamId = await resolveTeamId();
                 if (!managerTeamId || !homeTeamId || Number(managerTeamId) !== Number(homeTeamId)) return;
                 try {
                     const planView = deps.createSubstitutionPlanView?.();
