@@ -834,6 +834,37 @@ cover it, and the gap belongs to the default.
 5. **The orchestrator resolves each tick**, immediately before `refreshTargets`, guarded by a null so a
    match with no instructions pays nothing.
 
+### T-REST-14 · ✅ VERIFIED 2026-10-10 — the away-side mirror exists, and is now asserted
+
+**Raised by the owner:** *"all real tactics are written from the HOME perspective; when a club is away
+there must be a system that mirrors the tactic so it is read correctly for AWAY."*
+
+**It exists, and it was correct.** `TacticalPerspectiveTransformer` converts between editor coordinates
+(always home-perspective, for every club, because the editor has a single frame) and physical coordinates
+for a named team: **row r → 9−r, column c → 8−c**. `TacticsRules.desiredCell(...)` applies it once, keyed on
+the team asking. `SideTactics` deliberately holds **no** mirror, because adding one would mirror twice and
+put the away shape back where it started.
+
+**So why is this an entry?** Because all of that was asserted by **comment**, and nothing asserted the
+geometry. `SideTactics` and the transformer each carry a long explanation that the perspective is handled
+elsewhere; `EachSidePlaysItsOwnShapeTest` proves each side is handed its own **grid**, and the goalkeeper has
+a mirror test — but **no test asserted that a grid handed over as AWAY comes out mirrored.** A comment is
+not a check, and "both sides may be the same object" is exactly the kind of convenience that leaves such a
+gap open.
+
+**`AwaySideMirrorsTheHomePerspectiveTest` now asserts it**, including through the path this session added:
+
+| | |
+|---|---|
+| one grid asked for HOME vs AWAY | exact mirror on both axes, to 1e-9 |
+| the club defends its own goal | editor row 1 → HOME goal line at row 1.0, and **row 8 for AWAY** |
+| both sides handed one object | still two mirrored shapes, or both teams stack on one half |
+| **a tactic put in force by the game plan** | still mirrored — the conditional plan changes *which* grid, never *whose perspective* it is read in |
+
+**Proven able to fail:** disabling the mirror in `TacticalPerspectiveTransformer` turns **all four** red,
+each with the away side walking onto its own half (expected row 2.5, got 6.5). Nothing else in the suite
+noticed that mutation — the existing mirror coverage was on the goalkeeper, not on the tactical grid.
+
 ### T0-BE-2 UI · ✅ DONE 2026-10-10 — the Game plan screen
 
 **The engine could do all of it and no manager could ask.** After the last mile above, a fixture's

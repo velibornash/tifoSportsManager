@@ -1,5 +1,29 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-14 — the away-side mirror: verified, and now asserted (2026-10-10)
+
+**The owner's concern:** every club's grid is authored in the editor's single frame, from the home
+perspective. When that club is away, the stored grid read literally would walk its players onto the wrong
+half of the pitch and towards their own goal. A mirror has to exist, or the whole tactics feature is wrong
+for half of every match.
+
+**It exists and it is correct.** `TacticalPerspectiveTransformer.toPhysical` maps row r -> 9-r and column
+c -> 8-c for AWAY, and `TacticsRules.desiredCell` applies it once at lookup, keyed on the team asking.
+`SideTactics` holds no mirror on purpose: a second one would mirror twice.
+
+**But it was asserted by comment only.** `EachSidePlaysItsOwnShapeTest` proves each side gets its own
+*grid*; the goalkeeper has a *mirror* test; nothing proved that a grid handed over as AWAY comes out
+mirrored. A long comment explaining that a thing is handled elsewhere is not a check that it is.
+
+`AwaySideMirrorsTheHomePerspectiveTest` now asserts the geometry to 1e-9, including the path added today: a
+tactic put in force by the game plan must still be mirrored for the away side, because the conditional plan
+changes *which* grid is played and never *whose perspective* it is read in.
+
+**Proven able to fail, and it caught something the rest of the suite missed.** Disabling the mirror turns
+all four checks red - the away side lands on row 6.5 instead of 2.5, its own half. No other test in the
+repository noticed that mutation, because the existing mirror coverage was on the goalkeeper rather than on
+the tactical grid.
+
 ## ✅ T0-BE-2 UI — the Game plan screen (2026-10-10)
 
 The engine could change shape mid-match and no manager could ask it to. That is the substitution-plan trap
