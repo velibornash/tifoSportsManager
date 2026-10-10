@@ -1123,7 +1123,7 @@ side; the server does not yet validate. Filed as **T1-16**.
 
 ---
 
-## T1-16 · 🟡 A substitution rule naming the wrong player is only refused at minute 60
+## T1-16 · DONE 2026-10-10 — validated on save, and the outcome is on the screen
 
 **Found while building T0-UI-4, and it is the honest remainder of that task.**
 
@@ -1191,7 +1191,7 @@ That attempt is also what uncovered **T0-UI-4b**: the panel was not there at all
 on a page no route renders. T1-16 was not reachable either — the validation, the refusal and the outcome
 record were all real and none of them could be used. Closing this one depended on closing that one.
 
-## T0-UI-4b · 🔴 The substitution plan is unreachable — the whole feature is dead code
+## T0-UI-4b · DONE 2026-10-10 — the substitution plan is reachable
 
 **Found 2026-10-10, while trying to close T1-16b in a browser.** This is the most serious thing on the
 board, and it was found by looking rather than by testing.
@@ -1306,12 +1306,25 @@ delete and needs a transaction, which the controller had not. It survived becaus
 existed tested an unknown id, a round trip, a replace and an empty plan — **and none of them deleted
 anything.** A route with no test is a route that was never pressed. Now `@Transactional`, and covered.
 
-### T0-UI-5 · Live match panel, or honest copy
+### T0-UI-5 · CLOSED 2026-10-10 — the premise was wrong; the live panel exists
 
-- [ ] If streaming lands: the live view plus **Skip to result**
-- [ ] If not: the screen says **"the match is simulated at kickoff — watch the replay"** instead of
-      implying a live feed that does not exist
-- [ ] Either way, no screen may imply real-time where there is none
+**This task asked for a screen that implies real-time to stop implying it, because no such screen was
+believed to exist. It exists.** The owner pushed back on the proposal to work this, which was correct.
+
+`reveal-ui.js:55` — *"Watch your match"* opens `/demo/service/ui/proposal/index.html`, and that viewer
+**simulates the match with the proposal engine**: a live ticker with a running clock, a tick counter, a
+speed control and a *"Simulating match…"* state. The button is only offered for a match the manager has not
+yet revealed, so opening it *is* watching it happen. There is no copy anywhere claiming a feed that does
+not exist — a search of `match-view.js` for live/real-time/streaming wording returns nothing.
+
+**So the honest outcome is that the screen is right, not that the copy needs fixing.** Nothing is being
+deferred and nothing is lost.
+
+**The mistake is the part worth keeping.** I proposed this task off the board's wording without opening the
+viewer, and the owner — who uses the game — knew the answer immediately. A board entry describes a
+*belief* about the system; it is not evidence, and this session produced a run of items where that
+distinction cost real time. **Nothing goes on the board as work until someone has looked at the thing it
+describes.**
 
 ### T0-UI-6 · The analytics panels
 
@@ -1367,7 +1380,12 @@ decision is recorded once rather than three times.
 **Exit criteria:** both are either wired into the T0-BE-1 path or deleted, with the caller count re-verified
 **immediately before** deletion
 
-## T1-4 · 🟠 Six tactics sliders have zero readers
+## T1-4 · DEFERRED BY OWNER 2026-10-10 — the six tactics sliders have zero readers
+
+**Deferred, deliberately (owner, 2026-10-10):** *"slidere cemo kasnije vezati zaista za taktiku kad se budemo
+bavili taktikom, zasad ih drzi jasno u boardu."* Not forgotten and not closed — the six fields stay in the
+model and stay visible here, and they get wired when the tactics work picks them up.
+
 
 `TeamTacticsProfile` carries `aggression`, `defenceLine`, `pressing`, `possession`, `counterAttack` and
 `ballControl`. **Zero readers in `src/main`.** They are stored and never used. The archive's position was
@@ -1563,25 +1581,34 @@ is *about* restoring the file, and every signal stays green. Only an engine driv
 actually reach finds it — which is why the harness now drives it, and why `theHarnessCanFail` asserts it
 drives `simulatedCountry` at all.
 
-## T1-13b · 🟡 `is-current-club` needs one field, and it is not optional
+## T1-13b · DONE 2026-10-09 (board corrected 2026-10-10) — `is-current-club` carries the club id
 
-The rule exists (`inset 3px 0 0 #4a9eff`) and **nothing emits it.** The manager's own club is unmarked in
-his own qualifying race.
+**What it was.** The rule exists (`inset 3px 0 0 #4a9eff`) and **nothing emitted it.** The manager's own
+club was unmarked in his own qualifying race.
 
-`CountryController.qualifyingRow:1241` sends `teamName`, `position`, `points`, goals and `qualifies` —
-**and no `teamId`.** The frontend therefore cannot compare anything, and the alternative is comparing
-**names**, which this codebase has been burned by four times (`isUserMatch`, the ZOX fixture-id guess, the
-report's per-side attribution, `APIController.myMatch`).
+`CountryController.qualifyingRow` sent `teamName`, `position`, `points`, goals and `qualifies` — **and no
+`teamId`.** The frontend therefore could not compare anything, and the alternative was comparing **names**,
+which this codebase has been burned by four times (`isUserMatch`, the ZOX fixture-id guess, the report's
+per-side attribution, `APIController.myMatch`).
 
-**Tasks:** put `teamId` on the qualifying row · pass the manager's team id into the country view as a dep ·
-build the class list rather than the current `class="is-qualified"` assignment, which **overwrites** rather
-than adds · one test per combination of qualifying and own-club.
+**What was done.** `teamId` on the qualifying row · the manager's team id passed into the country view as a
+dep · the class list **built** rather than assigned, so `is-qualified` is no longer overwritten · one test
+per combination of qualifying and own-club.
+
+**This entry sat open while the work was already done.** `qualifyingRow` sends `teamId`, `pages.js` passes
+the manager's id in as a dep, and `country-view.js` builds a class list instead of overwriting
+`class="is-qualified"` — so a club that is both qualifying and the viewer's own carries both classes. The
+JS harness covers that combination and the negative case.
+
+It was found by reading the board against the source rather than by a test, which is the wrong way round.
+Three entries had drifted by the end of the session, in **both** directions: two closed bodies under open
+headers, and one open body over finished code.
 
 **Exit criteria:**
-- [ ] A qualifying row carries its club id
-- [ ] The manager's own club is marked in all three cups across all five tiers
-- [ ] A club that is both qualifying and the viewer's own carries **both** classes
-- [ ] **Proven able to fail:** removing the `teamId` from the payload turns the test red
+- [x] A qualifying row carries its club id
+- [x] The manager's own club is marked in all three cups across all five tiers
+- [x] A club that is both qualifying and the viewer's own carries **both** classes
+- [x] **Proven able to fail:** removing the `teamId` from the payload turns the test red
 
 ## T1-17 · 🟡 `tifo.js` — the text-football mode, unreviewed
 
