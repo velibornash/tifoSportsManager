@@ -187,6 +187,7 @@ export function createMatchView(deps) {
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
                 <div id="fm-substitution-plan"></div>
+                <div id="fm-match-tactic-plan"></div>
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">Back</button>
                 </div>
@@ -580,6 +581,7 @@ export function createMatchView(deps) {
             else void showPreview();
 
             void mountSubstitutionPlan();
+            void mountTacticPlan();
 
             /**
              * Puts the conditional-substitution plan on this screen, which is where a manager actually is.
@@ -596,6 +598,27 @@ export function createMatchView(deps) {
              * <p>Failures are swallowed on purpose: the plan is one panel on a working screen, and a plan
              * that will not load must not take the match down with it.
              */
+            /**
+             * The conditional tactics for this fixture, on the same panel row as the substitution plan.
+             *
+             * <p>Mounted for the manager's own club on either side of the fixture, and only while the
+             * fixture is unplayed. The server resolves the side from the session — this screen never sends
+             * one — so there is no way from here to write the opposition's plan.
+             */
+            async function mountTacticPlan() {
+                const host = document.getElementById('fm-match-tactic-plan');
+                if (!host) return;
+                const managerTeamId = getTeamId?.();
+                if (!managerTeamId) return;
+                try {
+                    const planView = deps.createMatchTacticPlanView?.();
+                    if (!planView) return;
+                    await planView.loadPlan(matchId, host);
+                } catch (error) {
+                    console.warn('Could not load the game plan:', error);
+                }
+            }
+
             async function mountSubstitutionPlan() {
                 const host = document.getElementById('fm-substitution-plan');
                 if (!host) return;

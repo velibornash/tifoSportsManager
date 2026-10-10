@@ -106,6 +106,22 @@ public class MatchTacticAssignmentService {
         assignments.deleteAll(forSide(fixtureId, normaliseSide(side, null)));
     }
 
+    /**
+     * Empties one priority slot, leaving the others alone.
+     *
+     * <p>What the screen's "— none —" needs. Clearing the whole side instead would take out the two
+     * instructions the manager did want, so the alternative was making a slot unfillable, which is worse.
+     */
+    @Transactional
+    public void clearPriority(Long fixtureId, String side, int priority) {
+        String team = normaliseSide(side, null);
+        for (MatchTacticAssignment assignment : forSide(fixtureId, team)) {
+            if (assignment.getPriority() == priority) {
+                assignments.delete(assignment);
+            }
+        }
+    }
+
     /** {@code HOME} / {@code AWAY}, case-insensitively, because the screen and the API disagree about case. */
     private String normaliseSide(String side, MatchFixture fixture) {
         String value = side == null ? "" : side.trim().toUpperCase(java.util.Locale.ROOT);

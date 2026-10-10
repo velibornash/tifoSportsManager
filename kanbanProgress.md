@@ -1,5 +1,28 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-2 UI — the Game plan screen (2026-10-10)
+
+The engine could change shape mid-match and no manager could ask it to. That is the substitution-plan trap
+for the third time in this session, so it was closed before it could be mistaken for a finished feature.
+
+**The side comes from the session.** The controller resolves which side the manager's club is on and the
+browser never sends one. A `side` in the request body would be a manager writing the opposition's plan, and
+the engine would obey it.
+
+**Verified at 430 × 932 in the running application.** Three slots, all six conditions, and an instruction
+set through the screen came back selected after reload and was read back out of the database. The test
+assignment was deleted afterwards.
+
+**Two gaps the harness caught before a browser was opened**: the form was offered to a club with no tactics
+(it would have been three empty dropdowns and a Save that could only fail), and a club not in the fixture
+was shown an empty panel rather than nothing — which reads as "you have no tactics".
+
+**One row written to the owner's database, deliberately.** OFK Omladinac's existing
+`team_tactics_profile` — the one profile in the world, and the manager's own club — converted into a
+`Tactic`. Without it the screen is unusable. Taken verbatim from the existing row, nothing invented, the
+legacy row untouched. The other 14,722 clubs still have nothing, and that is the seeding button, still
+unpressed and still the owner's to run.
+
 ## ✅ T0-BE-2 (last mile) — a saved instruction now reaches a real match (2026-10-10)
 
 The first pass of T0-BE-2 was committed with everything except the one line that mattered. The entity, the

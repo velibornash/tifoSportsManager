@@ -834,6 +834,35 @@ cover it, and the gap belongs to the default.
 5. **The orchestrator resolves each tick**, immediately before `refreshTargets`, guarded by a null so a
    match with no instructions pays nothing.
 
+### T0-BE-2 UI · ✅ DONE 2026-10-10 — the Game plan screen
+
+**The engine could do all of it and no manager could ask.** After the last mile above, a fixture's
+instructions reached a real match — but there was no screen to set one, which is the substitution-plan trap
+for the third time in this session. Built before it could be mistaken for a finished feature.
+
+- **`MatchTacticPlanController`** at `/api/sim/fixtures/{id}/tactic-plan`. **The side comes from the
+  session, never from the request** — a `side` sent by the browser would be a manager writing the
+  opposition's plan for them, and the engine would obey it.
+- **`match-tactic-plan-view.js`**, mounted on the match screen beside the substitution panel: three slots,
+  each with the club's own tactics, one of the six conditions, and a minute gate. A slot set to "— none —"
+  clears that priority rather than saving an instruction with no tactic.
+- **A club with no tactics is pointed at the Tactics page** and is **not offered a form** it cannot fill.
+  A club not in the fixture is shown **nothing at all** — an empty panel reads as "you have no tactics",
+  which is a different statement.
+
+**Verified in the running application at 430 × 932**: the panel renders with three slots and all six
+conditions; an instruction set through the screen (`4-4-2`, *if leading by 3 or more*) came back selected
+after a reload and **was read back out of the database**. The test assignment was then deleted.
+
+**Two gaps the harness caught before the browser ever saw it**: the form was offered to a club with no
+tactics, and a club not in the fixture was shown an empty panel instead of nothing.
+
+**One row written to the owner's database**, and deliberately: OFK Omladinac's existing
+`team_tactics_profile` converted into a `Tactic`. Without it the screen is unusable, and it is the manager's
+own club — the one profile in the world belongs to it. Taken verbatim from the existing row, nothing
+invented, the legacy row untouched, reversible by deleting one row. **The other 14,722 clubs still have no
+tactics**; that remains the seeding button, and it is still the owner's to press.
+
 **The last mile, added 2026-10-10 after the first pass of this task was committed.** Everything above
 existed — the entity, the condition logic, the resolver, the tick hook, the engine setter — and **nothing
 in production handed any of it an assignment.** `SimMatchRunner.run` simulates inside itself, so the
