@@ -426,7 +426,11 @@ real world.**
 - [x] `supporter_mood` populated in a live matchday — 14,731 / 14,731
 - [x] `simulate-all` returns 200 and completes a full round — 472 / 472, zero exceptions
 - [x] Club Elo rebuilds — 707 matches replayed, 14,627 clubs rated
-- [ ] **Ranking rebuild completes** — currently spins; `club_season_ranking_points` stays at 0
+- [x] **Ranking rebuild completes** — the N+1 is fixed. `buildTeamSnapshots` read a squad, a
+      template lineup and a results row **per club** for all 14,731 clubs, inside the transaction about
+      to flush. Three bulk reads now happen once, before any snapshot is built, and nothing is loaded
+      lazily afterwards. Measured on the real database: **completes in 23.6s**, where before it did not
+      finish in twenty minutes.
 - [ ] `club_honour` medals observed for a finished competition
 
 ## T-REST-5 — 🔴 P0-CUPS-4 · a real season has never been observed for the continental cups

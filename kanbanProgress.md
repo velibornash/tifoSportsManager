@@ -18,6 +18,27 @@ source check on a control-flow claim, and is written as such rather than dressed
 It also caught a trap this repository keeps falling into: the comment explaining the defect quotes
 simulatedCount.incrementAndGet() verbatim, and two of my own checks found that comment before the code.
 
+## ✅ T-REST-4 (fixed) — the ranking rebuild completes, 23 seconds instead of never (2026-10-10)
+
+buildTeamSnapshots was three queries per club, and both ranking services call it over the entire world:
+14,731 clubs, roughly 44,000 queries. Worse than slow - every entity they returned stayed in the persistence
+context, so the transaction could not start its flush until it had dirty-checked everything they
+accumulated. Observed, not reasoned about: after a full round the rebuild had written nothing, logged
+neither success nor failure, and left its thread RUNNABLE at 100% CPU twenty minutes in.
+
+Three bulk reads now happen once, before any snapshot is built, and nothing is loaded lazily afterwards:
+players by team id set, template lineups for the whole set, and played matches involving any of the teams
+with both sides fetched by the join.
+
+Measured on the owner's real database - 14,731 clubs: ClubRankingPointsReplayTest completes in 23.6s where
+before it did not finish in twenty minutes.
+
+ScheduleInsightServiceReadsOnceTest asserts the behaviour did not change, which is the real risk in
+rewiring three reads: that strength still comes from the eleven rather than the squad behind it, that only
+played matches count, that matches are not shared between clubs by the bulk read, and that a template
+lineup naming a weak eleven still makes the club read weak. The last of those four caught nothing, which is
+correct - it is there so it cannot start failing silently later.
+
 ## ✅ T0-POSS diagnosed — a side can be starved of the ball for ninety minutes (2026-10-10)
 
 The owner showed a match reading 91% possession, 10 shots to 1, and 0 fouls by the away side, and said
