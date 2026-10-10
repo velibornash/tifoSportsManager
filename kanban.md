@@ -1340,6 +1340,44 @@ delete and needs a transaction, which the controller had not. It survived becaus
 existed tested an unknown id, a round trip, a replace and an empty plan — **and none of them deleted
 anything.** A route with no test is a route that was never pressed. Now `@Transactional`, and covered.
 
+### T0-UI-4b · DONE 2026-10-10 — the same defect, in every other way into a page
+
+The three panels fixed above were not the only occurrence. They were the only one **anyone had opened**.
+
+`loadPage` has always awaited `/auth/me` before rendering, which is why every page reached by clicking was
+safe. **Twenty functions bypass `loadPage` and call a view directly** — `loadMatch`, `loadPlayer`,
+`loadFixture`, `loadFormations`, `loadTacticEditor`, `loadMedicalCenter`, `loadClubProfile`, the three
+training loaders, the five league loaders, `loadCountryPage`, `loadTopScorersAndAssists`,
+`loadPlayerStats`, the four forum loaders, `loadMessages`, `loadMessageThread`, `window.loadStadium`.
+
+On a deep link or a refresh, `getTeamId()` is `null` in all of them, and a view that asked for it built
+`/teams/null/players` or returned silently.
+
+**All twenty now `await settleTeamId()`**, which loads the user context if it is not in hand and is a
+single truthiness test when it already is. `window.loadStadium` was the one window export that reached a
+view directly; it is guarded too.
+
+### 🟡 Caught in the act of fixing it
+
+The first patch inserted the settle **after** the `return` keyword, leaving `return await settleTeamId();`
+followed by unreachable delegation — **23 pages that would have rendered nothing**, and every existing
+test still green. Found by reading the generated source rather than by running it, which is the one thing
+a green suite could not have told me.
+
+`entry-points-settle-team-id.mjs` now asserts **settling is never the returned expression**, because that
+is exactly the mistake and exactly the kind that passes everything else.
+
+### Evidence
+
+- **Both mutations proven able to fail**: removing one guard names it (`loadFixture`), and returning the
+  settle instead of awaiting it turns the reachability check red.
+- **The sweep check found 7 entry points I had missed** on its first run, which is the argument for
+  having written it rather than grepping.
+- **Opened in a browser**, after the fix: dashboard, formations, club profile, tactic editor, training
+  reports, upcoming matches, fixtures, league table (16k chars), league schedule, top scorers, player
+  stats (25k), messages, player 2404 (14.7k) — all render, none "Page not found". The match view still
+  shows all three panels: **3386 / 5259 / 8039**.
+
 ### T0-UI-5 · CLOSED 2026-10-10 — the premise was wrong; the live panel exists
 
 **This task asked for a screen that implies real-time to stop implying it, because no such screen was

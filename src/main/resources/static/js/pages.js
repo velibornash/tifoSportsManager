@@ -247,6 +247,24 @@ function buildPageNavState(page, options = {}) {
         }
     }
 
+    /**
+     * The manager's club id, loaded if it is not in hand yet.
+     *
+     * <p>`loadPage` has always awaited this before rendering, which is why the whole application is
+     * safe on a normal click. Everything reached through a deep link or a refresh goes somewhere else:
+     * `loadMatch`, `loadPlayer`, `loadFixture`, `loadFormations` and the rest below all call their view
+     * directly, and a view that asked `getTeamId()` before `/auth/me` had answered got `null` and built
+     * a URL out of it.
+     *
+     * <p>It is best effort and deliberately does not stop the render. A caller that cannot be resolved
+     * behaved as it did before; a caller that can now waits one request instead of building
+     * `/teams/null/players`.
+     */
+    async function settleTeamId() {
+        if (currentUserTeamId) return currentUserTeamId;
+        return await loadUserTeamId();
+    }
+
     async function loadUserTeamId() {
         try {
             const res = await authFetch('/auth/me');
@@ -762,71 +780,88 @@ function buildPageNavState(page, options = {}) {
     // --- Thin wrapper functions that delegate to view modules ---
 
     async function loadPlayer(playerId, callerPage, options = {}) {
+        await settleTeamId();
         playerView.setCallerPage(callerPage);
         return playerView.loadPlayer(playerId, callerPage, options);
     }
 
     async function loadMatch(matchId, caller, options = {}) {
+        await settleTeamId();
         return matchView.loadMatch(matchId, caller, options);
     }
 
     async function loadFormations() {
+        await settleTeamId();
         return formationsView.loadFormations();
     }
 
     async function loadTacticEditor() {
+        await settleTeamId();
         return tacticEditorView.loadTacticEditor();
     }
 
     async function loadTrainingReports() {
+        await settleTeamId();
         return trainingView.loadTrainingReports();
     }
 
     async function loadTrainingSetup() {
+        await settleTeamId();
         return trainingView.loadTrainingSetup();
     }
 
     async function loadTrainingReportsPage() {
+        await settleTeamId();
         return trainingView.loadTrainingReportsPage();
     }
 
     async function loadMedicalCenter() {
+        await settleTeamId();
         return medicalView.loadMedicalCenter();
     }
 
     async function loadClubProfile() {
+        await settleTeamId();
         return clubView.loadClubProfile();
     }
 
     async function loadUpcomingMatches() {
+        await settleTeamId();
         return fixtureView.loadUpcomingMatches();
     }
 
     async function loadFixtures() {
+        await settleTeamId();
         return fixtureView.loadFixtures();
     }
 
     async function loadFixture(fixtureId, options = {}) {
+        await settleTeamId();
         return fixtureView.loadFixture(fixtureId, options);
     }
 
     async function loadLeagueTable(seasonYear = null) {
+        await settleTeamId();
         return leagueView.loadLeagueTable(seasonYear);
     }
 
     async function loadLeagueSchedule(seasonYear = null) {
+        await settleTeamId();
         return leagueView.loadLeagueSchedule(seasonYear);
     }
 
     async function loadLeagueMatches(seasonYear = null) {
+        await settleTeamId();
         return leagueView.loadLeagueMatches(seasonYear);
     }
 
     async function loadLeagueTeam(teamId, teamName, options = {}) {
+        await settleTeamId();
         return leagueView.loadLeagueTeam(teamId, teamName, options);
     }
 
     async function loadLeagueTeamPlayer(playerId, teamId, teamName, options = {}) {
+        await settleTeamId();
         return leagueView.loadLeagueTeamPlayer(playerId, teamId, teamName, options);
     }
 
@@ -1080,18 +1115,22 @@ function buildPageNavState(page, options = {}) {
      * click and the screen, which is the most annoying shape a dropped argument can have.
      */
     async function loadCountryPage(options) {
+        await settleTeamId();
         return countryView.loadCountryPage(options);
     }
 
     async function loadNationalTeam(level = 'senior') {
+        await settleTeamId();
         return countryView.loadNationalTeamPage(level);
     }
 
     async function loadTopScorersAndAssists(mode = "both") {
+        await settleTeamId();
         return statsView.loadTopScorersAndAssists(mode);
     }
 
     async function loadPlayerStats() {
+        await settleTeamId();
         return statsView.loadPlayerStats();
     }
 
@@ -1148,12 +1187,15 @@ function buildPageNavState(page, options = {}) {
     }
 
     async function loadForum() {
+        await settleTeamId();
         return forumView.loadForum();
     }
     async function loadForumSection(section) {
+        await settleTeamId();
         return forumView.loadForumSection(section);
     }
     async function loadForumTopic(topicId) {
+        await settleTeamId();
         return forumView.loadForumTopic(topicId);
     }
 
@@ -1166,9 +1208,11 @@ function buildPageNavState(page, options = {}) {
      * exists rather than quietly showing something else.
      */
     async function loadMessages() {
+        await settleTeamId();
         return messagesView.loadMessages();
     }
     async function loadMessageThread(threadId) {
+        await settleTeamId();
         return messagesView.loadMessageThread(threadId);
     }
 
@@ -1302,7 +1346,8 @@ function buildPageNavState(page, options = {}) {
     window.loadTrainingReports = loadTrainingReports;
     window.loadTrainingReportsPage = loadTrainingReportsPage;
     window.loadClubProfile = loadClubProfile;
-    window.loadStadium = (...args) => stadiumView.loadStadium(...args);
+    // The one window export that reaches a view directly. Every other one points at a guarded wrapper.
+    window.loadStadium = async (...args) => { await settleTeamId(); return stadiumView.loadStadium(...args); };
     window.loadUpcomingMatches = loadUpcomingMatches;
     window.loadFixtures = loadFixtures;
     window.renderFixtures = renderFixtures;

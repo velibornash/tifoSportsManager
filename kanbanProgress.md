@@ -1,5 +1,23 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-UI-4b — the same defect in twenty other entry points (2026-10-10)
+
+The three panels fixed for T0-UI-4 were not the only occurrence; they were the only one anyone had
+opened. loadPage has always awaited /auth/me, so every page reached by clicking was safe, and twenty
+functions bypass loadPage and call a view directly. On a deep link all of them read a null club id.
+
+All twenty now await settleTeamId(), which loads the user context if it is not in hand and costs one
+truthiness test if it is. window.loadStadium was the one window export reaching a view directly.
+
+While making that fix I broke 23 pages. The patch inserted the settle after the return keyword, leaving
+"return await settleTeamId();" followed by unreachable delegation - the view is never called and the
+page renders nothing - and every existing test stayed green. Found by reading the generated source. The
+harness now asserts settling is never returned, which is precisely that mistake.
+
+The sweep check found 7 entry points I had missed on its first run, which is the argument for having
+written a check rather than having grepped. Both mutations are proven able to fail. Everything verified
+in a browser afterwards: 13 pages render, including the match view's three panels at 3386/5259/8039.
+
 ## ✅ T0-UI-4 — the substitution panel renders, and three panels were mounting nothing (2026-10-10)
 
 The board said "not verified in a browser, and the panel has never been rendered by anyone". Opening it
