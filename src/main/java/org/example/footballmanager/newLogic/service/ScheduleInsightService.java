@@ -28,17 +28,80 @@ public class ScheduleInsightService {
     private final MatchRepository matchRepository;
     private final LineupRepository lineupRepository;
 
+    /**
+     * A snapshot for every team asked for, built from **three bulk reads**.
+     *
+     * <p><b>This method is the whole of the ranking rebuild's cost, and it used to be three queries per
+     * club.</b> Both ranking services call it over the entire world — 14,731 clubs — and it ran a squad
+     * read, a template-lineup read and a results read for each one. That is roughly 44,000 queries, and
+     * the results were worse than slow: every entity they returned stayed in the persistence context, so
+     * the transaction could not begin its flush until it had dirty-checked the entire accumulated graph.
+     *
+     * <p>Observed on the owner's database rather than reasoned about. After a full round the ranking
+     * rebuild had written **nothing**, logged neither its success nor its failure, and left its thread
+     * RUNNABLE at 100% CPU twenty minutes later, inside
+     * {@code DefaultFlushEntityEventListener.performDirtyCheck}. It was not going to finish.
+     *
+     * <p>The three reads happen once, before any snapshot is built. Nothing is loaded lazily afterwards,
+     * so the flush has only what it wrote.
+     *
+     * <p><b>Behaviour is unchanged.</b> The same players, the same template lineup and the same five most
+     * recent results go into each snapshot; only the number of round trips differs. The match query
+     * filters on {@code played = true} and the per-team filter does the same, so the two agree.
+     */
     public Map<Long, TeamSnapshot> buildTeamSnapshots(Collection<Team> teams) {
         if (teams == null || teams.isEmpty()) {
             return Map.of();
         }
 
-        Map<Long, TeamSnapshot> snapshots = new LinkedHashMap<>();
+        // Deduplicate first. Two callers pass a collection built from fixtures, and the same club can
+        // appear on both sides of a season.
+        Map<Long, Team> byId = new LinkedHashMap<>();
         for (Team team : teams) {
-            if (team == null || team.getId() == null || snapshots.containsKey(team.getId())) {
+            if (team != null && team.getId() != null) {
+                byId.putIfAbsent(team.getId(), team);
+            }
+        }
+        if (byId.isEmpty()) {
+            return Map.of();
+        }
+        Collection<Long> teamIds = byId.keySet();
+
+        Map<Long, List<Player>> squadsByTeam = new LinkedHashMap<>();
+        for (Player player : playerRepository.findByTeamIdIn(teamIds)) {
+            if (player == null || player.getTeam() == null || player.getTeam().getId() == null) {
                 continue;
             }
-            snapshots.put(team.getId(), buildTeamSnapshot(team));
+            squadsByTeam.computeIfAbsent(player.getTeam().getId(), key -> new ArrayList<>()).add(player);
+        }
+
+        // The query orders by id descending, so the first lineup seen for a team is the newest template.
+        Map<Long, Lineup> templateByTeam = new LinkedHashMap<>();
+        for (Lineup lineup : lineupRepository.findTemplatesForTeams(teamIds)) {
+            if (lineup != null && lineup.getTeam() != null && lineup.getTeam().getId() != null) {
+                templateByTeam.putIfAbsent(lineup.getTeam().getId(), lineup);
+            }
+        }
+
+        Map<Long, List<Match>> matchesByTeam = new LinkedHashMap<>();
+        for (Match match : matchRepository.findPlayedInvolvingAnyOf(teamIds)) {
+            if (match == null || match.getHomeTeam() == null || match.getAwayTeam() == null) {
+                continue;
+            }
+            matchesByTeam.computeIfAbsent(match.getHomeTeam().getId(), key -> new ArrayList<>()).add(match);
+            Long awayId = match.getAwayTeam().getId();
+            if (awayId != null && !awayId.equals(match.getHomeTeam().getId())) {
+                matchesByTeam.computeIfAbsent(awayId, key -> new ArrayList<>()).add(match);
+            }
+        }
+
+        Map<Long, TeamSnapshot> snapshots = new LinkedHashMap<>();
+        for (Map.Entry<Long, Team> entry : byId.entrySet()) {
+            Long teamId = entry.getKey();
+            snapshots.put(teamId, buildTeamSnapshot(entry.getValue(),
+                    squadsByTeam.getOrDefault(teamId, List.of()),
+                    templateByTeam.get(teamId),
+                    matchesByTeam.getOrDefault(teamId, List.of())));
         }
         return snapshots;
     }
@@ -54,11 +117,17 @@ public class ScheduleInsightService {
         return new FixtureInsights(home.strength(), away.strength(), home.form(), away.form(), prediction);
     }
 
-    private TeamSnapshot buildTeamSnapshot(Team team) {
-        List<Player> squad = Optional.ofNullable(playerRepository.findByTeamId(team.getId())).orElse(List.of()).stream()
-                .filter(Objects::nonNull)
-                .toList();
-        List<Player> corePlayers = selectCorePlayers(team.getId(), squad);
+    /**
+     * One team's snapshot from data already in hand.
+     *
+     * <p>Every read has been done by {@link #buildTeamSnapshots(Collection)}. A per-team read here would
+     * put this method back to being an N+1 for the two-team preview path, which is small but is the same
+     * defect in miniature.
+     */
+    private TeamSnapshot buildTeamSnapshot(Team team, List<Player> rawSquad, Lineup template,
+                                          List<Match> allMatches) {
+        List<Player> squad = rawSquad.stream().filter(Objects::nonNull).toList();
+        List<Player> corePlayers = selectCorePlayers(template, squad);
 
         double baseStrength = corePlayers.stream()
                 .mapToInt(player -> Math.max(1, player.getRating()))
@@ -67,9 +136,7 @@ public class ScheduleInsightService {
         double availabilityPenalty = Math.max(0, 11 - corePlayers.size()) * 1.4;
         int strength = clampInt((int) Math.round(baseStrength - availabilityPenalty), 38, 92);
 
-        List<Match> recentMatches = Optional.ofNullable(matchRepository.findByHomeTeamIdOrAwayTeamId(team.getId(), team.getId()))
-                .orElse(List.of())
-                .stream()
+        List<Match> recentMatches = allMatches.stream()
                 .filter(Match::isPlayed)
                 .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
                 .sorted((left, right) -> {
@@ -91,7 +158,7 @@ public class ScheduleInsightService {
         return new TeamSnapshot(strength, round1(recentForm), recentMatches.size());
     }
 
-    private List<Player> selectCorePlayers(Long teamId, List<Player> squad) {
+    private List<Player> selectCorePlayers(Lineup template, List<Player> squad) {
         List<Player> availablePlayers = squad.stream()
                 .filter(player -> !player.isInjured())
                 .sorted(Comparator.comparingInt(Player::getRating).reversed())
@@ -99,9 +166,8 @@ public class ScheduleInsightService {
 
         List<Player> selected = new ArrayList<>();
         LinkedHashSet<Long> selectedIds = new LinkedHashSet<>();
-        if (teamId != null) {
-            Optional<Lineup> lineup = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(teamId);
-            lineup.ifPresent(value -> value.getOrderedStartingPlayers().forEach(player -> addIfEligible(selected, selectedIds, player)));
+        if (template != null) {
+            template.getOrderedStartingPlayers().forEach(player -> addIfEligible(selected, selectedIds, player));
         }
 
         for (Player player : availablePlayers) {
@@ -260,7 +326,12 @@ public class ScheduleInsightService {
             return new TeamSnapshot(60, 6.0, 0);
         }
         TeamSnapshot snapshot = snapshotByTeamId == null ? null : snapshotByTeamId.get(team.getId());
-        return snapshot != null ? snapshot : buildTeamSnapshot(team);
+        // No prefetched snapshot: build one, through the same bulk path, so this fallback cannot become
+        // the N+1 the prefetch was added to remove.
+        return snapshot != null
+                ? snapshot
+                : buildTeamSnapshots(List.of(team)).getOrDefault(team.getId(),
+                        new TeamSnapshot(60, 6.0, 0));
     }
 
     private int pointsFor(Long teamId, Match match) {

@@ -18,6 +18,26 @@ source check on a control-flow claim, and is written as such rather than dressed
 It also caught a trap this repository keeps falling into: the comment explaining the defect quotes
 simulatedCount.incrementAndGet() verbatim, and two of my own checks found that comment before the code.
 
+## ✅ T0-POSS diagnosed — a side can be starved of the ball for ninety minutes (2026-10-10)
+
+The owner showed a match reading 91% possession, 10 shots to 1, and 0 fouls by the away side, and said
+possession was not right. He was right to doubt it.
+
+The number was accurate. The match was not: not one of that match's 25 events belonged to the away side.
+Across 707 matches average home possession is 48.1% and only 6 (0.8%) fall outside 20-80%, so this is a
+tail case rather than a systematic inversion - but a tail case whose scoreline reads like a result.
+
+Root cause, from the call graph: possession in newLogic changes in exactly one place, when nobody is within
+PICKUP_R and the receiver never arrives. There is no turnover, press or dispossession anywhere in the
+production engine. DuelEngine - the whole pressure model, with its tuning notes - is called only by the
+frozen demo engine; MatchOrchestrator never constructs it.
+
+So a side in possession can be pressed by nobody and keeps the ball until a restart intervenes. A 2-0 with
+91% possession is the engine working exactly as built.
+
+Needs an owner ruling rather than a fix: how should possession ever be taken? That is a football-design
+question of the same class as T1-5, not a defect I should decide.
+
 ## ✅ T-REST-2 / T-REST-5 — the round answered them both (2026-10-10)
 
 T-REST-2 said the match-event layer "does not work at all". The dead classes are gone and the surviving

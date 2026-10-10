@@ -2176,6 +2176,68 @@ scale. Every index added here was measured in a throwaway `sokker_bench` databas
 dev database. The `e9142ed` rows on a full 89,280-match season, and the `513f738` baseline on the same
 season with `event_json` at its **real** 17 KB width. **Same query, different harness.**
 
+## T0-POSS · 🔴 P0 — a side can be starved of the ball for ninety minutes, and the stats report it faithfully
+
+**Found by the owner, 2026-10-10, and he was right to doubt it.** OFK Omladinac 2-0 OFK Proleter Apatin
+displayed as **91% possession, 10 shots to 1, xG 1.90 to 0.10** — and *0 fouls by the away side*.
+
+### The number was never wrong. The match was.
+
+Reading that match's event log settles it: **not one of its 25 events belonged to the away side.** Every
+shot, every throw-in, every corner — all home. Nine per cent possession and no events at all is a
+simulation that gave one team the ball for ninety minutes, and the possession counter reported it
+accurately.
+
+### How rare, measured rather than guessed
+
+Across the **707 matches** simulated on the owner's database:
+
+| | |
+|---|---|
+| Average home possession | **48.1%** — nearly even |
+| Matches outside 20–80% | **6 (0.8%)** |
+| Matches where the away side committed no foul | **2** |
+
+**This is not a systematic inversion.** Match 80 is a tail case — but a tail case that produces a scoreline
+no reader can distinguish from a real one-sided game.
+
+### 🔴 Root cause: the production engine has no way to take the ball off anyone
+
+Possession in `newLogic` changes in exactly one place — `BallPhysicsEngine`:
+
+```java
+Player near = nearestPlayer(state, null, PICKUP_R);
+if (near != null) { state.setCarrier(near); state.setLastTouchTeam(near.getTeam()); ... }
+```
+
+The ball only changes hands when **nobody is within `PICKUP_R` and the intended receiver never arrives**, so
+the nearest player gathers it. **There is no turnover, no press and no dispossession anywhere in the
+production engine** — `grep -rn "turnover" src/main/java/.../newLogic/sim/engine/` returns nothing.
+
+**And `DuelEngine` — the entire pressure/contest model, with `PRESS_DRIB_DUEL_RADIUS`,
+`RECEIVE_PASS_RADIUS`, side-on ties and aerial duels — is called only by the frozen `demo/` engine.**
+`MatchOrchestrator` never constructs it. Its own comment says the old press radius *"was not a press at all
+but a steal at distance"*, which is the tuning work that was done and then never wired into production.
+
+So a side in possession can be pressed by nobody, dispossessed by nobody, and will keep the ball until a
+restart or a loose ball happens to intervene. **A 2-0 with 91% possession is the engine working as built.**
+
+### Exit criteria
+
+- [x] **Diagnosed on real data** — event log, 707-match distribution, and the call graph
+- [x] `BothSidesGetTheBallTest` — 40 simulated matches, **none** starved, so the tail is rare
+- [x] Possession always sums to 100 across a match
+- [ ] **Owner's ruling: how should possession be taken?** This is a football-design question, not a bug
+      fix, and it is the same class of decision as T1-5 (`mirrorWeHaveBallRules`)
+- [ ] Whatever is chosen, a match must not be able to reach one side under 5%
+
+### The honest framing
+
+The average is 48.1%, so **this is not "possession is broken"**. It is that a match has no mechanic which
+*guarantees* the ball is contestable, so the tail produces nonsense. Whether that tail is acceptable is a
+football judgement: real football has 91/9 games, and real football also never has a team with 0 fouls and
+0 events.
+
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
 `IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.

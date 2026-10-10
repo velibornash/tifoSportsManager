@@ -102,4 +102,15 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
      */
     @Query("SELECT p FROM Player p WHERE p.team IS NOT NULL AND p.retiredSeason IS NULL")
     List<Player> findActiveClubPlayers();
+
+    /**
+     * Every player's squad, for many teams at once.
+     *
+     * <p>Added with {@code ScheduleInsightService.buildTeamSnapshots}, which is called by both ranking
+     * services over the whole world. Reading one squad per team there was 14,731 queries — and, worse,
+     * every entity it returned stayed in the persistence context, so the transaction's flush then
+     * dirty-checked the entire accumulated graph before it could write anything.
+     */
+    @Query("SELECT p FROM Player p WHERE p.team.id IN :teamIds")
+    List<Player> findByTeamIdIn(Collection<Long> teamIds);
 }

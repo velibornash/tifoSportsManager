@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,21 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     Optional<Match> findDetailedById(@Param("id") Long id);
 
     List<Match> findByHomeTeamIdInAndAwayTeamIdIn(List<Long> homeTeamIds, List<Long> awayTeamIds);
+
+    /**
+     * Every match either side of any of these teams, played only.
+     *
+     * <p>Added with {@code ScheduleInsightService.buildTeamSnapshots}. The snapshot needs each club's five
+     * most recent results, which used to be read with
+     * {@code findByHomeTeamIdOrAwayTeamId(teamId, teamId)} — once per club, for every club in the world.
+     *
+     * <p>The home and away teams are fetched with the join because the snapshot filters on both being
+     * present, and reading them lazily is what puts an entity graph into the persistence context that the
+     * flush then has to dirty-check.
+     */
+    @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam "
+            + "WHERE m.played = true AND (m.homeTeam.id IN :teamIds OR m.awayTeam.id IN :teamIds)")
+    List<Match> findPlayedInvolvingAnyOf(@Param("teamIds") Collection<Long> teamIds);
 
     List<Match> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);
 
