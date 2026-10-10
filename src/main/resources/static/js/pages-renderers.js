@@ -1394,3 +1394,17 @@ function scheduleFilterHtml(fixtureRows) {
         ${button('all', 'All', fixtureRows.length)}
     </div>`;
 }
+
+/** Hides the rows the chosen filter excludes, and restores them on the next choice. */
+function applyScheduleFilter(container, mode = 'upcoming') {
+    const rows = [...container.querySelectorAll('[data-schedule-list] > *')];
+    const chosen = container.querySelector('[data-schedule-filter]');
+    if (chosen) {
+        chosen.classList.toggle('fm-chip--active', mode === 'upcoming');
+    }
+    for (const row of rows) {
+        const played = row.classList.contains('is-played');
+        const show = mode === 'all' || (mode === 'played' ? played : !played);
+        row.style.display = show ? '' : 'none';
+    }
+}
