@@ -1,5 +1,21 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-ADMIN confirmations — both buttons pressed, text read off the screen (2026-10-10)
+
+The two re-draw confirmations were the last item on an entry the board had already once got wrong: the
+previous commit recorded "the copy now says both" while the handler still said "Existing fixtures are left
+alone" about a button that deletes. So this was verified by reading the text the browser actually shows.
+
+National: "This DELETES every unplayed qualifying and knockout fixture for the season... It refuses if any
+qualifying tie has already been played... That refusal is the point, not a limitation."
+
+International: "If the group stage is already drawn this draws nothing, and existing fixtures are left
+alone."
+
+Both card bodies checked too; the international one qualifies off the season that has just finished, which
+is what the endpoint does. Both pressed with confirm stubbed to cancel, so nothing was written - match_fixture
+still holds 5444 rows.
+
 ## ✅ T1-17 — the text-football mode, reviewed (2026-10-10)
 
 The board claimed tifo.js had "at least four unguarded .json() calls and the same Loading.../Response

@@ -700,7 +700,25 @@ below exists rather than my having been careful.
 - [x] A guard: no admin confirmation may promise that a deleting action leaves fixtures alone
 - [x] **Proven able to fail:** restoring the old sentence turns it red; removing the international
       reassurance from both the confirmation and the card body turns it red
-- [ ] **Browser:** nobody has pressed these two buttons
+- [x] **Browser:** both pressed, and both confirmed texts captured verbatim
+
+This was the last open item, and it was open **because the previous entry had been written while the code
+was still wrong** — the board said "the copy now says both" while the handler still promised that
+deleting left fixtures alone. So the text below was read off the running screen, not off the source.
+
+**National** — *"This **DELETES** every unplayed qualifying and knockout fixture for the season, for both
+senior and U-21, and deals the qualifying groups again… It refuses if any qualifying tie has already been
+played — a played result belongs to the group it was played in, and re-drawing would leave it on a table
+its nations are no longer in. That refusal is the point, not a limitation."*
+
+**International** — *"If the group stage is already drawn this draws nothing, and existing fixtures are
+left alone… The only thing it can still add is a squad for a simulated club that entered without one."*
+
+**Both card bodies** verified too. The international one qualifies off *"the season that has just
+finished"* rather than claiming the active season and week, which is what the endpoint actually does.
+
+Both were pressed with `window.confirm` stubbed to **cancel**, so the text was observed and **nothing was
+written**: `match_fixture` still holds **5444** rows.
 
 ### The guard, and the third comment/prose collision of the session
 
