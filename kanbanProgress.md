@@ -1,5 +1,23 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-17 (counting) — a fixture that was never played is no longer counted as one (2026-10-10)
+
+The loop ran inside executeWithoutResult, and a lambda's return leaves the lambda and nothing else, so
+the "no home side or no away side" check fell through to simulatedCount.incrementAndGet(). A fixture that
+could not be played was reported as a played match.
+
+The lambda now returns an Outcome - SIMULATED, ALREADY_GONE, UNPLAYABLE - and only SIMULATED increments
+the counter. UNPLAYABLE is counted with the real failures and named in failedIds. Correct under either
+owner ruling; only the naming is left open.
+
+The behavioural test was attempted twice and abandoned. The runner is a @Service singleton whose running
+flag rejects concurrent calls and whose entry point is @Async: sharing it gave four failures about the flag
+and none about the count, and constructing one per test hung the suite past ten minutes. The test is a
+source check on a control-flow claim, and is written as such rather than dressed up as behavioural.
+
+It also caught a trap this repository keeps falling into: the comment explaining the defect quotes
+simulatedCount.incrementAndGet() verbatim, and two of my own checks found that comment before the code.
+
 ## ✅ T-REST-6 — the requested test was impossible, and why (2026-10-10)
 
 The board asked for a test asserting the four club-id sites return a Team id. Writing it turned up that

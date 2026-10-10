@@ -768,17 +768,44 @@ that did not land is the trap this repository keeps recording.
 
 ---
 
-## T-REST-17 — 🟡 `Replay failure` — a fixture with no teams is counted as simulated
+## T-REST-17 · PARTIALLY DONE 2026-10-10 — the counter fixed; the owner ruling still open
 
-`AsyncSimulationRunner` returns early for a null home or away side and **then increments
-`simulatedCount` anyway**, so a match that was never played is reported as one that was.
+### The defect, and what it was
 
-**Needs a decision:** is an unplayable fixture a *failure* or a *skip*? That changes what the status
-endpoint means, and the runner sits next to the simulation endpoints other work is in.
+The fixture loop ran inside `transactionTemplate.executeWithoutResult(...)`. **A lambda's `return`
+leaves the lambda and nothing else**, so the "no home side or no away side" check returned into the loop
+body, which went straight on to `simulatedCount.incrementAndGet()`. A fixture that could not be played was
+reported as a match that had been.
 
-**Exit criteria:**
-- [ ] Owner ruling: failure or skip
-- [ ] A fixture that was not simulated is never counted as one, and the status endpoint distinguishes them
+**Fixed.** The lambda now returns an `Outcome` — `SIMULATED`, `ALREADY_GONE`, `UNPLAYABLE` — and the
+counter increments only for the first. `UNPLAYABLE` is counted with the genuine failures and named in
+`failedIds`, so the status endpoint can distinguish *"not played"* from *"played"*.
+
+That distinction is not cosmetic: it is the shape the owner's ruling has to take, and **the counting fix
+is correct under either ruling**. Only the naming is left to decide.
+
+### 🟡 The behavioural test was attempted, and abandoned honestly
+
+The runner is a `@Service` singleton with a `running` flag that rejects concurrent calls, and its entry
+point is `@Async`. A behavioural test has two options and **both were tried**:
+
+- **Share the singleton** — five tests interfere, calls are rejected, and the failures are all about the
+  flag rather than the count. Four tests failed on the flag while saying nothing about the defect.
+- **Construct one per test** — the `@Async` thread outlives the assertion and **the suite hung past ten
+  minutes**, twice.
+
+So the test is a **source check**, and that is a considered decision rather than a silent downgrade. What
+is being protected is a *control-flow* claim — the increment must be reachable only for `SIMULATED` —
+and the shape of the code is what a source check can see. **Proven able to fail**: removing the
+`continue` from the `UNPLAYABLE` branch turns **two** checks red.
+
+It also catches a trap this repository has fallen into repeatedly: **the comment explaining this defect
+quotes the line `simulatedCount.incrementAndGet()` verbatim**, and a scanner that does not skip comments
+finds that comment first. Two of my own checks did exactly that before the scan learned to skip prose.
+
+**Still open — the owner ruling:**
+- [ ] Is an unplayable fixture a **failure** or a **skip**? It is currently counted as a failure and named
+      in `failedIds`. The alternative is a third counter, and the status endpoint has to say which.
 
 ## T-REST-18 — 🧹 Dead code and owners' calls still parked
 

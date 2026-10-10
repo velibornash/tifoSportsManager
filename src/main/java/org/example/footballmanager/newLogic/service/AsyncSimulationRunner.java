@@ -40,6 +40,9 @@ public class AsyncSimulationRunner {
      *
      * <p>Counted rather than swallowed, so {@code /simulation/current-round/status} can report it.
      */
+    /** What one fixture turned out to be. Only {@link #SIMULATED} is a match that was played. */
+    private enum Outcome { SIMULATED, ALREADY_GONE, UNPLAYABLE }
+
     private final AtomicInteger failedCount = new AtomicInteger(0);
 
     /** Ids of the fixtures that failed, so the report can name them rather than only count them. */
@@ -71,14 +74,42 @@ public class AsyncSimulationRunner {
         try {
             for (Long fixtureId : fixtureIds) {
                 try {
-                    transactionTemplate.executeWithoutResult(status -> {
+                    // **The outcome is decided inside the lambda, not after it.**
+                    //
+                    // This `return` used to leave the lambda and the loop carried straight on to
+                    // `simulatedCount.incrementAndGet()`. A fixture with no home side, or no away side, was
+                    // therefore reported as a match that had been played — which is the one thing this
+                    // counter must never say, because "we simulated 240" is how a season quietly loses a
+                    // fixture and nobody notices until the table is wrong.
+                    //
+                    // The three outcomes are distinguished rather than lumped, because they mean different
+                    // things to whoever is waiting: nothing to do, could not be done, and was done. Only the
+                    // last one increments `simulatedCount`.
+                    Outcome outcome = transactionTemplate.execute(status -> {
                         MatchFixture fixture = matchFixtureRepository.findById(fixtureId).orElse(null);
-                        if (fixture == null || fixture.isPlayed()) return;
-                        if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) return;
+                        if (fixture == null) return Outcome.ALREADY_GONE;
+                        if (fixture.isPlayed()) return Outcome.ALREADY_GONE;
+                        if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
+                            return Outcome.UNPLAYABLE;
+                        }
 
                         SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, false);
                         simMatchService.persist(fixture, sim.outcome(), -1L, sim.snapshots());
+                        return Outcome.SIMULATED;
                     });
+
+                    if (outcome == Outcome.UNPLAYABLE) {
+                        // Counted with the failures, not with the simulations: it was equally not played,
+                        // and reporting it as done is the defect. It is named in the log and held in
+                        // `failedIds` so the status endpoint can distinguish it from a thrown exception.
+                        failedCount.incrementAndGet();
+                        failedIds.add(fixtureId);
+                        log.warn("Fixture {} has no home side or no away side and was not played.", fixtureId);
+                        continue;
+                    }
+                    if (outcome == Outcome.ALREADY_GONE) {
+                        continue;
+                    }
                     simulatedCount.incrementAndGet();
                     if (simulatedCount.get() % 10 == 0) {
                         log.info("Background progress: {}/{}", simulatedCount.get(), totalCount.get());
