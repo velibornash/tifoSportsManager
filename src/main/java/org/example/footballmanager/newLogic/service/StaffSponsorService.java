@@ -13,7 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Staff and sponsors for every club in the pyramid (Sprint 2.3).
@@ -62,11 +64,24 @@ public class StaffSponsorService {
     @Transactional
     public int seedAllClubs(int currentSeason) {
         List<Team> all = teams.findAll();
+
+        // **One query for the set, not one per club.**
+        //
+        // The loop asked `staff.countByTeamId(club.getId())` for every club in the world, which is
+        // 1 + 14,880 queries to answer a question that is one `select distinct`. The per-club answer
+        // cannot narrow the query it makes, so it bought nothing but the round trip — the same shape as
+        // `MatchdayJob`, and the same fix: read the set once and filter in Java.
+        //
+        // Both sets are read, not just staff: `seedClub` asks the sponsors the same question, and a
+        // club with staff but no sponsor would otherwise still be asked once per seeding.
+        Set<Long> staffed = new HashSet<>(staff.findStaffedTeamIds());
+        Set<Long> sponsored = new HashSet<>(sponsors.findSponsoredTeamIds());
+
         int created = 0;
         for (Team club : all) {
             if (club.getId() == null) continue;
-            if (staff.countByTeamId(club.getId()) > 0) continue;
-            seedClub(club, currentSeason);
+            if (staffed.contains(club.getId())) continue;
+            seedClub(club, currentSeason, staffed, sponsored);
             created++;
         }
         return created;
@@ -74,13 +89,30 @@ public class StaffSponsorService {
 
     @Transactional
     public void seedClub(Team club, int currentSeason) {
-        if (staff.countByTeamId(club.getId()) > 0) return;
+        // Single-club entry point, used by the admin button. It pays the count it needs rather than
+        // forcing every caller to have loaded the world's sets for one club.
+        seedClub(club, currentSeason, null, null);
+    }
+
+    /**
+     * @param alreadyStaffed   the clubs that already have staff, or {@code null} when the caller has not
+     *                         read them and the answer has to be looked up
+     * @param alreadySponsored the clubs that already have a sponsor, or {@code null} for the same reason
+     */
+    private void seedClub(Team club, int currentSeason, Set<Long> alreadyStaffed, Set<Long> alreadySponsored) {
+        boolean hasStaff = alreadyStaffed != null
+                ? alreadyStaffed.contains(club.getId())
+                : staff.countByTeamId(club.getId()) > 0;
+        if (hasStaff) return;
         int tier = tierOf(club);
         // Quality follows reputation; reputation already follows tier.
         double quality = reputationOf(club);
 
         staff.saveAll(buildStaff(club, tier, quality, currentSeason));
-        if (sponsors.countByTeamId(club.getId()) == 0) {
+        boolean sponsored = alreadySponsored != null
+                ? alreadySponsored.contains(club.getId())
+                : sponsors.countByTeamId(club.getId()) > 0;
+        if (!sponsored) {
             sponsors.saveAll(buildSponsors(club, tier, quality, currentSeason));
         }
     }

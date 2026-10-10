@@ -1652,13 +1652,33 @@ ten clubs with two child leagues, the player-facing summary names the wrong club
 
 **Exit criteria:** the summary reads the same computed positions the apply side uses
 
-## T1-9 · 🟡 `StaffSponsorService.seedAllClubs` has a real N+1
+## T1-9 · ✅ DONE 2026-10-10 — one query for the set, and the count measured rather than asserted
 
-Recorded and deliberately left. Reading the world is the point of a seeding path, so **tier 3 is
-acceptable** — but this one is a genuine `1 + 14,880` inside the loop, which is a different shape from
-"the seed needs the data".
+`seedAllClubs` asked `staff.countByTeamId(club.getId())` **inside the loop**, once per club. `seedClub`
+asked the sponsors the same question. The exit criterion was literally *"one query for the set, not one
+per club"*, so the fix reads both sets once with `select distinct` and filters in Java — the same shape
+as `MatchdayJob`, for the same reason: a per-row answer cannot narrow the query it makes.
 
-**Exit criteria:** one query for the set, not one per club
+**Measured, not asserted.** `StaffSponsorSeedingQueriesTest` counts calls over a synthetic 14,880-club
+world. **Before: 14,882 read queries. After: 2.**
+
+### Two mistakes of mine, both caught here rather than shipped
+
+1. **The first version of the test measured nothing.** It counted the repository mocks *before* calling
+   `seedAllClubs`, so it recorded only the stubbing setup and read as a pass for **any** implementation
+   at all. It stayed green straight through a mutation that put the per-club count back — which is the
+   whole failure mode this repository has, reproduced in a test written specifically to avoid it. It now
+   measures the **delta**.
+2. **Writes were counted as queries.** 14,880 unstaffed clubs have to be written 14,880 times; counting
+   those failed the fix along with the defect. The assertion is about **reads**, which is where the N+1
+   was.
+
+**Proven able to fail**: restoring `staff.countByTeamId` into the loop turns **all three** tests red,
+including the query count (*"seeding 14,880 clubs issued 14882 read queries"*).
+
+**The live database holds 310 clubs and no staff or sponsor rows**, so the real-world saving is 310
+queries, not 14,880. The number that matters is that it no longer grows with the world — and the world
+is being built toward 14,880.
 
 ## T1-10 · ✅ DONE 2026-10-09 — every loader checks the response, and one "API Error" card is gone
 

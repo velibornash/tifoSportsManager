@@ -1,5 +1,22 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-9 — one query for the set, measured rather than asserted (2026-10-10)
+
+seedAllClubs asked staff.countByTeamId inside the loop and seedClub asked sponsors the same question.
+Both sets are now read once with select distinct and filtered in Java.
+
+Measured over a synthetic 14,880-club world: 14,882 read queries before, 2 after. Writes are excluded
+from that count, because 14,880 unstaffed clubs have to be written 14,880 times and counting those would
+fail the fix along with the defect.
+
+My first version of the test measured nothing: it counted the mocks before calling seedAllClubs, so it
+recorded the stubbing setup and passed for any implementation. It stayed green through the mutation that
+put the N+1 back - the exact failure mode this repository keeps hitting, reproduced in a test written to
+avoid it. Fixed to measure the delta. Both mistakes were caught here rather than shipped.
+
+The live database holds 310 clubs with no staff or sponsor rows, so the real saving today is 310
+queries. The point is that it no longer grows with the world.
+
 ## ✅ T0-UI-4b — the same defect in twenty other entry points (2026-10-10)
 
 The three panels fixed for T0-UI-4 were not the only occurrence; they were the only one anyone had
