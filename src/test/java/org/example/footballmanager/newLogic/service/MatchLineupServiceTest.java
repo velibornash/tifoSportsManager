@@ -295,14 +295,14 @@ class MatchLineupServiceTest {
         players.save(reserveKeeper);
 
         List<String> withKeeperOnBench =
-                service.warningsFor(club.getId(), ids(eleven), List.of(reserveKeeper.getId(), squad[1].getId()));
+                service.warningsFor(club.getId(), fixture.getId(), ids(eleven), List.of(reserveKeeper.getId(), squad[1].getId()));
         assertTrue(withKeeperOnBench.stream().anyMatch(w -> w.contains("only be replaced by another goalkeeper")),
                 "the owner specified that a keeper may be subbed only by another keeper, and "
                         + "SubstitutionService enforces it by matching GK status. The manager has to be told "
                         + "while he is looking at the screen: " + withKeeperOnBench);
 
         List<String> withNoKeeperOnBench =
-                service.warningsFor(club.getId(), ids(eleven), List.of(squad[1].getId(), squad[2].getId()));
+                service.warningsFor(club.getId(), fixture.getId(), ids(eleven), List.of(squad[1].getId(), squad[2].getId()));
         assertTrue(withNoKeeperOnBench.stream().anyMatch(w -> w.contains("cannot be substituted")),
                 "with no keeper on the bench his keeper can never be replaced, and that is worth saying "
                         + "before the match rather than after it");
@@ -317,7 +317,7 @@ class MatchLineupServiceTest {
         players.save(eleven[4]);
         playTheFixture();
 
-        assertTrue(service.warningsFor(club.getId(), ids(eleven), List.of()).stream()
+        assertTrue(service.warningsFor(club.getId(), fixture.getId(), ids(eleven), List.of()).stream()
                         .anyMatch(w -> w.contains("injured")),
                 "an injured player in the XI is a mistake the manager can see");
 

@@ -934,6 +934,56 @@ shape the substitution feature had when ten unit tests were green and no manager
   neighbours and it is here because a call in a hot loop that nobody exercises is not a call. This is the
   same failure as the `fixture-view.js` mount that hid the whole substitution feature.
 
+### T-DISC · ✅ DONE 2026-10-10 — cards, and what they cost (owner ruling)
+
+**The owner's ruling, 2026-10-10.** A direct red card in one match automatically bans the player for the
+**first next official match of the club** — everything except a friendly. League yellows accumulate:
+**three earns one match, six earns two, nine earns three**, served in the league. Counters reset at the
+end of each season.
+
+This is what the T0-BE-3 note above was waiting for. The lineup warning it could not check now can.
+
+**Built**
+- **`PlayerDiscipline`** — player, season, competition, yellows, bans owed, bans served. **A null
+  competition is the club-wide row**, which is where a red card goes, because the rule is about the club
+  and not about the competition the card happened to be in.
+- **Keyed by season, so the reset is structural.** There is no end-of-season sweep to forget to run and no
+  counter that can survive into a new campaign.
+- **The lineup warning is restored** — `MatchLineupService.warningsFor` now says why a player cannot play
+  this fixture, so the manager finds out on the screen rather than from a void reason after the whistle.
+
+**The part that is easy to get wrong, and was**
+
+If the yellow counter reset the moment three were reached, **six and nine could never be reached at all**
+and two thirds of the rule would be dead letters. So the counter **keeps its place while the earned bans
+are outstanding, and resets only once they have been served.** Several tests exist to hold exactly that.
+
+**Two scopes, deliberately different.** A red-card ban is club-wide and bars the next official match of
+any sort — including a cup tie. A yellow ban is a **league** ban, because that is where the yellows were
+earned. The owner drew that distinction and the tests hold both.
+
+**"Official" is one null check.** `CompetitionType` has no FRIENDLY value, because a friendly is a fixture
+that belongs to no competition at all — `MatchType.ofCompetition(null)` is FRIENDLY for exactly that
+reason. So a friendly's yellows are not a league's yellows, and a friendly is not a match a red-card ban
+can bite on.
+
+**Exit criteria**
+- [x] A red card bars the first next official match, and not a friendly
+- [x] It is served by playing, and only then
+- [x] Three yellows earn one league match, six earn two, nine earn three
+- [x] Friendly yellows do not count toward the league accumulation
+- [x] A yellow ban is league-scoped; a red-card ban is club-wide
+- [x] A new season starts clean, with no sweep to run
+- [x] **Proven able to fail:** collapsing the 6 and 9 bands turns **3** tests red; resetting the counter at
+      three turns `theCounterWaitsForTheBansToBeServed` red
+
+**Not yet done.** Nothing calls `record(...)` after a match, and nothing calls `serve(...)` before one. The
+engine already awards cards — `DuelService` calls `stats.onYellowCard` / `onRedCard`, and
+`ProposalMatchOutcome.PlayerOutcome` carries the per-player totals — so the input is there and unwired, in
+the same shape as `ConditionalSubstitutionRules` was. **This is exactly the "green but unreachable"
+pattern this log keeps recording**, so it is recorded rather than declared done: a manager whose player
+takes a red card today still plays the next match.
+
 ### T0-BE-3 · ✅ DONE 2026-10-10 — a club can pick a team for one fixture
 
 **What was in the way:** `Lineup.match` has been a nullable `@ManyToOne` all along, and every reader asked
@@ -967,11 +1017,11 @@ whatever the last template happened to say.
   mutating the **production** reader left all ten tests green. The decision was extracted into
   `MatchLineupService.resolve` — which is better design anyway, since it is now the one place the rule
   lives — and the test calls it. The same mutation then turned it red.
-- **There is no suspension in the football model.** The task asked for a warning when the XI contains a
-  suspended player; `Player` has injuries and nothing else, and a search of the whole football model finds
-  no suspension concept at all. The check was **removed rather than invented** — a check against a field
-  that can never be set is a check that always passes, which is the thing this repository keeps punishing.
-  If suspensions are wanted they are a new feature, not a validation message.
+- **There was no suspension in the football model.** The task asked for a warning when the XI contains a
+  suspended player; `Player` has injuries and nothing else. The check was **removed rather than invented**
+  — a check against a field that can never be set is a check that always passes. **Superseded the same
+  day: see T-DISC below. The owner then specified the rules, and the check is back and testing something
+  real.**
 
 ### T0-BE-4 · ✅ DONE 2026-10-09 — conditional substitutions: the contract becomes reachable
 

@@ -55,6 +55,7 @@ public class MatchLineupService {
     private final MatchRepository matches;
     private final MatchFixtureRepository fixtures;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
+    private final DisciplineService discipline;
 
     /**
      * Saves the club's XI for one fixture.
@@ -152,7 +153,8 @@ public class MatchLineupService {
      * @return ordered warnings; empty means the XI is clean
      */
     @Transactional(readOnly = true)
-    public List<String> warningsFor(Long teamId, List<Long> starterIds, List<Long> benchIds) {
+    public List<String> warningsFor(Long teamId, Long fixtureId,
+                                    List<Long> starterIds, List<Long> benchIds) {
         List<String> warnings = new ArrayList<>();
         List<Player> starters = resolvePlayers(teamId, distinct(starterIds));
         List<Player> bench = resolvePlayers(teamId, distinct(benchIds));
@@ -160,6 +162,14 @@ public class MatchLineupService {
         for (Player player : starters) {
             if (player.isInjured()) {
                 warnings.add(displayName(player) + " is injured.");
+            }
+            // Restored once suspensions existed (owner, 2026-10-10). A red card bars the next official
+            // match of the club and the yellow accumulation bars this competition, and both are said here
+            // so the manager finds out on the screen he is already looking at rather than from a void
+            // reason after the whistle.
+            String suspension = suspensionOf(player, fixtureId).orElse(null);
+            if (suspension != null) {
+                warnings.add(displayName(player) + " is " + suspension + " and cannot play this fixture.");
             }
         }
 
@@ -229,6 +239,18 @@ public class MatchLineupService {
 
     private static List<Long> distinct(List<Long> ids) {
         return ids == null ? List.of() : ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
+    }
+
+    /** Why this player cannot play this fixture, if he cannot. Empty when he can. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<String> suspensionOf(Player player, Long fixtureId) {
+        if (player == null || player.getId() == null || fixtureId == null || discipline == null) {
+            return java.util.Optional.empty();
+        }
+        MatchFixture fixture = fixtures.findById(fixtureId).orElse(null);
+        Integer season = fixture == null || fixture.getSeasonYear() == null
+                ? null : fixture.getSeasonYear();
+        return discipline.suspensionFor(player.getId(), season, fixture);
     }
 
     /**

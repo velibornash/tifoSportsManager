@@ -1,5 +1,31 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-DISC — cards, and what they cost (2026-10-10)
+
+**Owner ruling:** a red card bans the first next **official** match of the club — everything except a
+friendly. League yellows accumulate: 3 → 1 match, 6 → 2, 9 → 3. Counters reset per season.
+
+This is what the T0-BE-3 suspension note was waiting for. The lineup warning it could not check now can,
+and it checks something real.
+
+**The part that is easy to get wrong.** If the counter reset the moment three were reached, six and nine
+could never be reached and two thirds of the rule would be dead letters. So the counter keeps its place
+while the earned bans are outstanding and resets only once they are served. Collapsing the 6 and 9 bands
+turns three tests red; resetting at three turns a fourth.
+
+**Two scopes, deliberately different.** A red-card ban is club-wide and bars the next official match of any
+sort, including a cup tie. A yellow ban is a league ban, because that is where the yellows were earned.
+
+**"Official" turned out to be one null check.** `CompetitionType` has no FRIENDLY value, because a
+friendly is a fixture that belongs to no competition at all. The first version of this compared against a
+`FRIENDLY` constant that does not exist; that was caught at compile time and corrected rather than
+papered over.
+
+**Recorded rather than declared done.** Nothing calls `record(...)` after a match or `serve(...)` before
+one. The engine already awards cards and the outcome already carries the per-player totals, so the input
+is there and unwired — the same shape as `ConditionalSubstitutionRules` was, and the same trap this log
+keeps recording. A manager whose player takes a red card today still plays the next match.
+
 ## ✅ T0-BE-3 — a club can pick a team for one fixture (2026-10-10)
 
 The schema was already right and nothing wrote it. `Lineup.match` has been a nullable column all along and
