@@ -203,16 +203,37 @@ public class AdminController {
      * Repeating it is safe, because a cup whose group stage already exists is skipped.
      */
     @PostMapping("/international-club-cups/redraw")
-    public ResponseEntity<Map<String, Object>> redrawInternationalClubCups() {
-        int season = seasonService.getActiveSeasonYear();
-        int drawWeek = InternationalClubCupJob.DRAW_WEEK;
-        internationalClubCupJob.run(
-                new JobContext(season, drawWeek, InternationalClubCupJob.DRAW_DAY, 8));
+    public ResponseEntity<Map<String, Object>> redrawInternationalClubCups(
+            @RequestParam(required = false) Integer qualifyingFrom,
+            @RequestParam(required = false) Integer drawnInto) {
+        int active = seasonService.getActiveSeasonYear();
+
+        // Two seasons, and both overridable. The pairing used to be implied - qualify off the active
+        // season, draw into the next - which is the only correct pairing once a world has two seasons
+        // and no way at all to reach season 1, the one season with nothing to qualify off. A manager who
+        // has just built a world needs to say "draw season 1"; requiring them to wait a season for the
+        // automatic pairing to reach it is not a rule, it is a dead end (owner, 2026-10-10).
+        //
+        // Qualifying from a season >= the one being drawn would read a table that does not exist yet,
+        // so it is refused rather than quietly treated as the current one.
+        int season = drawnInto != null ? drawnInto : active + 1;
+        int qualifying = qualifyingFrom != null ? qualifyingFrom : season - 1;
+
+        if (qualifying >= season) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "A cup cannot be drawn for season " + season + " off season " + qualifying
+                            + "'s tables, because season " + qualifying + " is not finished yet.",
+                    "drawnInto", season,
+                    "qualifiedFrom", qualifying,
+                    "hint", "Qualify off an earlier season, or draw into a later one."));
+        }
+
+        internationalClubCupJob.drawGroupStagesFor(qualifying, season);
         return ResponseEntity.ok(Map.of(
-                "season", season,
-                "qualifiedFromSeason", season,
-                "drawnForSeason", season + 1,
-                "week", drawWeek,
+                "activeSeason", active,
+                "qualifiedFromSeason", qualifying,
+                "drawnForSeason", season,
+                "week", InternationalClubCupJob.DRAW_WEEK,
                 "day", InternationalClubCupJob.DRAW_DAY,
                 "job", InternationalClubCupJob.KEY));
     }

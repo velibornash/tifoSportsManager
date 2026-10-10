@@ -12,6 +12,7 @@ import org.example.footballmanager.newLogic.util.InternationalClubCups;
 import org.example.footballmanager.newLogic.util.SimulatedWorldSeeder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -177,6 +178,25 @@ public class InternationalClubCupJob implements DayJob {
      * <p>Two seasons as arguments rather than one derived inside, because they are genuinely different
      * numbers now and the old helper — which reached back a season — is what put the draw in week 1.
      */
+    /**
+     * Draws every cup's group stage into an explicitly named season, off an explicitly named one.
+     *
+     * <p>The admin button's path. {@link #run(JobContext)} always pairs the active season with the next
+     * one, which is right on the clock and useless for season 1: a world that has just been built is on
+     * season 1, and the only pairing available from it is 1 to 2 — which draws season 2 off tables
+     * nobody has played yet. Saying both seasons out loud is the whole point (owner, 2026-10-10).
+     *
+     * <p>The clock is still moved to the draw week so the job takes the same path and the same guards
+     * as an ordinary week-1 draw — an already-drawn cup is skipped by the draw itself, so pressing
+     * this twice does not double anything up.
+     */
+    @Transactional
+    public void drawGroupStagesFor(int qualifyingSeason, int targetSeason) {
+        cups.ensureCompetitionsDurably();
+        simulatedWorldSeeder.seedAllSimulated(qualifyingSeason);
+        drawEveryGroupStage(targetSeason, qualifyingSeason);
+    }
+
     private void drawEveryGroupStage(int targetSeason, int qualifyingSeason) {
         int qualifying = qualifyingSeason;
 
@@ -188,11 +208,28 @@ public class InternationalClubCupJob implements DayJob {
                 continue;
             }
             List<Team> entrants = cups.qualifiedFor(cup, qualifying);
+
+            // **Season 1 of a world has no season 0 to read.** The rule is about finished tables and
+            // there are none, so the cup is not drawn and a manager who builds a world and starts at
+            // season 1 gets fifteen continental cups that never appear. Falling back to the current
+            // season's tables keeps the rule itself intact - same comparator, same positions, same
+            // rules - and only changes which season it is asked about.
+            boolean fromFirstSeason = false;
+            if (entrants.isEmpty() && qualifying < targetSeason) {
+                entrants = cups.qualifiedForFirstSeason(cup, targetSeason);
+                fromFirstSeason = !entrants.isEmpty();
+            }
+
             if (entrants.isEmpty()) {
                 log.info("Club cups: {} has no qualified clubs. The entry rule reads season {}'s finished "
-                                + "tables, and season {} has none.",
-                        cup.fullName(), qualifying, qualifying);
+                                + "tables, and neither that season nor season {} has any entries to read.",
+                        cup.fullName(), qualifying, targetSeason);
                 continue;
+            }
+            if (fromFirstSeason) {
+                log.info("Club cups: {} has no season {} to qualify off — this is the first season — so "
+                                + "the current tables of season {} are used instead.",
+                        cup.fullName(), qualifying, targetSeason);
             }
             InternationalClubCupDraw.DrawResult result = draw.ensureGroupStage(
                     competition, entrants, InternationalClubCupDraw.qualifyPerGroupFor(cup.name()), targetSeason);

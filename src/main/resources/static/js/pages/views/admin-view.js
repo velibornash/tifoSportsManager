@@ -281,6 +281,13 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             return;
         }
         if (action === 'redraw-international-cups') {
+            // The two seasons, read from the card's own inputs so a manager can reach season 1 — the one
+            // season with no previous season to qualify off, and therefore the one the automatic pairing
+            // (active -> active+1) can never reach.
+            const card = button.closest('section, .fm-panel, div');
+            const qualifying = Number(card?.querySelector('[data-cup-qualify-from]')?.value || 0);
+            const drawnInto = Number(card?.querySelector('[data-cup-draw-into]')?.value || 0);
+
             // The "existing fixtures are left alone" in this card's body is TRUE, and it was verified
             // rather than assumed — because it reads exactly like the national re-draw's, which says the
             // same thing and is the opposite. Three links:
@@ -297,10 +304,11 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             // the one that needed rewriting.
             await runRepair(button, {
                 confirmText: 'Re-draw the international club cups?\n\n'
-                    + 'Runs the scheduled club-cup draw for the season that has just finished. If the group '
-                    + 'stage is already drawn this draws nothing, and existing fixtures are left alone.\n\n'
-                    + 'The only thing it can still add is a squad for a simulated club that entered without one.',
-                path: '/admin/international-club-cups/redraw',
+                    + 'The entrants come from one season\'s tables and the groups are drawn into the next.\n\n'
+                    + 'Season 1 has no previous season to qualify off, so for the first season of a world the '
+                    + 'current tables are used instead. If the group stage is already drawn this draws '
+                    + 'nothing, and existing fixtures are left alone.',
+                path: `/admin/international-club-cups/redraw?qualifyingFrom=${qualifying}&drawnInto=${drawnInto}`,
                 successNote: 'International club-cup draw job run'
             });
             return;
@@ -464,11 +472,12 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         }
     }
 
-    function toolCard({ title, body, action, label, variant = 'secondary' }) {
+    function toolCard({ title, body, action, label, variant = 'secondary', extra = '' }) {
         return `
             <article class="community-tool-card">
                 <h4>${title}</h4>
                 <p class="fm-subtle">${body}</p>
+                ${extra}
                 <button type="button" class="fm-action-btn ${variant}" data-admin-action="${action}">${label}</button>
             </article>`;
     }
@@ -1169,10 +1178,22 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         })}
                         ${toolCard({
                             title: 'Re-draw international cups',
-                            body: 'Runs the club-cup draw for the season that has just finished, qualifying off its finished tables. If the group stage is already drawn this draws nothing.',
+                            body: 'Runs the club-cup draw, taking entrants from one season and drawing the groups into another. Season 1 has no previous season, so for a first season the current tables are used. If the group stage is already drawn this draws nothing.',
                             action: 'redraw-international-cups',
                             label: 'Re-draw international cups',
-                            variant: ''
+                            variant: '',
+                            // Two inputs rather than one implied pairing. Season 1 is the season the
+                            // automatic pairing can never reach - it would draw season 2 off tables
+                            // nobody has played - and a manager who has just built a world needs to be
+                            // able to say "draw season 1" without waiting a season for it.
+                            extra: `<div class="fm-admin-season-row">
+                                <label class="fm-subtle">Qualify off season
+                                    <input class="fm-input" type="number" min="0" max="99"
+                                           data-cup-qualify-from value="1"></label>
+                                <label class="fm-subtle">Draw into season
+                                    <input class="fm-input" type="number" min="1" max="99"
+                                           data-cup-draw-into value="1"></label>
+                            </div>`
                         })}
                     </div>
                 </section>

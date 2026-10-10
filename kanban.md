@@ -2314,6 +2314,96 @@ throws, **not by pressing it in a browser** — doing so would have meant surgic
 live roster, and the first attempt to free a slot was correctly blocked by a `player_contract` foreign
 key. The pool result is the live proof; the write check is not.
 
+## T0-CUPS-SEASON1 · ✅ FIXED 2026-10-10 — the World page said "Not drawn yet" for cups that were drawn
+
+**Found by the owner, 2026-10-10**, on the World page's international-competitions table: the Field column
+read **"Not drawn yet"** on cups that plainly had a full draw.
+
+### Two separate bugs, and the second is worse
+
+**1. The badge required a perfect score.**
+
+```js
+qualified === expected            // expected is 48, or 96 for the Masters Cup
+```
+
+**One country failing to qualify flipped every tier from "48 qualified" to "Not drawn yet."** That is not
+a warning — it is the opposite of the truth, on a screen whose whole job is to say what exists.
+
+Measured from the live API, which is what made it diagnosable:
+
+| | qualified | shown as |
+|---|---|---|
+| Champions Cup, tiers 1–3 | 48 / 48 / 48 | ✅ 48 qualified |
+| **Tier 4 Champions Cup** | **47** | ❌ **Not drawn yet** |
+| **Tier 5 Champions Cup** | **47** | ❌ **Not drawn yet** |
+| **Tier 4/5 Masters Cup** | **94** | ❌ **Not drawn yet** |
+
+**2. 🔴 The Netherlands has no lower pyramid at all.**
+
+```sql
+Netherlands | 6 leagues | 59 clubs      -- every other country: 31 leagues
+tier 1: 1   tier 2: 2   tier 3: 3        -- and nothing below
+```
+
+**One country out of forty-eight.** It is `SIMULATED` like the others and `PyramidBuilder` loops all five
+tiers unconditionally, so it was simply never fully built. That is the whole cause of 47 — and it is a
+**world-building gap, not a draw defect.** The draw correctly produced one entrant per country that has a
+tier-4 division, which is 47.
+
+**Fixed:** the badge now reads *"Not drawn yet"* only when **no tier has a single entrant**, which is the
+only state in which it is honest. Anything else shows the real count with `of 48` beside it, so a short
+draw is visible as short rather than invisible.
+
+### The season-1 gap, which prompted all of this
+
+The owner asked how to seed the cups in **season 1**, having no previous season's results. Correctly
+diagnosed: the entry rule reads a **finished** table, season 1 has no season 0, so
+`InternationalClubCupJob` drew nothing and logged *"no qualified clubs"* for all fifteen cups.
+
+**Fixed per the owner's ruling — read the current season's tables as they stand.** Same data, same
+`LeagueTableOrder` comparator, same rules; only the season asked about differs. No new ordering invented,
+and reputation is *not* substituted for finishing position.
+
+The admin button now takes **both seasons** (`qualifyingFrom`, `drawnInto`), because the automatic pairing
+(active → active+1) can never reach season 1, and qualifying from a season that is not yet finished is
+**refused** rather than quietly treated as the current one.
+
+### Evidence
+
+- `InternationalCupsQualifyInTheFirstSeasonTest` — 4 tests. **Qualifying off season 1 returns 48 clubs**,
+  which is exactly a full Champions Cup.
+- Every one of the fifteen cups qualifies somebody in the first season.
+- The fallback only fires when the previous season has nothing: a test pins that an unfinished season
+  qualifies **fewer** clubs than a played one, so the fallback can never quietly draw season 2 off its own
+  unfinished tables.
+
+**Honest gap:** the *draw* was not run against the live world, because it writes 15 cups × 48 clubs of
+fixtures into the owner's season 1. The qualification path is proven by test; the write is not.
+
+## T0-RESET-MATCHES · ✅ MEASURED 2026-10-10 — Reset DB does clear recent matches; it is not retaining them
+
+**The owner asked whether recent matches survive `Reset DB`.** The dashboard showed three season-1 results,
+which looked like residue. **It is not.** Measured, not read:
+
+A throwaway copy of the whole database was created from `sokker_db` (`CREATE DATABASE ... TEMPLATE
+sokker_db`), the real `/admin/reset-db` was run against it, and the counts read:
+
+| | before | after |
+|---|---|---|
+| `match` | **707** | **0** |
+| `match_fixture` | **5 452** | **0** |
+| `app_user` (preserved) | 2 | **2** |
+| `team` (owner clubs) | 14 723 | 2 |
+
+**The reset works exactly as documented.** `ResetService` enumerates tables from the live schema and keeps
+only `app_user`, `user`, `tactics`, `formation` and `formation_positions`; `match` is not among them. The
+copy was dropped afterwards and `sokker_db` was never touched — still 707 matches.
+
+**Why those three matches are still there:** no reset ran in this session (`RESET DATABASE STARTED`
+appears in no log), and all 235 season-1 matches have a fixture pointing at them — **zero orphans**, so
+they were played through the normal fixture flow rather than left behind by a failed clear.
+
 ## T2-1 · 🔴 `IDENTITY` disables JDBC batching — the blocker under T2-2 and T2-4
 
 `IDENTITY` generation disables JDBC batching for **70 of 71 entities**, so `batch_size=50` is dead code.

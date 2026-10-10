@@ -5995,3 +5995,24 @@ body {
 .fm-warmup-reason {
     margin: 6px 0 0;
 }
+
+/* T0-CUPS - naming both seasons on the international cup draw, so season 1 is reachable. */
+.fm-admin-season-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.fm-admin-season-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.fm-admin-season-row .fm-input {
+    min-width: 90px;
+    padding: 6px 8px;
+    border-radius: 6px;
+}

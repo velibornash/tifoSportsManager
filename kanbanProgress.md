@@ -39,6 +39,24 @@ played matches count, that matches are not shared between clubs by the bulk read
 lineup naming a weak eleven still makes the club read weak. The last of those four caught nothing, which is
 correct - it is there so it cannot start failing silently later.
 
+## ✅ T0-CUPS-SEASON1 + T0-RESET-MATCHES (2026-10-10)
+
+The World page said "Not drawn yet" on cups that had a full draw. Two bugs: the badge required
+qualified === 48 (or 96), so one country failing took out tiers 4 and 5 of all three cups; and the
+Netherlands has 6 leagues where every other country has 31, no tier 4 or 5 at all, which is the entire
+cause of 47. World-building gap, not a draw defect. The badge now only says "Not drawn yet" when no tier
+has a single entrant.
+
+Season 1 could not be seeded because the entry rule reads a finished table and there is no season 0.
+Fixed per the owner's ruling - read the current season's tables as they stand, same comparator, same rules,
+only a different season. The admin button now takes both seasons, because the automatic pairing
+(active -> active+1) can never reach season 1, and qualifying off an unfinished season is refused.
+
+Reset DB was asked about and measured rather than assumed: a throwaway copy was made with CREATE DATABASE
+... TEMPLATE, the real reset was run against it, and match went 707 -> 0 and match_fixture 5452 -> 0 with
+the accounts kept. The reset is correct; those three matches were simply never reset away, and all 235
+season-1 matches have a fixture pointing at them with zero orphans.
+
 ## ✅ T0-POSS diagnosed — a side can be starved of the ball for ninety minutes (2026-10-10)
 
 The owner showed a match reading 91% possession, 10 shots to 1, and 0 fouls by the away side, and said

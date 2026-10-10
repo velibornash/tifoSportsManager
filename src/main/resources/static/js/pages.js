@@ -914,12 +914,24 @@ function buildPageNavState(page, options = {}) {
         const tiersWithClubs = tiers.filter(cup => Number(cup.qualified || 0) > 0).length;
         const expected = name === 'Masters Cup' ? 96 : 48;
 
+        // **A cup that has clubs in it has been drawn.** The old test was `qualified === expected`, so
+        // a single country failing to qualify flipped every tier from "48 qualified" to "Not drawn yet" -
+        // which is what the owner saw on the World page, on cups that plainly were drawn. One country's
+        // missing tier-4 division (the Netherlands has none) took out tiers 4 and 5 of all three cups at
+        // once, and the screen said nothing had happened.
+        //
+        // "Not drawn yet" is now only ever true when no tier has a single entrant, which is the only
+        // state in which it is honest.
         const badge = !known
             ? '<span class="fm-badge">Unavailable</span>'
-            : qualified === expected
-                ? `<span class="fm-badge fm-badge--ok">${expected} qualified${
-                    tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
-                : `<span class="fm-badge">Not drawn yet</span>`;
+            : qualified === 0
+                ? '<span class="fm-badge">Not drawn yet</span>'
+                : qualified === expected
+                    ? `<span class="fm-badge fm-badge--ok">${expected} qualified${
+                        tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
+                    : `<span class="fm-badge fm-badge--ok">${qualified} qualified${
+                        tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
+                        + `<span class="fm-subtle"> of ${expected}</span>`;
 
         return `<tr class="fm-world-competition-row is-real" data-club-cup="${escapeHtml(key)}"
                     tabindex="0" role="link">

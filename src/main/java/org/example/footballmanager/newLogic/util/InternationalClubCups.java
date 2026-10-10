@@ -309,6 +309,31 @@ public class InternationalClubCups {
     }
 
     /**
+     * The clubs this tier's cup is contested by, for the first season of a world.
+     *
+     * <p><b>Season 1 has no previous season, and so it has no entry at all</b> — not a wrong one, none.
+     * The rule reads the division winner, the second and third, and the fourth, off a
+     * <em>finished</em> table, and in season 1 there is no season 0 to read. A manager who builds a
+     * world and starts at season 1 got fifteen continental cups that were never drawn, with nothing in
+     * the log but "no qualified clubs" (owner, 2026-10-10).
+     *
+     * <p><b>What this reads instead: the current season's tables, as they stand</b> (owner's choice).
+     * That is the same data the finished-table path reads, through the same
+     * {@link LeagueTableOrder} comparator, so the rule itself is unchanged — only the season it is
+     * asked about is different. No new ordering is invented and reputation is not substituted for
+     * position, because position is what the entries carry.
+     *
+     * <p><b>The honest part.</b> At week 1 day 1 those tables are barely played, so "winner" means
+     * "leading after whatever has been played". That is a real ranking, it is the one the league screen
+     * shows, and it changes as the season goes on — which is why this is a fallback for the first
+     * season and not a second qualification rule.
+     */
+    @Transactional(readOnly = true)
+    public List<Team> qualifiedForFirstSeason(Cup cup, int season) {
+        return qualifyFrom(tierTables(cup.tier(), season), cup);
+    }
+
+    /**
      * The selection rules, over tables somebody else has already read.
      *
      * <p>Separate from {@link #tierTables} so the World page can read a tier's tables once and run
