@@ -18,6 +18,21 @@ source check on a control-flow claim, and is written as such rather than dressed
 It also caught a trap this repository keeps falling into: the comment explaining the defect quotes
 simulatedCount.incrementAndGet() verbatim, and two of my own checks found that comment before the code.
 
+## ✅ T-REST-2 / T-REST-5 — the round answered them both (2026-10-10)
+
+T-REST-2 said the match-event layer "does not work at all". The dead classes are gone and the surviving
+path reads Match.eventJson - but the board could not say whether that path works, because the round had
+never been run. It has: 707 of 707 matches carry a populated event_json.
+
+T-REST-5 said no real season had been observed for the continental cups. Two of its three criteria are
+now answered from the database: 581 of 952 cup entries carry points and 526 CUP fixtures were played. The
+third - a knockout round advancing off real group standings - is genuinely still open, because every
+continental cup is still at group stage. Only Kup Srbije has knockout fixtures.
+
+Worth recording: competition_entry joins through season_competition_id, not competition_id. Two of my own
+queries joined on the wrong column and returned empty, which reads exactly like "no data" if you do not
+check the schema.
+
 ## ✅ T-REST-3 / 🔴 T-REST-4 — a full round, run live, and what it found (2026-10-10)
 
 Ran POST /simulation/current-round/simulate-all on the owner's database. It returns 200 - not 500 - and

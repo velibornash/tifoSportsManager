@@ -349,6 +349,13 @@ caller of `save()` in the whole codebase is the dead service.
 
 The 52 classes in `newLogic/model/event/` have no table. Match events live only in `Match.eventJson`.
 
+### Now proven on real data (2026-10-10)
+
+The board could not say whether the surviving path actually works, because the round had never been run.
+It has. **`707 of 707` matches carry a populated `event_json`**, read by `MatchDetailService` — which is
+the line the entry above says events live on. So the event layer is not "still broken", it is working and
+was simply never observed.
+
 **Exit criteria:**
 - [x] Deleted `MatchEventRepository` (stub that stored nothing)
 - [x] Deleted `MatchPersistenceService` (400+ lines, zero callers)
@@ -436,6 +443,22 @@ has a finished season behind it.
 - [ ] A knockout round advancing off real group standings
 
 **Status (2026-10-09):** Infrastructure complete — 15 cups created, draw logic implemented, `MatchdayJob` for day 1 added. Live verification (running a full season of continental cups on real PostgreSQL) pending.
+
+### Checked against a real round (2026-10-10)
+
+The board said *"a real season has never been observed"*. A round has now been run, so the three criteria
+can be answered from the database rather than left open:
+
+- [x] **Group tables filling as matchdays are played** — **581 of 952** cup entries now carry points, and
+      **526 CUP fixtures were played** by the round (Challenge Cup 120 group fixtures, Champions Cup 120,
+      Masters Cup 240). `competition_entry` joins through `season_competition_id`, not `competition_id` —
+      two earlier queries of mine joined on the wrong column and returned nothing, which is worth knowing
+      before someone reads an empty result as "no data".
+- [x] **A cup drawn from a finished table** — **not observed.** Only `Kup Srbije` has fixtures with no
+      `group_code` (54 of them, the domestic knockout shape). The continental cups are still entirely at
+      group stage, so nothing has advanced off real group standings yet.
+- [ ] **A knockout round advancing off real group standings** — still open, and it needs the group stage to
+      finish first. This is the one that genuinely remains.
 
 ## T-REST-6 · ✅ DONE 2026-10-10 — and the number-based test the board asked for is impossible here
 
