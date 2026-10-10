@@ -29,6 +29,7 @@ import { createLeagueView } from './pages/views/league-view.js';
 import { createFixtureView } from './pages/views/fixture-view.js';
 import { createSubstitutionPlanView } from './pages/views/substitution-plan-view.js';
 import { createMatchTacticPlanView } from './pages/views/match-tactic-plan-view.js';
+import { createMatchLineupView } from './pages/views/match-lineup-view.js';
 import { createCountryView } from './pages/views/country-view.js';
 import { createClubCupView } from './pages/views/club-cup-view.js';
 import { createNationalTournamentView, NATIONAL_COMPETITIONS } from './pages/views/national-tournament-view.js';
@@ -389,6 +390,7 @@ function buildPageNavState(page, options = {}) {
         getLeagueNavState: getActiveLeagueNavState,
         createSubstitutionPlanView: () => substitutionPlanView,
         createMatchTacticPlanView: () => createMatchTacticPlanView({ authFetch, getTeamId: () => currentUserTeamId }),
+        createMatchLineupView: () => createMatchLineupView({ authFetch, getTeamId: () => currentUserTeamId }),
         getNavigationDeps: () => ({ pushNavState })
     });
     const playerView = createPlayerView({

@@ -242,6 +242,15 @@ public class MatchLineupService {
     }
 
     /** Why this player cannot play this fixture, if he cannot. Empty when he can. */
+    /** Drops one club's XI for one match, so the template applies again. */
+    @Transactional
+    public void clearPerMatch(Long teamId, Long matchId) {
+        if (teamId == null || matchId == null) {
+            return;
+        }
+        lineups.findByTeamIdAndMatchId(teamId, matchId).ifPresent(lineups::delete);
+    }
+
     @Transactional(readOnly = true)
     public java.util.Optional<String> suspensionOf(Player player, Long fixtureId) {
         if (player == null || player.getId() == null || fixtureId == null || discipline == null) {

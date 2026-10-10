@@ -1,5 +1,23 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-3 UI — the Team selection screen (2026-10-10)
+
+A club could pick a team for one fixture and had nowhere to pick it. Third time this session that a working
+backend and a missing screen sat side by side.
+
+The club comes from the session, never from the request — a body carrying a team id would let a manager
+write a squad sheet for a club he does not manage, and a squad sheet decides who is fit to play.
+
+**Verified at 430 × 932 in the running application**: the panel renders with the right copy, the goalkeeper
+warning visible before anything is selected, eleven starter rows, the squad list, and the counter tracking a
+removal ("1 still to pick") and returning to "11 picked". No save was pressed, so the database is
+untouched.
+
+**Two faults in the check, both caught before the browser was opened.** The DOM stub could not run a screen
+that fills sub-lists, and three assertions read the panel's markup when the eleven and the bench are
+written into their own nodes. Worth recording because the tempting "fix" for the first is to add null
+guards to the view — defensive noise in a browser where those elements always exist.
+
 ## ✅ T-DISC — cards, and what they cost (2026-10-10)
 
 **Owner ruling:** a red card bans the first next **official** match of the club — everything except a

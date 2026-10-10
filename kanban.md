@@ -1004,6 +1004,33 @@ that is precisely what was missing.
 competition, drawing a fixture and running ninety minutes of engine. The arithmetic behind 3/6/9 is covered
 behaviourally; the three call sites are covered by reading them.
 
+### T0-BE-3 UI · ✅ DONE 2026-10-10 — the Team selection screen
+
+T0-BE-3 gave a club the ability to pick a team for one fixture and left it with no place to do it. Same
+shape as the substitution plan and the game plan before it — a working backend and a screen that does not
+exist. Built before it could be mistaken for a finished feature.
+
+- **`MatchLineupController`** at `/api/sim/fixtures/{id}/lineup`. **The club comes from the session**, never
+  from the request — a body carrying a team id would let a manager write a squad sheet for a club he does
+  not manage, and a squad sheet decides who is fit to play.
+- **`match-lineup-view.js`** — eleven starters in the order chosen, up to seven bench, a formation, and a
+  running count of how many are still to pick. **Back to default eleven** clears this fixture's XI.
+- **The whole squad comes back with the view**, each player carrying his availability and — when he has one
+  — the reason he is suspended, so the manager chooses with the state of his squad in front of him.
+- **Warnings are on the screen before anything is submitted.** A warning the manager can only get by
+  submitting is a warning he reads too late.
+
+**Verified in the running application at 430 × 932**: the panel renders on an unplayed fixture with the
+right copy, the goalkeeper warning visible before any selection, eleven starter rows, the squad list, and
+the counter tracking a removal — *"1 still to pick"* — and returning to *"11 picked"*. **No save was
+pressed**, so the database is untouched: 0 per-match lineups, 1 template.
+
+**Two things the harness caught before a browser was opened**: a DOM stub too thin to run a screen that
+fills sub-lists, and three assertions reading the panel's markup when the eleven and the bench are written
+into their own nodes. Both were faults in the check, not in the screen — and the first would have been
+quietly "fixed" by adding null-guards to the view, which would have been defensive noise in a browser where
+those elements always exist.
+
 ### T0-BE-3 · ✅ DONE 2026-10-10 — a club can pick a team for one fixture
 
 **What was in the way:** `Lineup.match` has been a nullable `@ManyToOne` all along, and every reader asked

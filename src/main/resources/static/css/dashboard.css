@@ -5760,3 +5760,72 @@ body {
         max-width: 100%;
     }
 }
+
+/* Team selection. Three columns on a wide screen; below 430px they stack, because a squad list squeezed
+ * into a third of a phone is three names wide and unusable. */
+.fm-lineup-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.fm-lineup-column h4 {
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+}
+
+.fm-lineup-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.fm-lineup-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fm-lineup-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.fm-lineup-row--unavailable .fm-lineup-name em {
+    color: #ff9d95;
+    font-style: normal;
+}
+
+.fm-lineup-row--taken {
+    opacity: 0.55;
+}
+
+.fm-lineup-actions {
+    display: flex;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+
+.fm-tactic-warnings {
+    margin-bottom: 12px;
+}
+
+.fm-tactic-warning {
+    margin: 0 0 6px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: rgba(244, 67, 54, 0.12);
+    color: #ffb4ad;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 430px) {
+    .fm-lineup-picker {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+}

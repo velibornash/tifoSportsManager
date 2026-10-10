@@ -188,6 +188,7 @@ export function createMatchView(deps) {
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
                 <div id="fm-substitution-plan"></div>
                 <div id="fm-match-tactic-plan"></div>
+                <div id="fm-match-lineup"></div>
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">Back</button>
                 </div>
@@ -582,6 +583,7 @@ export function createMatchView(deps) {
 
             void mountSubstitutionPlan();
             void mountTacticPlan();
+            void mountLineup();
 
             /**
              * Puts the conditional-substitution plan on this screen, which is where a manager actually is.
@@ -605,6 +607,25 @@ export function createMatchView(deps) {
              * fixture is unplayed. The server resolves the side from the session — this screen never sends
              * one — so there is no way from here to write the opposition's plan.
              */
+            /**
+             * The eleven for this fixture, above the game plan and the substitution rules — because a
+             * substitution condition names a player, and a manager who has not picked his eleven has
+             * nothing for it to refer to.
+             */
+            async function mountLineup() {
+                const host = document.getElementById('fm-match-lineup');
+                if (!host) return;
+                const managerTeamId = getTeamId?.();
+                if (!managerTeamId) return;
+                try {
+                    const lineupView = deps.createMatchLineupView?.();
+                    if (!lineupView) return;
+                    await lineupView.loadPlan(matchId, host);
+                } catch (error) {
+                    console.warn('Could not load the team selection:', error);
+                }
+            }
+
             async function mountTacticPlan() {
                 const host = document.getElementById('fm-match-tactic-plan');
                 if (!host) return;
