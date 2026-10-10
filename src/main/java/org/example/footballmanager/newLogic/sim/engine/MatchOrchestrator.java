@@ -193,6 +193,32 @@ public class MatchOrchestrator {
      * is the point: a match where both clubs share one grid is still expressible, it is simply no longer the
      * only thing this class can do.
      */
+    /**
+     * The fixture's conditional instructions, or null when it has none (T0-BE-2).
+     *
+     * <p>Null is the common case and is not a degraded mode: a match with no instructions keeps the shape it
+     * was built with for all ninety minutes and this is never consulted. Only a fixture somebody actually
+     * planned for pays the per-tick resolution.
+     */
+    private org.example.footballmanager.newLogic.sim.tactics.MatchTacticsResolver liveTactics;
+
+    /** Ticks per match minute in this engine; see {@code MatchState.minutesOnPitch}. */
+    private static final int TICKS_PER_MINUTE = 40;
+
+    private int currentMinute() {
+        return Math.min(90, state.getMatchTicks() / TICKS_PER_MINUTE);
+    }
+
+    /**
+     * Makes this match change shape when the score says it should.
+     *
+     * <p>Called once, before the match runs, by whoever simulated it. Null — or never calling it — leaves
+     * the match exactly as it was.
+     */
+    public void setLiveTactics(org.example.footballmanager.newLogic.sim.tactics.MatchTacticsResolver resolver) {
+        this.liveTactics = resolver;
+    }
+
     public MatchOrchestrator(MatchState state, SideTactics tactics) {
         this.state = state;
         this.actionLog = new ActionLogService(state, eventLog);
@@ -530,6 +556,13 @@ public class MatchOrchestrator {
                     + " (" + restartManager.getTactics().getRuleCount() + " rules, "
                     + "0-based editor cells -> 1-based field positions)");
             tacticsSourceLogged = true;
+        }
+        // The rules in force for this tick, if this fixture has conditional instructions (T0-BE-2).
+        // Resolved immediately before the engine that consumes them, so a shape change is one tick old at
+        // most and the movement engine moves to the new shape on the very next pass.
+        if (liveTactics != null) {
+            tacticalEngine.setTactics(liveTactics.resolve(
+                    state.getHomeGoals(), state.getAwayGoals(), currentMinute()));
         }
         tacticalEngine.refreshTargets(state);
 

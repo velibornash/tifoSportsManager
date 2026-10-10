@@ -28,7 +28,14 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
      */
     public class TacticalIntentEngine {
 
-    private final SideTactics tactics;
+    /**
+     * Mutable, and read on every tick, because a match can change shape mid-game (T0-BE-2).
+     *
+     * <p>It was {@code final} because a match used to have one shape for its whole ninety minutes. Now the
+     * orchestrator hands over the rules in force for this tick, before this engine runs. Not volatile: the
+     * tick loop is single-threaded, and the write and the read happen in the same pass.
+     */
+    private SideTactics tactics;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     /** How far inside his own half a player must stand at kickoff (7 m). */
@@ -46,6 +53,19 @@ import org.example.footballmanager.newLogic.sim.util.SimUtils;
     /** Each side is shaped by its own vocabulary. The single-rules constructor delegates and is unchanged. */
     public TacticalIntentEngine(SideTactics tactics) {
         this.tactics = tactics;
+    }
+
+    /**
+     * The rules for this tick, from the fixture's conditional instructions (T0-BE-2).
+     *
+     * <p>Called by the orchestrator once per tick, before {@link #refreshTargets}. A match with no
+     * instructions never calls it, so the shape a manager set once is still the shape for ninety minutes —
+     * this only starts mattering when a fixture actually has instructions on it.
+     */
+    public void setTactics(SideTactics tactics) {
+        if (tactics != null) {
+            this.tactics = tactics;
+        }
     }
 
     /**

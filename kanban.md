@@ -808,35 +808,55 @@ a library to select from.
   provider correctly refuses, so every assertion was measuring the bundled fallback. The real keys are
   `CML/CMR/ML/STR` for 4-4-2 and `CM/WL/ST` for 4-3-3.
 
-### T0-BE-2 · Per-match tactic assignment — up to three, with conditions
+### T0-BE-2 · ✅ DONE 2026-10-10 — a club can change shape mid-match
 
-**What exists:** nothing. `TacticalIntentEngine` holds **one** `SideTactics` reference for the whole match
-(`MatchOrchestrator.java:214`), and `restartManager` holds the same (`MatchOrchestrator.java:205`). There is
-no `MatchTactic` entity, no `tactic_assignment` table, and no condition model anywhere.
+**What was in the way:** `TacticalIntentEngine` held one `SideTactics` for the whole match, and
+`RestartManager` the same. A match had one shape for ninety minutes and no way to say otherwise.
 
-**The owner's conditions:** always · leading by 1 · leading by 3+ · drawing · trailing by 1 · trailing by 3+.
-Max three tactics per match.
+**The owner's six conditions**, and no others: always · leading by 1 · leading by 3+ · drawing · trailing
+by 1 · trailing by 3+. Every condition is read from **one number** — the score difference from the side's
+own point of view — so "leading by one" means the home side's lead and the away side's deficit without a
+second set of names. There is deliberately no "leading by two": a manager who wants it has two rules that
+cover it, and the gap belongs to the default.
 
-**Tasks**
-1. `MatchTacticAssignment` entity: `fixture` FK, `tactic` FK, `priority` (1..3), `condition` enum,
-   `threshold` for the "3+" variants, `minuteFrom`.
-2. **Max three, enforced on write** — a fourth assignment is refused, not silently dropped.
-3. `TacticConditionEvaluator`: reads `(homeScore, awayScore, minute)` and returns the winning assignment's
-   `TacticsRules`. **Priority breaks ties**, so a "always" tactic and a "leading 2" rule cannot both fire.
-4. Make `TacticalIntentEngine` and `RestartManager` read the **evaluator** rather than a fixed reference.
-   `refreshTargets()` already runs every tick — the hook point exists.
-5. **Default tactic:** when a fixture has no assignment, fall back to the club's `isDefault` tactic, then
-   to the bundled `tactics_fallback.json`. **The manager forgetting is not an error state.**
-6. Invalidator: a tactic edited after a fixture was assigned — decide whether the assignment snapshots the
-   rules or references them. **Recommendation: reference**, so an edit reaches the match, and say so in
-   the entity javadoc.
+**Built**
+1. **`MatchTacticAssignment`** — fixture FK, tactic FK, side, priority, condition, `minuteFrom`. It
+   **references** its tactic rather than copying the rules, so an edit on the morning of the match reaches
+   the match. The cost of referencing is that a tactic can be deleted from under an assignment, and the
+   read side answers that with the club's default rather than a shape nobody chose.
+2. **`MatchTacticPlan`** — pure logic: score difference and minute in, one instruction out. Priority breaks
+   ties, and **before anything else**: taking the first *matching* instruction would make the priority
+   number only matter when the manager happened to list them in order.
+3. **`MatchTacticsResolver`** — instruction in force → the club's default → the bundled fallback. A match
+   with nothing set still plays; that is the ordinary case and not an error state.
+4. **`MatchTacticsPreparationService`** — reads the fixture's instructions **once, at kickoff**, so the
+   per-tick call is three integers and never a query.
+5. **The orchestrator resolves each tick**, immediately before `refreshTargets`, guarded by a null so a
+   match with no instructions pays nothing.
 
 **Exit criteria**
-- [ ] Three tactics can be assigned to one fixture with three different conditions
-- [ ] A fourth is refused
-- [ ] The evaluator is a pure function and is tested as one — **no Spring, no repository, no clock**
-- [ ] A fixture with no assignment uses the club's default tactic
-- [ ] **Proven able to fail:** make the evaluator always return priority 1 and watch the condition tests go red
+- [x] A fixture carries up to three instructions per club, in priority order
+- [x] Priority decides when two conditions are true at once
+- [x] `minuteFrom` gates an instruction, and is checked with the score condition rather than instead of it
+- [x] A fixture with no instructions plays the club's default for all ninety minutes
+- [x] An instruction whose tactic was deleted resolves to the default, not to nothing
+- [x] **Proven able to fail:** ignoring priority turns `priorityBreaksTies` red; dropping the club check
+      turns `aTacticFromAnotherClubIsRefused` red; deleting the per-tick resolution leaves **all 27 other
+      tests green**, which is why the wiring needed its own guard
+
+**Two things found while building it**
+
+- **The max-three count check is unreachable, and saying so is the honest result.** Priority is bounded
+  1–3 and saving at an occupied priority replaces that slot, so a fourth row cannot be created through the
+  service at all. The count check stays as defence in depth — priority is a position, the count is a cap,
+  and they only agree today — and its comment says it cannot currently fire rather than implying it holds
+  the line.
+- **The tick-loop wiring failed silently, and I only found it because I deleted it.** Removing the
+  per-tick resolution left every behavioural test green: the engine simply kept the shape it was built
+  with. `OrchestratorConsultsTheResolverTest` now guards it — **as a structural guard, and labelled as
+  one**, because running it for real needs a populated `MatchState` and a full tick. It is weaker than its
+  neighbours and it is here because a call in a hot loop that nobody exercises is not a call. This is the
+  same failure as the `fixture-view.js` mount that hid the whole substitution feature.
 
 ### T0-BE-3 · Per-match lineup and bench
 

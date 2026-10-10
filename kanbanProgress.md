@@ -1,5 +1,34 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T0-BE-2 — a match can change shape mid-match (2026-10-10)
+
+A match had one shape for ninety minutes. `TacticalIntentEngine` held a single `SideTactics` and nothing
+could change it, so "if we are two up, go conservative" was not expressible.
+
+**The six conditions the owner named, and no others.** Each is read from one number — the score difference
+from that side's own point of view — so the home club's lead and the away club's deficit are the same rule
+read twice, with no second vocabulary to keep in step. Priority breaks ties and is applied *before*
+anything else, or the number would only matter when the manager happened to list things in order.
+
+**Assignments reference their tactic; they do not copy its rules.** So an edit on the morning of the match
+reaches the match, which is what a manager fixing a tactic means. The cost is that a tactic can be deleted
+from under an assignment, and the answer is the club's default rather than a shape nobody chose.
+
+**Read once at kickoff.** The per-tick call is three integers. A query per tick per match would not have
+been an error; it would have been a slow simulation.
+
+**The finding worth recording.** The tick-loop wiring fails *silently*. Deleting the per-tick resolution
+left all 27 behavioural tests green — the engine kept the shape it was built with and nothing complained.
+`OrchestratorConsultsTheResolverTest` guards it, and is labelled a structural guard because that is what it
+is: it reads the orchestrator's source, since running it for real needs a populated `MatchState` and a full
+tick. It is weaker than the tests beside it. It is there because the alternative is a call in a hot loop
+that nobody exercises — the same failure as the `fixture-view.js` mount that hid the substitution feature.
+
+**Also found:** the "max three" count check is unreachable through the service, because priority is bounded
+1–3 and saving at an occupied priority replaces that slot. The check is kept as defence in depth for the day
+priority is widened, and its comment now says it cannot currently fire rather than implying it holds the
+line.
+
 ## ✅ T0-BE-1 (button) — "give every club a default tactic", wired but not pressed (2026-10-10)
 
 **The button.** Admin → *Give every club a default tactic*, beside *Seed other nations*. It posts to
