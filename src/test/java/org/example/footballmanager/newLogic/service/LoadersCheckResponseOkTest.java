@@ -194,7 +194,13 @@ class LoadersCheckResponseOkTest {
                 // statement, matched nothing, and passed against three planted logs. A window in the
                 // wrong direction is not a narrow window; it is no window.
                 String context = stripComments(lines, i, -4);
-                if (context.contains("authFetch") || context.contains("fetch(")) {
+                // `csApi(` matters as much as the other two, and finding that out is why tifo.js could
+                // not simply be un-excluded. That mode routes every request through its own `csApi`
+                // wrapper, so a guard that only recognises `fetch(` and `authFetch` sees no request at
+                // all and passes a file it is not reading. The exclusion had been covering for the
+                // window, not for a review that had not happened.
+                if (context.contains("authFetch") || context.contains("fetch(")
+                        || context.contains("csApi(")) {
                     logged.add(shortPath(file) + ":" + (i + 1) + "  " + lines.get(i).strip());
                 }
             }
@@ -215,11 +221,21 @@ class LoadersCheckResponseOkTest {
                     .filter(p -> p.toString().endsWith(".js"))
                     // The frozen demo engine and its viewer are reference assets, not product code.
                     .filter(p -> !p.toString().contains("/demo/"))
-                    // tifo.js is the TEXT-football mode, a separate product opened from its own lobby
-                    // card. It is not the graphical football UI this guard is about, and it has never
-                    // been through this review. Excluded by name, with the reason, rather than by a
-                    // wildcard that would hide the next file.
-                    .filter(p -> !p.getFileName().toString().equals("tifo.js"))
+                    // tifo.js WAS excluded here, by name and with the reason written down: it is the
+                    // TEXT-football mode, a separate product, and it had never been reviewed. It has now
+                    // been (T1-17), and the exclusion is gone rather than narrowed.
+                    //
+                    // What that review found is worth recording, because the board had claimed the
+                    // opposite. It claimed "at least four unguarded .json() calls and the same
+                    // Loading…/Response status: debug pairs". There were **zero** of each: nineteen of the
+                    // twenty-one reads already carried an ok-check, and all three "Loading…" strings are
+                    // UI states that resolve to real content or an explicit message.
+                    //
+                    // One real defect did turn up, and not from the pattern the board described. `csApi`
+                    // returns null only for a 401, so `if (!res) return;` is not a status check: on the
+                    // mode's very first request a 403 or 500 arrived as a well-formed JSON error body,
+                    // `data.active` was undefined, and the game began as "no active game" instead of
+                    // saying the read had failed. That one is fixed and the guard now covers this file.
                     .toList();
         }
     }

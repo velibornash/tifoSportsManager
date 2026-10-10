@@ -30,13 +30,40 @@ async function csApi(url, options = {}) {
     return res;
 }
 
+
+/**
+ * The sentence a failed request wants to say.
+ *
+ * A Spring error body carries `message` (and sometimes `error`), and reading it is the whole point of
+ * checking the status: "Forbidden" tells a manager what to do, a generic "something went wrong" does not.
+ * A body that is not JSON, or has neither field, falls back to the caller's own words.
+ */
+async function readErrorMessage(res, fallback) {
+    try {
+        const body = await res.json();
+        return body?.message || body?.error || fallback;
+    } catch {
+        return fallback;
+    }
+}
+
 // --- Init ---
 document.addEventListener('DOMContentLoaded', async () => {
     const token = sessionStorage.getItem('token');
     if (!token) { window.location.href = '/login.html'; return; }
 
     const res = await csApi('/api/cs/state');
+    // `!res` only covers the 401 redirect inside csApi. A 403 or a 500 comes back as a perfectly good
+    // Response, and its body is a JSON error object — `{"status":404,"code":...,"message":...}` — which
+    // parses without complaint and arrives here as `data`. `data.active` is then undefined and the mode
+    // starts as "no active game" rather than saying the read failed.
     if (!res) return;
+    if (!res.ok) {
+        const message = await readErrorMessage(res, 'Could not load the game state.');
+        document.getElementById('main-content').innerHTML =
+            `<div class="manager-card"><h2>Could not load Clean Sheet</h2><p>${escapeHtml(message)}</p></div>`;
+        return;
+    }
     const data = await res.json();
 
     if (data.active) {

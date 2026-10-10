@@ -1,5 +1,24 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-17 — the text-football mode, reviewed (2026-10-10)
+
+The board claimed tifo.js had "at least four unguarded .json() calls and the same Loading.../Response
+status: debug pairs". It has zero of each: nineteen of twenty-one reads carry an ok-check, the three
+"Loading..." strings are UI states that resolve to real content, and there are no console.log calls in the
+file.
+
+One real defect, not the described one. csApi returns null only for a 401, so "if (!res) return" is not a
+status check: a 403 or 500 arrives as a well-formed JSON error body, data.active is undefined, and the
+mode began as "no active game" instead of saying the read failed. Verified against the live server that a
+failed body parses with no error key. Fixed with a readErrorMessage helper.
+
+The exclusion was hiding a guard gap rather than a missing review. Removing it passed immediately and three
+mutations went undetected, because that mode routes every request through its own csApi wrapper and the
+guard's window only recognised authFetch and fetch(. Both guards are now proven against tifo.js.
+
+Also nearly wrote up a phantom defect: the browser reported a ReferenceError at a line number that does
+not exist in the file, from a stale app and a stale module cache. Re-verified and discarded.
+
 ## ✅ T1-7 / T2-3 / T1-8 — two more entries describing a past state (2026-10-10)
 
 MatchdayJob issues one query, not one per competition: findUnplayedOnDay appears exactly once and the

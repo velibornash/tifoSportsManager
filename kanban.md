@@ -1853,18 +1853,48 @@ headers, and one open body over finished code.
 - [x] A club that is both qualifying and the viewer's own carries **both** classes
 - [x] **Proven able to fail:** removing the `teamId` from the payload turns the test red
 
-## T1-17 · 🟡 `tifo.js` — the text-football mode, unreviewed
+## T1-17 · ✅ DONE 2026-10-10 — the board's premise was wrong; the exclusion was hiding a guard gap
 
-Excluded from **T1-10** by name, because it is a separate product on its own lobby card, not the
-graphical football UI. **It has at least four unguarded `.json()` calls and the same
-`Loading… / Response status:` debug pairs**, so the defect class T1-10 closed is present there and has never
-been looked at.
+**This entry claimed `tifo.js` has *"at least four unguarded `.json()` calls and the same
+`Loading… / Response status:` debug pairs"*.**
 
-**Exit criteria**
-- [ ] The same two shared readers applied, or a decision recorded that the mode is being retired
-- [ ] The same guard applied with the exclusion removed
+**It has zero of each.** Nineteen of the twenty-one reads already carried an `ok`-check, and all three
+`"Loading…"` strings are **UI states that resolve to real content or an explicit message** — they are not
+debug output. There are no `console.log` calls in the file at all.
 
----
+### The one real defect, and it was not the one described
+
+`csApi` returns `null` only for a 401. So the init read's `if (!res) return;` **is not a status check** —
+a 403 or 500 arrives as a perfectly good `Response` whose body is a JSON error object, which parses
+without complaint. `data.active` was then `undefined` and **the mode began as "no active game" rather than
+saying the read had failed**, on its very first request.
+
+Verified against the live server that a failed body parses with no `error` key:
+`{"status":404,"code":"NOT_FOUND","message":"No static resource …"}` → `parsesAsJson: true`.
+
+Fixed, with a `readErrorMessage` helper so the failure names itself on screen.
+
+### 🟡 The exclusion was masking a gap in the guard, not a review that had not happened
+
+Removing the `tifo.js` exclusion **passed straight away** — three mutations in a row went undetected. The
+reason: that mode routes every request through its own **`csApi`** wrapper, and the guard's window only
+recognised `authFetch` and `fetch(`. The guard was reading a file it could not see into.
+
+The window now recognises `csApi(` too, and **both guards are proven against tifo.js**:
+
+- planting `console.log('Loading top scorers...')` above a `csApi` call → *"debug logging beside a fetch:
+  tifo.js:2493"*
+- removing the status check from the init read → *"these loaders read a JSON body with nothing checking
+  the response first: tifo.js:61"*
+
+**T1-10's guard now covers the whole shipped JS tree with no exclusions beyond the frozen demo engine.**
+
+### One honest note on method
+
+Mid-way through this, the browser reported `ReferenceError: getCurrentUserCountryIsoCode is not defined`
+at `pages.js:621` — a line that does not exist in the file, which has it at 490. The running app and the
+browser's module cache were both stale from a build earlier in the session. **It was not a defect**, and it
+was nearly written up as one. Re-verified against the served file and in a fresh browser session.
 
 ## T1-14 · ✅ DONE 2026-10-09 — the router carried four routes nothing could reach, and named a fifth wrongly
 
