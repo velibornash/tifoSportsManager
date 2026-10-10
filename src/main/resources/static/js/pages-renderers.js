@@ -150,6 +150,25 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
 
     const h2h = match?.h2h;
     const playedBadge = match?.played ? resolveLeagueResultBadge(match) : null;
+
+    /**
+     * The fixture's calendar, as the season counts it rather than as the wall clock does.
+     *
+     * `seasonDayLabel` alone is *"Season 1 · Day 3"*, which is the owner's exact complaint: a league
+     * round sits on two days a week, so three different rounds all say "day 3 of week 1" and nobody can
+     * tell which round a fixture is (owner, 2026-10-10). So the week goes in explicitly, and the league
+     * round next to it - `week` for everything, `leagueRound` only where it differs from `round`.
+     */
+    const calendarBits = [];
+    if (Number.isFinite(Number(match?.seasonYear))) calendarBits.push(`S${match.seasonYear}`);
+    if (Number.isFinite(Number(match?.day))) calendarBits.push(`D${match.day}`);
+    if (Number.isFinite(Number(match?.week))) calendarBits.push(`Wk ${match.week}`);
+    if (Number.isFinite(Number(match?.leagueRound))) {
+        calendarBits.push(`Rd ${match.leagueRound}`);
+    } else if (Number.isFinite(Number(match?.round))) {
+        calendarBits.push(`Rd ${match.round}`);
+    }
+    const calendarLabel = calendarBits.length ? calendarBits.join(' · ') : '';
     const h2hSummary = Number(h2h?.played || 0) > 0
         ? `<div class="fx-h2h"><strong>${safe(h2h.summary || 'H2H')}</strong>${h2h.lastMeetingSummary ? `<span>${safe(h2h.lastMeetingSummary)}</span>` : ''}</div>`
         : '';
@@ -161,6 +180,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
         <div class="${classes.join(' ')}" data-caller="${safe(matchCaller)}" data-back-target="${safe(backTarget)}">
             <div class="fx-topline">
                 <span class="fx-date">${safe(match?.seasonDayLabel || match?.matchDate || 'TBD')}</span>
+                ${calendarLabel ? `<span class="fx-calendar">${safe(calendarLabel)}</span>` : ''}
                 <span class="fx-venue">${safe(venue)}</span>
             </div>
             <div class="fx-main">
@@ -180,6 +200,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
              data-fixture-id="${!match?.played && allowFixtureClick ? fixtureId : ''}">
             <div class="fx-topline">
                 <span class="fx-date">${safe(match?.seasonDayLabel || match?.matchDate || 'TBD')}</span>
+                ${calendarLabel ? `<span class="fx-calendar">${safe(calendarLabel)}</span>` : ''}
                 <!-- The ground, linked to the club that plays there. It was a plain span, so the
                      only way to get from a fixture to a stadium was to already know the club. -->
                 <span class="fx-venue">${match?.stadiumOwnerTeamId
@@ -219,6 +240,16 @@ function buildFixtureGroupsHtml(groups, options = {}) {
 
 export function bindScheduleInteractions(container, handlers = {}) {
     if (!container) return;
+
+    // The schedule's own filter, so "upcoming" and "played" are a choice rather than a page each.
+    container.querySelectorAll('[data-schedule-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            const mode = button.dataset.scheduleFilter;
+            container.querySelectorAll('[data-schedule-filter]').forEach(b => b.classList.remove('fm-chip--active'));
+            button.classList.add('fm-chip--active');
+            applyScheduleFilter(container, mode);
+        });
+    });
 
     const onLoadTeam = handlers.loadLeagueTeam || window.loadLeagueTeam;
     const onLoadMatch = handlers.loadMatch || window.loadMatch;
@@ -738,7 +769,8 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
                 </div>
                 <span class="fm-panel-action">${venueCount} venues · ${h2hCount} H2H notes</span>
             </div>
-            <div class="fm-fixtures">`;
+            ${scheduleFilterHtml(fixtureRows)}
+            <div class="fm-fixtures" data-schedule-list>
 
     if (fixtureRows.length === 0) {
         html += `<div class="fm-empty">No schedule entries to display.</div>`;
@@ -1336,4 +1368,29 @@ export function renderLeagueScheduleView(payload, { loadLeagueSchedule, loadMatc
             fixturesScroll.scrollTop = targetTop;
         });
     }
+}
+
+/**
+ * The three ways to read a schedule: what is left, what has happened, everything.
+ *
+ * The owner asked whether played matches belong on this screen at all, given that Results is a separate
+ * view (2026-10-10). They do not need to be here - but a manager who wants the season as one timeline
+ * should not have to open a second page to see it. So the default is **upcoming**, which is what a
+ * schedule is for, and **All** keeps the played ones in place.
+ *
+ * The counts are already in the header; this makes them clickable rather than merely true.
+ */
+function scheduleFilterHtml(fixtureRows) {
+    const played = fixtureRows.filter(f => f?.played).length;
+    const upcoming = fixtureRows.length - played;
+
+    const button = (mode, label, count) =>
+        `<button type="button" class="fm-chip${mode === 'upcoming' ? ' fm-chip--active' : ''}"
+                 data-schedule-filter="${mode}">${label} ${count}</button>`;
+
+    return `<div class="fm-schedule-filter" data-schedule-filter-row>
+        ${button('upcoming', 'Upcoming', upcoming)}
+        ${button('played', 'Played', played)}
+        ${button('all', 'All', fixtureRows.length)}
+    </div>`;
 }

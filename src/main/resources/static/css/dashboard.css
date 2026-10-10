@@ -6016,3 +6016,83 @@ body {
     padding: 6px 8px;
     border-radius: 6px;
 }
+
+/* T0-REPORT - the match timeline reads as a column of symbols, not a column of words. */
+.fm-timeline-row {
+    display: grid;
+    grid-template-columns: 40px 26px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    align-items: start;
+}
+
+.fm-timeline-minute {
+    color: #e8d47d;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Fixed 26px and centred, so a glyph is always in the same place and two long words can never
+   push the row's text sideways and out of alignment. */
+.fm-timeline-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-size: 13px;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.fm-timeline-icon--goal { background: rgba(126, 217, 160, 0.22); }
+.fm-timeline-icon--yellow_card { color: #f0d264; }
+.fm-timeline-icon--red_card { background: rgba(224, 82, 82, 0.28); }
+.fm-timeline-icon--var { background: rgba(126, 180, 255, 0.22); font-weight: 700; }
+.fm-timeline-icon--offside { color: #cfd6dc; }
+.fm-timeline-icon--injury { color: #ff9d9d; font-weight: 700; }
+.fm-timeline-icon--penalty { font-weight: 700; }
+.fm-timeline-icon--substitution { font-size: 12px; }
+
+.fm-timeline-body {
+    min-width: 0;
+}
+
+.fm-timeline-sub {
+    color: #9aa0a6;
+    font-size: 0.88em;
+}
+
+/* T0-SCHEDULE - the season's own calendar next to the wall-clock date. */
+.fx-calendar {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #cfd6dc;
+    font-size: 0.82em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* T0-SCHEDULE - the schedule's own three-way filter. */
+.fm-schedule-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.fm-schedule-filter .fm-chip {
+    background: rgba(255, 255, 255, 0.06);
+    color: #cfd6dc;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.fm-schedule-filter .fm-chip--active {
+    background: rgba(126, 217, 160, 0.18);
+    border-color: rgba(126, 217, 160, 0.5);
+    color: #dff2e6;
+}
