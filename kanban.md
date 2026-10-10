@@ -1435,24 +1435,42 @@ looked only at locals and reported five false alarms on names that were perfectl
 
 Both are copy or menu decisions, not defects. Filed as **T1-18**.
 
-## T1-18 · 🟡 Two Club options the manual promises have no menu entry
+## T1-18 · ✅ DONE 2026-10-10 — the manual now matches the Club menu, and cannot drift again
 
-Found while removing the duplicate routes in **T1-14**. `userManual.md` §4 lists **Friendlies** and
-**Coaches** as Club options. **Neither is in the Club menu.**
+**Owner ruling applied: correct the manual, do not add menu entries.** Both screens work; neither is a
+menu entry, and a menu entry for a screen already on the page you reach it from is clutter.
 
-| Manual promises | Reality |
+**The board entry was wrong about its own subject.** It said the manual promises **Coaches**; the manual
+says **Staff**, and the word Coaches appears nowhere in it. It also missed both halves of the real gap:
+
+| | |
 |---|---|
-| **Friendlies** | The screen works and is **rendered on the Club page itself** — a panel with the slot list, the invite button and the incoming requests, all wired. So this is a **menu gap**, not a missing feature |
-| **Coaches** | The same screen as **Staff**, which *is* in the menu. Two names for one screen, one of them documented |
+| **Loans** | in the Club action row, and **absent from the manual entirely** — read as a missing feature |
+| **Stadium** | documented as a Club option; it is opened from the **Club Profile** page's stadium button |
+| **Training** | manual said "Training", the menu says **"Training Setup"** |
+| **Friendlies** | documented as a Club option; it is a **panel on the Club page** itself |
 
-**Either add the menu entry or correct the manual.** A manual that sends a manager looking for a button
-that is not there is worse than one that never promised it.
+An omission was worse than a promise: a manager reading §4 would conclude Loans did not exist.
 
-**Exit criteria**
-- [ ] Owner ruling: menu entry, or manual correction
-- [ ] Whatever is chosen, `userManual.md` §4 and the Club menu agree
+**What changed.** §4 now lists the fourteen menu entries in the order the action row shows them, with
+Loans documented and Training renamed to Training Setup. Stadium and Friendlies moved under
+*"Two screens that are not in that row"*, each saying where it is actually reached. The heading exists so
+the option list above it can be read as exhaustive and true.
 
----
+**Why it will not drift again.** `UserManualMatchesTheClubMenuTest` reads `buildClubActionsHtml` — the
+function that builds the row a manager clicks — and compares its labels, in order, against the `###`
+headings of §4. It reads the source rather than a maintained copy, so a menu entry added tomorrow fails
+here instead of in a support question.
+
+**Proven able to fail**, in both directions:
+
+| Planted | Result |
+|---|---|
+| a menu entry `Inbox` the manual does not document | `theMenuAndTheManualAgree` red |
+| a manual heading `Scout Network` with no menu entry | two tests red |
+
+Stadium and Friendlies are excluded **by name**, not by pattern: "works, but is not a menu entry" is the
+fact being asserted, and it should not be inferred from a string.
 
 ## T1-15 · 🟡 `advanceHour` and `advanceWeek` are self-invocations
 

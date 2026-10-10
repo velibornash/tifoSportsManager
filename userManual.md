@@ -87,7 +87,7 @@ area described in §11.
 
 ## 4. Club options
 
-The Club area contains the following options.
+The Club area contains the following options, in the order they appear in the Club action row.
 
 ### First Team
 
@@ -98,16 +98,27 @@ match history and transfer actions.
 
 Shows your club's upcoming fixtures and their competition, round, date, venue and home/away status.
 
-### Results
+### Club Profile
 
-Shows matches that have already been played. Open a match to see the score, events, lineups, statistics,
-goals, reports and replay options.
+Shows the public club identity, manager, league, squad overview, stadium information and club milestones.
+Other managers can reach a club's manager profile from the club page.
+
+### Medical Center
+
+Shows injured players, injury details and recovery actions. It helps you decide whether a player is
+ready for selection.
 
 ### Juniors
 
 Opens the youth academy. You can review junior prospects, academy quality, the junior school, carryover
 players and archived prospects. Depending on the season stage, you can promote, retain or release
 prospects.
+
+### Loans
+
+Opens the loan market for your club. You can send a player out on loan, review offers other clubs have
+made for your players, and accept or decline an incoming loan. A loan runs until the agreed date, the
+season ends, or one of the two clubs calls it off by agreement.
 
 ### Tactics
 
@@ -143,7 +154,12 @@ Opens the transfer centre. You can:
 - withdraw a listing or clear interest;
 - open a player's transfer details.
 
-### Training
+### Results
+
+Shows matches that have already been played. Open a match to see the score, events, lineups, statistics,
+goals, reports and replay options.
+
+### Training Setup
 
 Opens the weekly training setup. Configure the club's training plan and intensity, then review how the
 plan affects player development, fatigue and injury risk.
@@ -156,25 +172,16 @@ last run and next trigger are shown.
 
 Shows completed weekly training reports for the club and individual players.
 
-### Medical Center
+### Two screens that are not in that row
 
-Shows injured players, injury details and recovery actions. It helps you decide whether a player is
-ready for selection.
+Both work, and neither is a Club menu entry, so they are not listed above:
 
-### Club Profile
-
-Shows the public club identity, manager, league, squad overview, stadium information and club milestones.
-Other managers can reach a club's manager profile from the club page.
-
-### Stadium
-
-Shows the ground, capacity, seating sectors, prices, pitch condition, maintenance budget, training
-facilities and stadium image. Use it to manage the ground and fund pitch work.
-
-### Friendlies
-
-Shows friendly match requests and friendly-related information. The backend supports friendly requests,
-but some invitation and free-slot actions are still being completed.
+- **Stadium** — opened from the **Club Profile** page, from the stadium button on the club identity
+  panel. It shows the ground, capacity, seating sectors, prices, pitch condition, maintenance budget,
+  training facilities and stadium image, and it is where pitch work is funded.
+- **Friendlies** — a panel on the **Club page** itself, below the club content: the list of friendly
+  slots, the invite button and the incoming requests. It needs no menu entry because it is already on the
+  screen you reach it from.
 
 ## 5. League options
 

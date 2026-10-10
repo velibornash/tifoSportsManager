@@ -1,5 +1,29 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T1-18 — the manual matches the Club menu, and a test keeps it there (2026-10-10)
+
+**Owner ruling: correct the manual, do not add menu entries.**
+
+**The board entry was wrong about its own subject.** It recorded that the manual promises "Coaches"; the
+manual says "Staff" and the word Coaches is not in it. Checking the actual gap found the opposite problem
+too — **Loans has been in the Club action row all along and is documented nowhere**, which reads as a
+missing feature rather than as a missing paragraph. "Stadium" and "Friendlies" were listed as Club options
+but are reached from Club Profile and from the Club page respectively, and the menu says "Training Setup"
+where the manual said "Training".
+
+**Fixed.** §4 now lists the fourteen entries the action row actually shows, in its order, with Loans
+documented and Training renamed. Stadium and Friendlies sit under *"Two screens that are not in that row"*
+and each says where it is reached, so the list above reads as exhaustive and true rather than as partly
+wrong.
+
+**The part worth keeping.** A corrected document is correct until the next menu change. So
+`UserManualMatchesTheClubMenuTest` compares `buildClubActionsHtml`'s labels, in source order, against the
+`###` headings of §4 — read from the source, not from a list maintained beside it.
+
+Seen to fail, both directions: planting a menu entry `Inbox` turns the agreement test red, and planting a
+manual heading `Scout Network` turns two tests red. The two exceptions are excluded by name rather than
+by pattern, because "works, but is not a menu entry" is a fact to assert, not a string to infer.
+
 ## ✅ T0-UI-4b — the substitution plan is reachable, and the post-match outcome is on screen (2026-10-10)
 
 **What was done.** Both halves, because the feature was missing both.
