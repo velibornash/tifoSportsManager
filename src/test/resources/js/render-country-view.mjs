@@ -43,14 +43,16 @@ const seniorNt = { exists: true, teamId: 7, isSelector: true, squad: [], pool: [
 // The manager's own country iso is a variable, not a constant: the represented-country page is only
 // reached when the country being asked about IS the manager's own, so driving it needs a second
 // instance whose own country is a represented one.
-function buildView(iso, name, teamId) {
+function buildView(iso, name, teamId, warmUp) {
     return factory({
         // T1-13b: the manager's own club id, so the qualifying table can mark it.
         getTeamId: () => teamId ?? null,
         authFetch: async (path) => {
             if (path.includes('friendly-requests/opponents')) return json([{ id: 9, name: 'Opponent', country: 'X' }]);
             if (path.includes('friendly-requests/slot')) return json({ week: 6, day: 1 });
-            if (path.match(/friendly-requests\/\d+$/)) return json({ season: 1, week: 6, incoming: [], outgoing: [] });
+            if (path.match(/friendly-requests\/\d+$/)) {
+                return json(warmUp || { season: 1, week: 6, incoming: [], outgoing: [] });
+            }
             if (path.includes('/national-team')) return json(seniorNt);
             if (path.includes('/clubs/ranking')) return json({ totalClubs: 2, clubs: [] });
             if (path.includes('/leagues')) return json([]);
@@ -110,6 +112,91 @@ for (const tab of tabs) {
     } catch (e) {
         failed++;
         console.log(`${tab.padEnd(11)} THREW  ${e.message}`);
+    }
+}
+
+// T0-UI-7: a warm-up asked FOR, asked OF, and already settled.
+//
+// The panel used to render every request as one sentence - `Side 9 - pending` - and a side that had
+// been asked for a warm-up had no way to answer it. The backend has had /respond and /cancel since it
+// was written; nothing called them. These three states are what the buttons exist for, so they are
+// asserted here and not merely rendered.
+{
+    const states = [
+        {
+            label: 'incoming pending answers',
+            view: { incoming: [{ id: 11, requesterTeamId: 9, opponentTeamId: 7, status: 'PENDING' }], outgoing: [] },
+            expect: ['data-warmup-accept="11"', 'data-warmup-decline="11"'],
+            reject: ['data-warmup-withdraw'],
+        },
+        {
+            label: 'outgoing pending withdraws',
+            view: { incoming: [], outgoing: [{ id: 12, requesterTeamId: 7, opponentTeamId: 9, status: 'PENDING' }] },
+            expect: ['data-warmup-withdraw="12"'],
+            // The opposite of what it must show: you cannot accept your own request.
+            reject: ['data-warmup-accept="12"', 'data-warmup-decline="12"'],
+        },
+        {
+            label: 'a settled request carries its reason and offers nothing',
+            view: {
+                incoming: [],
+                outgoing: [{
+                    id: 13, requesterTeamId: 7, opponentTeamId: 9,
+                    status: 'DECLINED', declineReason: 'Already playing that week',
+                }],
+            },
+            expect: ['Already playing that week', 'declined'],
+            // A decision that is made cannot be unmade from this screen.
+            reject: ['data-warmup-accept="13"', 'data-warmup-withdraw="13"'],
+        },
+    ];
+
+    for (const state of states) {
+        const view = buildView('SRB', 'Serbia', 7, state.view);
+        main.innerHTML = '';
+        try {
+            await view.loadCountryPage({ tab: 'senior' });
+            const html = main.innerHTML || '';
+            // Counted per state, so the verdict printed on the right-hand side is the verdict for
+            // THAT state. Printing "ok" next to two FAILED lines is how a harness teaches you to
+            // trust a green line that proved nothing.
+            let brokenHere = 0;
+            for (const needle of state.expect) {
+                if (!html.includes(needle)) {
+                    brokenHere++;
+                    failed++;
+                    console.log(`   FAILED ${state.label}: missing ${needle}`);
+                }
+            }
+            for (const needle of state.reject) {
+                if (html.includes(needle)) {
+                    brokenHere++;
+                    failed++;
+                    console.log(`   FAILED ${state.label}: should not offer ${needle}`);
+                }
+            }
+            console.log(`warm-up     ${brokenHere ? 'FAILED' : 'ok'}    ${state.label}`);
+        } catch (e) {
+            failed++;
+            console.log(`warm-up     THREW ${state.label}: ${e.message}`);
+        }
+    }
+}
+
+// The opponent must be named. "Side 9" is technically correct and useless to a manager deciding
+// whether to accept a warm-up with that side.
+{
+    const view = buildView('SRB', 'Serbia', 7, {
+        incoming: [{ id: 14, requesterTeamId: 9, opponentTeamId: 7, status: 'PENDING' }], outgoing: [],
+    });
+    main.innerHTML = '';
+    await view.loadCountryPage({ tab: 'senior' });
+    const html = main.innerHTML || '';
+    if (!html.includes('Opponent')) {
+        failed++;
+        console.log('   FAILED the incoming request is not naming the side that asked');
+    } else {
+        console.log('warm-up     ok    the other side is named');
     }
 }
 

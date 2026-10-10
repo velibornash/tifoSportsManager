@@ -19,8 +19,14 @@ Browser at 430px against live PostgreSQL: accept turned a Belgium request into A
 fixture 5445 - Belgium v Serbia, season 2, week 6 day 1, exactly the slot. Decline turned one into
 DECLINED with a reason. All test data removed afterwards.
 
-Not extended: the Node render harness. This machine has no Node, so that test skips, and asserting
-something that has never run is worse than not asserting it. Recorded on the board as a known gap.
+The harness gap was closed later the same day: Node was installed at /usr/local/bin/node and simply
+missing from the agent shell's PATH. render-country-view.mjs now drives all three request states -
+incoming answers, outgoing withdraws, a settled request shows its reason and offers nothing - and
+proves it by disabling the buttons and watching two assertions go red.
+
+The harness's own verdict was wrong while that was being added: it printed "ok" on the same line as
+two FAILED lines, counting failures globally instead of per state. Fixed, because a green status beside
+a red assertion is how this repository gets fooled.
 
 ## ✅ T0-UI-8 — the preview shows both shapes, and how well each eleven fits them (2026-10-10)
 

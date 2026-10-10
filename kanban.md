@@ -1459,17 +1459,28 @@ Browser at **430px**, against live PostgreSQL, on Serbia's senior tab:
 
 **All test data removed** — `friendly_request` rows: 0; fixture 5445 deleted; live DB as found.
 
+### Regression cover
+
+`render-country-view.mjs` now drives all three request states and asserts them: **incoming pending
+answers, outgoing pending withdraws, a settled request carries its reason and offers nothing**, and the
+other side is named rather than shown as an id.
+
+**Proven able to fail**: disabling the answer buttons turns *"missing `data-warmup-accept`"* and
+*"missing `data-warmup-decline`"* red.
+
+The harness's per-state verdict was also corrected while doing this. It printed `ok` on the same line
+as two `FAILED` lines, because the verdict was counted globally rather than per state — a green status
+next to a red assertion is the exact thing this repository has been burned by, and it would have taught
+the next reader to trust it.
+
+**`CountryPageRendersWithoutReferenceErrorTest` reports 0 skipped.** Node is at `/usr/local/bin/node`; it
+is simply absent from the agent shell's PATH, which is why this was recorded as a gap in the first place.
+
 ### Known gap
 
-- The Node render harness (`render-country-view.mjs`, driven by
-  `CountryPageRendersWithoutReferenceErrorTest`) is where these three states should be asserted. **It was
-  not extended: this machine has no Node, so `assumeTrue(nodeIsAvailable())` skips it and the new
-  assertions could not have been executed even once.** Shipping assertions never run is the
-  "a test that cannot fail proves less than no test" trap, so the coverage is browser evidence only until
-  someone with Node adds it.
 - The decline reason reaches the **requester**, not the responder: `incoming()` filters to `PENDING` only
-  while `outgoing()` returns everything. Verified in code, not in a browser — no Northern Ireland
-  account exists to log in as.
+  while `outgoing()` returns everything. Verified in code and now in the harness, but not in a browser —
+  no Northern Ireland account exists to log in as.
 
 ## T1-1 · 🔴 `ConditionalSubstitutionRules` is dead in production
 
