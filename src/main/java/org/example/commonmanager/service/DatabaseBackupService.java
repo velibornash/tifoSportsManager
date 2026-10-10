@@ -178,6 +178,8 @@ public class DatabaseBackupService {
         // A clean slate. Drop and recreate the entire database to clear all system catalogs
         // including pg_largeobject and pg_largeobject_metadata, which are not part of the public schema.
         // Must connect to 'postgres' database to drop the target database (cannot drop from within).
+        // First terminate all connections to the database, then drop it, then recreate it.
+        // DROP DATABASE cannot run inside a transaction block, so run as separate commands.
         run(List.of(
                 tool("psql"),
                 "--no-psqlrc",
@@ -187,8 +189,30 @@ public class DatabaseBackupService {
                 "--username=" + username,
                 "--dbname=postgres",
                 "--command",
-                "drop database if exists " + database() + "; create database " + database() + ";"),
-                "drop and recreate database");
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '" + database() + "' AND pid <> pg_backend_pid();"),
+                "terminate all connections to database");
+        run(List.of(
+                tool("psql"),
+                "--no-psqlrc",
+                "--quiet",
+                "--host=" + host(),
+                "--port=" + port(),
+                "--username=" + username,
+                "--dbname=postgres",
+                "--command",
+                "drop database if exists " + database() + ";"),
+                "drop database");
+        run(List.of(
+                tool("psql"),
+                "--no-psqlrc",
+                "--quiet",
+                "--host=" + host(),
+                "--port=" + port(),
+                "--username=" + username,
+                "--dbname=postgres",
+                "--command",
+                "create database " + database() + ";"),
+                "create database");
 
         run(List.of(
                 tool("pg_restore"),

@@ -44,15 +44,13 @@ public class ActionLogService {
      *  so the IntelliJ run-console buffer never cuts the match start. Deeper
      *  detail (DEC per-action decisions, EXE executions, TAC/THR target
      *  recomputes, ball-flight/possession traces) is always mirrored to
-     *  {@code target/proposal-app.log} and the match.json {@code logs}.
-     *  {@code DATA_ORC} is kept only for its {@code ***} epilogues (GOAL /
-     *  SHOT_SAVED / SHOT_MISSED) — RECEIVE/LOOSE recoveries stay in the file. */
+     *  {@code target/proposal-app.log} and the match.json {@code logs}. */
     private static final Set<String> CONSOLE_NOTABLE = Set.of(
             "GOAL", "GOAL_DISALLOWED", "KICKOFF",
             "SHOT", "SHOT_SAVED", "SHOT_MISSED", "SHOT_BLOCKED", "SHOT_POST",
             "PENALTY_KICK", "PENALTY_MISS", "PENALTY_SAVED",
             "OFF",
-            "FOUL", "CARD", "YELLOW_CARD", "RED_CARD",
+            "FOUL", "CARD",
             "POSSESSION_CHANGE", "CHASE_POSSESSION",
             "VAR_OFFSIDE_CONFIRMED", "VAR_OFFSIDE_OVERTURNED",
             "VAR_GOAL_CONFIRMED", "VAR_GOAL_OVERTURNED",
@@ -86,8 +84,7 @@ public class ActionLogService {
             System.out.println("⚽ Match event log: " + LOG_FILE
                     + " (full stream; console = " + (COMPACT_CONSOLE ? "compact" : "full") + ")");
         }
-        if (!COMPACT_CONSOLE || CONSOLE_NOTABLE.contains(tag)
-                || ("ORC".equals(tag) && msg.startsWith("*** "))) {
+        if (!COMPACT_CONSOLE || CONSOLE_NOTABLE.contains(tag)) {
             System.out.println(line);
         }
     }

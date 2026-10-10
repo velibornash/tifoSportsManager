@@ -1,5 +1,17 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ Club Schedule and Results — fixed chronological sorting (2026-10-11)
+
+Club Schedule and Results pages were sorting by `matchDate` (wall-clock date string), which didn't respect the game's calendar structure where multiple rounds can share the same day. This caused fixtures to appear out of chronological order.
+
+**Fix:**
+- Schedule now sorts by `seasonYear → week → day → round` (ascending) - earliest to latest
+- Results now sorts by `seasonYear → week → day → round` (descending) - most recent first
+
+Both pages now correctly display fixtures in the order the game calendar counts them, not by wall-clock time.
+
+**Commit:** `10a5c7b`
+
 ## ✅ T0-UI-8 (schedule page) — three-way filter (Upcoming/Played/All) + recent matches sort (2026-10-10)
 
 Added `scheduleFilterHtml()` and `applyScheduleFilter()` to the schedule page, allowing the manager to click between:

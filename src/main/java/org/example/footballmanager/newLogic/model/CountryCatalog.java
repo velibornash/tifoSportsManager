@@ -90,7 +90,7 @@ public enum CountryCatalog {
      * it simply has no domestic league feeding it players, which means its squad is drawn from
      * wherever its players can be found.
      */
-    OTHER("OTH", "Other Nations");
+    OTHER("OTH", "TIFO Nations");
 
     private final String code;
     private final String displayName;

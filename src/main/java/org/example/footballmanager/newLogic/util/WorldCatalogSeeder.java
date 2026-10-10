@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.util;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.CountryCatalog;
 import org.example.footballmanager.newLogic.model.CountryState;
@@ -37,6 +39,9 @@ import java.util.List;
 public class WorldCatalogSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(WorldCatalogSeeder.class);
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /** The only country played to begin with. */
     private static final String ACTIVE_COUNTRY = "SRB";
@@ -88,6 +93,8 @@ public class WorldCatalogSeeder {
         // seeding the catalogue recreates DEU under its English name in the same pass. Deleting after
         // the loop left the country missing until the next boot, which is what happened.
         dropLegacyRows();
+        entityManager.flush();
+        entityManager.clear();
         List<Country> ensured = new ArrayList<>();
         int created = 0;
         int renamed = 0;
