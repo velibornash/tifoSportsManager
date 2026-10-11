@@ -32,6 +32,13 @@ newest first, each carrying its commit.
 - **A club earns in proportion to what it is worth** (`11579eec`). Broadcast was `weight × 145`, a pure
   function of the division; a top-flight club paying 18.5m a week against 2,900 of television money.
   **Start at [`T-ECON-1`](#t-econ-1--p0--income-did-not-move-when-the-club-did).**
+- **Omladinac's wage bill, 18.5m → 4.8m a week** (`bc9e123b`). The squad paid 45-84% of its own market
+  value per year. **Start at [`T-ECON-2`](#t-econ-2--p0--omladinacs-wage-bill-was-45-84-of-his-own-value).**
+- **The Finances page shows the lines** (`ca13cf6f`). The ledger endpoint existed and nothing had ever
+  called it. **Start at [`T-FIN-UI-2`](#t-fin-ui-2--done-the-ledger-endpoint-existed-and-nothing-called-it).**
+- **Home advantage is real** (`ca13cf6f`). The forecaster promised it; the engine had never heard of it.
+- **A 10.0 means an exceptional match** (`126c6418`). "Tackles" was duels lost, the defensive terms were
+  unbounded, substitutes played 90 minutes, and there was no team-result term at all.
 
 ---
 
@@ -2872,3 +2879,74 @@ Every ledger row carries a populated `note` ("62% of a tier 1 weekly wage bill o
 populated and fully invisible.
 
 **Not started.** The endpoint and the data are there; this is a rendering task.
+
+
+---
+
+## T-ECON-2 — 🔴 P0 · Omladinac's wage bill was 45-84% of his own value per year
+
+**Owner instruction, 2026-10-11:** *"treba ispraviti plate u inicijalizaciji Omladinac igraca... kao
+zakrpu, smanji plate direktno u bazi"*.
+
+`PlayerFactory.createOmladinacPlayers` reads a hand-entered table carrying a market value and a weekly
+wage in two adjacent columns, and **nothing anywhere checked one against the other**:
+
+| | Value | Weekly wage | Per year | % of value |
+|---|---|---|---|---|
+| Zvezdan Vukomanović | 186,900,000 | 1,888,000 | 98m | **53%** |
+| Žika Veljković | 103,880,000 | 1,684,000 | 88m | **84%** |
+
+Real football pays 15-25% of a transfer fee per year for a star.
+
+### Fixed, both ways
+
+- The wage is **derived** from the value now — 20% a year, on the same age curve the renewal demand
+  uses — so the two cannot disagree. Values are untouched: they are the owner's own figures.
+- Patched in the database with `tools/patch-omladinac-wages.sql`, idempotent, after a `pg_dump`.
+
+| | Before | After |
+|---|---|---|
+| Wage bill | 18,478,000 | **4,845,682** |
+| % of value per year | 45-84 | **14-22** |
+
+---
+
+## T-FIN-UI-2 — ✅ DONE · the ledger endpoint existed and nothing called it
+
+`/api/teams/{id}/finances/ledger` returned `category, label, income, amount, note` and a repo-wide grep
+for it across `src/main/resources` returned **zero hits**. Every ledger row already carried a note
+("78% of a tier 1 weekly wage bill of EUR 4,845,682", "Home fixture, 34,437 of 43,780 at an average EUR
+5.87 (79% of the ground)").
+
+Now called and rendered, scoped to **this week** by default, with the week read from the game clock
+rather than hardcoded, and four-week and whole-season options. A month is four weeks, because there is
+no date in this world to make a calendar month out of.
+
+---
+
+## T-PERF-1 — ✅ FIXED 2026-10-11 — but measured honestly
+
+**Before:** a training pass over 14,880 clubs did **not complete in 6+ minutes**. Killed twice while
+still running. 388 s of CPU in 398 s of wall, all inside Hibernate's cascade-on-flush, with the
+database completely idle — six samples showed no running query at all.
+
+**After: completes in 259 s** and records DONE.
+
+**It was never a slow query.** Every auto-flush before a query cascades over every entity dirtied so
+far, and both loops ran in one transaction with one persistence context holding every player in the
+world. The cascade set only grows, so the work is quadratic in the size of the world.
+
+Three things were wrong and all three had to change: `trainSquad` is reached through `this.`, so its
+`@Transactional` never applies and the whole pass is one session; the mentor and minutes caches resolve
+on first use and that first use was happening *inside* the write loop with the chunk already dirty;
+and reading each club with `findById` would have traded an ORM problem for a query problem.
+
+**The first attempt is on the board because it failed and was reverted.** Separating reads from writes
+and clearing every 50 clubs measured at 393 s CPU in 408 s — no better than the 388/398 baseline.
+Chunking alone is not enough; chunking *plus warming the caches* is.
+
+**Not claimed:** 259 s is a completion time, not a speed-up factor. A clean before/after CPU
+comparison is not available because the "before" never finished.
+
+**Still open, same shape, not looked at:** the **finance** job walks the same 14,880 clubs per week and
+has not been measured.
