@@ -630,7 +630,7 @@ async function loadNextMatch() {
         // means by "next". The timestamp is the tiebreaker, and also the only key when the calendar
         // columns are missing on an old row.
         const calendarOrder = (a, b) => {
-            for (const key of ['seasonYear', 'week', 'day']) {
+            for (const key of ['seasonNumber', 'weekNumber', 'dayNumber']) {
                 const left = Number(a?.[key]);
                 const right = Number(b?.[key]);
                 const leftRank = Number.isFinite(left) ? left : Number.MAX_SAFE_INTEGER;
@@ -906,7 +906,7 @@ async function loadRecentMatches() {
         // The game has no calendar - only season/week/day. Wall-clock dates can be misleading
         // when a cup tie and league round share a day.
         const calendarOrder = (a, b) => {
-            for (const key of ['seasonYear', 'week', 'day']) {
+            for (const key of ['seasonNumber', 'weekNumber', 'dayNumber']) {
                 const left = Number(a?.[key]);
                 const right = Number(b?.[key]);
                 const leftRank = Number.isFinite(left) ? left : Number.MAX_SAFE_INTEGER;

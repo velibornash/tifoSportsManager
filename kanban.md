@@ -911,6 +911,21 @@ Everything in the tactics block depends on that spine being laid first.
 
 ---
 
+### Dashboard Recent Matches · ✅ FIXED 2026-10-11
+
+The dashboard received played matches from `/teams/{teamId}/matches`, but `MatchDTO` did not serialize a
+`played` field. Its renderer filtered every row out because `match.played` was undefined. The calendar
+sort also used names absent from the DTO, so it fell back to wall-clock ordering. Played DTOs now expose
+`played: true`, fixture DTOs expose `false`, and the dashboard orders by `seasonNumber`, `weekNumber` and
+`dayNumber`. The endpoint already reads the manager's matches across competition types.
+
+- [x] Show played matches from the API
+- [x] Keep the latest three matches
+- [x] Include league, cup, international and friendly matches
+- [x] Sort by the game calendar
+
+---
+
 ## T0-BE — backend
 
 ### T0-BE-1 · ✅ DONE 2026-10-10 — a club holds more than one tactic

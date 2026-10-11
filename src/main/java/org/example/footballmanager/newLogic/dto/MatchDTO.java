@@ -30,6 +30,8 @@ public class MatchDTO {
     private String competitionType;
     private boolean resultHidden;
     private boolean resultRevealed;
+    /** Whether this DTO represents a played match rather than an unplayed fixture. */
+    private boolean played;
     private Long replayId;
 
     /**
@@ -98,6 +100,7 @@ public class MatchDTO {
         // Nothing is hidden about a match that has not happened, and nothing has been revealed either.
         dto.setResultHidden(false);
         dto.setResultRevealed(false);
+        dto.setPlayed(false);
         dto.setReplayId(null);
         // The one field that tells a caller whether a match endpoint may be called at all. Null here is
         // the honest answer for a fixture that has not been played, and it is the answer the frontend
@@ -168,6 +171,7 @@ public class MatchDTO {
                 ? competition.getType().name() : null);
         dto.setResultHidden(resultHidden);
         dto.setResultRevealed(resultRevealed);
+        dto.setPlayed(match.isPlayed());
         dto.setReplayId(match.getReplayId());
         return dto;
     }

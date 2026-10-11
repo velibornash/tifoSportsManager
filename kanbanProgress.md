@@ -1,5 +1,19 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ Dashboard Recent Matches — played rows were filtered out (2026-10-11)
+
+The endpoint already returned the manager's played matches across all competition types, but `MatchDTO`
+did not serialize `played`. The dashboard then ran `.filter(match => match.played)`, so every response row
+had `undefined` and the card displayed "No played matches yet". Its calendar sort also asked for
+`seasonYear`, `week` and `day`, while the DTO exposes `seasonNumber`, `weekNumber` and `dayNumber`.
+
+Played DTOs now include `played: true`; unplayed fixture DTOs include `played: false`. The dashboard uses
+the actual DTO calendar fields and still sorts and limits the result to the latest three rows.
+
+Live verification against the owner's database and application response for team 1 returned two played
+rows, including a CUP match and a LEAGUE match, both with `played: true`, and the correct season/week/day
+fields. `mvn clean package -DskipTests` passed.
+
 ## ✅ T-REST-17b — overlapping matchday batches no longer disappear (2026-10-11)
 
 Day 3 friendly and league jobs have the same 19:00 kickoff. The friendly job acquired the singleton
