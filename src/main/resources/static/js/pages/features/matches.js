@@ -16,7 +16,7 @@ export function createMatchesFeature(deps) {
     async function loadResults() {
         const teamId = getTeamId();
         try {
-            const response = await authFetch(`/teams/${teamId}/matches`);
+            const response = await authFetch(`/teams/${teamId}/matches?allCompetitions=true`);
             const matches = await response.json();
             const results = matches.sort((a, b) => {
                 const aSeason = Number(a.seasonYear || 0);
@@ -61,7 +61,7 @@ export function createMatchesFeature(deps) {
     async function loadFixtures() {
         const teamId = getTeamId();
         try {
-            const response = await authFetch(`/teams/${teamId}/schedule`);
+            const response = await authFetch(`/teams/${teamId}/schedule?allCompetitions=true`);
             const schedule = await response.json();
             const fixtures = (Array.isArray(schedule) ? schedule : [])
                 .sort((a, b) => {
