@@ -898,7 +898,7 @@ async function pollAdminDatabaseJob(loadingPopup) {
 
 async function loadRecentMatches() {
     try {
-        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/matches?allCompetitions=true`);
         if (!response.ok) throw new Error('Failed to load matches');
 
         const matches = await response.json();
