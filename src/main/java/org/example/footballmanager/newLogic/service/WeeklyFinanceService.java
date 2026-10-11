@@ -50,14 +50,18 @@ public class WeeklyFinanceService {
 
     private static final Logger log = LoggerFactory.getLogger(WeeklyFinanceService.class);
 
-    /** Broadcast income per club for a league of the given reputation weight. */
-    private static final double BROADCAST_PER_WEIGHT_POINT = 145.0;
-
     /** Weekly facility upkeep per seat of stadium capacity. */
     private static final double UPKEEP_PER_SEAT = 0.42;
 
-    /** Weekly merchandising base, scaled by reputation and squad size. */
-    private static final double MERCHANDISING_BASE = 1_400.0;
+    /**
+     * Weekly merchandising base, scaled by reputation and squad size.
+     *
+     * <p>Raised from 1,400. At that figure merchandising was 1% of the wage bill and 3% of income —
+     * a line that existed, was written to the ledger with its own note, and moved nothing. A side's
+     * shirt is worth having in proportion to how many people want it, and 1,400 a week is not a
+     * number that describes any football club.
+     */
+    private static final double MERCHANDISING_BASE = 26_000.0;
 
     /** Prize money table, indexed by finishing position (0 = champion). */
     private static final double[] PRIZE_SHARE = {
@@ -132,14 +136,19 @@ public class WeeklyFinanceService {
         // which meant gate receipts, wages, upkeep and merchandising were written with no season
         // and could never be read back - so a club's income looked like zero and it was granted no
         // transfer budget at all.
+        // Read the squad once. Three of the lines below are a function of it, and the wage bill is
+        // what the broadcast money is a share of, so they all have to see the same squad.
+        List<Player> squad = playerRepository.findByTeamId(team.getId());
+        double wageBill = ClubEconomics.wageBill(team, squad);
+
         lines.add(gate(team, seasonYear, week));
-        lines.add(broadcast(team, seasonYear, week));
-        lines.add(merchandising(team, seasonYear, week));
+        lines.add(broadcast(team, seasonYear, week, wageBill));
+        lines.add(merchandising(team, seasonYear, week, squad));
         lines.add(prizeMoney(team, seasonYear));
-        lines.add(wages(team, seasonYear, week));
+        lines.add(wages(team, seasonYear, week, squad, wageBill));
         lines.add(staffWages(team, seasonYear, week));
         lines.add(sponsorship(team, seasonYear, week));
-        lines.add(facilityUpkeep(team, seasonYear, week));
+        lines.addAll(facilityUpkeep(team, seasonYear, week));
         lines.add(juniorSchoolUpkeep(team, seasonYear, week));
 
         // Only real lines are written, so the ledger does not fill with 0.00 rows.
@@ -160,39 +169,47 @@ public class WeeklyFinanceService {
     // --- income ---
 
     /**
-     * Gate receipts. Uses the realised per-tier price, so a ground full of cheap seats is worth
-     * less than a full ground with premium sold — the same rule the projection shows the manager.
-     */
-    private FinanceLedgerEntry gate(Team team, Integer seasonYear, Integer week) {
-        Stadium s = team.getStadium();
-        AdmissionService.Projection p = admission.projectHomeFixture(team);
-        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.GATE_REVENUE,
-                p.gateRevenue,
-                "Home fixture, " + p.totalAttendance + " of " + p.capacity
-                        + " at an average EUR " + p.averageRealisedPrice);
-    }
-
-    /**
      * Broadcast income, driven by {@code Competition.reputationWeight}.
      *
      * <p>That field has been seeded as {@code tier × 20} since the beginning and read by nothing,
      * so a second-tier club and a first-tier club were on the same money.
      */
-    private FinanceLedgerEntry broadcast(Team team, Integer seasonYear, Integer week) {
+    /**
+     * Broadcast income, as a share of the club's own wage bill.
+     *
+     * <p>Was {@code competition.reputationWeight × 145} — a pure function of the division, so every
+     * club in a league earned the same and none of it moved when the club did. Measured on the owner's
+     * database that put a top-flight club paying 18.5 million a week against 2,900 of television money.
+     *
+     * <p>See {@link ClubEconomics#broadcastShareOfWageBill}. The note carries the arithmetic, because a
+     * manager reading a finance line is owed the working.
+     */
+    private FinanceLedgerEntry broadcast(Team team, Integer seasonYear, Integer week, double wageBill) {
         Competition competition = team.getCompetition();
-        int weight = competition != null && competition.getReputationWeight() != null
-                ? competition.getReputationWeight() : 20;
-        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.BROADCAST,
-                weight * BROADCAST_PER_WEIGHT_POINT,
-                "League broadcast share, reputation weight " + weight);
+        double share = ClubEconomics.broadcastShareOfWageBill(competition);
+        double income = wageBill * share;
+        String division = competition == null || competition.getTier() == null
+                ? "this division" : "tier " + competition.getTier();
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.BROADCAST, income,
+                String.format("%s of a %s weekly wage bill of %s", percent(share), division,
+                        money(wageBill)));
     }
 
-    private FinanceLedgerEntry merchandising(Team team, Integer seasonYear, Integer week) {
+    private FinanceLedgerEntry gate(Team team, Integer seasonYear, Integer week) {
+        AdmissionService.Projection p = admission.projectHomeFixture(team);
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.GATE_REVENUE,
+                p.gateRevenue,
+                String.format("Home fixture, %d of %d at an average EUR %s (%.0f%% of the ground)",
+                        p.totalAttendance, p.capacity, money(p.averageRealisedPrice),
+                        p.capacity <= 0 ? 0 : 100.0 * p.totalAttendance / p.capacity));
+    }
+
+    private FinanceLedgerEntry merchandising(Team team, Integer seasonYear, Integer week, List<Player> squad) {
         double reputation = team.getReputation() == null ? 50 : team.getReputation();
-        long squad = playerRepository.findByTeamId(team.getId()).size();
-        double value = MERCHANDISING_BASE * (reputation / 50.0) * Math.max(0.5, squad / 18.0);
+        double value = MERCHANDISING_BASE * (reputation / 50.0)
+                * Math.max(0.5, squad.size() / 18.0);
         return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.MERCHANDISING, value,
-                squad + " players, reputation " + Math.round(reputation));
+                squad.size() + " players, reputation " + Math.round(reputation));
     }
 
     /** Prize money is only paid once the season is finished, so this is a no-op mid-season. */
@@ -208,11 +225,11 @@ public class WeeklyFinanceService {
      * <p>{@code Player.earnings} was seeded with realistic values and read by nothing, which made
      * the most important cost in football free.
      */
-    private FinanceLedgerEntry wages(Team team, Integer seasonYear, Integer week) {
-        List<Player> squad = playerRepository.findByTeamId(team.getId());
-        double bill = squad.stream().mapToDouble(p -> Math.max(0, p.getEarnings())).sum();
-        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.WAGES, bill,
-                squad.size() + " players under contract");
+    private FinanceLedgerEntry wages(Team team, Integer seasonYear, Integer week,
+                                     List<Player> squad, double wageBill) {
+        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.WAGES, -wageBill,
+                squad.size() + " players under contract, most expensive "
+                        + squad.stream().mapToDouble(p -> Math.max(0, p.getEarnings())).max().orElse(0));
     }
 
     /**
@@ -257,11 +274,17 @@ public class WeeklyFinanceService {
      * anyone, so the wage bill was measured against income that was not real.
      */
     private FinanceLedgerEntry sponsorship(Team team, Integer seasonYear, Integer week) {
-        int season = seasonYear == null ? java.time.Year.now().getValue() : seasonYear;
-        double income = staffSponsors.weeklySponsorshipIncome(team.getId(), season);
-        if (income <= 0) return null;
+        int season = seasonYear == null ? 1 : seasonYear;
+        double contracted = staffSponsors.weeklySponsorshipIncome(team.getId(), season);
+        if (contracted <= 0) return null;
+        // Sponsors are seeded by division, so on their own they pay every club in a league the same.
+        // What separates a club's shirt from another's is the club, so that is what the deal is
+        // scaled by - and the contract value is still shown, because the manager signed it.
+        double reputation = team.getReputation() == null ? 50 : team.getReputation();
+        double income = contracted * (0.45 + reputation / 100.0 * 1.35);
         return FinanceLedgerEntry.of(team, season, week, FinanceCategory.SPONSORSHIP, income,
-                "Sponsorship contracts, season " + season);
+                String.format("%s of contracted value, reputation %d", money(contracted),
+                        Math.round(reputation)));
     }
 
     /**
@@ -271,31 +294,38 @@ public class WeeklyFinanceService {
      * that stops paying for its pitch is spending less here — and is getting a worse pitch, which
      * is the trade the manager is making.
      */
-    private FinanceLedgerEntry facilityUpkeep(Team team, Integer seasonYear, Integer week) {
+    private List<FinanceLedgerEntry> facilityUpkeep(Team team, Integer seasonYear, Integer week) {
         Stadium s = team.getStadium();
-        if (s == null) return null;
+        if (s == null) return List.of();
         int capacity = s.getCapacity() == null ? 0 : s.getCapacity();
         // What the club has built for training is billed on top of the ground it owns rather than
         // folded silently into the same number - a manager reading this line should be able to see
         // what his facilities are costing him.
         double trainingUpkeep = facilities.weeklyUpkeep(team);
         double upkeep = capacity * UPKEEP_PER_SEAT + trainingUpkeep;
-
         double maintenanceSpent = pitch.remainingOf(s);
+
+        // **Both costs, or the one that applies.**
+        //
+        // This returned a single line, and the branch taken when the pitch came back better than it
+        // went charged the pitch work and returned - so the club paid for its grass and not for its
+        // stadium. The javadoc above claims the opposite ("a club that stops paying for its pitch is
+        // spending less here"), which is what a club that never improves its pitch gets. Improving it
+        // was the cheaper option.
+        List<FinanceLedgerEntry> upkeepLines = new ArrayList<>();
         if (maintenanceSpent > 0) {
             PitchMaintenanceService.MaintenanceResult r =
                     pitch.applyWeeklyMaintenance(s, maintenanceSpent);
             if (r.restored() > 0) {
-                return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.PITCH_MAINTENANCE,
-                        r.spent(), "Pitch work: condition " + r.before() + " -> " + r.after());
+                upkeepLines.add(FinanceLedgerEntry.of(team, seasonYear, week,
+                        FinanceCategory.PITCH_MAINTENANCE, -r.spent(),
+                        "Pitch work: condition " + r.before() + " -> " + r.after()));
             }
-            return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
-                    upkeep, capacity + " seats + " + Math.round(trainingUpkeep)
-                            + " training facilities");
         }
-        return FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
-                upkeep, capacity + " seats + " + Math.round(trainingUpkeep)
-                        + " training facilities, no pitch programme funded");
+        String note = capacity + " seats + " + Math.round(trainingUpkeep) + " training facilities";
+        upkeepLines.add(FinanceLedgerEntry.of(team, seasonYear, week, FinanceCategory.FACILITY_UPKEEP,
+                -upkeep, note));
+        return upkeepLines;
     }
 
     // --- helpers ---
@@ -387,6 +417,15 @@ public class WeeklyFinanceService {
 
     private double budget(Team team) {
         return team.getBudget() == null ? 0 : team.getBudget();
+    }
+
+    /** How a line reads: "62% of a tier 1 weekly wage bill of EUR 18,478,000". */
+    private String percent(double fraction) {
+        return Math.round(fraction * 100) + "%";
+    }
+
+    private String money(double amount) {
+        return "EUR " + String.format("%,.0f", amount);
     }
 
     private double round2(double v) {

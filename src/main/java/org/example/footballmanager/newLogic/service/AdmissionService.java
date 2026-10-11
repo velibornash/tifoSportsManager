@@ -248,8 +248,14 @@ public class AdmissionService {
         int homeCap = capacity - awayCap;
 
         // A home league fixture with nothing special going on.
-        double homeFill = 0.72;
-        double awayFill = 0.55;
+        //
+        // The home end is the club's own: a side with a reputation of 90 fills the ground and a side
+        // with 20 does not, and this used to be a literal that said both of them filled 72% of it.
+        // The projection shown before a match is therefore now a projection the manager can believe.
+        double homeFill = ClubEconomics.homeOccupancy(team);
+        // The away end barely moves with who has travelled - it is mostly a function of the size of
+        // the trip - so it stays where it is.
+        double awayFill = ClubEconomics.AWAY_OCCUPANCY;
 
         int homeAttendance = (int) Math.round(homeCap * homeFill);
         int awayAttendance = (int) Math.round(awayCap * awayFill);

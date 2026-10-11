@@ -345,6 +345,20 @@ public class PlayerContractService {
         contract.setExpirySeason(season + seasons);
         contract.setSignedAt(java.time.Instant.now());
         contracts.save(contract);
+
+        // **The player's own record too, or the renewal is invisible.**
+        //
+        // The wage bill reads `Player.earnings` and nothing else; `signFreeAgent` and `assignToClub`
+        // both write it. This one did not, so every renewal in the game moved the number on the
+        // contract and left the number the club is actually charged where it was. The manager renews
+        // a player on a new wage, the ledger keeps paying the old one, and transfer affordability
+        // keeps reading the old one - all three contradicting the deal he just signed, and none of
+        // them logging anything.
+        players.findById(playerId).ifPresent(player -> {
+            player.setEarnings(offeredWeeklyWage);
+            players.save(player);
+        });
+
         return RenewalOutcome.renewed(contract);
     }
 

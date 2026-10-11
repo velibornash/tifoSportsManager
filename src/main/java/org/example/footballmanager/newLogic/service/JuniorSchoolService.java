@@ -207,12 +207,70 @@ public class JuniorSchoolService {
      * sake of one multiplication.
      */
     public static double activationFee(Team team) {
-        return round2(5_000.0 + reputation(team) * 900.0);
+        return round2(ACADEMY_BASE_FEE + reputation(team) * ACADEMY_FEE_PER_REPUTATION);
     }
 
-    /** The weekly upkeep, scaled the same way so the two figures stay related. */
+    /**
+     * What the academy costs weekly, as a share of what the club already spends on its first team.
+     *
+     * <p><b>It used to be a second, unrelated scale</b> — {@code 1 200 + reputation × 120} — and the
+     * club's budget is seeded from an entirely different band by {@code EconomyProfileService}, on an
+     * unrelated random draw. The owner reported exactly this: the youth budget and the general budget
+     * are not in step.
+     *
+     * <p>They are in step now because both come from the same thing. A club with a 20-million weekly
+     * wage bill can run an academy worth having, and a club paying 300,000 a week cannot - which is
+     * the decision an academy <em>is</em>. A flat fee scaled by reputation was neither: it asked a
+     * fifth-tier club with a reputation of 45 for 45,500, more than twice its entire budget, so the
+     * feature was silently unreachable for the clubs it exists for.
+     */
     public static double upkeep(Team team) {
-        return round2(1_200.0 + reputation(team) * 120.0);
+        double wageBill = wageBillOf(team);
+        if (wageBill <= 0) {
+            return round2(ACADEMY_WEEKLY_BASE + reputation(team) * ACADEMY_WEEKLY_PER_REPUTATION);
+        }
+        return round2(ACADEMY_WEEKLY_BASE + wageBill * ACADEMY_WEEKLY_SHARE_OF_WAGE_BILL);
+    }
+
+    private static final double ACADEMY_BASE_FEE = 5_000.0;
+    private static final double ACADEMY_FEE_PER_REPUTATION = 900.0;
+    private static final double ACADEMY_WEEKLY_BASE = 1_200.0;
+    private static final double ACADEMY_WEEKLY_PER_REPUTATION = 120.0;
+
+    /** The share of the first team's wage bill an academy costs to run. */
+    private static final double ACADEMY_WEEKLY_SHARE_OF_WAGE_BILL = 0.06;
+
+    private static double wageBillOf(Team team) {
+        if (team == null || team.getId() == null) return 0.0;
+        return playerRepository().findByTeamId(team.getId()).stream()
+                .mapToDouble(p -> Math.max(0, p.getEarnings()))
+                .sum();
+    }
+
+    /**
+     * The repository, set once by the container.
+     *
+     * <p>A static holder rather than a constructor field, because {@link #upkeep} is called from the
+     * weekly finance tick, which computes this for every club in the world and has no business holding
+     * a service reference to a feature it does not own.
+     */
+    private static volatile org.example.footballmanager.newLogic.repository.PlayerRepository
+            playerRepository;
+
+    /** Wired by {@link org.example.footballmanager.newLogic.config.EconomyWiring}. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public static void usePlayerRepository(
+            org.example.footballmanager.newLogic.repository.PlayerRepository repository) {
+        playerRepository = repository;
+    }
+
+    private static org.example.footballmanager.newLogic.repository.PlayerRepository playerRepository() {
+        if (playerRepository == null) {
+            throw new IllegalStateException(
+                    "The junior school has no PlayerRepository, so it cannot cost what it costs to run. "
+                            + "EconomyWiring has not been initialised.");
+        }
+        return playerRepository;
     }
 
     /**
