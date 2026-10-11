@@ -18,11 +18,173 @@ newest first, each carrying its commit.
 
 - **Session handoff: read [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md).** It carries the two-clock trap,
   the corrections to what was previously reported here, and what is still unstarted.
-- Header clock shows the **game clock**, not wall time (`0e9b8af`). Every kickoff, job trigger and
-  deadline is in game hours, so the header now shows the number the game actually runs on.
-- Results and Recent Matches sort correctly again (`867754b`). They were reading `/schedule` field names
-  against a `MatchDTO`, so every sort key was `undefined` and the comparator silently fell through to
-  wall-clock `match_date`. See the entry in `kanbanProgress.md` for the full shape.
+- **The game clock is one clock and it ticks** (`4addf0b`). It used to hold four counters *and* an
+  offset; the header rendered one and the job runner read the other, silently. Now the position is
+  derived from an anchor plus an offset, the header shows `HH:MM:SS` anchored on the server, and every
+  movement of the world ends in the same call that runs the jobs it made due. **Start at
+  [`T-CLOCK-1`](#t-clock-1--p0--the-game-clock-was-two-clocks).**
+- **A fixture's day and its kickoff hour come from one place** (`c1d6b8e`). The fifteen continental cups
+  wrote `day 1` and stamped a day-5 18:00 date — the handoff's "the fixture says 18:00, the job fires at
+  20:00". **Start at [`T-CALENDAR-1`](#t-calendar-1--p0--a-fixtures-day-and-its-kickoff-hour-disagreed).**
+- **A national side drawn short is no longer short for ever** (`4c8f677`). The U-21 guard asked "does it
+  have any real players" rather than "is it full", so a country first drawn with a small pool was frozen
+  there. **Start at [`T-U21-1`](#t-u21-1--p1--a-national-side-drawn-short-was-short-for-ever).**
+- **A club earns in proportion to what it is worth** (`11579eec`). Broadcast was `weight × 145`, a pure
+  function of the division; a top-flight club paying 18.5m a week against 2,900 of television money.
+  **Start at [`T-ECON-1`](#t-econ-1--p0--income-did-not-move-when-the-club-did).**
+
+---
+
+## T-CLOCK-1 — 🔴 P0 · the game clock was two clocks
+
+**Found by the owner, 2026-10-11**, who asked for the header clock to be the game clock and for it to
+move like a real clock.
+
+### The defect
+
+`GameClock` held **two** things and they were allowed to disagree:
+
+| | |
+|---|---|
+| `advanceOffsetSeconds` | rendered as `now() + offset` — real seconds, what the header showed |
+| `currentSeason` / `currentWeek` / `currentDay` / `currentHour` | four stored counters, what every job read, moving **only** when a button was pressed |
+
+Nothing logged when they diverged. The header read `16:20` beside a job runner that believed it was
+09:00 of day 4, and a Champions Cup tie said 18:00 while the job that plays it triggered from 20:00.
+
+### The fix
+
+- `GameClock` holds **an anchor and an offset and nothing else**. Season, week, day and hour are
+  `GameTimeline.positionAt(anchor, gameTime)` — a pure function. The getters keep their old names so
+  ~20 readers keep working; they have **no setters**, because a value that cannot be written cannot be
+  the second source of truth.
+- The header shows `HH:MM:SS`, **anchored on the server's** `gameTimeEpochMillis` rather than the device
+  clock. The server is in another country; a laptop four minutes out would display a game time four
+  minutes out — the same disagreement, wearing a different hat.
+- Season/week/day are derived **in the browser from the same instant**, so the day can no longer be
+  twenty seconds behind the time printed beside it.
+- There is no date. `current_game_date` is derived and cannot be written.
+- Every movement — advance hour/day/week, the new `POST /api/game-clock/offset`, the half-hourly tick —
+  adds to the offset and then calls `synchronise()`. One path.
+- `synchronise()` walks **every game hour since `lastSyncedAt`**, so an app down over a kickoff comes
+  back and plays the matchday it missed. Capped at 7 days, and it says so when it caps.
+
+### Three more defects found while proving it
+
+- **A world that had never synchronised walked zero hours.** The walk starts at `lastSyncedAt`; a world
+  with none started where it already stood, so Advance Week ran **no jobs at all** and reported a week
+  that had elapsed. `establishBaseline()` runs before the move.
+- **The advance blocked on the job bodies.** Measured: one Advance Hour onto day 4 held the request open
+  **over five minutes** with the database idle. The clock now moves first, the walk runs on one thread,
+  and `snapshot()` reports `syncing` so the browser waits rather than showing a world the jobs have not
+  touched.
+- **The migration folded the old display offset in twice.** The counters were the truth and the offset
+  only ever moved the displayed time, so anchoring for the counters and leaving the offset alone moved a
+  day-4 world to **day 7** — a training day and a matchday vanished into it.
+
+### Also
+
+`refreshGameClock()` was called under a `typeof === 'function'` guard and existed **nowhere in the
+repository**. Advance Day and Advance Hour therefore refreshed nothing at all.
+
+### Verified
+
+15 clock tests green. Both fixes **proved able to fail** by reverting them: removing the baseline gives
+"Offered: 0" of 168 hours; stopping the season from rolling fails two. Live against the owner's
+database: migrated to **season 1, week 1, day 4 at 09:00** — exactly where it already was — and the
+header ticks in step with the server to the second.
+
+---
+
+## T-CALENDAR-1 — 🔴 P0 · a fixture's day and its kickoff hour disagreed
+
+The handoff's "**this is the next thing to fix**". Three writers each answered "when does this slot
+play" for themselves:
+
+| Writer | Day column | Date stamped |
+|---|---|---|
+| League | read `WeekTemplate` ✓ | read `WeekTemplate` ✓ |
+| National cup | 5 | 5 at 18:00 ✓ |
+| **15 continental cups** | **1** | **5 at 18:00** ✗ |
+
+Every one of them reported day 1 and carried a day-5, 18:00 timestamp. A manager told his tie kicked
+off at 18:00 watched nothing happen at 18:00.
+
+Also skipped the template in two other ways: **league return legs** (rounds 11-18) took the season-start
+time verbatim, so the first ten rounds kicked off at 19:00/16:00 and the second ten whenever the world
+happened to be created; and **playoff fixtures carried no day and no hour at all**, so no matchday job
+could find them.
+
+`GameTimeline.kickoffAt` is now the only answer. Verified by mutation — restoring the borrowed rule
+fails with *"the fixture says day 1 but is dated 2026-01-16"*.
+
+**Still open:** `SeasonService.ensurePlayoffWeekFixtures` has **zero callers**, so no playoff fixture is
+generated at all. The day and hour are correct for whenever it is wired up.
+
+---
+
+## T-U21-1 — 🟡 P1 · a national side drawn short was short for ever
+
+**Found by the owner, 2026-10-11**: *"umesto 25 igraca bude npr 7 a dole u national pool ih ima koliko
+hoces"*.
+
+`NationalTeamSeeder.squadsFor` guarded with "this side already holds real players". So the first time a
+country was drawn — while its pyramid was small and only a handful were eligible — it froze there, and
+every later pass took the same branch. **Re-seeding could not help**, which is why the pool was full and
+the squad was not. A squad is done when it is **full**.
+
+**The owner's database is currently healthy** — all 48 U-21 sides hold 25, none over-age — so this only
+bites a world where a country is first drawn with a small pool. The new test reproduces exactly that and
+fails on the old guard with "expected 25 but was 7".
+
+**A test that was already red:** `theGuardDoesNotBlockASecondSide` has been failing since the age filter
+went in on 2026-10-10 — that country had six under-21s out of thirty and the side was drawn with six.
+It was failing in the suite and was not being read.
+
+---
+
+## T-ECON-1 — 🔴 P0 · income did not move when the club did
+
+**Found by the owner, 2026-10-11**, with the number: *"ako su plate mog tima 18 miliona evra nedeljno
+onda mora i income da se prilagodi tim vrednostima"*.
+
+Measured, season 1 week 1, OFK Omladinac:
+
+| Income | | Cost | |
+|---|---|---|---|
+| Gate | +173,591 | **Wages** | **−18,478,000** |
+| Broadcast | +2,900 | Facility upkeep | −18,388 |
+| Merchandising | +1,739 | | |
+| **Total** | **+176,491** | **Total** | **−18,496,388** |
+
+A **105× deficit**. Broadcast was `competition.reputationWeight × 145` — a pure function of the
+division. Gate was a literal: 72% home, 55% away, every club, every week, every opponent.
+
+### The fix
+
+Broadcast is a **stated share of the club's own wage bill**; gate occupancy follows reputation;
+sponsorship scales with standing; merchandising was raised from a base of 1,400 (3% of income — a line
+that existed and moved nothing). `ClubEconomics` is one place for "what does this player cost", because
+there were four wage formulas at magnitudes three orders of magnitude apart, one of them
+`500 + random(2500)` for academy graduates.
+
+Found on the way: **`PlayerContractService.renew` never wrote the new wage to the Player**, and the wage
+bill reads `Player.earnings` and nothing else — so every renewal in the game moved the number on the
+paper and left the number the club pays where it was. And a week in which the pitch improved charged the
+pitch and returned early, so the club paid for its grass and **not** for its ground.
+
+### 🔴 Open — an owner decision, not a defect
+
+The broadcast coefficient is **calibrated, not derived**. One club does not fit it: OFK Omladinac pays
+**18,478,000 a week across thirteen players** — 74m a year each — on a 43,780-seat ground that brings
+173,591. **Sixty times a normal club's wage bill on twice the ground.** No single coefficient balances
+that club and an ordinary one, because the wage scale is the outlier, not the income side.
+
+Re-pricing every wage and value is a migration over **31,230 players** and a decision about how much
+money is in this world. **It needs the owner.** Until then the structural fix stands and the magnitudes
+are wrong for that one club.
+
+---
 
 ---
 
@@ -2640,3 +2802,73 @@ played, **this is the first thing to fix** — not a missing index on `bb_player
 rows where a scan costs under a millisecond.
 
 **Exit criteria:** batched writes, measured against the round-trip count
+
+---
+
+## T-PERF-1 — 🔴 P1 · one training pass over the world takes six minutes of pure CPU
+
+**Found by measurement, 2026-10-11**, while proving the clock work.
+
+### What was measured
+
+Against the owner's database — 48 countries, 14,880 clubs, ~300,000 players — one pass of the
+day-4 training job:
+
+| | |
+|---|---|
+| Wall clock | **> 6 minutes**, still running when measured |
+| CPU | **388 s of CPU in 398 s of wall** |
+| Database | **completely idle** — `pg_stat_activity` showed no running query, six samples over 12 s |
+| Thread dump | 388 s inside `org.hibernate.engine.internal.Cascade.cascade` |
+
+**No query was running.** This is not a slow query; it is Hibernate doing work on every query.
+
+### The cause
+
+`SquadEnvironmentService.advanceWeek` (and `SquadTrainingService.trainEveryClub` beside it) walk every
+club in one transaction with one persistence context. `advanceWeek` loads all ~300,000 players with
+`findByTeamIdIn`, then for each one asks for his minutes and his mentors — **while his club's players
+are already dirty**. Hibernate auto-flushes before a query, and the flush cascades over **every entity
+dirtied so far**. Three hundred thousand players, one cascade each, over a set that only grows. That is
+O(clubs²), and it is why the database is idle while the CPU is not.
+
+`trainSquad` is reached through `this.`, so its `@Transactional` is bypassed and the whole pass is one
+transaction; there is no natural flush boundary.
+
+### An attempt that did not work, and was reverted
+
+Separating the read phase from the write phase in `advanceWeek`, and flushing + clearing every 50 clubs
+in `trainEveryClub`. **Measured at 393 s CPU in 408 s — no better than the 388/398 baseline.** Reverted
+rather than shipped: an unmeasured perf change labelled as a fix is exactly the thing this repository
+keeps writing warnings about.
+
+### What is likely to work, and is not done
+
+Reading through a **projection** (`id, teamId, familiarity, morale`) instead of entities, so nothing is
+put in the persistence context at all. That is a real change to `advanceWeek` and `trainEveryClub` and
+was not started.
+
+**Blocks:** every use of the advance buttons on a 48-country world. The clock work made this visible by
+making the advance return immediately and report `syncing` honestly; it did not make the jobs fast.
+
+---
+
+## T-FIN-UI-1 — 🟡 P2 · the Finances page shows totals and throws the rest away
+
+**Found by the owner, 2026-10-11**: *"stavke pojedinacne na Finance mora da se vide da se zna tacno sta i
+koliko je stigli i od koga i sta su tacno troskovi.. treba da se mogu videti tenantna nedelja (default),
+a da mzoe da se izabere mesec ili season"*.
+
+- **`/api/teams/{id}/finances/ledger` exists and is never called** from anywhere in `src/main/resources`.
+  It returns exactly the per-line detail asked for: `id, week, seasonYear, category, label, income,
+  amount, note`.
+- **`byCategory` is returned by the summary endpoint and never rendered.** A repo-wide grep for it in
+  `static/` returns zero hits.
+- **No week or month scope exists at all**, and the season picker only renders when the club has a
+  ledger in more than one season — so on a fresh world there is no picker at all.
+
+Every ledger row carries a populated `note` ("62% of a tier 1 weekly wage bill of EUR 18,478,000",
+"Home fixture, 34,437 of 43,780 at an average EUR 5.87 (79% of the ground)"). All of it is fully
+populated and fully invisible.
+
+**Not started.** The endpoint and the data are there; this is a rendering task.
