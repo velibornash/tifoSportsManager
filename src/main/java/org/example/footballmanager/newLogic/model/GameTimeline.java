@@ -2,6 +2,8 @@ package org.example.footballmanager.newLogic.model;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 
@@ -105,5 +107,36 @@ public final class GameTimeline {
                 + ((long) position.week() - 1) * GameDay.LAST
                 + (position.day() - 1);
         return today.minusDays(days);
+    }
+
+    /**
+     * When a fixture in a given week and day is kicked off (owner, 2026-10-11).
+     *
+     * <p><b>One answer to "when does this slot play", read from the template.</b> Three writers were
+     * each answering it for themselves and getting different answers:
+     *
+     * <ul>
+     *   <li>the league read {@link WeekTemplate} and got it right;</li>
+     *   <li>the national cup hardcoded day 5 at 18:00;</li>
+     *   <li>the fifteen continental cups wrote {@code dayNumber = 1} but took their <i>date</i> from
+     *       the national cup's rule — so every one of them reported day 1 and carried a day-5,
+     *       18:00 timestamp. The manager saw a tie at 18:00 and nothing happened at 18:00.</li>
+     * </ul>
+     *
+     * <p>The day and the hour have to come from the same place, because a fixture whose day column says
+     * 1 and whose date says day 5 is not a fixture the game can schedule — and the mismatch is invisible
+     * until a manager watches a kickoff time come and go with nothing played.
+     *
+     * <p>A day with no fixture in the template (finance, training, morale) has no kickoff and returns
+     * noon. That is a fallback, not a decision: nothing schedules on those days.
+     */
+    public static LocalDateTime kickoffAt(LocalDate anchor, int week, int day) {
+        LocalDate weekStart = anchor.plusWeeks(week - 1L);
+        LocalDate date = weekStart.plusDays(day - 1L);
+        GameDay gameDay = GameDay.of(day);
+        Integer hour = gameDay.kickoffHour();
+        Integer minute = gameDay.kickoffMinute();
+        return LocalDateTime.of(date,
+                LocalTime.of(hour == null ? 12 : hour, minute == null ? 0 : minute));
     }
 }

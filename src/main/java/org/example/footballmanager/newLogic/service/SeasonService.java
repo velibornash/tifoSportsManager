@@ -372,7 +372,14 @@ public class SeasonService {
             }
             reverse.setWeekNumber(returnPlacement.week());
             reverse.setDayNumber(returnPlacement.day());
-            reverse.setMatchDate(startDate.plusWeeks(returnPlacement.week() - 1L));
+            // **Through kickoffFor, like every first leg.**
+            //
+            // This line is why the handoff's javadoc about inheriting the wall-clock time was right
+            // about the symptom and wrong about the fix: the first legs were repaired and this loop,
+            // four lines below them, was not. A return leg took the season-start time verbatim, so
+            // rounds 1-10 kicked off at the template's 19:00 / 16:00 and rounds 11-18 kicked off
+            // whenever the world happened to be created. Half a season's fixtures, wrong hours.
+            reverse.setMatchDate(kickoffFor(startDate, returnPlacement));
             reverse.setPlayed(false);
             fixtures.add(reverse);
         }
@@ -448,6 +455,19 @@ public class SeasonService {
         CompetitionEntry stronger = ranked.get(0);
 
         GameClock clock = getOrCreateClock();
+        // Week 11 slot 2 is a league day and the calendar says so. Neither playoff fixture carried a
+        // day or an hour at all, so no matchday job could find them and the playoff week was a week
+        // in which nothing was played and nothing was listed.
+        int playoffDay = SeasonCalendar.dayForSlot(2);
+        LeagueSlotSchedule.Placement playoffSlot =
+                LeagueSlotSchedule.forRound(SeasonCalendar.LEAGUE_ROUNDS);
+        if (playoffSlot != null && playoffSlot.week() == PLAYOFF_WEEK) {
+            playoffDay = playoffSlot.day();
+        }
+        LocalDateTime seasonStart = getOrCreateClock().getCurrentDate();
+        LocalDateTime playoffKickoff = GameTimeline.kickoffAt(
+                seasonStart.toLocalDate().minusWeeks(clock.getCurrentWeek() - 1L), PLAYOFF_WEEK, playoffDay);
+
         MatchFixture m1 = new MatchFixture();
         m1.setHomeTeam(top.get(6).getTeam());
         m1.setAwayTeam(weaker.getTeam());
@@ -455,7 +475,8 @@ public class SeasonService {
         m1.setSeasonYear(seasonYear);
         m1.setRoundNumber(PLAYOFF_WEEK);
         m1.setWeekNumber(PLAYOFF_WEEK);
-        m1.setMatchDate(clock.getCurrentDate().plusWeeks(PLAYOFF_WEEK - clock.getCurrentWeek()));
+        m1.setDayNumber(playoffDay);
+        m1.setMatchDate(playoffKickoff);
         m1.setPlayed(false);
 
         MatchFixture m2 = new MatchFixture();
@@ -465,7 +486,8 @@ public class SeasonService {
         m2.setSeasonYear(seasonYear);
         m2.setRoundNumber(PLAYOFF_WEEK);
         m2.setWeekNumber(PLAYOFF_WEEK);
-        m2.setMatchDate(clock.getCurrentDate().plusWeeks(PLAYOFF_WEEK - clock.getCurrentWeek()));
+        m2.setDayNumber(playoffDay);
+        m2.setMatchDate(playoffKickoff);
         m2.setPlayed(false);
         matchFixtureRepository.saveAll(List.of(m1, m2));
     }

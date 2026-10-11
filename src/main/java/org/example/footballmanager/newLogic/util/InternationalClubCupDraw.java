@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -767,8 +769,26 @@ public class InternationalClubCupDraw {
         fixture.setSeasonYear(seasonYear);
         fixture.setGroupCode(groupCode);
         fixture.setPlayed(false);
-        fixture.setMatchDate(CupFixtureSeeder.matchDateFor(week, seasonStart()));
+        fixture.setMatchDate(kickoffFor(week, seasonStart()));
         return fixture;
+    }
+
+    /**
+     * When a continental tie is kicked off.
+     *
+     * <p><b>This used to be {@code CupFixtureSeeder.matchDateFor}, the national cup's rule.</b> The
+     * national cup plays on day 5 at 18:00; these fifteen competitions moved to the day-1 international
+     * slot on 2026-10-06 and kept borrowing the date rule. Every tie therefore reported {@code day 1}
+     * in its day column and carried a day-5, 18:00 timestamp: a manager told his tie kicked off at
+     * 18:00 watched nothing happen at 18:00, and the job that plays it is not due until 20:00.
+     *
+     * <p>Package-private so a test can hold the two numbers against each other. The disagreement is
+     * invisible from the outside - both columns look populated - and the only thing that catches it is
+     * an assertion that the day written and the date written describe the same slot.
+     */
+    static LocalDateTime kickoffFor(int week, LocalDateTime seasonStart) {
+        return org.example.footballmanager.newLogic.model.GameTimeline.kickoffAt(
+                seasonStart.toLocalDate(), week, CUP_DAY);
     }
 
     private int weekFor(int stage) {

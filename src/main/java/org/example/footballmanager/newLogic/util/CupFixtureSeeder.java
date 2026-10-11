@@ -54,9 +54,15 @@ public class CupFixtureSeeder {
     static final int ENTRY_ROUND_TEAMS = 108;
     static final int MAIN_DRAW_TEAMS = 256;
 
-    /** Day 5 is the cup slot in the seven-day template. */
+    /**
+     * Day 5 is the cup slot in the seven-day template.
+     *
+     * <p>Stated here rather than read from the template because the national cup <em>is</em> the day-5
+     * competition — that is what makes it different from the fifteen continental cups, which play in the
+     * day-1 international slot. The hour is not stated: it comes from {@link WeekTemplate}, so the two
+     * cannot drift apart again.
+     */
     private static final int CUP_DAY = 5;
-    private static final int CUP_HOUR = 18;
 
     /** A fixed seed so the draw is the same on every boot. A random draw would reshuffle the cup
      *  on every restart, which is not a cup. */
@@ -85,8 +91,12 @@ public class CupFixtureSeeder {
      * and the cup's own day, so every tie in a round lands on the same day.
      */
     public static LocalDateTime matchDateFor(int week, LocalDateTime seasonStart) {
-        LocalDate day5 = seasonStart.toLocalDate().plusWeeks(week - 1L).plusDays(CUP_DAY - 1L);
-        return LocalDateTime.of(day5, java.time.LocalTime.of(CUP_HOUR, 0));
+        // Day and hour come from the seven-day template, from the same place every other fixture
+        // writer reads them. This class used to carry its own CUP_DAY = 5 / CUP_HOUR = 18, and the
+        // continental cups borrowed this method while carrying CUP_DAY = 1 - so fifteen international
+        // competitions reported day 1 in one column and day 5 at 18:00 in the other.
+        return org.example.footballmanager.newLogic.model.GameTimeline.kickoffAt(
+                seasonStart.toLocalDate(), week, CUP_DAY);
     }
 
     private final SeasonService seasons;
