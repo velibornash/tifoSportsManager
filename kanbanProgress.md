@@ -1,5 +1,128 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ Omladinac's wages were 45-84% of his own market value per year (2026-10-11) — commit `bc9e123b`
+
+Owner: *"treba ispraviti plate u inicijalizaciji Omladinac igraca... kao zakrpu, smanji plate
+direktno u bazi"*.
+
+`PlayerFactory.createOmladinacPlayers` reads a hand-entered table with a market value and a weekly wage
+in two adjacent columns, and nothing checked one against the other. Zvezdan Vukomanović was carried at
+186,900,000 and paid 1,888,000 a week — 98m a year, **53% of his own transfer fee, every year, for
+ever**. Žika Veljković was at 84%.
+
+The wage is derived from the value now — 20% a year on the same age curve the renewal demand uses —
+so the two cannot disagree. Values are untouched: they are the owner's own figures for his own club,
+and re-pricing them is a different decision.
+
+Patched with `tools/patch-omladinac-wages.sql`, idempotent and re-runnable, after a `pg_dump`:
+
+    wage bill before   18,478,000
+    wage bill after     4,845,682   (3.8x lower)
+    every player now    14-22% of his market value per year
+
+The same rule runs in the seeder, so a re-seed produces these figures. Verified: 5 tests green, and
+proved able to fail — restoring the hand-entered column fails two of them.
+
+
+## ✅ The Finances page shows the lines, and home advantage is real (2026-10-11) — commit `ca13cf6f`
+
+**Finances.** `/api/teams/{id}/finances/ledger` has existed the whole time and returned exactly what was
+asked for — category, label, signed amount, and a note saying what caused it — and **nothing in the
+browser had ever called it**. A repo-wide grep for `finances/ledger` across `src/main/resources`
+returned zero hits. The page showed totals and threw away everything else.
+
+Now called and rendered, scoped to this week by default with four-week and whole-season options. The
+week is read from the game clock, not hardcoded — a page that defaults to a fixed week number is right
+once a season and wrong for the other eleven. A month is four weeks, because there is no date in this
+world to make a calendar month out of.
+
+**Prediction.** The Match Preview's "Home edge" and "Away edge" cards rendered formation fitness and
+bench quality — real numbers, belonging on a shape card, and null until a manager picked eleven for
+that specific fixture. Hence "Not known yet" beside a prediction that was confident from the squad
+average alone. They now show the edges the prediction was built from.
+
+The deeper half: the forecaster has always told managers the home side has an advantage, and **the
+simulation engine had no home advantage term at all**. A fixture promised at 60% came out at 50% a
+thousand times over and nothing logged a word. `MatchEngineRules` states it once — 3.0 OVR for the
+forecast, 0.12 xG, 0.9 of duel power for the engine — and the duel is where it goes, because the
+engine's own comment says *"possession follows duels"*.
+
+Also: a played match reported `drawProbability: 0.25` as a literal, so a 5-0 finished game showed
+"Draw 25%". Derived now, and the invented formation-fitness and availability numbers are null rather
+than plausible.
+
+Proved able to fail: removing the engine's home advantage makes two identical players duel to exactly
+50.0%.
+
+**Worth writing down about the test.** The first version re-implemented `resolveDuel` instead of calling
+it, and it also had its random draw hoisted out of its loop — so it compared one value 4,000 times and
+reported 0%. A test that re-implements the thing it is testing is the failure mode this repository
+keeps paying for.
+
+
+## ✅ A 10.0 had to mean an exceptional performance (2026-10-11) — commit `126c6418`
+
+Owner: *"pojedinacni rejting na utakmicama i dalje veoma lako igrac dobije 10.0 sto treba biti
+EKSTREMNO DOBRA partija, nekoliko golova i asistencija a ne asistencija i par uklizavanja"*.
+
+Three defects in one formula that **no test anywhere covered**.
+
+**"Tackles" was duels lost.** `onDuelWon` credited the winner's `duelsWon` and the loser's `tackles`. A
+striker dispossessed eight times banked eight "tackles" and +0.64 of rating for being dribbled past, and
+the lineup showed the eight in a Tkl column. The engine does not record who was the tackler, so nothing
+here can say — but a number labelled tackles that is really duels lost is a guess presented as a
+statistic. It is `duelsLost` now, bounded at −0.6, and the column is labelled for what it is.
+
+**The defensive terms were unbounded and outweighed goals.** A match has around 268 duels, about twelve
+per player, all counting the same. Twelve won and twelve lost banked +2.4 — more than two goals.
+
+**A substitute played 90 minutes.** `minutesPlayed` returned 90 for anyone not sent off, so the minute
+factor was dead weight for everyone except a red card.
+
+**And there was no team-result term at all** — a defender of a 4-0 and a defender of a 0-4 rated
+identically. There is now a small one, half a rating at most, because twenty players share one result.
+
+Proved able to fail: restoring the unbounded terms fails with *"twelve duels won and twelve lost came
+out at 8.2"*.
+
+**A bug I introduced, caught by the test I wrote for it.** The new `minutesPlayed` returned
+`end / TICKS` without subtracting `start`, so every substitute still came out at 90. The build was
+green and every replacement reported success. Only the behavioural test caught it.
+
+**A pre-existing red, not mine:** `ScoredMatchCarriesNoBlobTest` fails because a `stage` field was added
+to the ScoredMatch projection in `540efcba` without updating the guard.
+
+
+## ✅ T-PERF-1 — a training pass completes instead of never finishing (2026-10-11) — commit `a04dca45`
+
+| | |
+|---|---|
+| **Before** | did not complete in **6+ minutes**; killed twice while still running. **388 s CPU in 398 s wall**, all in `Cascade.cascade`, database **completely idle** — six samples, no running query |
+| **After** | completes in **259 s** and records DONE |
+
+It was never a slow query. Every auto-flush before a query cascades over every entity dirtied so far,
+and both loops ran in one transaction with one persistence context holding every player in the world —
+so the work is quadratic in the size of the world, and the database sits idle while the CPU burns.
+
+Three things had to change: `trainSquad` is reached through `this.`, so its `@Transactional` never
+applies and the whole pass is one session; the mentor and minutes caches resolve on first use and that
+first use was happening *inside* the write loop with the chunk already dirty; and reading each club
+with `findById` would have traded an ORM problem for a query problem, so it is one `findAllById` per
+chunk.
+
+**The first attempt is the interesting part.** Separating reads from writes and clearing every 50 clubs
+measured at **393 s CPU in 408 s — no better than the 388/398 baseline** — and was reverted rather than
+shipped. Chunking alone is not enough; chunking *plus warming the caches* is. An unmeasured change
+labelled as a fix is exactly what this repository keeps writing warnings about.
+
+**Not claimed:** 259 s is a completion time, not a speed-up factor. A clean before/after CPU comparison
+is not available because the "before" never finished.
+
+**Still open, same shape:** the **finance** job walks the same 14,880 clubs every week and has not been
+measured.
+
+
+
 ## ✅ The game clock is one clock and it ticks (2026-10-11) — commit `4addf0b`
 
 The owner asked for the header clock to be the game clock, and then for it to move like a real clock.
