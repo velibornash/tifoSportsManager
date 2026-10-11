@@ -10,37 +10,145 @@
 // to the login screen instead of leaving a dead clock on screen.
 import { authFetch } from './auth.js';
 
+/** The game's zone. Defined once on the server (GameTimeline.GAME_ZONE) and mirrored here for display. */
+const GAME_ZONE = 'Europe/Belgrade';
+
+/** Twelve weeks of seven days — the shape of a season, mirrored from SeasonCalendar. */
+const DAYS_PER_SEASON = 84;
+
 let seasonNumber = 1;
 let weekNumber = 1;
 let dayNumber = 1;
 let dayLabel = '';
-let phaseLabel = "Season in progress";
+let phaseLabel = 'Season in progress';
+
 /**
- * The game's hour, and nothing else, is what the header shows (owner, 2026-10-11).
+ * The game clock (owner, 2026-10-11).
  *
- * <p>It used to render real Belgrade time, on the reasoning that "Advance Hour" moves the season and
- * not the wall clock. That was true and it was the wrong thing to show: every fixture kickoff, every
- * job trigger and every deadline in this game is expressed in game hours, so the one number a manager
- * acts on was the one number the header refused to give them. It cost real confusion — a Day 1 Cup tie
- * reading "18:00" while the clock stood at 23 was impossible to reason about until you knew the first
- * was a kickoff time and the second was your laptop.
+ * <p><b>It ticks like a real clock, and it is one clock.</b> Previously this header rendered
+ * real Belgrade time, then was changed to render the game's own hour as "HH:00" — which was not a
+ * clock at all, and which disagreed with the day beside it every time the day rolled over, because
+ * the day came from a poll and the hour did not.
  *
- * <p>So there is no wall clock here any more, and {@code /api/server-time} is no longer read: it
- * existed only to correct that clock for drift. The game clock counts whole hours on purpose (see
- * {@link isWatchable}), so it is rendered as an hour with ":00" and no seconds. A second hand would be
- * inventing precision the simulation does not have.
+ * <p>Now the server sends its own game time in epoch milliseconds. This file anchors on that, not on
+ * the device clock: the server is a machine in another country, and a laptop four minutes out would
+ * otherwise display a game time four minutes out — which is the same disagreement wearing a different
+ * hat. Between polls the display advances locally, so the seconds hand moves, and the season, week
+ * and day are derived from the same instant rather than arriving separately and drifting.
  */
-let gameHour = null;
+let serverAnchorMillis = null;
+let serverSkewMillis = 0;
+let anchorDate = null;
+let kickoffHour = null;
+let kickoffMinute = null;
+let matchDay = false;
+let syncing = false;
+
+/** Whether the job walk for the last clock move is still running. */
+export function isSyncing() {
+    return syncing;
+}
+
+/**
+ * Waits until the job walk triggered by a clock move has finished.
+ *
+ * <p>Advancing the clock returns immediately and the walk runs on the server (one Advance Hour landing
+ * on day 4 takes the training job over 14,880 clubs, which measured over five minutes on the owner's
+ * database). So "advanced" and "the jobs have run" are two different moments, and anything that wants
+ * to show what the jobs did — the training report, the league table, the finance page — has to wait for
+ * the second one.
+ *
+ * @returns {Promise<boolean>} true if the walk finished, false if it was still running at the timeout
+ */
+export async function waitForSync(timeoutMs = 15 * 60 * 1000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        await syncGameClock();
+        if (!syncing) return true;
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    return false;
+}
+
+/** The game's own "now", in epoch milliseconds. */
+function gameNow() {
+    return serverAnchorMillis === null ? null : Date.now() + serverSkewMillis;
+}
+
+const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: GAME_ZONE,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+});
+
+/** HH:MM:SS in the game's zone. Built from parts because some engines render midnight as "24". */
+function formatGameTime(millis) {
+    const parts = {};
+    for (const part of timeFormatter.formatToParts(new Date(millis))) {
+        parts[part.type] = part.value;
+    }
+    const hour = parts.hour === '24' ? '00' : parts.hour;
+    return `${hour}:${parts.minute}:${parts.second}`;
+}
+
+/**
+ * Season, week and day for a game instant, from the server's anchor.
+ *
+ * <p>The same arithmetic as `GameTimeline.positionAt`, done here so the day label changes the moment
+ * the clock passes midnight rather than up to twenty seconds later. It is duplicated rather than
+ * polled because a header that says "Day 3" over a clock reading 00:30 is precisely the bug this
+ * rewrite exists to remove — the day and the time came from two places and had to be reconciled.
+ */
+function positionAt(millis) {
+    if (!anchorDate) return null;
+    // The game's local date, as YYYY-MM-DD, without depending on the device's zone.
+    const localDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: GAME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(new Date(millis));
+    const days = Math.round((Date.parse(`${localDate}T00:00:00Z`) - Date.parse(`${anchorDate}T00:00:00Z`)) / 86400000);
+    return {
+        season: Math.floor(days / DAYS_PER_SEASON) + 1,
+        week: Math.floor(days / 7) % 12 + 1,
+        day: ((days % 7) + 7) % 7 + 1
+    };
+}
 
 async function syncGameClock() {
     try {
         const response = await authFetch('/api/game-clock');
+        if (!response.ok) return;
         const data = await response.json();
-        seasonNumber = Number(data.seasonNumber || 1);
-        weekNumber = Number(data.weekNumber || 1);
-        dayNumber = Number(data.day || 1);
+        const gameMillis = Number(data.gameTimeEpochMillis);
+        if (!Number.isFinite(gameMillis)) return;
+
+        // Anchor on the server's clock, then let the display run locally between polls.
+        serverAnchorMillis = gameMillis;
+        serverSkewMillis = gameMillis - Date.now();
+        anchorDate = typeof data.anchorDate === 'string' ? data.anchorDate.slice(0, 10) : null;
+
+        matchDay = data.matchDay === true;
+        syncing = data.syncing === true;
+        kickoffHour = Number.isFinite(Number(data.kickoffHour)) ? Number(data.kickoffHour) : null;
+        kickoffMinute = Number.isFinite(Number(data.kickoffMinute)) ? Number(data.kickoffMinute) : null;
+        phaseLabel = data.phase || 'Season in progress';
+
+        const position = positionAt(gameMillis);
+        if (position) {
+            seasonNumber = position.season;
+            weekNumber = position.week;
+            dayNumber = position.day;
+        } else {
+            seasonNumber = Number(data.seasonNumber || 1);
+            weekNumber = Number(data.weekNumber || 1);
+            dayNumber = Number(data.day || 1);
+        }
         dayLabel = data.dayLabel || '';
-        gameHour = Number.isFinite(Number(data.hour)) ? Number(data.hour) : null;
+
         // Publish the clock so the dashboard can gate "Watch Your Match" on the real kickoff hour
         // instead of a week boolean. Set here because this is the one place the server clock is
         // already being read every tick.
@@ -51,24 +159,18 @@ async function syncGameClock() {
             day: data.day,
             hour: data.hour
         };
-        phaseLabel = data.phase || "Season in progress";
     } catch (err) {
-        console.warn("Game clock sync failed:", err);
+        console.warn('Game clock sync failed:', err);
     }
 }
 
 function updateLiveClock() {
-    const timeStr = gameHour === null
-        ? '--:--'
-        : `${String(gameHour).padStart(2, '0')}:00`;
+    const millis = gameNow();
+    const timeStr = millis === null ? '--:--:--' : formatGameTime(millis);
 
-    // Game state only, per the owner (2026-09-28): the real calendar date was removed. It sat
-    // directly next to "Day 3" and read as though the game day were a weekday, which it is not - the
-    // day is a position in the seven-day cycle, so the same season would show different days
-    // depending on when it was started.
-    //
-    // The day label is appended only when the server sent one, so a clock payload without it
-    // degrades to the shorter text instead of rendering "Day undefined".
+    // Game state only, per the owner (2026-09-28): the real calendar date is not a category in this
+    // world. The day is a position in the seven-day cycle and is derived from the clock, so it and
+    // the time beside it are the same instant by construction.
     const dayText = dayLabel ? ` · Day ${dayNumber} (${dayLabel})` : ` · Day ${dayNumber}`;
     const seasonWeek = `Season ${seasonNumber} • Week ${weekNumber}${dayText}`;
 
@@ -102,8 +204,8 @@ function isWatchable(clock) {
     if (clock.kickoffHour === null || clock.kickoffHour === undefined) return false;
     const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined
         ? 0 : Number(clock.kickoffMinute);
-    // The clock counts whole hours on purpose, so a slot inside an hour (day 1 is 20:45) becomes
-    // available on the next hour tick rather than pretending it can be resolved to the minute.
+    // Day 1 is a 20:45 slot. A kickoff inside the hour is not watchable until that hour has passed,
+    // because the engine resolves matches to the hour and there is nothing to watch at 20:30.
     return kickoffMinute === 0
         ? Number(clock.hour) >= Number(clock.kickoffHour)
         : Number(clock.hour) > Number(clock.kickoffHour);
@@ -119,9 +221,7 @@ function watchReason(clock) {
     if (!clock) return 'The game clock is not available.';
     if (clock.matchDay !== true) return 'Not a match day.';
     if (clock.kickoffHour === null || clock.kickoffHour === undefined) return 'No kickoff on this day.';
-    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined
-        ? 0 : Number(clock.kickoffMinute);
-    const minute = Number(clock.minute || 0);
+    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined ? 0 : Number(clock.kickoffMinute);
     const hour = Number(clock.hour);
     const beforeKickoff = !(kickoffMinute === 0
         ? hour >= Number(clock.kickoffHour)
@@ -130,4 +230,16 @@ function watchReason(clock) {
         return `Kickoff is at ${kickoffLabel(clock)}.`;
     }
     return 'Your match is ready to watch.';
+}
+
+/**
+ * Re-reads the clock now, rather than waiting for the next poll.
+ *
+ * <p>Called after anything that moves the world — an advance, a week rollover, an admin offset
+ * change. Without it the header kept showing the position the clock was in before the button was
+ * pressed, which reads as the button having done nothing.
+ */
+export async function refreshGameClock() {
+    await syncGameClock();
+    updateLiveClock();
 }

@@ -1,29 +1,39 @@
 package org.example.footballmanager.newLogic.jobs;
 
-import org.example.footballmanager.newLogic.model.GameDay;
 import org.example.footballmanager.newLogic.service.GameClockService;
-import org.example.footballmanager.newLogic.service.SeasonService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 /**
- * Moves the season forward on its own (owner, 2026-09-28).
+ * Runs the jobs the game clock has made due (owner, 2026-09-28; rebuilt 2026-10-11).
  *
- * <p>Until this existed, a job ran only when somebody pressed a button. That is fine for testing and
- * useless in production: nobody is going to sit there clicking Advance Hour so the season plays
- * itself. This is the scheduled path, and it is the one that has to be correct.
+ * <p><b>It does not move the clock.</b> It used to. The clock used to be four counters that only moved
+ * when somebody pressed a button, so something had to press it for the game to play itself — hence
+ * {@code game.clock.auto-advance}, which is how production ended up running the season at one game
+ * hour per real hour by adding 3600 seconds to an offset every tick.
  *
- * <p><b>It checks as well as advances.</b> The owner asked for a check on the hour, and the check is
- * the important half: on every tick it runs whatever is due for the current position, so a job that
- * was missed - an app that was down over a kickoff, a job that failed and was re-queued - is picked
- * up rather than being skipped for good. The done-flags make the second and third tick harmless.
+ * <p>Now the clock is real time plus an offset, so it already moves. What is left for a scheduler to
+ * do is the part that genuinely needs a heartbeat: <b>looking</b>. This calls
+ * {@link GameClockService#synchronise()}, which walks every game hour since the last synchronisation
+ * and runs whatever came due on each one.
  *
- * <p><b>Off by default.</b> Auto-advancing in dev and test would make the season move underneath the
- * tests, and every season test would become time-dependent. It is enabled per profile, and the
- * advance buttons remain the manual path for testing.
+ * <h2>Why every thirty minutes</h2>
+ *
+ * <p>Half-hourly rather than hourly, so a trigger is at most half an hour late instead of a full hour,
+ * and so an hour in which nothing is due costs nothing but a handful of memo lookups. The cron is on
+ * the half hour rather than at a fixed rate because a fixed rate drifts and can fire twice across a
+ * daylight-saving change.
+ *
+ * <h2>Why "the ones that did not run last time" is not a special case</h2>
+ *
+ * <p>It is what a walk from {@code lastSyncedAt} does. An app that was down over a kickoff, a job that
+ * threw and was re-queued, a request that timed out halfway — all of them leave hours behind, and the
+ * walk is the same code either way.
  */
 @Component
 public class GameClockScheduler {
@@ -31,65 +41,45 @@ public class GameClockScheduler {
     private static final Logger log = LoggerFactory.getLogger(GameClockScheduler.class);
 
     private final GameClockService clockService;
-    private final JobRunner jobRunner;
-    private final SeasonService seasons;
-    private final boolean autoAdvance;
     private final boolean enabled;
 
-    public GameClockScheduler(GameClockService clockService, JobRunner jobRunner, SeasonService seasons,
-                              @Value("${game.clock.auto-advance:false}") boolean autoAdvance,
+    public GameClockScheduler(GameClockService clockService,
                               @Value("${game.clock.scheduler-enabled:false}") boolean enabled) {
         this.clockService = clockService;
-        this.jobRunner = jobRunner;
-        this.seasons = seasons;
-        this.autoAdvance = autoAdvance;
         this.enabled = enabled;
     }
 
     /**
-     * Hourly tick.
+     * Every half hour, on the hour and on the half.
      *
-     * <p>Cron rather than a fixed rate: a fixed rate drifts with the wall clock and can fire twice in
-     * an hour across a DST change. An hourly check that means the top of the hour is what the owner
-     * asked for and is the thing a manager can predict.
+     * <p>Off in dev and test by default: a season that moves underneath a test run makes every season
+     * test time-dependent. The advance buttons and {@code POST /api/game-clock/advance} are the manual
+     * path and work identically.
      */
-    @Scheduled(cron = "${game.clock.cron:0 0 * * * *}")
-    public void onTheHour() {
+    @Scheduled(cron = "${game.clock.cron:0 */30 * * * *}")
+    public void synchronise() {
         if (!enabled) {
             return;
         }
         try {
-            if (autoAdvance) {
-                // Advancing is what makes a job due, so the two go together.
-                clockService.advanceHour();
+            var result = clockService.synchronise();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> jobs = (Map<String, Object>) result.get("jobs");
+            if (jobs == null) {
+                return;
             }
-            // Then check regardless. A job missed while the app was down is caught here rather than
-            // being lost for good, which is the whole reason for the check.
-            var snapshot = clockService.snapshot();
-            int seasonYear = asInt(snapshot.get("seasonNumber"), 1);
-            var result = jobRunner.runDue(
-                    seasonYear,
-                    asInt(snapshot.get("weekNumber"), 1),
-                    asInt(snapshot.get("day"), GameDay.FIRST),
-                    asInt(snapshot.get("hour"), 0));
-            int ran = ((Number) result.getOrDefault("ran", 0)).intValue();
-            int failed = ((Number) result.getOrDefault("failed", 0)).intValue();
-            if (ran > 0 || failed > 0) {
-                log.info("Hourly tick: season {} week {} day {} hour {} - {} job(s) ran, {} failed.",
-                        seasonYear, snapshot.get("weekNumber"), snapshot.get("day"),
-                        snapshot.get("hour"), ran, failed);
+            int ran = ((Number) jobs.getOrDefault("ran", 0)).intValue();
+            int failed = ((Number) jobs.getOrDefault("failed", 0)).intValue();
+            boolean truncated = Boolean.TRUE.equals(jobs.get("truncated"));
+            if (ran > 0 || failed > 0 || truncated) {
+                log.info("Game-clock sync: season {} week {} day {} hour {} - walked {}h, {} ran, {} failed{}.",
+                        result.get("seasonNumber"), result.get("weekNumber"), result.get("day"),
+                        result.get("hour"), jobs.getOrDefault("walkedHours", 0), ran, failed,
+                        truncated ? " (catch-up capped at " + GameClockService.MAX_CATCH_UP_HOURS + "h)" : "");
             }
         } catch (RuntimeException e) {
-            // A scheduler that throws stops being scheduled. Log and carry on to the next hour.
-            log.error("Hourly game-clock tick failed", e);
-        }
-    }
-
-    private int asInt(Object value, int fallback) {
-        try {
-            return Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return fallback;
+            // A scheduler that throws stops being scheduled. Log and carry on to the next tick.
+            log.error("Game-clock synchronisation failed", e);
         }
     }
 }

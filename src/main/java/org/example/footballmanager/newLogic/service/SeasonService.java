@@ -9,7 +9,11 @@ import org.example.footballmanager.newLogic.model.JuniorStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -66,38 +70,48 @@ public class SeasonService {
         GameClock clock = gameClockRepository.findById(1L).orElseGet(() -> {
             GameClock c = new GameClock();
             c.setId(1L);
-            c.setCurrentSeason(1);
-            c.setCurrentWeek(1);
-            c.setCurrentDate(LocalDateTime.now());
+            // A new world starts at season 1, week 1, day 1 - which means its anchor is today.
+            c.setAnchorDate(LocalDateTime.now(GameTimeline.GAME_ZONE).withSecond(0).withNano(0));
             return c;
         });
-        // A row created before the day/hour columns existed has them null, and an entity field
-        // default only applies to rows Hibernate inserts - it does not backfill. Reading that null
-        // made /api/game-clock report hour=null, so the day is seeded here instead of being patched
-        // in the database by hand.
-        if (clock.getCurrentDay() == null) {
-            clock.setCurrentDay(GameDay.FIRST);
+
+        // **Migration, once per world (owner, 2026-10-11).**
+        //
+        // The clock used to hold season/week/day/hour as four stored counters and render a time from a
+        // separate offset. Those two disagreed silently. The counters are now derived from an anchor
+        // plus the offset, so the first time this runs it reads the counters that are still in the row,
+        // works out which anchor puts the game back exactly where it already was, and writes that.
+        //
+        // The offset is folded in at the same time, and that part is not optional. The old offset only
+        // ever moved the *displayed* time - the counters were the truth - so anchoring for the counters
+        // and leaving the offset alone left the offset applied a second time on top: a world sitting on
+        // season 1 week 1 day 4 at 09:00, holding a three-day offset, woke up on **day 7 at 17:00**.
+        // Three game days, and a training day and a matchday, vanished into it.
+        //
+        // So the target is the whole position - the day from the counters and the hour from the
+        // counters - and the offset is set to land game time exactly on it. Replacing the
+        // representation must not replace the state.
+        if (clock.getAnchorDate() == null) {
+            GamePosition legacy = clock.legacyPosition();
+            LocalDate today = LocalDate.now(GameTimeline.GAME_ZONE);
+            LocalDate anchor = GameTimeline.anchorFor(today, legacy);
+            clock.setAnchorDate(anchor.atStartOfDay());
+
+            // `anchorFor(today, legacy)` is built so that **today** is the day the counters named.
+            // So the target instant is today at the legacy hour - not the anchor's day, which is where
+            // the first version of this looked and put a week-1-day-4 world on day 1.
+            Instant currentGameTime = Instant.now().plusSeconds(clock.offset());
+            Instant whereItWas = LocalDateTime.of(today, LocalTime.of(legacy.hour(), 0))
+                    .atZone(GameTimeline.GAME_ZONE).toInstant();
+            clock.setAdvanceOffsetSeconds(clock.offset()
+                    + Duration.between(currentGameTime, whereItWas).getSeconds());
+
+            log.info("Game clock migrated: season {} week {} day {} at {}:00 is where it already was; "
+                            + "game time {} -> {}, offset {}s.",
+                    legacy.season(), legacy.week(), legacy.day(), legacy.hour(),
+                    currentGameTime, whereItWas, clock.getAdvanceOffsetSeconds());
         }
-        if (clock.getCurrentHour() == null) {
-            // Before the first kickoff of the day, not at kickoff: the day starts at 09:00 so
-            // "Watch match" is correctly inactive until the hour reaches the fixture.
-            clock.setCurrentHour(9);
-        }
-        if (clock.getCurrentSeason() != null && clock.getCurrentSeason() > 1000) {
-            // A calendar year means this clock predates the season-number scheme. Every such world
-            // was still on its first season, so it maps to 1 - not to an arithmetic guess that would
-            // need the year it came from, which is the constant this change exists to delete.
-            clock.setCurrentSeason(1);
-        }
-        if (clock.getCurrentSeason() == null || clock.getCurrentSeason() < 1) {
-            clock.setCurrentSeason(1);
-        }
-        if (clock.getCurrentWeek() == null || clock.getCurrentWeek() < 1) {
-            clock.setCurrentWeek(1);
-        }
-        if (clock.getCurrentDate() == null) {
-            clock.setCurrentDate(LocalDateTime.now());
-        }
+
         return gameClockRepository.save(clock);
     }
 
@@ -474,9 +488,12 @@ public class SeasonService {
         GameClock clock = getOrCreateClock();
         int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
         if (week < FRIENDLY_WEEK) {
-            clock.setCurrentWeek(week + 1);
-            clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
-            gameClockRepository.save(clock);
+            // **The week counter is derived from the clock now, so nothing is written here.**
+            //
+            // This used to do `clock.setCurrentWeek(week + 1); clock.setCurrentDate(+1 week)` and save.
+            // The position comes from `anchor + offset` now, and the offset is what moves it — so a
+            // write here would either be silently ignored or, worse, reintroduce a second cursor that
+            // the clock then contradicted on the next read.
             decrementInjuriesByWeek();
             recoverFatigueForWeek();
             expirePlayerContracts();
@@ -698,12 +715,11 @@ public class SeasonService {
         applyPromotionRelegation(endingSeasonYear);
         agePlayersAndJuniorsOneYear();
 
-        GameClock clock = getOrCreateClock();
-        clock.setCurrentSeason(clock.getCurrentSeason() + 1);
-        clock.setCurrentWeek(1);
-        clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1));
-        gameClockRepository.save(clock);
-
+        // **No clock write.** This used to do `setCurrentSeason(+1); setCurrentWeek(1);
+        // setCurrentDate(+1 week)` and save, because the counters were stored and something had to
+        // move them. They are derived: this job runs at week 12, day 7, hour 23, and the clock reaches
+        // season N+1 week 1 on its own at the next midnight. Writing here as well would be a second
+        // clock, set forward a step ahead of the one the header renders.
         int nextSeasonYear = getActiveSeasonYear();
         ensureActiveSeasonEntity();
 

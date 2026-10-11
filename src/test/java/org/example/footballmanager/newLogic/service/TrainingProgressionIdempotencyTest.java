@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.dto.training.TrainingWeekReportDTO;
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.GameClock;
@@ -90,8 +92,7 @@ class TrainingProgressionIdempotencyTest {
 
         GameClock clock = new GameClock();
         clock.setId(1L);
-        clock.setCurrentSeason(SEASON);
-        clock.setCurrentWeek(WEEK);
+        GameClocks.moveTo(clock, SEASON, WEEK);
         when(seasonService.getOrCreateClock()).thenReturn(clock);
 
         team = new Team();

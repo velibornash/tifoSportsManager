@@ -1,5 +1,7 @@
 package org.example.footballmanager.integration;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerContract;
@@ -81,8 +83,7 @@ class OmladinacTransferJourneyTest {
         // A window has to be open or nothing below can happen, and the calendar is the only thing
         // that decides that.
         var clock = clocks.findAll().stream().findFirst().orElseThrow();
-        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
-        clock.setCurrentSeason(1);
+        GameClocks.moveTo(clock, 1, TransferWindowService.SUMMER_OPEN);
         clocks.save(clock);
 
         omladinac = club("OFK Omladinac", 4_000_000, 70);
@@ -243,7 +244,7 @@ class OmladinacTransferJourneyTest {
     @DisplayName("nothing happens outside the window")
     void theWindowIsEnforcedEndToEnd() {
         var clock = clocks.findAll().stream().findFirst().orElseThrow();
-        clock.setCurrentWeek(3);
+        GameClocks.moveTo(clock, clock.position().season(), 3);
         clocks.save(clock);
 
         Player target = aPlayer(rival, Position.DEF, 25, 1_000_000, 4_000);

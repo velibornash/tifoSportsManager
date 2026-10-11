@@ -41,7 +41,7 @@ public class APIController {
     public ResponseEntity<Map<String, String>> getServerTime() {
         // The game's own zone, defined once on the clock. It used to repeat the literal here, which is
         // how a constant ends up dead in one place and duplicated in another.
-        ZoneId zone = org.example.footballmanager.newLogic.service.GameClockService.GAME_ZONE;
+        ZoneId zone = org.example.footballmanager.newLogic.model.GameTimeline.GAME_ZONE;
         ZonedDateTime nowZoned = ZonedDateTime.now(zone);  // trenutno vreme u CET
         LocalDateTime now = nowZoned.toLocalDateTime();
 
@@ -54,26 +54,25 @@ public class APIController {
     }
 
     /**
-     * Moves the game clock forward (owner, 2026-09-28).
+     * Moves the game clock forward (owner, 2026-09-28, reworked 2026-10-11).
      *
      * <p>Adds to the clock's accumulated offset rather than overwriting the time, so the clock keeps
      * ticking at one game second per real second and the advance is permanent. A stored hour that
      * the real clock immediately overwrites cannot work, which is what the first cut did.
-     */
-    /**
-     * The largest advance one request may ask for.
      *
-     * <p>{@code amount = 2147483647} ran a two-billion-iteration loop, and {@code amount * 24} overflows
-     * int above 89,478,485 — so a large enough "days" asked the clock to go <b>backwards</b>. A week is the
-     * most a single click ever needs; a season is 84.
+     * <p>Advancing also runs everything that became due on the hours it crossed — see
+     * {@link GameClockService#synchronise()}. There is no separate "run the jobs" step for an advance
+     * to forget.
      */
     private static final int MAX_ADVANCE_HOURS = 24 * 7;
 
     /**
-     * Reject an advance that is negative, zero, or large enough to overflow the hour arithmetic.
+     * Reject an advance that is negative, zero, or larger than the catch-up walk will go.
      *
-     * <p>{@code amount * 24} in the caller is plain {@code int} multiplication, so a "days" request above
-     * 89,478,485 wraps negative and the clock moves backwards.
+     * <p>The bound lives in {@link GameClockService} now, where the walk that has to honour it is, and
+     * the check here is the HTTP-shaped version of it. A "days" request multiplies by 24 <em>after</em>
+     * this returns, so a number that passes here can still be refused by the service — which is the
+     * correct outcome, and the reason the service is the one that throws.
      */
     private int checkedAmount(int amount) {
         if (amount < 1 || amount > MAX_ADVANCE_HOURS) {
@@ -118,22 +117,34 @@ public class APIController {
     }
 
     /**
+     * Moves the clock by a number of seconds, in either direction (owner, 2026-10-11).
+     *
+     * <p>The owner's rule: the game clock is Belgrade time plus or minus an offset, and admin controls
+     * add to it or take from it. This is that control, and it is the only way to wind the world back.
+     *
+     * <p>Administrator-only for the same reason as {@link #advanceGameClock}: it moves every club in
+     * every country, and a hidden button is not a permission.
+     */
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
+    @PostMapping("/game-clock/offset")
+    public Map<String, Object> shiftOffset(@RequestParam long seconds) {
+        return gameClockService.shiftOffsetSeconds(seconds);
+    }
+
+    /**
      * Runs any job whose trigger has been reached, without moving the clock (owner, 2026-09-28).
      *
      * <p>Advancing the clock already runs what is due. This exists for the case where a job failed
      * and has been re-queued, and for seeing the outcome of a scan without an advance. It is safe to
      * call repeatedly: a job with a DONE record is skipped.
+     *
+     * <p>It reads the position once and asks the runner about it, rather than going through the
+     * service — it is a <em>look</em>, not a catch-up, and the two are not the same question.
      */
     @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
     @PostMapping("/jobs/run-due")
     public Map<String, Object> runDueJobs() {
-        Map<String, Object> snapshot = gameClockService.snapshot();
-        return jobRunner.runDue(
-                Integer.parseInt(String.valueOf(
-                        asInt(snapshot.get("seasonNumber"), 1))),
-                asInt(snapshot.get("weekNumber"), 1),
-                asInt(snapshot.get("day"), 1),
-                asInt(snapshot.get("hour"), 0));
+        return gameClockService.runDueNow();
     }
 
     private int asInt(Object value, int fallback) {
@@ -334,7 +345,6 @@ public class APIController {
 
     @GetMapping("/game-clock")
     public ResponseEntity<Map<String, Object>> getGameClock() {
-        GameClock clock = seasonService.getOrCreateClock();
         Map<String, Object> response = new HashMap<>();
         // Delegated to GameClockService so game time has exactly one definition. The inline
         // fields this replaced disagreed with the service whenever an advance moved the hour.

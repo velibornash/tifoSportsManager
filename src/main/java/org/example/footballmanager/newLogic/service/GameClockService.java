@@ -1,344 +1,456 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.jobs.JobRunner;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.GameDay;
-import org.example.footballmanager.newLogic.jobs.JobRunner;
+import org.example.footballmanager.newLogic.model.GamePosition;
+import org.example.footballmanager.newLogic.model.GameTimeline;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
- * The game clock (owner, 2026-09-28).
+ * The game clock (owner, 2026-09-28; rebuilt 2026-10-11).
  *
- * <p>Owns three things that were previously spread across {@code SeasonService} and the browser:
- * what time it is in the game, how to move it forward, and keeping the day, week and season
- * counters consistent when it moves.
+ * <h2>There is one clock</h2>
  *
- * <h2>Why game time is an offset and not a value</h2>
+ * <p>This service used to own four counters ({@code currentSeason}, {@code currentWeek},
+ * {@code currentDay}, {@code currentHour}) and move them itself on every advance. It also owned an
+ * offset, and rendered a time from it. Those were two clocks, they disagreed, and the disagreement was
+ * silent — a header reading {@code 16:20} beside a job runner that believed it was 09:00 of day 4.
  *
- * <p>The first cut stored {@code currentHour} as a plain integer and rendered the header from
- * {@code Date.now()}. That is a clock that cannot be moved: advancing the hour writes 10, and the
- * next render reads the real time again, so the jump lasts a frame. Worse, it means the game time
- * and the real time are two different clocks with nothing tying them together, and "what time is it
- * in the game" has no single answer.
+ * <p>Now the clock is {@code now() + offset} and the position
+ * ({@link GameTimeline#positionAt}) is a pure function of it. Moving the world means changing the
+ * offset. Nothing else.
  *
- * <p>So game time is <b>real time plus an accumulated offset</b>:
+ * <h2>Every movement ends in the same place</h2>
  *
- * <pre>   gameTime = now() + advanceOffsetSeconds</pre>
- *
- * <p>That satisfies both halves of what the owner asked for. The clock ticks 1:1 with real seconds -
- * one real second is one game second - because only the offset is stored and {@code now()} supplies
- * the ticking. And {@code advance hour} moves it forward permanently, because it adds to the offset
- * rather than overwriting a value that the next tick would undo.
- *
- * <h2>Why the day counter is not derived from the clock</h2>
- *
- * <p>{@code currentDay} counts days crossed, not weekdays. Deriving it from the calendar would make
- * the same season behave differently depending on the weekday it was started on, and a cup round
- * could land on the wrong day purely because of the start date.
+ * <p>Advance hour, advance day, advance week, the admin offset control and the scheduled synchroniser
+ * all do exactly one thing — add to the offset — and then call {@link #synchronise()}. There is no
+ * second code path that moves the clock without running the jobs that hour made due, which is how the
+ * old week-rollover could be skipped entirely.
  */
 @Service
 public class GameClockService {
 
-    private static final int SECONDS_PER_HOUR = 3600;
-    private static final int HOURS_PER_DAY = 24;
-    private static final int DAYS_PER_WEEK = 7;
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(GameClockService.class);
 
     /**
-     * The zone the game clock reads its hour in.
+     * The most game hours one synchronisation will walk.
      *
-     * <p>Must match the zone clock.js formats in, or the header and the API would disagree about
-     * what hour it is - the same class of bug as storing the hour twice.
+     * <p>Seven days. A month-long outage would otherwise walk a month of matchdays in one request, and a
+     * matchday simulates 155 fixtures — catching up on a season of downtime is not a rescue, it is a
+     * denial of service against the owner who pressed the button.
      */
-    /**
-     * The game's own timezone.
-     *
-     * <p>Declared and never read - B10's "dead constant". It is now the single definition, and
-     * {@code /api/server-time} uses it instead of repeating the literal. One zone, named once, so a
-     * server-time that disagrees with the clock is not a thing that can happen.
-     */
-    public static final java.time.ZoneId GAME_ZONE = java.time.ZoneId.of("Europe/Belgrade");
+    public static final int MAX_CATCH_UP_HOURS = 24 * 7;
 
     private final GameClockRepository clocks;
     private final SeasonService seasons;
     private final JobRunner jobRunner;
+    private final Clock time;
+    private final Executor walkExecutor;
+    private volatile boolean syncing;
 
+    /**
+     * Marked explicitly because this class has two constructors and Spring refuses to guess between
+     * them — the same trap {@code NationalTeamSeeder} records.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
     public GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner) {
+        this(clocks, seasons, jobRunner, Clock.systemUTC());
+    }
+
+    /**
+     * One thread, one walk at a time.
+     *
+     * <p>Single on purpose. Two walks at once would both read {@code lastSyncedAt} and both run the
+     * same training over the same 14,880 clubs; the {@code job_run} claim stops the body running twice,
+     * but it does not stop the second walk walking 168 hours of positions that the first one is
+     * already past.
+     */
+    private static Executor newWalkExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "game-clock-sync");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    /**
+     * The real one and the test one differ in exactly one thing: where "now" comes from.
+     *
+     * <p>A game clock whose only input is the wall clock cannot be asserted on. "Advance 168 hours and
+     * land on the same hour of the day" is true for 363 nights a year and false on the two
+     * daylight-saving ones, so the test would be right almost always and wrong for a reason no failure
+     * message would explain.
+     */
+    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner, Clock time) {
+        this(clocks, seasons, jobRunner, time, newWalkExecutor());
+    }
+
+    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner, Clock time,
+                     Executor walkExecutor) {
         this.clocks = clocks;
         this.seasons = seasons;
         this.jobRunner = jobRunner;
+        this.time = time;
+        this.walkExecutor = walkExecutor;
     }
 
     private GameClock clock() {
         return seasons.getOrCreateClock();
     }
 
-    /** Game time: real time plus everything the owner has advanced. */
+    /** Real time, as this service sees it. */
+    private Instant instant() {
+        return time.instant();
+    }
+
+    /** Game time: real time plus everything the owner has moved the clock by. */
     public Instant gameTime() {
-        GameClock clock = clock();
-        return Instant.now().plusSeconds(offsetOf(clock));
+        return clock().gameTimeAt(instant());
+    }
+
+    /** Where the game is. Derived, so it cannot be stale. */
+    public GamePosition position() {
+        return clock().positionAt(instant());
     }
 
     /**
-     * The advance offset, treating a legacy null as zero.
+     * The whole clock, as the header and the dashboard read it.
      *
-     * <p>A null offset is a row created before the column existed. An entity field default only
-     * applies to rows Hibernate inserts, so it cannot be relied on to backfill.
-     */
-    private long offsetOf(GameClock clock) {
-        Long offset = clock.getAdvanceOffsetSeconds();
-        return offset == null ? 0L : offset;
-    }
-
-    /**
-     * The cycle position implied by the current hour, day, week and season.
-     *
-     * <p>Derived on read rather than stored, so it can never disagree with the clock it describes.
+     * <p><b>The time is sent in two forms on purpose.</b> {@code gameTimeEpochMillis} is the server's
+     * own game time in epoch milliseconds, and the browser anchors on it rather than on the device
+     * clock: the server this runs against is a machine in another country, and a laptop whose clock is
+     * four minutes out would then show a game time four minutes out — which is the same class of bug as
+     * the two clocks this replaced, wearing a different hat.
      */
     public Map<String, Object> snapshot() {
         GameClock clock = clock();
-        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        // An explicit counter, the same one advanceHour wraps. It was derived from the game
-        // timestamp before, which tied the hour to the wall clock and made a 23:00 job fire or not
-        // depending on what time the manager pressed the button. gameTime() is still reported below
-        // for the ticking display, but it no longer decides what hour it is.
-        int hour = clock.getCurrentHour() == null ? 0 : clock.getCurrentHour();
-        GameDay gameDay = GameDay.of(day);
+        Instant realNow = instant();
+        GamePosition position = clock.positionAt(realNow);
+        GameDay gameDay = GameDay.of(position.day());
+        Instant gameTime = clock.gameTimeAt(realNow);
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("seasonNumber", clock.getCurrentSeason());
-        out.put("weekNumber", clock.getCurrentWeek());
-        out.put("day", gameDay.number());
+        out.put("seasonNumber", position.season());
+        out.put("weekNumber", position.week());
+        out.put("day", position.day());
         out.put("dayLabel", gameDay.label());
         out.put("dayKind", gameDay.kind().name());
         out.put("matchDay", gameDay.isMatchDay());
         out.put("kickoffHour", gameDay.kickoffHour());
         out.put("kickoffMinute", gameDay.kickoffMinute());
-        out.put("hour", hour);
-        out.put("gameTime", gameTime().toString());
-        out.put("advanceOffsetSeconds", offsetOf(clock));
+        out.put("hour", position.hour());
+        out.put("minute", gameTime.atZone(GameTimeline.GAME_ZONE).getMinute());
+        out.put("second", gameTime.atZone(GameTimeline.GAME_ZONE).getSecond());
+        out.put("gameTime", gameTime.toString());
+        out.put("gameTimeEpochMillis", gameTime.toEpochMilli());
+        out.put("serverEpochMillis", realNow.toEpochMilli());
+        out.put("advanceOffsetSeconds", clock.offset());
+        out.put("anchorDate", clock.getAnchorDate() == null ? null : clock.getAnchorDate().toLocalDate().toString());
+        out.put("lastSyncedAt", clock.getLastSyncedAt());
+        out.put("syncing", syncing);
         return out;
     }
 
     /**
-     * Moves the game clock forward one hour (owner, 2026-09-28).
+     * Moves the world forward by a number of game hours.
      *
-     * <p>The rules, exactly as the owner stated them: the offset on the real clock grows by an hour,
-     * and the counters wrap.
-     *
-     * <pre>
-     *   hour  23 -&gt; 0,  and the day moves up by one
-     *   day    7 -&gt; 1,  and the week moves up by one
-     *   week  12 -&gt; 1,  and the season moves up by one
-     * </pre>
-     *
-     * <p><b>Explicit counters, not derived values.</b> The previous version derived the hour from the
-     * game timestamp and worked the day out by measuring the date it moved across. That tied the
-     * counters to the wall clock: a job at 23:00 was evaluated or skipped depending on what time of
-     * day the manager pressed the button, so week-rollover and season-rollover never ran. Counters
-     * that wrap cannot be missed that way.
+     * <p>One write and one walk. This used to call {@link #advanceHour()} in a loop, which wrote the
+     * clock row 168 times to advance a week and — because it invoked itself rather than going through
+     * the proxy — ran all 168 steps inside a single transaction.
      */
-    /** The world's current date, or a stable fallback when no clock row carries one. */
-    private LocalDateTime currentDateOf(GameClock clock) {
-        return clock.getCurrentDate() != null
-                ? clock.getCurrentDate()
-                : LocalDateTime.now().withSecond(0).withNano(0);
-    }
-
-    @Transactional
-    public Map<String, Object> advanceHour() {
-        GameClock clock = clock();
-        int hour = (clock.getCurrentHour() == null ? 0 : clock.getCurrentHour()) + 1;
-        int day = clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay();
-        int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
-        int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
-
-        boolean weekRolled = false;
-        if (hour > 23) {
-            hour = 0;
-            day += 1;
-            if (day > GameDay.LAST) {
-                day = GameDay.FIRST;
-                week += 1;
-                weekRolled = true;
-                if (week > SeasonService.WEEKS_PER_SEASON) {
-                    week = 1;
-                    season += 1;
-                }
-            }
-        }
-
-        clock.setCurrentHour(hour);
-        clock.setCurrentDay(day);
-        clock.setCurrentWeek(week);
-        clock.setCurrentSeason(season);
-        clock.setAdvanceOffsetSeconds(offsetOf(clock) + SECONDS_PER_HOUR);
-        // **The in-game date advances with the game, not with the wall clock (B10).**
-        //
-        // This overwrote the date with `Instant.now()` truncated to UTC on every single hour, so
-        // `currentDate` tracked real time rather than the season: two managers doing the same 168 advances
-        // got different dates, and `ZoneLoadService:181-186` reads exactly this field.
-        //
-        // **The date moves when the week does**, by one week. That is the rate the rest of the codebase
-        // already uses and has always used: `SeasonService:443` and `:635` both do
-        // `clock.setCurrentDate(clock.getCurrentDate().plusWeeks(1))` when the week counter advances.
-        //
-        // A game day is a <b>day-slot</b> - the seven-day template is a game construct, not a week of
-        // wall-clock days. A week of game time is one week of date, so advancing 168 hours moves the date
-        // by exactly seven days. Writing "one day per day-slot" would have been a rate nobody else in the
-        // codebase agreed with, which is the drift this whole bug was.
-        if (weekRolled) {
-            clock.setCurrentDate(currentDateOf(clock).plusWeeks(1));
-        } else if (clock.getCurrentDate() == null) {
-            clock.setCurrentDate(LocalDateTime.now().withSecond(0).withNano(0));
-        }
-
-        clocks.save(clock);
-
-        return afterMove(clock, hour);
-    }
-
-    /**
-     * One whole day (owner, 2026-09-28).
-     *
-     * <p>This used to walk the remaining hours of the day through the runner <i>and then</i> call
-     * {@code advanceHours} over the same range, so every hour of the day was offered twice — 48 runner
-     * calls for a day that has 24. The pre-loop was there to make sure a job at 23:00 was evaluated on
-     * the day it belonged to, and the worry is not real: {@code advanceHour} dispatches <b>after</b>
-     * incrementing the hour but <b>before</b> rolling the day, so the step from 22:00 to 23:00 offers
-     * (today, 23) and only the step past 23:00 moves the day. The pre-loop was belt and braces on a
-     * belt that was already fastened.
-     *
-     * <p>So this is now {@code advanceHours(24)}, the same shape as {@link #advanceWeek()}, and a day
-     * offers 24 positions rather than 48.
-     */
-    @Transactional
-    public Map<String, Object> advanceDay() {
-        return advanceHours(HOURS_PER_DAY);
-    }
-
-    /**
-     * A whole week, as 168 real hours (owner, 2026-09-28).
-     *
-     * <p><b>This used to move the week counter and one day of game time, and dispatch jobs once.</b> The
-     * consequences were not subtle and none of them were reported:
-     *
-     * <ul>
-     *   <li>the day-of-week never changed, so the clock sat on whatever day it started on for ever;</li>
-     *   <li>only that one day was ever offered to the job runner, so every job pinned to day 5 or 7 was
-     *       skipped permanently — including the day-7 league matchday and the season rollover;</li>
-     *   <li>{@code job_run} held thirteen runs, all of them at day 3, and
-     *       {@code season-rollover} had never run at all, so the promotion ladder had never executed
-     *       for any country.</li>
-     * </ul>
-     *
-     * <p>It is now {@code advanceHours(168)}, which is the same stepping {@code advanceDay} already used
-     * and the one that cannot skip a trigger. The owner's requirement — the week counter goes up by one —
-     * still holds, and the end position still does not depend on the hour the button was pressed, because
-     * 168 hours lands on the same hour and day of the next week whatever hour that started from.
-     */
-    @Transactional
-    public Map<String, Object> advanceWeek() {
-        return advanceHours(HOURS_PER_DAY * DAYS_PER_WEEK);
-    }
-
-    private int seasonYearOf(GameClock clock) {
-        return clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
-    }
-
-    /** Runs whatever is due for the position the clock has just arrived at. */
-    private Map<String, Object> afterMove(GameClock clock, int hour) {
-        Map<String, Object> result = snapshot();
-        result.put("jobs", jobRunner.runDue(seasonYearOf(clock),
-                clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek(),
-                clock.getCurrentDay() == null ? GameDay.FIRST : clock.getCurrentDay(),
-                hour));
-        return result;
-    }
-
-    /** N raw hours, one at a time, so no trigger is stepped over. */
-    @Transactional
     public Map<String, Object> advanceHours(int hours) {
         if (hours <= 0) {
             throw new IllegalArgumentException("Advance must be a positive number of hours.");
         }
-        Map<String, Object> last = null;
-        // Accumulated across every step, not just the last one (owner, 2026-10-07).
-        //
-        // Each step asks the runner what is due for that hour and returns that hour's outcome, so a
-        // 24-hour advance returned only the twenty-fourth hour's jobs. "Advance a day" then reported
-        // two or three jobs when it had run five, which reads as the day being wrong rather than the
-        // report being incomplete. The whole span is collected so the answer is
-        // "moved 24 hours, ran training, skipped 3 matchdays, nothing failed".
-        Map<String, Integer> totals = new LinkedHashMap<>();
-        totals.put("ran", 0);
-        totals.put("skipped", 0);
-        totals.put("failed", 0);
+        if (hours > MAX_CATCH_UP_HOURS) {
+            throw new IllegalArgumentException(
+                    "A single advance is at most " + MAX_CATCH_UP_HOURS + " hours, was " + hours + ".");
+        }
+        return moveClock(hours * 3600L);
+    }
+
+    /** One game day. */
+    public Map<String, Object> advanceDay() {
+        return advanceHours(24);
+    }
+
+    /** One game week — 168 hours, two league matchdays, one training day, one rollover. */
+    public Map<String, Object> advanceWeek() {
+        return advanceHours(24 * 7);
+    }
+
+    /**
+     * Moves the offset and hands the walk to the synchroniser.
+     *
+     * <p><b>It does not wait for the jobs.</b> Measured against the owner's database on 2026-10-11:
+     * one Advance Hour landed on day 4 hour 10, the training job became due, and the request was still
+     * open after five minutes — because {@code trainEveryClub} walks 14,880 clubs in a single
+     * transaction. The button spun, the browser timed out, and the world had moved with nothing on
+     * screen saying so.
+     *
+     * <p>So the clock moves first and returns, the walk runs on the single synchronisation thread, and
+     * {@code snapshot()} reports {@code syncing} so the browser knows to come back. This is the same
+     * arrangement the matchday jobs already use: the fixture work is queued and the page refreshes
+     * when it is done.
+     *
+     * <p>A rewind has nothing to wait for and nothing to catch up on, so it returns directly.
+     */
+    @Transactional
+    protected Map<String, Object> moveClock(long seconds) {
+        GameClock clock = clock();
+        if (seconds < 0) {
+            clock.setAdvanceOffsetSeconds(clock.offset() + seconds);
+            clocks.save(clock);
+            Map<String, Object> result = snapshot();
+            result.put("jobs", idleJobs());
+            result.put("advance", summary(0, List.of(), List.of()));
+            return result;
+        }
+        establishBaseline(clock);
+        clock.setAdvanceOffsetSeconds(clock.offset() + seconds);
+        clocks.save(clock);
+        return dispatchSynchronise();
+    }
+
+    /**
+     * Hands the walk to the single synchronisation thread and answers immediately.
+     *
+     * <p>The response therefore describes a walk that may still be in progress, and says so through
+     * {@code jobs.dispatched} and {@code syncing}. It never claims a job ran before it ran.
+     */
+    private Map<String, Object> dispatchSynchronise() {
+        GameClock clock = clock();
+        Instant atDispatch = clock.gameTimeAt(instant());
+        long fromIndex = GameTimeline.hourIndex(
+                GameTimeline.positionAt(clock.anchor(), clock.getLastSyncedAt()));
+        long toIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), atDispatch));
+
+        try {
+            walkExecutor.execute(() -> {
+                try {
+                    synchronise();
+                } catch (RuntimeException e) {
+                    log.error("Job walk after a clock move failed", e);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            // The queue is one deep and the thread is busy; the run in progress will pick this up,
+            // because the walk is measured from lastSyncedAt and not from what queued it.
+        }
+
+        Map<String, Object> result = snapshot();
+        Map<String, Object> jobs = new LinkedHashMap<>();
+        jobs.put("dispatched", true);
+        jobs.put("walkedHours", Math.max(0, Math.min(toIndex - fromIndex, MAX_CATCH_UP_HOURS)));
+        jobs.put("ran", 0);
+        jobs.put("skipped", 0);
+        jobs.put("failed", 0);
+        result.put("jobs", jobs);
+        result.put("advance", summary(0, List.of(), List.of()));
+        return result;
+    }
+
+    /**
+     * Moves the offset by a number of seconds, in either direction (owner, 2026-10-11).
+     *
+     * <p>The owner's words: the clock is Belgrade time plus or minus an offset, and admin controls can
+     * add to it or take from it. This is that control, and it is the only way to move the world
+     * backwards.
+     *
+     * <p><b>Backwards does not un-run jobs.</b> The done-flags in {@code job_run} are not reversible —
+     * rewinding to 15:00 and forward again finds the training already DONE. So a rewind moves the clock
+     * and re-arms nothing; it is for looking at the world, not for replaying a week.
+     */
+    public Map<String, Object> shiftOffsetSeconds(long seconds) {
+        return moveClock(seconds);
+    }
+
+    /**
+     * Runs every job that came due since the last synchronisation, and reports what happened.
+     *
+     * <p>This is the owner's requirement in one sentence: <b>run everything due, or that did not run
+     * last time.</b> It walks the game hours between {@code lastSyncedAt} and now, one hour at a time,
+     * rather than looking only at where the clock is standing — so an app that was down over a kickoff
+     * comes back and plays the matchday it missed instead of stepping over it.
+     *
+     * <p>Called by every movement of the clock and by the scheduled tick. There is one path, so "the
+     * clock moved but the jobs did not run" is not a state this codebase can reach.
+     */
+    @Transactional
+    public Map<String, Object> synchronise() {
+        syncing = true;
+        try {
+            return walk();
+        } finally {
+            syncing = false;
+        }
+    }
+
+    private Map<String, Object> walk() {
+        GameClock clock = clock();
+        Instant now = clock.gameTimeAt(instant());
+        Instant from = clock.getLastSyncedAt() == null ? now : clock.getLastSyncedAt();
+
+        long fromIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), from));
+        long toIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), now));
+        long delta = toIndex - fromIndex;
+
+        int ran = 0;
+        int skipped = 0;
+        int failed = 0;
         List<String> ranKeys = new ArrayList<>();
         List<String> failedKeys = new ArrayList<>();
 
-        for (int step = 0; step < hours; step++) {
-            last = advanceHour();
-            if (last == null || !(last.get("jobs") instanceof List<?> outcomes)) {
-                continue;
-            }
-            for (Object entry : outcomes) {
+        // A rewind leaves delta negative. It is honoured on the clock and refused here: job runs are
+        // recorded and not reversible, so "catching up" towards the past would re-run a week that has
+        // already been settled.
+        long steps = Math.max(0, Math.min(delta, MAX_CATCH_UP_HOURS));
+
+        for (long step = 1; step <= steps; step++) {
+            GamePosition position = GameTimeline.atHourIndex(fromIndex + step);
+            Map<String, Object> result = jobRunner.runDue(position.season(), position.week(),
+                    position.day(), position.hour());
+            for (Object entry : asJobs(result)) {
                 if (!(entry instanceof Map<?, ?> job)) {
                     continue;
                 }
                 String status = String.valueOf(job.get("status"));
                 String key = String.valueOf(job.get("key"));
-                if ("DONE".equals(status)) {
-                    totals.merge("ran", 1, Integer::sum);
-                    if (!ranKeys.contains(key)) {
-                        ranKeys.add(key);
+                switch (status) {
+                    case "DONE" -> {
+                        ran++;
+                        if (!ranKeys.contains(key)) {
+                            ranKeys.add(key);
+                        }
                     }
-                } else if ("FAILED".equals(status)) {
-                    totals.merge("failed", 1, Integer::sum);
-                    if (!failedKeys.contains(key)) {
-                        failedKeys.add(key);
+                    case "FAILED" -> {
+                        failed++;
+                        if (!failedKeys.contains(key)) {
+                            failedKeys.add(key);
+                        }
                     }
-                } else if ("ALREADY_DONE".equals(status)) {
-                    totals.merge("skipped", 1, Integer::sum);
+                    default -> skipped++;
                 }
             }
         }
 
-        Map<String, Object> result = last == null ? snapshot() : last;
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("hoursAdvanced", hours);
-        summary.put("ran", totals.get("ran"));
-        summary.put("skipped", totals.get("skipped"));
-        summary.put("failed", totals.get("failed"));
-        summary.put("jobsRan", ranKeys);
-        summary.put("jobsFailed", failedKeys);
-        result.put("advance", summary);
+        clock.setLastSyncedAt(now);
+        clocks.save(clock);
+
+        Map<String, Object> result = snapshot();
+        Map<String, Object> jobs = new LinkedHashMap<>();
+        jobs.put("season", position().season());
+        jobs.put("week", position().week());
+        jobs.put("day", position().day());
+        jobs.put("hour", position().hour());
+        jobs.put("jobs", List.of());
+        jobs.put("ran", ran);
+        jobs.put("skipped", skipped);
+        jobs.put("failed", failed);
+        jobs.put("walkedHours", (int) steps);
+        if (delta > MAX_CATCH_UP_HOURS) {
+            // Said out loud rather than silently truncated. A manager whose week never happened needs
+            // to know it was the cap, not the game.
+            jobs.put("truncated", true);
+            jobs.put("missedHours", delta - MAX_CATCH_UP_HOURS);
+        }
+        result.put("jobs", jobs);
+        result.put("advance", summary((int) steps, ranKeys, failedKeys));
         return result;
     }
 
     /**
      * Straight to a kickoff hour, e.g. 20 for day 1 internationals.
      *
-     * <p>Never moves backwards: rewinding would have to undo job runs, and the done-flags are not
-     * reversible. A target already passed is a no-op, not an error.
+     * <p>Never moves backwards. The hour it names is today's; if it has passed, the request is a no-op
+     * and the caller is told so by the returned position rather than by an exception.
      */
     @Transactional
     public Map<String, Object> advanceToHour(int targetHour) {
         if (targetHour < 0 || targetHour > 23) {
             throw new IllegalArgumentException("Hour must be between 0 and 23.");
         }
-        int current = clock().getCurrentHour() == null ? 0 : clock().getCurrentHour();
-        if (targetHour <= current) {
-            return snapshot();
+        GamePosition current = position();
+        int hours = targetHour - current.hour();
+        if (hours <= 0) {
+            Map<String, Object> result = snapshot();
+            result.put("jobs", idleJobs());
+            result.put("advance", summary(0, List.of(), List.of()));
+            return result;
         }
-        return advanceHours(targetHour - current);
+        return advanceHours(hours);
+    }
+
+    // --- helpers ---
+
+    /** No jobs to report — a rewind, or a request for an hour that has already passed. */
+    private Map<String, Object> idleJobs() {
+        Map<String, Object> jobs = new LinkedHashMap<>();
+        jobs.put("dispatched", false);
+        jobs.put("jobs", List.of());
+        jobs.put("ran", 0);
+        jobs.put("skipped", 0);
+        jobs.put("failed", 0);
+        jobs.put("walkedHours", 0);
+        return jobs;
+    }
+
+    /**
+     * Marks where the world stands, if nothing has said so yet.
+     *
+     * <p><b>This is load-bearing and was a real bug.</b> The walk runs from {@code lastSyncedAt}. A world
+     * that had never synchronised had none, so the walk started where it was already standing — and an
+     * Advance Week walked <b>zero</b> hours, ran <b>no</b> jobs, and reported a week that had elapsed with
+     * nothing in it. The clock moved; training, finance and both matchdays were silently skipped. Only
+     * the half-hourly tick, arriving some time later with a baseline of its own, would have rescued it.
+     *
+     * <p>So a movement establishes the baseline <em>before</em> it moves. The hours that advance crosses
+     * are then genuinely new hours, which is what they are.
+     */
+    private void establishBaseline(GameClock clock) {
+        if (clock.getLastSyncedAt() == null) {
+            clock.setLastSyncedAt(clock.gameTimeAt(instant()));
+        }
+    }
+
+    private List<?> asJobs(Map<String, Object> result) {
+        Object jobs = result == null ? null : result.get("jobs");
+        return jobs instanceof List<?> list ? list : List.of();
+    }
+
+    private Map<String, Object> summary(int hours, List<String> ranKeys, List<String> failedKeys) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("hoursAdvanced", hours);
+        summary.put("jobsRan", ranKeys);
+        summary.put("jobsFailed", failedKeys);
+        return summary;
+    }
+
+    /**
+     * Runs what is due where the clock stands, without moving it.
+     *
+     * <p>Kept because a job that failed is re-queued and somebody has to be able to nudge it. It does
+     * <b>not</b> move {@code lastSyncedAt}, because it has not caught up with anything — it looked.
+     */
+    @Transactional
+    public Map<String, Object> runDueNow() {
+        GamePosition current = position();
+        Map<String, Object> result = jobRunner.runDue(current.season(), current.week(), current.day(),
+                current.hour());
+        return result;
     }
 }

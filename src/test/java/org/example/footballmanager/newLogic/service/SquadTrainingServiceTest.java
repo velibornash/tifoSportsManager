@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.PlayerRole;
 import org.example.footballmanager.newLogic.model.Position;
@@ -52,8 +54,7 @@ class SquadTrainingServiceTest {
         var clock = clocks.findAll().stream()
                 .findFirst()
                 .orElseGet(org.example.footballmanager.newLogic.model.GameClock::new);
-        clock.setCurrentSeason(1);
-        clock.setCurrentWeek(1);
+        GameClocks.moveTo(clock, 1, 1);
         clocks.save(clock);
     }
 

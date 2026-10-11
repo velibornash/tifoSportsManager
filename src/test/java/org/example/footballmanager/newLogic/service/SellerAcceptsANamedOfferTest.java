@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.dto.transfer.TeamTransferOverviewDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TransferDTO;
 import org.example.footballmanager.newLogic.dto.transfer.TransferOfferDTO;
@@ -88,12 +90,9 @@ class SellerAcceptsANamedOfferTest {
      */
     private void inWindow() {
         var clock = clocks.findAll().stream().findFirst().orElseGet(() -> {
-            GameClock fresh = new GameClock();
-            fresh.setId(1L);
-            fresh.setCurrentSeason(1);
-            return clocks.save(fresh);
+            return clocks.save(GameClocks.atStart());
         });
-        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
+        GameClocks.moveTo(clock, clock.position().season(), TransferWindowService.SUMMER_OPEN);
         clocks.save(clock);
     }
 

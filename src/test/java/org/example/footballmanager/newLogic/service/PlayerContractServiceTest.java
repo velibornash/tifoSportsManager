@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.FinanceCategory;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Competition;
@@ -54,8 +56,7 @@ class PlayerContractServiceTest {
     void theGameIsPlaying() {
         if (clocks.findAll().isEmpty()) {
             GameClock clock = new GameClock();
-            clock.setCurrentSeason(1);
-            clock.setCurrentWeek(1);
+        GameClocks.moveTo(clock, 1, 1);
             clocks.save(clock);
         }
     }

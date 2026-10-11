@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.BaseTest;
 import org.example.commonmanager.model.User;
 import org.example.footballmanager.newLogic.model.Competition;
@@ -138,8 +140,7 @@ class LoanNotifiesAndOffersTheRightActionTest extends BaseTest {
         // this fixture failed before reaching the notification it was written to check.
         if (clocks.findById(1L).map(c -> c.getCurrentWeek() == null).orElse(true)) {
             GameClock clock = seasons.getOrCreateClock();
-            clock.setCurrentSeason(1);
-            clock.setCurrentWeek(3);
+        GameClocks.moveTo(clock, 1, 3);
             clocks.save(clock);
         }
 

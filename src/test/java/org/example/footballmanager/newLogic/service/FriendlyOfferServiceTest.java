@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.Country;
@@ -128,7 +130,7 @@ class FriendlyOfferServiceTest extends BaseTest {
 
         // Move the clock past the first slot but not the second.
         GameClock clock = clocks.findById(1L).orElseThrow();
-        clock.setCurrentDay(SeasonCalendar.dayForSlot(4));
+        GameClocks.moveTo(clock, clock.position().season(), clock.position().week(), SeasonCalendar.dayForSlot(4));
         clocks.save(clock);
 
         assertTrue(offers.hasPassed(season(), currentWeek, SeasonCalendar.dayForSlot(1)),
@@ -149,7 +151,7 @@ class FriendlyOfferServiceTest extends BaseTest {
     void aPostingCannotBeTakenLate() {
         FriendlyOffer offer = offers.post(human.getId(), season(), week(), 1).orElseThrow();
         GameClock clock = clocks.findById(1L).orElseThrow();
-        clock.setCurrentDay(SeasonCalendar.dayForSlot(4));
+        GameClocks.moveTo(clock, clock.position().season(), clock.position().week(), SeasonCalendar.dayForSlot(4));
         clocks.save(clock);
 
         assertTrue(offers.claim(offer.getId(), otherHuman.getId()).isEmpty(),

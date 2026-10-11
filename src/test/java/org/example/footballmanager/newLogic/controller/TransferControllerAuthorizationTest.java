@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.controller;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.commonmanager.model.UserRole;
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.Player;
@@ -115,9 +117,7 @@ class TransferControllerAuthorizationTest extends BaseTest {
         org.example.footballmanager.newLogic.model.GameClock clock = clockRepository.findAll().stream()
                 .findFirst()
                 .orElseGet(org.example.footballmanager.newLogic.model.GameClock::new);
-        clock.setCurrentSeason(1);
-        clock.setCurrentWeek(org.example.footballmanager.newLogic.service.TransferWindowService.SUMMER_OPEN);
-        clock.setCurrentDay(1);
+        GameClocks.moveTo(clock, 1, org.example.footballmanager.newLogic.service.TransferWindowService.SUMMER_OPEN, 1);
         clockRepository.save(clock);
     }
 

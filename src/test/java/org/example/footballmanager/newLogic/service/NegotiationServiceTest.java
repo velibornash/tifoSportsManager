@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
@@ -70,9 +72,7 @@ class NegotiationServiceTest {
         var clock = clockRepository.findAll().stream()
                 .findFirst()
                 .orElseGet(org.example.footballmanager.newLogic.model.GameClock::new);
-        clock.setCurrentSeason(1);
-        clock.setCurrentDay(1);
-        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
+        GameClocks.moveTo(clock, 1, TransferWindowService.SUMMER_OPEN, 1);
         // GameClock has no service-level save, so go through the repository.
         clockRepository.save(clock);
     }

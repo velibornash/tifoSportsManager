@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.JobRun;
@@ -184,12 +186,7 @@ class JobStatusServiceTest extends BaseTest {
 
     private void clockAt(int season, int week, int day, int hour) {
         GameClock clock = clocks.findById(1L).orElseGet(GameClock::new);
-        clock.setCurrentSeason(season);
-        clock.setCurrentWeek(week);
-        clock.setCurrentDay(day);
-        clock.setCurrentHour(hour);
-        clock.setAdvanceOffsetSeconds(0L);
-        clock.setCurrentDate(LocalDateTime.of(2026, 3, 1, hour, 0));
+        GameClocks.moveTo(clock, season, week, day, hour);
         clocks.save(clock);
     }
 }

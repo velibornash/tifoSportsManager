@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -121,19 +123,14 @@ class SeasonRolloverNumberTest {
         GameClock gameClock = clocks.findTopByOrderByIdDesc().orElse(null);
         if (gameClock == null) {
             GameClock fresh = new GameClock();
-            fresh.setCurrentSeason(1);
-            fresh.setCurrentWeek(1);
-            fresh.setCurrentDay(1);
-            fresh.setCurrentHour(9);
+        GameClocks.moveTo(fresh, 1, 1, 1, 9);
             try {
                 gameClock = clocks.saveAndFlush(fresh);
             } catch (RuntimeException alreadyThere) {
                 gameClock = clocks.findTopByOrderByIdDesc().orElseThrow();
             }
         }
-        gameClock.setCurrentWeek(week);
-        gameClock.setCurrentDay(day);
-        gameClock.setCurrentHour(hour);
+        GameClocks.moveTo(gameClock, gameClock.position().season(), week, day, hour);
         int season = gameClock.getCurrentSeason() == null ? 1 : gameClock.getCurrentSeason();
         clocks.save(gameClock);
         return season;

@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.FinanceCategory;
 import org.example.footballmanager.newLogic.model.GameClock;
@@ -132,11 +134,10 @@ class ListingFeeScalesWithTheAskingPriceTest {
         var clock = clocks.findAll().stream().findFirst().orElseGet(() -> {
             GameClock fresh = new GameClock();
             fresh.setId(1L);
-            fresh.setCurrentSeason(1);
-            fresh.setCurrentWeek(3);
+        GameClocks.moveTo(fresh, 1, 3);
             return clocks.save(fresh);
         });
-        clock.setCurrentWeek(3);
+        GameClocks.moveTo(clock, clock.position().season(), 3);
         clocks.save(clock);
 
         Team seller = aClub("PayingSeller", 10_000_000, true);

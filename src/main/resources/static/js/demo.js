@@ -1,6 +1,7 @@
 // /js/demo.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch } from './auth.js';
+import { refreshGameClock, waitForSync } from './clock.js';
 
 let currentUserTeamId = null;
 let roundSimulationPollTimer = null;
@@ -297,7 +298,7 @@ function showRoundSimulationSummary(data) {
     showModal('Current round simulation', bodyHtml);
 }
 
-function handleSeasonFlowResponse(data, button, defaultLabel) {
+async function handleSeasonFlowResponse(data, button, defaultLabel) {
     const action = data?.action;
 
     if (action === 'SHOW_PLAYOFF_SUMMARY') {
@@ -426,6 +427,10 @@ function handleSeasonFlowResponse(data, button, defaultLabel) {
         setSeasonFlowStatus(message, 'success', { persist: true });
         const shouldRefreshDashboard = !!button?.closest('.fm-dashboard-view') && typeof window.loadDashboard === 'function';
         if (shouldRefreshDashboard) {
+            // The header clock too: Advance Week used to move the week counter and leave the clock
+            // reading the hour the button was pressed at, which is the same split screen the
+            // day/hour buttons had.
+            await refreshGameClock();
             window.loadDashboard();
         } else {
             resetButton(button, defaultLabel);
@@ -663,14 +668,26 @@ async function advanceWeekTest() {
 }
 
 /**
- * Advances the game clock by one day or one hour (owner, 2026-09-28).
+ * Advances the game clock by one day or one hour (owner, 2026-09-28, reworked 2026-10-11).
  *
  * <p>These go through /api/game-clock/advance rather than /simulation/week/advance, because the
- * clock is what makes scheduled jobs due. The response carries which jobs ran, so the button is not
- * a blind "hope something happened" - the outcome is reported on screen.
+ * clock is what makes scheduled jobs due. The server moves the offset and synchronises in the same
+ * call, so there is no window in which the clock has moved and the jobs have not run.
+ *
+ * <p><b>Everything the jobs touched is reloaded afterwards.</b> The clock, the header, the league
+ * table, the milestones, the recent matches, the next match and the training ticker all read state
+ * the jobs just changed. This used to update the status line and nothing else — `refreshGameClock()`
+ * was called under a `typeof === 'function'` guard and that function existed nowhere in the
+ * repository, so the guard could never pass. Pressing Advance Day moved the world and left the screen
+ * describing the world as it was.
  */
 async function advanceClockTest(unit, buttonId, label) {
-    const status = document.getElementById('dashboard-season-flow-status');
+    const button = buttonId ? document.getElementById(buttonId) : null;
+    const defaultLabel = getButtonDefaultLabel(button, label);
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Advancing...';
+    }
     try {
         const response = await authFetch(`/api/game-clock/advance?unit=${unit}&amount=1`, { method: 'POST' });
         if (!response.ok) {
@@ -678,23 +695,68 @@ async function advanceClockTest(unit, buttonId, label) {
             throw new Error(body.message || `Could not advance (${response.status})`);
         }
         const data = await response.json();
-        const jobs = data.jobs || {};
-        const ran = jobs.ran ?? 0;
-        const failed = jobs.failed ?? 0;
-        if (status) {
-            status.className = 'fm-season-flow-status is-error';
-            status.textContent = failed > 0
-                ? `Advanced to day ${data.day} (${data.dayLabel}), hour ${data.hour}. `
-                  + `${ran} job(s) ran, ${failed} FAILED.`
-                : `Advanced to day ${data.day} (${data.dayLabel}), hour ${data.hour}. `
-                  + `${ran} job(s) ran, ${jobs.skipped ?? 0} already done.`;
-        }
-        if (typeof refreshGameClock === 'function') refreshGameClock();
+        // The span totals, not `data.jobs`: a 24-hour advance reports only the twenty-fourth hour's
+        // count under `jobs`, so advancing a day that ran training, finance and two matchdays said
+        // "2 job(s) ran". The whole walk is under `advance`.
+        const jobs = data.advance || data.jobs || {};
+        const ranKeys = Array.isArray(jobs.jobsRan) ? jobs.jobsRan : [];
+        const failedKeys = Array.isArray(jobs.jobsFailed) ? jobs.jobsFailed : [];
+        const hoursWalked = Number(jobs.hoursAdvanced ?? 0);
+
+        const outcome = `Advanced to season ${data.seasonNumber}, week ${data.weekNumber}, `
+            + `day ${data.day} (${data.dayLabel}) at ${String(data.hour).padStart(2, '0')}:`
+            + `${String(data.minute ?? 0).padStart(2, '0')}. `
+            + (hoursWalked > 1 ? `Walked ${hoursWalked} game hours — ` : '')
+            + (ranKeys.length
+                ? `${ranKeys.join(', ')}.`
+                : 'No jobs were due.');
+
+        setSeasonFlowStatus(outcome, failedKeys.length ? 'error' : 'success', { persist: true });
+        await refreshAfterClockMove(data);
         return data;
     } catch (err) {
-        if (status) {
-            status.className = 'fm-season-flow-status is-error';
-            status.textContent = err.message;
+        setSeasonFlowStatus(err.message, 'error');
+    } finally {
+        resetButton(button, defaultLabel);
+    }
+}
+
+/**
+ * Re-reads everything an advance can have changed (owner, 2026-10-11).
+ *
+ * <p>One place, called after every movement of the world, so "the clock moved but the screen did
+ * not" stops being a thing that depends on which button was pressed. The dashboard rebuilds its own
+ * stats, milestones, recent matches, next match and ticker; the header re-reads the clock.
+ *
+ * <p><b>It waits for the jobs first.</b> Advancing returns as soon as the clock has moved; the walk
+ * that runs the jobs that fell due runs behind it. Refreshing at that instant shows a world the jobs
+ * have not touched yet - a training report for a day that has not been trained, a league table missing
+ * the round that was just played - and the manager has no way to tell that from "the job is broken".
+ */
+async function refreshAfterClockMove(data) {
+    const dispatched = data?.jobs?.dispatched === true;
+    if (dispatched) {
+        setSeasonFlowStatus('Clock moved. Running the jobs it made due...', 'info');
+    }
+    try {
+        if (dispatched) {
+            const settled = await waitForSync();
+            if (!settled) {
+                setSeasonFlowStatus(
+                    'Clock moved and the jobs are still running. They will finish on their own; '
+                    + 'reload to see the result.',
+                    'warning', { persist: true });
+            }
+        }
+        await refreshGameClock();
+    } catch (err) {
+        console.warn('Clock refresh after advance failed:', err);
+    }
+    if (typeof window.loadDashboard === 'function' && document.querySelector('.fm-dashboard-view')) {
+        try {
+            await window.loadDashboard();
+        } catch (err) {
+            console.warn('Dashboard refresh after advance failed:', err);
         }
     }
 }

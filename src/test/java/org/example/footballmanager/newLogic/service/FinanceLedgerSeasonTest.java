@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Year;
@@ -78,8 +80,7 @@ class FinanceLedgerSeasonTest {
 
     private GameClock clockAt(int season) {
         GameClock clock = new GameClock();
-        clock.setCurrentSeason(season);
-        clock.setCurrentWeek(1);
+        GameClocks.moveTo(clock, season, 1);
         return clock;
     }
 }

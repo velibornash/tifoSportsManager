@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.FinanceCategory;
 import org.example.footballmanager.newLogic.model.GameClock;
@@ -68,12 +70,9 @@ class ListedPlayerCanObjectTest {
     /** A club cannot negotiate in April, and a bid needs the window open. */
     private void inWindow() {
         var clock = clocks.findAll().stream().findFirst().orElseGet(() -> {
-            GameClock fresh = new GameClock();
-            fresh.setId(1L);
-            fresh.setCurrentSeason(1);
-            return clocks.save(fresh);
+            return clocks.save(GameClocks.atStart());
         });
-        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
+        GameClocks.moveTo(clock, clock.position().season(), TransferWindowService.SUMMER_OPEN);
         clocks.save(clock);
     }
 

@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.GameDay;
@@ -164,10 +166,8 @@ class ZoneLoadRecoveryTest extends BaseTest {
     private void setGameDate(LocalDateTime when) {
         read(() -> {
             GameClock clock = clocks.findTopByOrderByIdDesc().orElseGet(GameClock::new);
-            clock.setCurrentDate(when);
-            clock.setCurrentSeason(1);
-            clock.setCurrentWeek(1);
-            clock.setCurrentDay(GameDay.DAY_1.number());
+            GameClocks.moveTo(clock, 1, 1, GameDay.DAY_1.number());
+            GameClocks.anchorTo(clock, when.toLocalDate());
             clocks.save(clock);
             return null;
         });

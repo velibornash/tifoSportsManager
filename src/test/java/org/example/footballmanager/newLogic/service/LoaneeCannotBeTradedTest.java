@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
@@ -67,8 +69,7 @@ class LoaneeCannotBeTradedTest {
         loanee = aPlayer(lender, "On loan", 19);
 
         GameClock clock = seasons.getOrCreateClock();
-        clock.setCurrentSeason(1);
-        clock.setCurrentWeek(4);
+        GameClocks.moveTo(clock, 1, 4);
         clocks.save(clock);
 
         Loan loan = loans.offer(lender.getId(), loanee.getId(), borrower.getId());
@@ -155,7 +156,7 @@ class LoaneeCannotBeTradedTest {
     @DisplayName("the lender can still trade him once the loan has ended")
     void tradableAgainAfterwards() {
         GameClock clock = seasons.getOrCreateClock();
-        clock.setCurrentWeek(12);
+        GameClocks.moveTo(clock, clock.position().season(), 12);
         clocks.save(clock);
         loans.closeFinishedLoans();
 

@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.exception.ApiException;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionType;
@@ -139,8 +141,7 @@ class LoanServiceTest {
 
     private void setWeek(int week) {
         GameClock clock = clock();
-        clock.setCurrentSeason(1);
-        clock.setCurrentWeek(week);
+        GameClocks.moveTo(clock, 1, week);
         clocks.save(clock);
     }
 

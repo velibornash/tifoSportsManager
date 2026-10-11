@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.newLogic.model.FinanceCategory;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Player;
@@ -59,7 +61,7 @@ class TransferCompletionTest {
     void setUp() {
         // The window has to be open or a permanent move is refused before it starts.
         var clock = clocks.findAll().stream().findFirst().orElseThrow();
-        clock.setCurrentWeek(TransferWindowService.SUMMER_OPEN);
+        GameClocks.moveTo(clock, clock.position().season(), TransferWindowService.SUMMER_OPEN);
         clocks.save(clock);
 
         seller = club("Selling side", 9_000_000);
@@ -186,7 +188,7 @@ class TransferCompletionTest {
     @DisplayName("a transfer outside the window is refused, so no deal can be agreed at all")
     void closedWindowRefusesTheMove() {
         var clock = clocks.findAll().stream().findFirst().orElseThrow();
-        clock.setCurrentWeek(3);                       // no window in week 3
+        GameClocks.moveTo(clock, clock.position().season(), 3);  // no window in week 3
         clocks.save(clock);
 
         Player p = aPlayer(seller, "Out of season", 5_000);

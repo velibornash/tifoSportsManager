@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.util;
 
+import org.example.footballmanager.newLogic.support.GameClocks;
+
 import org.example.footballmanager.BaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,13 +45,7 @@ class FixtureDateFollowsTheClockTest extends BaseTest {
      */
     private org.example.footballmanager.newLogic.model.GameClock theClock() {
         return clocks.findById(1L).orElseGet(() -> {
-            var clock = new org.example.footballmanager.newLogic.model.GameClock();
-            clock.setCurrentSeason(1);
-            clock.setCurrentWeek(1);
-            clock.setCurrentDay(1);
-            clock.setCurrentHour(0);
-            clock.setCurrentDate(LocalDateTime.now().withNano(0));
-            return clocks.save(clock);
+            return clocks.save(GameClocks.atStart());
         });
     }
 
@@ -63,7 +59,9 @@ class FixtureDateFollowsTheClockTest extends BaseTest {
         LocalDateTime week1 = CupFixtureSeeder.matchDateFor(1, start);
 
         // Push the clock a full year forward, which is comfortably past the old hardcoded date.
-        clock.setCurrentDate(start.plusYears(1));
+        // The date is derived from the anchor now, so the test moves the anchor rather than writing
+        // a date - which is itself the fix: a writable date was the second cursor.
+        GameClocks.anchorTo(clock, start.toLocalDate().plusYears(1));
         clocks.save(clock);
 
         LocalDateTime week1Later = CupFixtureSeeder.matchDateFor(1, clock.getCurrentDate());
