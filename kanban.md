@@ -16,8 +16,13 @@ newest first, each carrying its commit.
 
 ## Recently completed
 
-- Dashboard Recent Matches now shows the competition name for each of the latest three played matches,
-  with a type fallback for friendly matches and older records without a competition name.
+- **Session handoff: read [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md).** It carries the two-clock trap,
+  the corrections to what was previously reported here, and what is still unstarted.
+- Header clock shows the **game clock**, not wall time (`0e9b8af`). Every kickoff, job trigger and
+  deadline is in game hours, so the header now shows the number the game actually runs on.
+- Results and Recent Matches sort correctly again (`867754b`). They were reading `/schedule` field names
+  against a `MatchDTO`, so every sort key was `undefined` and the comparator silently fell through to
+  wall-clock `match_date`. See the entry in `kanbanProgress.md` for the full shape.
 
 ---
 

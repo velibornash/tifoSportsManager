@@ -1,5 +1,26 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ Header clock shows the game clock (2026-10-11) — commit `0e9b8af`
+
+The top-right clock rendered **real Belgrade time**. The reasoning written in the code was that "Advance
+Hour" moves the season and not the wall clock, so showing wall time was honest. It was the wrong number:
+every fixture kickoff, every job trigger and every deadline in this game is expressed in **game hours**,
+so the one value a manager acts on was the one the header refused to show.
+
+It cost real confusion on Oracle. A Day 1 Champions Cup tie was listed at `18:00` while the header read
+`16:20:31`, and the job that actually plays it triggers from `20:00`. Three different times, no way to
+tell which was which. The owner read `16:20:31` as the game clock and could not see how the match had
+already been played.
+
+The wall clock and `/api/server-time` are both gone — the latter existed only to correct the former for
+drift. The game clock counts whole hours on purpose (`isWatchable`), so it renders `HH:00` with no
+seconds; a seconds hand would invent precision the simulation does not have. Before the first
+`/api/game-clock` answers it shows `--:--` rather than a plausible fake.
+
+Verified in the app: header reads `09:00` over `Season 1 - Week 1 - Day 4 (Training)`, matching the
+server's game hour.
+
+
 ## ✅ Dashboard Recent Matches — show competition (2026-10-11)
 
 Recent match rows now show the competition name below the game day. The label uses the competition type
