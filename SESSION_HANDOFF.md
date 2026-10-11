@@ -1,6 +1,7 @@
-# SESSION_HANDOFF — 2026-10-11 (evening)
+# SESSION_HANDOFF — 2026-10-11 (night)
 
-Supersedes the morning handoff. Read this first, then `kanban.md`.
+Supersedes the evening handoff. Read this first, then [`kanban.md`](kanban.md) — section **T-MATCH**
+is the open work, and every task there carries its own exit criteria.
 
 ---
 
@@ -12,115 +13,94 @@ Supersedes the morning handoff. Read this first, then `kanban.md`.
 | `c1d6b8e` | **A fixture's day and its kickoff hour agree** | 7 tests, 1 mutation |
 | `4c8f677` | **U-21 squad topped up to 25** | 7 tests, 1 mutation, live DB inspected |
 | `11579eec` | **Income scales with the club** | 39 tests, 1 mutation |
-| `86f27268`, `cd177fbe` | Board and log | — |
+| `bc9e123b` | **Omladinac's wages were 45–84% of his own value** | live DB, 18.5m → 4.8m a week |
+| `ca13cf6f` | **The Finances page shows the lines**; home advantage is real | grep proved nothing called the ledger |
+| `126c6418` | **A 10.0 has to mean an exceptional match** | 14 tests, 3 mutations |
+| `a04dca45` | **A training pass over 14,880 clubs completes** | 259s, measured |
+| `841a1a10` | **13,630 squadless clubs were earning money from nothing** | live DB |
+| `fae522e8` | **Only human clubs and active countries have an economy** | 310 of 14,880 settled, 60s → 12s |
+| `f23dc810` | **A matchday is computed an hour early, released at kickoff** | 13 tests, 2 mutations, live DB |
 
-Four mutations were run against the fixes and every one turned the suite red. That is the only evidence
-in this repository that a green suite means anything.
-
----
-
-## 2. The clock, in one paragraph
-
-There used to be two clocks: `now() + offset`, which the header rendered, and four stored counters, which
-the job runner read, which moved only when a button was pressed. They disagreed and nothing said so.
-
-There is now one. `GameClock` holds an anchor and an offset and nothing else; season, week, day and hour
-are `GameTimeline.positionAt(anchor, gameTime)`. The getters keep their old names so ~20 readers keep
-working; **they have no setters**, and that is the point. The header shows `HH:MM:SS` anchored on the
-server's own time, and derives season/week/day from that same instant.
-
-Everything that moves the world — advance hour/day/week, `POST /api/game-clock/offset`, the half-hourly
-tick — adds to the offset and then calls `synchronise()`. One path, so "the clock moved but the jobs did
-not run" is not a state this codebase can reach.
-
-**Migration is done on the owner's database.** It reads the old counters, places an anchor that puts the
-game back exactly where it was, and folds the old display offset in so it is not applied twice. That
-second half was a real bug: the first version moved a day-4 world to day 7.
+Mutations were run against the fixes and each one turned a suite red. That is the only evidence in this
+repository that a green suite means anything — and the one that did not is written up in §3.
 
 ---
 
-## 3. Read this before touching performance
+## 2. Where the world stands
 
-**One training pass over 14,880 clubs takes over six minutes of pure CPU, with the database idle.**
-
-388 seconds of CPU in 398 seconds of wall, all inside `Hibernate Cascade.cascade`, no query running.
-Cause: `SquadEnvironmentService.advanceWeek` and `SquadTrainingService.trainEveryClub` walk every club in
-one transaction and one persistence context; each player's query auto-flushes and cascades over every
-entity dirtied so far. O(clubs²).
-
-An attempt — separating the read phase from the write phase, and flushing/clearing every 50 clubs —
-**measured at 393 s CPU in 408 s and was reverted.** It is in `git reflog`, not in the tree. Do not
-ship an unmeasured perf change.
-
-The fix that is likely to work is reading through a projection instead of entities, so nothing enters the
-persistence context. Not started. Board entry `T-PERF-1`.
+| | |
+|---|---|
+| Clubs | 14,880 across 48 countries |
+| Squads | Serbia `ACTIVE` 310/310; the 47 `SIMULATED` countries hold 940 of 14,570 |
+| Economy | Active-country clubs settle in ~12s. Net **−16m a week**, average −51,358 a club |
+| OFK Omladinac | 4,845,682 a week in wages. **−862,775 a week** — reported, not fixed |
+| Squad size | **13 is intentional.** Do not "correct" it |
+| Match rows | 743. Fixture rows run into next season already, drawn in advance |
 
 ---
 
-## 4. Open, with the owner's decision needed
+## 3. The three traps in this session's code
 
-### 🔴 The wage scale (board `T-ECON-1`)
+**A mocked dependency cannot prove what the dependency does.** `MatchdayPreparePublishTest` drives the
+scheduler with a mocked `SimMatchService`. Flipping the production branch so that preparing *published*
+the result an hour early left it green. `PreparedMatchIsNotVisibleTest` drives the real bean and fails
+on that mutation. Keep both: the first for wiring, the second because it can fail.
 
-OFK Omladinac pays **18,478,000 a week across thirteen players** — 74m a year each — on a ground that
-brings 173,591. Sixty times a normal club's wage bill on twice the ground.
+**`JobRunner` wraps every job in one transaction, and that is wrong for a matchday.** A matchday is 155
+independent matches. In one transaction it committed nothing for twenty minutes — ids ran to 918 while
+the table ended at 743 — and one bad fixture would have lost the evening. Committing per fixture
+deadlocked against the enclosing transaction, which already held the `player_discipline` rows.
+`DayJob.transactionalRun()` is the escape hatch, and only the two matchday jobs use it.
 
-No broadcast coefficient balances that club and an ordinary one, because the wage scale is the outlier,
-not the income side. Re-pricing every wage and value is a migration over **31,230 players** and a
-decision about how much money is in this world. **This needs the owner. It was not guessed at.**
-
-### 🟠 The Finances page (board `T-FIN-UI-1`)
-
-The owner asked for individual line items and a week/month/season scope. `/api/teams/{id}/finances/ledger`
-exists and is **never called**; `byCategory` is returned and never rendered; there is no week or month
-scope at all. Every ledger row already carries a populated `note`. This is a rendering task and was not
-started.
-
-### 🟠 Playoffs (board `T-CALENDAR-1`)
-
-`SeasonService.ensurePlayoffWeekFixtures` has **zero callers**, so no playoff fixture is generated. Its
-day and hour are now correct for whenever it is wired up.
-
-### 🟠 Not started from the owner's list
-
-- **Match prediction** — the "Home edge"/"Away edge" cards show formation fitness and bench quality, not
-  home advantage; they read `null` until an XI is picked, hence "Not known yet" beside a confident
-  prediction. Real home advantage is a magic `+0.7` at `ScheduleInsightService.java:222` and **the
-  simulation engine has no home advantage term at all**. The played-match endpoint hardcodes
-  `draw 25%`, `fitness 92%`.
-- **Match ratings** — `tackles` is actually **duels lost** (`ProposalStatsCollector.java:209-214`), so a
-  striker dispossessed eight times banks +0.64 in "tackles"; ~268 duels per match; minutes are always 90
-  for substitutes; no team-result term; the 10.0 clip is silent; **no test covers the formula**.
-- **Pre-match preparation job** — nothing prepares a fixture before kickoff; the matchday jobs only play.
+**Spring does not fold an array or a `List<DayJob>` bean into the runner's job list.** Eight jobs were
+registered that way, compiled, and had never run. There is no test that would have caught it; it was
+found by dumping the injected list. **Eight explicit `@Bean` methods, as the rest of the package does.**
 
 ---
 
-## 5. Method that works on this machine
+## 4. What is open
+
+[`kanban.md`](kanban.md) **T-MATCH-1** … **T-MATCH-7**, in order. The short version:
+
+- **T-MATCH-1** — the prepare half works and was seen changing data; **the publish half has never been
+  seen**, national tournaments need the pair, and a prepared match must be unreachable through every
+  read path, not just the fixture list.
+- **T-MATCH-2** — **the lock does not exist.** Nothing stops a manager editing tactics at 19:50, and the
+  engine does not read a locked snapshot.
+- **T-MATCH-3** … **T-MATCH-6** — tactics editor (10 per club), 3 per match, the squad page, the orders
+  page (20 substitution orders, 10 tactic swaps per match). None built.
+- **T-MATCH-7** — a restart mid-matchday should resume, not re-decide football that is already published.
+
+Decisions the owner took on 2026-10-11 are in the table at the top of the T-MATCH section. No set-piece
+takers in this pass. A tactic-swap order switches the engine **live at the trigger minute**.
+
+---
+
+## 5. Traps that have cost real time
+
+- **The dev database has 743 matches.** A performance claim measured here is a claim about one
+  matchday of one country. Use the throwaway `sokker_bench` database.
+- **A stale `PENDING` row in `job_run` blocks every later run** until it is deleted. It happens whenever
+  the app is killed mid-job, and it looks like "the job stopped for no reason".
+- **Homebrew `pg_dump` is v16 and refuses a v18 server.** Use
+  `/Applications/Postgres.app/Contents/Versions/18/bin/pg_dump`.
+- **Never start the app from a shell without `--app.open-browser=false`.**
+
+---
+
+## 6. Commands
 
 ```bash
 export JAVA_HOME=/Users/velja/Library/Java/JavaVirtualMachines/corretto-21.0.12/Contents/Home
-export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"
-mvn clean package -DskipTests
-./run-app.sh -DskipTests          # never mvn spring-boot:run
-export PATH="/usr/local/opt/libpq/bin:$PATH"     # psql
+export PATH="$JAVA_HOME/bin:/usr/local/bin:/usr/local/opt/libpq/bin:$PATH"
+
+mvn -o test -Dtest=RatingEngineTest          # one class
+mvn -o clean package -DskipTests             # build
+java -jar target/footballmanager-1.0-SNAPSHOT.jar --app.open-browser=false
+
+lsof -ti :8080 | xargs kill -9               # a stale app holds the port
+psql -h localhost -U postgres -d sokker_db    # postgres / stojke
 ```
 
-`pg_dump` on PATH is Homebrew 16 and the server is 18 — it refuses. Use
-`/Applications/Postgres.app/Contents/Versions/18/bin/pg_dump`.
-
-**Starting the app in the background from a tool shell:** `(nohup java -jar … & disown)`. Without
-`disown`, a tool timeout kills the process group and takes the app with it — which cost a confusing
-"connection has been closed" stack trace mid-session.
-
----
-
-## 6. Traps hit this session
-
-- **`mvn -q` hides the build result.** `mvn -q -o package` printed nothing on success and the next
-  command failed on a compile error that had scrolled past. Grep for `ERROR` explicitly.
-- **An `Edit` can report success and change nothing** if the string did not match what you thought. The
-  renewal fix did this, and only a behavioural test caught it.
-- **The H2 test profile is not the owner's world.** Tests that place the clock through the retired
-  setters were rewritten to `GameClocks`, which moves the anchor and the offset.
-- **Two of the mutations I ran did not fail.** A mutation that passes means the guard was not measuring
-  what I claimed. One of them (the national cup's hardcoded 18:00) passed because it happened to equal
-  the template's value — which is why the test was moved to the continental cup.
+Clock: `POST /api/game-clock/advance?unit=hours&amount=N` and `.../advance-to-hour?hour=H`, both
+`OWNER`/`DEV`/`ADMIN`. Login is `POST /auth/login` with **username** and password — not `email`.

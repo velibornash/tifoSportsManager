@@ -1,5 +1,64 @@
 # kanbanProgress.md — the append-only log
 
+## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`
+
+**Done:**
+
+- `MatchdayScheduler.prepareUnplayedOn` / `publishUnplayedOn`.
+- `MatchdayPrepareJob` / `MatchdayPublishJob`, registered for days 1, 3, 5 and 7. Both hours are read
+  from `GameDay`, so the pair cannot drift: day 1 prepares at 19 and publishes at 20, the league days at
+  18/19 and 15/16.
+- `SimMatchService.prepareMatch` — persists the match and leaves `played = false`, writing
+  `prepared_match_id` instead of `playedMatch`.
+- The five old at-kickoff `MatchdayJob` beans for days 1/3/5/7 removed. The national-tournament matchdays
+  are untouched and still run at their own hour.
+- `DayJob.transactionalRun()` — the prepare and publish jobs opt out of the framework transaction.
+
+**Seen in the database:** week 1, day 7 — 155 fixtures, 15 of them computed with `prepared_match_id`
+set and `played = false`, none published, before the deadlock below stopped it.
+
+**What did not work, and what it cost:**
+
+1. **The first test proved nothing.** `MatchdayPreparePublishTest` drives the scheduler with a mocked
+   `SimMatchService`, so it asserts which method was called and cannot assert what the method did.
+   Flipping the production branch so that preparing *published* — every result an hour early — left
+   that suite green. `PreparedMatchIsNotVisibleTest` drives the real Spring bean and fails on that
+   mutation. Both suites are kept; the first for the wiring, the second because it is the one that can
+   fail.
+
+2. **A matchday in one transaction committed nothing for twenty minutes.** `JobRunner` wraps each job in
+   a `REQUIRES_NEW` transaction. Match ids ran to 918 in the log while `select max(id) from match`
+   still returned 743, and a single bad fixture at the end would have thrown away 154 good ones. Each
+   fixture now commits on its own.
+
+3. **Committing per fixture deadlocked.** With the job transaction still in place, the inner
+   transaction blocked on `player_discipline` rows the outer one already held — visible in
+   `pg_stat_activity` as `wait_event_type = Lock` against an `idle in transaction` session. That is
+   where the matchday stopped at exactly 15. `DayJob.transactionalRun()` is the fix: the job body runs
+   outside the framework transaction, and each fixture wraps itself.
+
+4. **The eight jobs were invisible.** Registered first as two arrays, then as two `List<DayJob>` beans,
+   both compiled and both were green — Spring folds neither into the `List<DayJob>` the runner and
+   `EveryGameDayHasAJobTest` read. Eight explicit `@Bean` methods, as the rest of the package already
+   does. This one was only found by dumping the injected list.
+
+**Not done:**
+
+- The publish half has never been seen changing data. A matchday has to be prepared to completion and
+  then released.
+- The fallback — a fixture the prepare job missed, computed at kickoff instead — is tested but unseen.
+- National-tournament matchdays do not have the pair (owner decision, `kanban.md` T-MATCH-1).
+- **The lock does not exist.** Nothing stops a manager editing tactics at 19:50, and the engine does
+  not yet read a locked snapshot. `kanban.md` T-MATCH-2.
+- Tactics editor, three-per-match, squad page and orders page: not started. `kanban.md` T-MATCH-3
+  through T-MATCH-6.
+- No UI shows that a match is closed. Nothing in the browser knows a prepared fixture exists.
+
+**Pre-existing and not ours:** `EveryGameDayHasAJobTest.daySixIsNamedAndUnscheduled` is red at `HEAD`
+without this change — the national qualifier and tournament day-6 jobs are scheduled, which is the
+finding the test was written to surface.
+
+
 ## ✅ Omladinac's wages were 45-84% of his own market value per year (2026-10-11) — commit `bc9e123b`
 
 Owner: *"treba ispraviti plate u inicijalizaciji Omladinac igraca... kao zakrpu, smanji plate

@@ -296,6 +296,141 @@ throwaway `sokker_bench` database built to those numbers.
 
 ---
 
+# 🔴 T-MATCH — the pre-match hour, and the tactics that live in it
+
+**Owner, 2026-10-11.** *"jedan job koji 59 minuta pre kickoffa uradi compute svih mečeva a drugi job u
+vreme meča otvori linkove. Napomena: sat vremena pre početka utakmice igrač ne sme više podešavati
+taktiku za taj meč."* Then, after looking at Sokker: *"pogledaj kako radi sokker pa namerno napravi
+isto... imaš 10 taktika i 3 biram za meč, bilo koja koju promeniš, ima copy paste mirror... squad
+isključi 11 i klupa, orders set pieces i uslovne zamene."*
+
+Decisions the owner took when asked, 2026-10-11:
+
+| Question | Answer |
+|---|---|
+| Cap on conditional substitution orders | **20 per match** |
+| Cap on tactic-swap orders | **10 per match** |
+| Saved tactics per club | **10** |
+| Tactics selectable for one match | **3**, any tactic into any slot |
+| Opponent Setup Archive | **not now** |
+| Set-piece takers (free kicks, penalties) | **not in this pass** — tactics, squad, orders only |
+| A swap order that fires mid-match | **the engine switches live at the trigger minute** |
+| Prepare/publish scope | **club matchdays and national tournaments** |
+
+## T-MATCH-1 — 🔴 P0 · a match is computed an hour early and released at kickoff
+
+**Status: partly done — see [`kanbanProgress.md`](kanbanProgress.md), commit `f23dc810`.**
+
+What exists now:
+
+- `MatchdayScheduler` with `prepareUnplayedOn` and `publishUnplayedOn`.
+- `MatchdayPrepareJob` / `MatchdayPublishJob`, registered for days 1, 3, 5, 7, hours read from
+  `GameDay` so the pair cannot drift.
+- `SimMatchService.prepareMatch` — the persist path that leaves `played = false` and writes
+  `prepared_match_id`.
+- The five old at-kickoff `MatchdayJob` beans for days 1/3/5/7 are gone.
+
+**Exit criteria, still open:**
+
+- [ ] Seen in the database: a matchday of 155 fixtures computed, `prepared_match_id` set, `played =
+      false`, none of them readable — **partly seen (15 of 155 before the deadlock, killed by the owner
+      session ending; must be re-run to completion)**.
+- [ ] Seen in the database: `MatchdayPublishJob` releasing a prepared matchday, `played = true`, and
+      **the same match ids** as were prepared — publishing must never re-simulate.
+- [ ] **Exit criteria, still open:** the publish fallback proven — a fixture the prepare job missed is
+      computed at kickoff and published, not lost.
+- [ ] National-tournament matchdays get the same pair (owner decision). `NationalMatchdayJob` is keyed
+      on `QUALIFYING_WEEK` / `TOURNAMENT_WEEK`, not on a kickoff hour, so its hours have to be defined.
+- [ ] A prepared match is unreachable through **any** read path, not just the fixture list: match-by-id,
+      the replay endpoint, the team match list, the round view, the dashboard.
+
+## T-MATCH-2 — 🔴 P0 · the lock is real, not a message
+
+**Nothing built.** An hour before kickoff the tactics, the eleven, the bench and the orders are to be
+closed to the manager, and the match must be simulated from **the state that was locked**, not from
+whatever the club's current settings happen to be at kickoff.
+
+**Exit criteria:**
+
+- [ ] A failed test first: changing a tactic at 19:50 on a prepared fixture is rejected.
+- [ ] Changing the eleven, the bench or the orders is rejected the same way.
+- [ ] The lock survives a page reload and is shown with a reason and a time, not a silent disabled
+      button.
+- [ ] The engine reads the locked snapshot, so a change made after the lock cannot reach the match.
+- [ ] A `savedAt`/locked-at stamp on the prepared fixture so the UI can say "your match is closed".
+
+## T-MATCH-3 — 🔴 P0 · the tactics editor
+
+**Nothing built.** Up to **10 saved tactics per club**. Copy/Paste/Mirror/Save, and "create based on"
+any existing one. The layout is Sokker's: a pitch, the shape, the sliders and the rest of the settings.
+
+**Exit criteria:**
+
+- [ ] A tactic can be created, edited, saved, copied and deleted; the 10 cap is enforced and stated.
+- [ ] "Create based on" any of the 10.
+- [ ] Mirror (swap sides) and Paste behave as in Sokker, including into a different club's slot.
+- [ ] The editor is reachable from the club and from the upcoming match.
+- [ ] A green editor test that fails when the tactic is not saved.
+
+## T-MATCH-4 — 🔴 P0 · three tactics per match, any into any slot
+
+**Nothing built.** A manager picks **3** of the club's 10 tactics for the next match, and any slot can
+be swapped to any other tactic.
+
+**Exit criteria:**
+
+- [ ] Exactly three are selectable, the other seven are visible but not selectable.
+- [ ] Swapping slot 1 and 3 changes the order of the other two, as in Sokker.
+- [ ] The engine starts the match on slot 1.
+
+## T-MATCH-5 — 🔴 P0 · the squad page
+
+**Nothing built.** Match settings → **Squad**: slots 1–11 and a bench, player swap, player removal, a
+position per slot, and a suggested lineup.
+
+**Exit criteria:**
+
+- [ ] Eleven slots and a bench, both editable.
+- [ ] Swap and remove, and a position per slot.
+- [ ] "Suggest lineup" fills from the squad and is not a no-op.
+- [ ] **13 players must remain valid.** OFK Omladinac's 13 is deliberate; the page must not require 25.
+
+## T-MATCH-6 — 🔴 P0 · the orders page
+
+**Nothing built.** Match settings → **Orders**: a substitution order is *minute + condition + action*,
+and a tactic order is *minute + condition + tactic*. Sokker's 24 conditions were catalogued against
+`sokker.org/lineup/matchID/44752466/action/ordersform`.
+
+**Exit criteria:**
+
+- [ ] Substitution orders: minute, condition, player out, player in. Capped at **20**, and the cap is
+      stated in the UI rather than enforced silently.
+- [ ] Tactic orders: minute, condition, target tactic. Capped at **10**, same rule.
+- [ ] An order that fires switches the engine's tactics **live at that minute**, not from the start.
+- [ ] Orders are part of the T-MATCH-2 lock.
+
+## T-MATCH-7 — 🔵 P1 · a matchday is 155 matches and the job framework was not built for it
+
+**Found while building T-MATCH-1.** `JobRunner` wraps every job in one `REQUIRES_NEW` transaction,
+which is right for a job that either happens or does not — and wrong for a matchday. Three defects were
+found by measuring, not by reading:
+
+| Defect | What it did |
+|---|---|
+| Whole matchday in one transaction | 20 minutes, **nothing committed**: match ids ran to 918 while the table still ended at 743. One bad fixture would have lost the evening. |
+| Per-fixture `REQUIRES_NEW` | Deadlocked. The job transaction already held the `player_discipline` rows the inner one wanted; PostgreSQL cannot see its own locks from outside. |
+| Jobs registered as arrays / `List<DayJob>` beans | Compiled, were green, and **had never run** — Spring folds neither into the `List<DayJob>` the runner reads. |
+
+**Exit criteria:**
+
+- [x] `DayJob.transactionalRun()` as the escape hatch; only the prepare/publish jobs opt out.
+- [x] Eight explicit `@Bean` methods, as the rest of the package already does.
+- [ ] The commit-on-completion order in a matchday is deterministic, so a restart resumes rather than
+      re-deciding football that is already published.
+
+
+---
+
 # 🔴 T-REST — unfinished, carried over
 
 Everything the previous board carried open. Nothing here is new work; this is the residue.
