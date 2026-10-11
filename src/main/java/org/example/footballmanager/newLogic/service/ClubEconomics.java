@@ -61,6 +61,29 @@ public final class ClubEconomics {
     }
 
     /**
+     * What share of a player's market value his annual wage represents.
+     *
+     * <p>For real football this is 15-25% for a star and much less further down a squad: a club that
+     * signs for 50m typically commits 8-12m a year to wages for him.
+     *
+     * <p>It is used to price the <b>named, hand-entered squads</b>, and it is here rather than in a
+     * table of literals for one reason: those squads carry a market value and a weekly wage as two
+     * separate columns, and nobody checks one against the other. OFK Omladinac's thirteen players were
+     * seeded at 45-84% of their own market value per year — a goalkeeper valued at 186.9m on a weekly
+     * wage of 1,888,000, which is 98m a year, or more than half his transfer fee every year for ever.
+     *
+     * <p>Derived from the value instead, the two cannot disagree. The <b>values</b> are left alone:
+     * they are the owner's own figures for his own club and re-pricing them is a different decision.
+     */
+    public static final double SEEDED_WAGE_SHARE_OF_VALUE = 0.20;
+
+    /** The weekly wage for a hand-entered squad: a stated share of the value he is carried at. */
+    public static double seededWeeklyWage(double playerValue, int age) {
+        double annual = Math.max(0, playerValue) * SEEDED_WAGE_SHARE_OF_VALUE * ageFactor(age);
+        return round2(annual / 52.0);
+    }
+
+    /**
      * How much of his best years are still ahead of him.
      *
      * <p>The same curve {@code PlayerContractService} uses for a renewal demand, so a player who signs

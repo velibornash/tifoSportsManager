@@ -45,7 +45,12 @@ public class PlayerFactory {
                 ));
         List<Player> missingPlayers = new ArrayList<>();
 
-        // Podaci o igračima Omladinca (ime, pozicija, godine, itd.)
+        // Podaci o igračima Omladinca (ime, pozicija, godine, tržišna vrednost, ...)
+        //
+        // Column 4 is the market value and is the owner's own figure. It used to be followed by a
+        // hand-entered weekly wage, which is why this squad paid 18,478,000 a week; the wage is now
+        // derived from the value by ClubEconomics.seededWeeklyWage and the column is kept only so the
+        // rows stay readable next to the figures they came from.
         Object[][] data = {
                 {"Zvezdan Vukomanović", Position.GK, 22, 186900000.0, 1888000.0, 177.0, 75.0, 10.0, 12, 9, 17, 4, 9, 4, 4, 8, 3, 1},
                 {"Borislav Negovanović", Position.ATT, 20, 39320000.0, 482000.0, 180.0, 75.2, 14.0, 15, 9, 0, 4, 14, 11, 5, 6, 13, 9},
@@ -68,7 +73,16 @@ public class PlayerFactory {
             Position position = (Position) row[1];
             int age = (int) row[2];
             double value = (double) row[3];
-            double earnings = (double) row[4];
+            // Column 4 is no longer a weekly wage. It was hand-entered beside the value and nothing
+            // ever checked one against the other, so this squad ended up paying 45-84% of its own
+            // market value per year: a goalkeeper at 186.9m on 1,888,000 a week, which is more than
+            // half his transfer fee every year for ever, and a wage bill of 18,478,000 that no income
+            // line in the game could meet.
+            //
+            // The wage is derived from the value now, so the two cannot disagree. The value is the
+            // owner's own figure for his own club and is left exactly as given.
+            double earnings = org.example.footballmanager.newLogic.service.ClubEconomics
+                    .seededWeeklyWage(value, age);
             double height = (double) row[5];
             double weight = (double) row[6];
             double form = (double) row[7];
