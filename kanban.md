@@ -871,6 +871,18 @@ finds that comment first. Two of my own checks did exactly that before the scan 
 - [ ] Is an unplayable fixture a **failure** or a **skip**? It is currently counted as a failure and named
       in `failedIds`. The alternative is a third counter, and the status endpoint has to say which.
 
+### Additional defect found 2026-10-11 — overlapping matchday batches were dropped
+
+Day 3 friendly and league jobs share the 19:00 kickoff. The friendly job acquired the singleton async
+runner first; the league job was then logged as `DONE` even though the runner rejected its batch as already
+running. Season 1 week 1 day 3 consequently left all 155 league fixtures unplayed. The runner now queues
+overlapping batches and drains them sequentially. The missed batch was replayed live and all 155 fixtures
+are now persisted as played.
+
+- [x] Overlapping async simulation batches are queued rather than dropped
+- [x] A job cannot report the batch as lost because the shared runner is busy
+- [x] Season 1 week 1 day 3 repaired: 155/155 fixtures played and linked to matches
+
 ## T-REST-18 — 🧹 Dead code and owners' calls still parked
 
 | Item | Why it is not a task |

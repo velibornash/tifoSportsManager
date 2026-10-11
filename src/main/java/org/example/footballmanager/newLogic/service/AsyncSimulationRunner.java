@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -28,6 +30,13 @@ public class AsyncSimulationRunner {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicInteger simulatedCount = new AtomicInteger(0);
     private final AtomicInteger totalCount = new AtomicInteger(0);
+
+    /**
+     * Matchday jobs can share a kickoff hour. The first batch owns the worker and later batches wait here
+     * instead of being silently discarded while the worker is busy.
+     */
+    private final Queue<List<Long>> pendingBatches = new ConcurrentLinkedQueue<>();
+    private final Object queueLock = new Object();
 
     /**
      * Fixtures this pass could not simulate, which were logged and skipped.
@@ -59,12 +68,18 @@ public class AsyncSimulationRunner {
 
     @Async
     public void simulateInBackground(List<Long> fixtureIds) {
-        log.info("Background simulation started for {} fixtures", fixtureIds.size());
-        if (!running.compareAndSet(false, true)) {
-            log.warn("Background simulation already running");
+        boolean startsWorker;
+        synchronized (queueLock) {
+            pendingBatches.add(List.copyOf(fixtureIds));
+            startsWorker = running.compareAndSet(false, true);
+        }
+        if (!startsWorker) {
+            log.info("Background simulation already running; queued {} fixtures", fixtureIds.size());
             return;
         }
-        totalCount.set(fixtureIds.size());
+
+        log.info("Background simulation started for {} queued fixture batch(es)", pendingBatches.size());
+        totalCount.set(0);
         simulatedCount.set(0);
         failedCount.set(0);
         failedIds.clear();
@@ -72,20 +87,56 @@ public class AsyncSimulationRunner {
         transactionTemplate.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 
         try {
-            for (Long fixtureId : fixtureIds) {
-                try {
-                    // **The outcome is decided inside the lambda, not after it.**
-                    //
-                    // This `return` used to leave the lambda and the loop carried straight on to
-                    // `simulatedCount.incrementAndGet()`. A fixture with no home side, or no away side, was
-                    // therefore reported as a match that had been played — which is the one thing this
-                    // counter must never say, because "we simulated 240" is how a season quietly loses a
-                    // fixture and nobody notices until the table is wrong.
-                    //
-                    // The three outcomes are distinguished rather than lumped, because they mean different
-                    // things to whoever is waiting: nothing to do, could not be done, and was done. Only the
-                    // last one increments `simulatedCount`.
-                    Outcome outcome = transactionTemplate.execute(status -> {
+            while (true) {
+                List<Long> batch;
+                while ((batch = pendingBatches.poll()) != null) {
+                    totalCount.addAndGet(batch.size());
+                    simulateBatch(batch);
+                }
+
+                rateClubs();
+                rebuildRanking();
+
+                // A second job may have queued a batch while the first batch was being rated. Check and
+                // release the worker under the same lock used when a caller enqueues a batch, so no batch
+                // can land in the gap between "queue is empty" and "worker stopped".
+                synchronized (queueLock) {
+                    if (pendingBatches.isEmpty()) {
+                        running.set(false);
+                        break;
+                    }
+                }
+            }
+            if (failedCount.get() > 0) {
+                log.warn("Background simulation complete: {} of {} fixture(s) simulated, {} FAILED: {}",
+                        simulatedCount.get(), totalCount.get(), failedCount.get(), getFailedIds());
+            } else {
+                log.info("Background simulation complete: {} of {} fixture(s) simulated",
+                        simulatedCount.get(), totalCount.get());
+            }
+        } finally {
+            synchronized (queueLock) {
+                running.set(false);
+            }
+            log.info("Background simulation runner stopped");
+        }
+    }
+
+    private void simulateBatch(List<Long> fixtureIds) {
+        for (Long fixtureId : fixtureIds) {
+            try {
+                // **The outcome is decided inside the lambda, not after it.**
+                //
+                // This `return` used to leave the lambda and the loop carried straight on to
+                // `simulatedCount.incrementAndGet()`. A fixture with no home side, or no away side, was
+                // therefore reported as a match that had been played — which is the one thing this
+                // counter must never say, because "we simulated 240" is how a season quietly loses a
+                // fixture and nobody notices until the table is wrong.
+                //
+                // The three outcomes are distinguished rather than lumped, because they mean different
+                // things to whoever is waiting: nothing to do, could not be done, and was done. Only the
+                // last one increments `simulatedCount`.
+                Outcome outcome = transactionTemplate.execute(status -> {
                         MatchFixture fixture = matchFixtureRepository.findById(fixtureId).orElse(null);
                         if (fixture == null) return Outcome.ALREADY_GONE;
                         if (fixture.isPlayed()) return Outcome.ALREADY_GONE;
@@ -98,43 +149,30 @@ public class AsyncSimulationRunner {
                         return Outcome.SIMULATED;
                     });
 
-                    if (outcome == Outcome.UNPLAYABLE) {
-                        // Counted with the failures, not with the simulations: it was equally not played,
-                        // and reporting it as done is the defect. It is named in the log and held in
-                        // `failedIds` so the status endpoint can distinguish it from a thrown exception.
-                        failedCount.incrementAndGet();
-                        failedIds.add(fixtureId);
-                        log.warn("Fixture {} has no home side or no away side and was not played.", fixtureId);
-                        continue;
-                    }
-                    if (outcome == Outcome.ALREADY_GONE) {
-                        continue;
-                    }
-                    simulatedCount.incrementAndGet();
-                    if (simulatedCount.get() % 10 == 0) {
-                        log.info("Background progress: {}/{}", simulatedCount.get(), totalCount.get());
-                    }
-                } catch (Exception e) {
-                    // Counted, named, and logged — a failed fixture is an unplayed match, and leaving it
-                    // only in the log is how a season quietly loses a few percent of its football.
+                if (outcome == Outcome.UNPLAYABLE) {
+                    // Counted with the failures, not with the simulations: it was equally not played,
+                    // and reporting it as done is the defect. It is named in the log and held in
+                    // `failedIds` so the status endpoint can distinguish it from a thrown exception.
                     failedCount.incrementAndGet();
                     failedIds.add(fixtureId);
-                    log.error("Failed to simulate fixture {} in background ({}/{} so far)",
-                            fixtureId, failedCount.get(), totalCount.get(), e);
+                    log.warn("Fixture {} has no home side or no away side and was not played.", fixtureId);
+                    continue;
                 }
+                if (outcome == Outcome.ALREADY_GONE) {
+                    continue;
+                }
+                simulatedCount.incrementAndGet();
+                if (simulatedCount.get() % 10 == 0) {
+                    log.info("Background progress: {}/{}", simulatedCount.get(), totalCount.get());
+                }
+            } catch (Exception e) {
+                // Counted, named, and logged — a failed fixture is an unplayed match, and leaving it
+                // only in the log is how a season quietly loses a few percent of its football.
+                failedCount.incrementAndGet();
+                failedIds.add(fixtureId);
+                log.error("Failed to simulate fixture {} in background ({}/{} so far)",
+                        fixtureId, failedCount.get(), totalCount.get(), e);
             }
-            if (failedCount.get() > 0) {
-                log.warn("Background simulation complete: {} of {} fixture(s) simulated, {} FAILED: {}",
-                        simulatedCount.get(), totalCount.get(), failedCount.get(), getFailedIds());
-            } else {
-                log.info("Background simulation complete: {} of {} fixture(s) simulated",
-                        simulatedCount.get(), totalCount.get());
-            }
-        } finally {
-            rateClubs();
-            rebuildRanking();
-            running.set(false);
-            log.info("Background simulation runner stopped");
         }
     }
 

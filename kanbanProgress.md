@@ -1,5 +1,30 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ T-REST-17b — overlapping matchday batches no longer disappear (2026-10-11)
+
+Day 3 friendly and league jobs have the same 19:00 kickoff. The friendly job acquired the singleton
+`AsyncSimulationRunner` first. The league job then called the runner while it was busy; the runner logged
+"already running" and returned, while `MatchdayJob` still logged the job as `DONE`. The database showed
+the full day 3 league round — 155 fixtures — still unplayed, with no retry possible because the job row was
+already DONE.
+
+`AsyncSimulationRunner` now queues every submitted fixture batch and drains queued batches sequentially.
+The queue and worker state are claimed under one lock, including the final empty-queue check, so a batch
+cannot land between "empty" and "stopped". Ratings and ranking rebuilds happen after the drained work.
+
+The missed `matchday-league-a` row was re-queued, the existing application job runner replayed the batch,
+and the clock was restored to its original position. Database evidence afterwards:
+
+```
+season 1 week 1 day 3: 155 played, 0 unplayed, 155 played_match_id links
+match rows for season 1 week 1 day 3: 155
+job_run matchday-league-a: DONE
+game clock: season 1 week 1 day 4 hour 9
+```
+
+`mvn clean package -DskipTests` passed. The full test suite was not run because this repair requires a
+live PostgreSQL application and the repository records that the full suite takes hours.
+
 ## ✅ Club Schedule and Results — fixed chronological sorting (2026-10-11)
 
 Club Schedule and Results pages were sorting by `matchDate` (wall-clock date string), which didn't respect the game's calendar structure where multiple rounds can share the same day. This caused fixtures to appear out of chronological order.
