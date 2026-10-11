@@ -51,6 +51,26 @@ public interface DayJob {
         return 100;
     }
 
+    /**
+     * Whether the job body runs inside the framework's transaction.
+     *
+     * <p>{@code JobRunner} wraps every job in one {@code REQUIRES_NEW} transaction, which is right for
+     * a job that either happens or does not: a job that throws leaves no half-written state.
+     *
+     * <p>It is wrong for a job that is really a loop over independent units of work, and the matchday
+     * jobs are that. A matchday is 155 matches; in one transaction it committed nothing for twenty
+     * minutes and one bad fixture lost the whole evening. Committing each match separately is not
+     * possible either - a per-fixture {@code REQUIRES_NEW} deadlocks against the job transaction it is
+     * nested in, because the outer transaction already holds the {@code player_discipline} rows the
+     * inner one wants to update. PostgreSQL cannot see its own locks from the outside.
+     *
+     * <p>So a job that opts out is one that manages its own boundaries. The prepare and publish jobs
+     * each wrap a single fixture; nothing else opts out, and a new opt-out needs the same argument.
+     */
+    default boolean transactionalRun() {
+        return true;
+    }
+
     /** Whether the trigger hour is inclusive. A job at 00:00 fires when the day starts. */
     default boolean dueAtMidnight() {
         return true;

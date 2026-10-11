@@ -257,8 +257,14 @@ public class JobRunner {
         }
 
         try {
-            requiresNew.executeWithoutResult(status ->
-                    job.run(new JobContext(seasonYear, weekNumber, dayNumber, hour)));
+            // A job that manages its own transaction boundaries runs outside this one. See
+            // DayJob.transactionalRun(): wrapping it again would deadlock its per-fixture commits.
+            JobContext context = new JobContext(seasonYear, weekNumber, dayNumber, hour);
+            if (job.transactionalRun()) {
+                requiresNew.executeWithoutResult(status -> job.run(context));
+            } else {
+                job.run(context);
+            }
             record.setStatus(JobRun.Status.DONE);
             record.setRanAt(Instant.now());
             record.setMessage(null);

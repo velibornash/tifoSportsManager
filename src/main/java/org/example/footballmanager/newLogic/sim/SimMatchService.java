@@ -367,7 +367,28 @@ public class SimMatchService {
 
     /** The three-argument form, for a caller replaying a stored outcome and with no ticks to read. */
     public Long persist(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId) {
-        return persist(fixture, outcome, replayId, null);
+        return persist(fixture, outcome, replayId, null, false);
+    }
+
+    /**
+     * Computes and stores a match without publishing it (owner, 2026-10-11).
+     *
+     * <p>An hour before kickoff the whole matchday is simulated so that a manager's tactics, eleven
+     * and orders are settled before anything is shown - changing them afterwards could not change what
+     * was already computed, and pretending otherwise would be the dishonest version of a deadline.
+     *
+     * <p>The difference from an ordinary persist is two fields and nothing else. {@code played} stays
+     * false, so the fixture is still "not played" to every read path in the game, and the match row's
+     * id is written to {@code preparedMatchId} instead of {@code playedMatch}. Everything else -
+     * player stats, ratings, the league table, zone load - happens exactly as it always does, because
+     * a computed match is a real match and its side effects are real.
+     *
+     * @return the id of the stored match, for the kickoff job to publish
+     */
+    @Transactional
+    public Long prepareMatch(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId,
+                             List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> simSnapshots) {
+        return persist(fixture, outcome, replayId, simSnapshots, true);
     }
 
     /**
@@ -377,6 +398,12 @@ public class SimMatchService {
     @Transactional
     public Long persist(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId,
                         List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> simSnapshots) {
+        return persist(fixture, outcome, replayId, simSnapshots, false);
+    }
+
+    private Long persist(MatchFixture fixture, ProposalMatchOutcome outcome, long replayId,
+                         List<org.example.footballmanager.newLogic.sim.recording.MatchSnapshot> simSnapshots,
+                         boolean preparedOnly) {
         try {
             Match match = new Match();
             match.setHomeTeam(fixture.getHomeTeam());
@@ -473,8 +500,15 @@ public class SimMatchService {
                 log.warn("Could not record zone load for match {}: {}", match.getId(), e.getMessage());
             }
 
-            fixture.setPlayed(true);
-            fixture.setPlayedMatch(match);
+            if (preparedOnly) {
+                // Computed, stored, and deliberately still unplayed. See prepareMatch.
+                fixture.setPreparedMatchId(match.getId());
+                fixture.setPreparedAt(match.getMatchDate() == null
+                        ? java.time.LocalDateTime.now() : match.getMatchDate());
+            } else {
+                fixture.setPlayed(true);
+                fixture.setPlayedMatch(match);
+            }
             matchFixtureRepository.save(fixture);
 
             // An international changes two countries' ratings, and the World page reads them. Doing

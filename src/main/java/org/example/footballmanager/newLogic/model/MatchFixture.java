@@ -133,6 +133,41 @@ public class MatchFixture {
     @JoinColumn(name = "played_match_id", unique = true)
     private Match playedMatch;
 
+    /**
+     * The match this fixture was computed into ahead of kickoff, if it was (owner, 2026-10-11).
+     *
+     * <p><b>Computed an hour early, published at kickoff.</b> The owner's rule: a job 59 minutes before
+     * kickoff computes every match of the matchday, and a second job at kickoff is what makes the
+     * results and the watch links appear.
+     *
+     * <p>So a fixture can be in three states and the difference matters:
+     *
+     * <ul>
+     *   <li>{@code preparedMatchId == null && !played} — not started, the manager can still change
+     *       everything about it;</li>
+     *   <li>{@code preparedMatchId != null && !played} — **computed but unpublished.** This is the
+     *       state the whole hour exists for. The tactics, the eleven and the orders are locked, because
+     *       changing them could not change what was already computed, and the result must not be
+     *       readable;</li>
+     *   <li>{@code played} — published at kickoff, and the result is on.</li>
+     * </ul>
+     *
+     * <p>It is a id and not a {@code Match} reference on purpose. Persisting the match sets
+     * {@code played = true}, so the prepared path stores the row's id and leaves the fixture's own
+     * flag alone; a live reference would drag {@code played} along with it.
+     */
+    @jakarta.persistence.Column(name = "prepared_match_id")
+    private Long preparedMatchId;
+
+    /** When the match was computed ahead of kickoff. Null until it was. */
+    @jakarta.persistence.Column(name = "prepared_at")
+    private LocalDateTime preparedAt;
+
+    /** Whether the match has been computed but not yet shown. The hour before kickoff. */
+    public boolean isPrepared() {
+        return preparedMatchId != null && !played;
+    }
+
     public Integer getDayNumber() {
         return dayNumber;
     }

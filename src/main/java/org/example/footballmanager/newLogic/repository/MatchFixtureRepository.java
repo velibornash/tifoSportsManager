@@ -48,6 +48,20 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
                                          @Param("dayNumber") Integer dayNumber);
 
     /**
+     * Fixtures of a day that are not yet published (owner, 2026-10-11).
+     *
+     * <p>The same rows as {@link #findUnplayedOnDay} — a fixture is unplayed whether it was never
+     * computed or was computed an hour before kickoff and is waiting — named separately because the
+     * two callers mean different things by them. The prepare job must skip anything already computed;
+     * the publish job must take everything.
+     */
+    @Query("select f from MatchFixture f where f.seasonYear = :seasonYear and f.weekNumber = :weekNumber "
+            + "and f.dayNumber = :dayNumber and f.played = false")
+    List<MatchFixture> findUnpublishedOnDay(@Param("seasonYear") Integer seasonYear,
+                                            @Param("weekNumber") Integer weekNumber,
+                                            @Param("dayNumber") Integer dayNumber);
+
+    /**
      * Unplayed <b>friendlies</b> for one day, whatever competition they belong to.
      *
      * <p><b>The query that makes a friendly playable at all.</b> Every other matchday selects by

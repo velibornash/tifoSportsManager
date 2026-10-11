@@ -18,6 +18,14 @@ import org.springframework.context.annotation.Configuration;
  * and 7 are separate instances of the same job with different keys, because the done-flag is keyed on
  * (season, week, day, key) and a shared key would let the day-3 job suppress the day-7 round.
  *
+ * <p><b>The five day-1/3/5/7 club matchdays that used to be here were removed on 2026-10-11.</b> They
+ * now go through {@code MatchdayPrepareJobsConfig}: computed an hour before kickoff, published at it.
+ * Leaving them here would mean two jobs simulating the same matchday in the same hour, and whichever
+ * lost the race would silently re-decide football that was already published.
+ *
+ * <p>What remains is the national-tournament calendar - qualifiers, group stage, knockouts - which
+ * does not share the club week and so has no prepare/publish pair.
+ *
  * <p>Day 1 is internationals at 20:45, from the owner's schedule. It is registered now that
  * {@code CompetitionType} has {@code INTERNATIONAL} and {@code InternationalFixtureSeeder} draws the
  * pairings. With one seeded country holding a squad there is nothing for it to select yet, and it will
@@ -27,12 +35,6 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class MatchdayJobsConfig {
 
-    @Bean
-    public MatchdayJob internationalMatchday(CompetitionRepository competitions,
-                                             MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
-        return new MatchdayJob("matchday-international", CompetitionType.INTERNATIONAL,
-                1, 20, 40, competitions, fixtures, runner);
-    }
 
     /**
      * The five qualifying matchdays: week 6, days 2 to 6, one a day.
@@ -148,37 +150,7 @@ public class MatchdayJobsConfig {
                 6, competitions, fixtures, runner);
     }
 
-    @Bean
-    public MatchdayJob leagueMatchdayFirst(CompetitionRepository competitions,
-                                           MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
-        return new MatchdayJob("matchday-league-a", CompetitionType.LEAGUE, 3, 19, 40,
-                competitions, fixtures, runner);
-    }
 
-    @Bean
-    public MatchdayJob cupMatchday(CompetitionRepository competitions,
-                                   MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
-        return new MatchdayJob("matchday-cup", CompetitionType.CUP, 5, 18, 40,
-                competitions, fixtures, runner);
-    }
 
-    /**
-     * The international club cups (Champions, Masters, Challenge across five tiers) play on day 1,
-     * the international slot, not the domestic cup slot (day 5). They are CUP competitions with
-     * INTERNATIONAL scope, so they need their own matchday job on day 1.
-     */
-    @Bean
-    public MatchdayJob internationalClubCupMatchday(CompetitionRepository competitions,
-                                                    MatchFixtureRepository fixtures,
-                                                    AsyncSimulationRunner runner) {
-        return new MatchdayJob("matchday-international-club-cup", CompetitionType.CUP, 1, 20, 40,
-                competitions, fixtures, runner);
-    }
 
-    @Bean
-    public MatchdayJob leagueMatchdaySecond(CompetitionRepository competitions,
-                                            MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
-        return new MatchdayJob("matchday-league-b", CompetitionType.LEAGUE, 7, 16, 40,
-                competitions, fixtures, runner);
-    }
 }
