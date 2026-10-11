@@ -16,21 +16,23 @@ export function createMatchesFeature(deps) {
     async function loadResults() {
         const teamId = getTeamId();
         try {
-            const response = await authFetch(`/teams/${teamId}/matches?allCompetitions=true`);
+            // No flag: `/matches` takes no allCompetitions parameter and has no competition filter —
+            // it is every played match for the club. `/schedule` below is the one that needs it.
+            const response = await authFetch(`/teams/${teamId}/matches`);
             const matches = await response.json();
             const results = matches.sort((a, b) => {
-                const aSeason = Number(a.seasonYear || 0);
-                const bSeason = Number(b.seasonYear || 0);
+                // MatchDTO names. These were seasonYear/week/day/round — the `/schedule` shape — so
+                // every key was undefined, every row tied, and the sort fell through to matchDate.
+                // There is no round on MatchDTO: the calendar is season, week, day and nothing else.
+                const aSeason = Number(a.seasonNumber || 0);
+                const bSeason = Number(b.seasonNumber || 0);
                 if (aSeason !== bSeason) return bSeason - aSeason;
-                const aWeek = Number(a.week || 0);
-                const bWeek = Number(b.week || 0);
+                const aWeek = Number(a.weekNumber || 0);
+                const bWeek = Number(b.weekNumber || 0);
                 if (aWeek !== bWeek) return bWeek - aWeek;
-                const aDay = Number(a.day || 0);
-                const bDay = Number(b.day || 0);
-                if (aDay !== bDay) return bDay - aDay;
-                const aRound = Number(a.round || 0);
-                const bRound = Number(b.round || 0);
-                return bRound - aRound;
+                const aDay = Number(a.dayNumber || 0);
+                const bDay = Number(b.dayNumber || 0);
+                return bDay - aDay;
             });
             renderMatches(results, 'Results', { currentPage: 'results' });
         } catch (err) {

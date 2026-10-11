@@ -906,7 +906,7 @@ async function loadRecentMatches() {
     };
 
     try {
-        const response = await authFetch(`/teams/${currentUserTeamId}/matches?allCompetitions=true`);
+        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
         if (!response.ok) throw new Error('Failed to load matches');
 
         const matches = await response.json();
