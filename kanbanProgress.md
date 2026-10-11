@@ -1,5 +1,175 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ The game clock is one clock and it ticks (2026-10-11) — commit `4addf0b`
+
+The owner asked for the header clock to be the game clock, and then for it to move like a real clock.
+
+**What it was.** Two things called one clock. `advanceOffsetSeconds` decided what the header rendered —
+`now() + offset`, real seconds — and four stored counters (`currentSeason`, `currentWeek`, `currentDay`,
+`currentHour`) decided what every job believed, moving only when a button was pressed. Nothing logged
+when they diverged. The header read `16:20` beside a job runner that thought it was 09:00 of day 4.
+
+**What it is.** An anchor and an offset, and nothing else. Season, week, day and hour are
+`GameTimeline.positionAt(anchor, gameTime)` — a pure function. The getters keep their names so ~20 readers
+keep working; they have no setters, because a value that cannot be written cannot be a second source of
+truth.
+
+The header shows `HH:MM:SS` **anchored on the server's** `gameTimeEpochMillis`, not the device clock. The
+server is a machine in another country; a laptop four minutes out would display a game time four minutes
+out, which is the same disagreement wearing a different hat. Season/week/day are derived in the browser
+from the same instant, so the day cannot be twenty seconds behind the time printed beside it.
+
+Every movement of the world — advance hour/day/week, the new `POST /api/game-clock/offset`, the
+half-hourly tick — adds to the offset and then calls `synchronise()`, which walks every game hour since
+`lastSyncedAt` and runs what came due on each. Capped at seven days, and it says so when it caps.
+
+### Three defects found while proving it
+
+**A world that had never synchronised walked zero hours.** The walk starts at `lastSyncedAt`; a world with
+none started where it already stood, so Advance Week elapsed a whole week and ran **no jobs**, reporting
+success. `establishBaseline()` now runs before the move.
+
+**The advance blocked on the job bodies.** Measured against the owner's database: one Advance Hour landed
+on day 4 hour 10, training became due, and the request was still open after five minutes — with the
+database idle. The clock now moves first, the walk runs on one single-threaded executor, and `snapshot()`
+reports `syncing` so the browser waits for the jobs instead of showing a world they have not touched.
+
+**The migration folded the old offset in twice.** The counters were the truth; the offset only ever moved
+the *displayed* time. Anchoring for the counters and leaving the offset alone applied it a second time and
+moved a day-4 world to **day 7** — a training day and a matchday vanished into it. Caught by reading the
+database after the migration rather than by the build being green.
+
+### Also
+
+`refreshGameClock()` was called under a `typeof === 'function'` guard and existed nowhere in the
+repository, so Advance Day and Advance Hour refreshed **nothing at all**.
+
+### Evidence
+
+- 15 clock tests green. Both fixes **proved able to fail** by reverting them: removing the baseline gives
+  `Offered: 0` of 168 hours and fails three tests; stopping the season from rolling fails two.
+- Live against the owner's database: migrated to **season 1, week 1, day 4 at 09:00** — exactly where it
+  already was — and the header ticking in step with the server to the second.
+- `JobTriggerCoverageTest` folded into `GameClockWeekAdvanceTest`; the 21 tests that placed the world
+  through the retired setters now place it through `GameClocks`, which moves the anchor and the offset
+  rather than restoring a setter "for tests".
+
+**Not fixed, and recorded separately:** one training pass over 14,880 clubs still takes over six minutes
+of pure CPU. See the board.
+
+
+## ✅ A fixture's day and its kickoff hour come from one place (2026-10-11) — commit `c1d6b8e`
+
+The handoff called this "the next thing to fix": the Champions Cup fixture said `18:00` while the job that
+plays it triggers from `20:00`.
+
+Three writers each answered "when does this slot play" for themselves. The league read `WeekTemplate` and
+was right. The national cup hardcoded day 5 at 18:00. **The fifteen continental cups moved to the day-1
+international slot on 2026-10-06 and kept borrowing the national cup's *date* rule** — so every one of
+them wrote `dayNumber = 1` and stamped a day-5, 18:00 date. Both columns were populated, so nothing
+objected.
+
+Two more writers skipped the template in other ways: league return legs (rounds 11-18) took the
+season-start time verbatim, so the first ten rounds kicked off at 19:00/16:00 and the second ten whenever
+the world happened to be created; and playoff fixtures carried no day and no hour at all.
+
+`GameTimeline.kickoffAt` is now the only answer, and it reads the day and the hour from the same template.
+
+**Proved able to fail:** restoring the borrowed rule fails with *"the fixture says day 1 but is dated
+2026-01-16"*. An earlier mutation of the national cup's own rule did **not** fail, because day 5's
+hardcoded 18:00 happens to equal the template's 18:00 — which is why the test was pointed at the
+continental cup, where the two actually differ.
+
+**Still open:** `SeasonService.ensurePlayoffWeekFixtures` has zero callers, so no playoff fixture is
+generated. The day and hour are correct for whenever it is wired up.
+
+
+## ✅ A national side drawn short was short for ever (2026-10-11) — commit `4c8f677`
+
+The owner: *"umesto 25 igraca bude npr 7 a dole u national pool ih ima koliko hoces"*.
+
+`NationalTeamSeeder.squadsFor` guarded with "this side already holds real players". So the first time a
+country was drawn — while its pyramid was small and only a handful of under-21s were eligible — it froze
+at that handful, and every later pass took the same branch. **Re-seeding could not help**, which is why
+the pool was full and the squad was not. A squad is done when it is **full**, which is what the comment
+under the guard always claimed it did.
+
+**The owner's database is currently healthy** — all 48 U-21 sides hold 25 and none is over-age — so this
+only bites a world where a country is first drawn with a small pool. `aShortSquadIsTappedUp` reproduces
+exactly that and fails on the old guard with "expected 25 but was 7".
+
+**A test that was already red:** `theGuardDoesNotBlockASecondSide` has been failing since the age filter
+went in on 2026-10-10 — that country had six under-21s out of thirty, the side was drawn with six, and the
+assertion wanted twenty-five. It was failing in the suite and was not being read.
+
+
+## ✅ A club now earns in proportion to what it is worth (2026-10-11) — commit `11579eec`
+
+The owner: *"ako su plate mog tima 18 miliona evra nedeljno onda mora i income da se prilagodi tim
+vrednostima"*.
+
+Measured, season 1 week 1, OFK Omladinac — income **+176,491** against wages **−18,478,000**. A 105×
+deficit. Broadcast was `competition.reputationWeight × 145`, a pure function of the division. Gate was a
+literal: 72% home, 55% away, every club, every week, every opponent. No club in the world was solvent.
+
+Broadcast is now a **stated share of the club's own wage bill**; gate occupancy follows reputation;
+sponsorship scales with standing; merchandising was raised from a base of 1,400, which was 3% of income.
+`ClubEconomics` is one place for "what does this player cost", because there were four wage formulas at
+magnitudes three orders of magnitude apart — one of them `500 + random(2500)` for academy graduates.
+
+The junior school, which the owner separately reported as out of step with the general budget, was priced
+off reputation while the budget was seeded from an unrelated band. It is now priced against the first
+team's wage bill. The old version asked a fifth-tier club with a reputation of 45 for 45,500 — more than
+twice its entire budget, so the feature was unreachable for the clubs it exists for.
+
+### Two more defects found on the way
+
+**`PlayerContractService.renew` never wrote the new wage to the Player.** The wage bill reads
+`Player.earnings` and nothing else, so every renewal in the game moved the number on the contract and left
+the number the club pays exactly where it was — while transfer affordability and the board kept reading
+the old one. Found by a test that **failed on its first run**, because my first attempt at the fix had
+not applied: the string I replaced did not match. Worth recording — the edit reported success and changed
+nothing.
+
+**A week in which the pitch improved charged the pitch and returned early**, so the club paid for its
+grass and not for its ground. The javadoc claimed the opposite, which is what a club that never improves
+its pitch gets.
+
+### Verified
+
+39 tests green across the finance and contract suites. **Proved able to fail:** restoring the old
+broadcast formula fails two tests, one of them with *"twice the wages should be twice the television
+money. It was 2900.0 and 2900.0 — which is the old behaviour with a different number in front of it, and
+would look fine on the page."*
+
+### 🔴 Open, and it is an owner decision
+
+The broadcast coefficient is **calibrated, not derived**. One club does not fit it. OFK Omladinac pays
+**18,478,000 a week across thirteen players** — 74m a year each — on a 43,780-seat ground that brings
+173,591. Sixty times a normal club's wage bill on twice the ground. No single coefficient balances that
+club and an ordinary one, because the wage scale is the outlier rather than the income side.
+
+Re-pricing every wage and value is a migration over **31,230 players** and a decision about how much
+money is in this world. Not started, and not something to guess at.
+
+
+## ✅ Sessions like this one: measuring instead of asserting (2026-10-11)
+
+Three things in this session were found by looking at the database or a thread dump, and would not have
+been found by reading the code:
+
+1. **The game clock's migration silently moved the world three days forward.** The build was green, the
+   migration logged a reassuring line, and the position was wrong.
+2. **One training pass burns six minutes of CPU with the database idle.** No query was running. A thread
+   dump named the method.
+3. **`theGuardDoesNotBlockASecondSide` had been red since 2026-10-10.** Nobody was reading it.
+
+A fourth is worth writing down because it is the failure mode this repository keeps paying for: **an edit
+that reported success and changed nothing.** The renewal fix was applied by string replacement, the tool
+said the edit was applied, and the code was unchanged. The test caught it — but only because the test was
+asserting on behaviour rather than on the presence of a line.
+
+
 ## ✅ Header clock shows the game clock (2026-10-11) — commit `0e9b8af`
 
 The top-right clock rendered **real Belgrade time**. The reasoning written in the code was that "Advance
