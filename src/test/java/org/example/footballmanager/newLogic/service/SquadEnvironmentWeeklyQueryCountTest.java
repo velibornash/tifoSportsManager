@@ -43,14 +43,16 @@ class SquadEnvironmentWeeklyQueryCountTest {
     private final PlayerRepository players = mock(PlayerRepository.class);
 
     private SquadEnvironmentService service() {
-        // Constructor order is (players, teams, minutes).
-        return new SquadEnvironmentService(players, teams, mock(TrainingPercentService.class));
+        // Constructor order is (players, teams, minutes, entityManager).
+        return new SquadEnvironmentService(players, teams, mock(TrainingPercentService.class),
+                mock(jakarta.persistence.EntityManager.class));
     }
 
     @Test
     @DisplayName("30 clubs cost one squad query, not thirty")
     void thirtyClubsCostOneSquadQuery() {
         when(teams.findAll()).thenReturn(clubs(30));
+        when(teams.findAllById(anyList())).thenReturn(clubs(30));
         when(players.findByTeamIdIn(anyList())).thenReturn(squadsOf(30, 5));
 
         service().advanceWeek(1, 2);
@@ -63,6 +65,7 @@ class SquadEnvironmentWeeklyQueryCountTest {
     @DisplayName("every club is still advanced, so the one query did not come at the expense of the work")
     void everyClubIsStillAdvanced() {
         when(teams.findAll()).thenReturn(clubs(30));
+        when(teams.findAllById(anyList())).thenReturn(clubs(30));
         when(players.findByTeamIdIn(anyList())).thenReturn(squadsOf(30, 5));
 
         assertEquals(30, service().advanceWeek(1, 2),
@@ -73,6 +76,7 @@ class SquadEnvironmentWeeklyQueryCountTest {
     @DisplayName("a club with no players needs no query of its own, and is not a failure")
     void aClubWithNoPlayersNeedsNoQueryOfItsOwn() {
         when(teams.findAll()).thenReturn(clubs(3));
+        when(teams.findAllById(anyList())).thenReturn(clubs(3));
         // Only the first club has anybody. The other two must be discovered from the absent map key,
         // not by asking the database whether they are empty.
         when(players.findByTeamIdIn(anyList())).thenReturn(squadsOf(1, 4));
@@ -93,7 +97,10 @@ class SquadEnvironmentWeeklyQueryCountTest {
 
         assertEquals(0, service().advanceWeek(1, 2));
 
-        verify(players, times(1)).findByTeamIdIn(anyList());
+        // This used to be `times(1)` - one findByTeamIdIn even for a world with no clubs in it. The
+        // method now reads the club ids first and returns before it queries anybody, because a
+        // world with nothing to advance should not pay a round trip to discover that.
+        verify(players, never()).findByTeamIdIn(anyList());
     }
 
     private List<Team> clubs(int count) {

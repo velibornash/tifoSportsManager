@@ -6,6 +6,7 @@ import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,7 @@ public class SquadEnvironmentService {
     private final PlayerRepository players;
     private final TeamRepository teams;
     private final TrainingPercentService minutes;
+    private final EntityManager entityManager;
 
     /** clubId -> "season:week" -> (mentorId to juniorId). */
     private final Map<Long, Map<String, Map<Long, Long>>> pairingCache = new ConcurrentHashMap<>();
@@ -101,44 +103,105 @@ public class SquadEnvironmentService {
      * A senior who was sold, a junior who graduated, a player who arrived — all of it is picked up by
      * deriving the pairs again rather than by trying to patch stored ones.
      */
+    /**
+     * How many clubs are advanced between flushes.
+     *
+     * <p><b>Measured, 2026-10-11.</b> One pass of this method over the owner's world - 14,880 clubs,
+     * ~300,000 players - took <b>over six minutes with the database completely idle</b>: 388 seconds of
+     * CPU in 398 seconds of wall, a thread dump putting all of it in
+     * {@code org.hibernate.engine.internal.Cascade.cascade}. No query was running. The job was not slow;
+     * the ORM was.
+     *
+     * <p>The cause is the size of the persistence context, not the number of queries. Loading every
+     * squad in one go put 300,000 managed entities in the session, and every query after that
+     * auto-flushed - cascading over every entity dirtied <em>so far</em>. Three hundred thousand
+     * players, one cascade each, over a set that only grows. That is O(clubs x players), and it is why
+     * the database was idle while the CPU was not.
+     *
+     * <p><b>An earlier attempt failed and was reverted.</b> Separating the read phase from the write
+     * phase and clearing every 50 clubs measured at 393 s CPU in 408 s - no better at all - because the
+     * players were already loaded and dirty when the clearing would have happened. Flushing and
+     * clearing <em>before</em> the work, in bounded chunks, is the version that actually shrinks the
+     * cascade set, and that is what this is.
+     */
+    private static final int CLUB_CHUNK = 150;
+
     @Transactional
     public int advanceWeek(Integer season, Integer week) {
-        List<Team> clubs = teams.findAll();
-        if (clubs == null) return 0;
-
-        // **Every squad in one query.**
-        //
-        // It read `players.findByTeamId(club.getId())` inside the loop, so a week cost one query per
-        // club — 14,880 of them once the world is 48 countries, every week of every season, to read
-        // 300,000 players that one query already had. `findByTeamIdIn` has existed for the transfer
-        // market's bulk read; this is the same fix in a second caller.
-        //
-        // Grouped by team id rather than looked up per club, because a map lookup per club is free and a
-        // query per club is not. A club with no players is an absent key, which is a fact and not a gap:
-        // `getOrDefault` gives it an empty squad and the loop's own "nothing to do" path.
-        Map<Long, List<Player>> squadsByTeam = new HashMap<>();
-        List<Long> clubIds = new ArrayList<>();
-        for (Team club : clubs) {
-            if (club != null && club.getId() != null) clubIds.add(club.getId());
+        List<Long> allClubIds = teams.findAll().stream()
+                .map(Team::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (allClubIds.isEmpty()) {
+            return 0;
         }
+
+        int touched = 0;
+        for (int from = 0; from < allClubIds.size(); from += CLUB_CHUNK) {
+            List<Long> chunk = allClubIds.subList(from, Math.min(from + CLUB_CHUNK, allClubIds.size()));
+            touched += advanceChunk(chunk, season, week);
+        }
+
+        pairingCache.clear();
+        reverseCache.clear();
+        log.info("Squad environment advanced to week {} for {} clubs", week, touched);
+        return touched;
+    }
+
+    /**
+     * One chunk of clubs: read, change, write, and let go.
+     *
+     * <p>The flush and the clear are the whole point. {@code clear()} detaches everything, so the next
+     * chunk starts with an empty persistence context instead of inheriting the last one's dirt; without
+     * it the cascade set is still every player in the world by the time the loop finishes.
+     */
+    private int advanceChunk(List<Long> clubIds, Integer season, Integer week) {
+        // One query for the clubs in this chunk, not one per club. Reading them one at a time would
+        // trade an ORM problem for a query problem, and `SquadEnvironmentWeeklyQueryCountTest` exists
+        // precisely to keep that trade from being made quietly.
+        Map<Long, Team> clubsById = new HashMap<>();
+        for (Team club : teams.findAllById(clubIds)) {
+            if (club != null && club.getId() != null) clubsById.put(club.getId(), club);
+        }
+
+        Map<Long, List<Player>> squadsByTeam = new HashMap<>();
         for (Player player : players.findByTeamIdIn(clubIds)) {
             if (player == null || player.getTeam() == null || player.getTeam().getId() == null) continue;
             squadsByTeam.computeIfAbsent(player.getTeam().getId(), k -> new ArrayList<>()).add(player);
         }
 
+        // **Read everything before changing anything.**
+        //
+        // The mentor pairing and the minutes are both cached per club and both resolve on first use.
+        // If that first use happens inside the write loop, it runs while this chunk's players are
+        // already dirty - and a query auto-flushes, which cascades over every dirty entity. Nine
+        // thousand players times four hundred queries is still quadratic, just at a smaller scale,
+        // which is exactly what the first attempt at this fix measured: no improvement at all.
+        //
+        // Warming both caches while the session is clean costs nothing and moves every one of those
+        // queries into a phase with an empty cascade set.
+        for (List<Player> squad : squadsByTeam.values()) {
+            for (Player p : squad) {
+                if (p == null || p.getId() == null) continue;
+                minutes.minutesPlayed(p.getId(), p.getTeam().getId(), season, week);
+                mentoredBy(p.getId(), season, week);
+            }
+        }
+
         int touched = 0;
-        for (Team club : clubs) {
-            if (club == null || club.getId() == null) continue;
-            List<Player> squad = squadsByTeam.getOrDefault(club.getId(), List.of());
-            if (squad == null) continue;
+        for (Long clubId : clubIds) {
+            Team club = clubsById.get(clubId);
+            if (club == null) continue;
+            List<Player> squad = squadsByTeam.getOrDefault(clubId, List.of());
+
             for (Player p : squad) {
                 if (p == null) continue;
                 int current = (int) Math.round(SquadEnvironment.familiarityOf(p));
                 p.setFamiliarity((double) SquadEnvironment.familiarityAfterWeek(
-                        current, minutesThisWeek(p, season, week)));
+                        current, minutes.minutesPlayed(p.getId(), clubId, season, week)));
                 // A mentor gets something out of it too, and a club that spends a senior's season
                 // teaching rather than playing would be exploiting him.
-                if (mentoredBy(p.getId(), season, week).size() > 0) {
+                if (!mentoredBy(p.getId(), season, week).isEmpty()) {
                     p.setMorale(Math.min(100.0, p.getMorale() + SquadEnvironment.MENTOR_MORALE_BONUS));
                 }
             }
@@ -153,22 +216,11 @@ public class SquadEnvironmentService {
                     (int) Math.round(SquadEnvironment.cohesionOf(club)), unsettled));
             touched++;
         }
-        pairingCache.clear();
-        reverseCache.clear();
-        log.info("Squad environment advanced to week {} for {} clubs", week, touched);
-        return touched;
-    }
 
-    /**
-     * Minutes this player actually played this week.
-     *
-     * <p>Delegated to the same source the training percentage uses, so a substitute who played twenty
-     * minutes is treated identically here and there. A player with no recorded minutes counts as
-     * none, never as a full match.
-     */
-    private int minutesThisWeek(Player player, Integer season, Integer week) {
-        if (player == null || player.getId() == null) return 0;
-        return minutes.minutesPlayed(player.getId(),
-                player.getTeam() == null ? null : player.getTeam().getId(), season, week);
+        if (entityManager.isOpen()) {
+            entityManager.flush();
+            entityManager.clear();
+        }
+        return touched;
     }
 }
