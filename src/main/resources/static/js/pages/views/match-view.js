@@ -257,6 +257,12 @@ export function createMatchView(deps) {
                 const awayBenchQuality = numberOr(previewPayload?.awayBenchQuality, null);
                 const homeAvailabilityScore = numberOr(previewPayload?.homeAvailabilityScore, null);
                 const awayAvailabilityScore = numberOr(previewPayload?.awayAvailabilityScore, null);
+                // The edges the prediction was built from. Kept as null rather than defaulted to 0, for
+                // the same reason as the availability scores above: a fabricated zero on the preview is
+                // worse than an honest blank.
+                const homeEdgeOvr = numberOr(previewPayload?.homeEdgeOvr, null);
+                const awayEdgeOvr = numberOr(previewPayload?.awayEdgeOvr, null);
+                const homeAdvantage = numberOr(previewPayload?.homeAdvantageOvr, 0);
                 const analysis = htmlEscape(String(previewPayload?.analysisText || ''));
                 const playedOnce = previewPayload?.played !== false;
 
@@ -296,6 +302,24 @@ export function createMatchView(deps) {
                 // The multiply must happen only once there is something to multiply.
                 const pctOfFraction = value => (value === null || value === undefined ? null : pct(value * 100));
 
+                /**
+                 * The edge a side holds, on the scale the rest of the screen speaks.
+                 *
+                 * These two cards used to show formation fitness and bench quality, which read `null`
+                 * until a manager had picked eleven for this specific fixture - so they said "Not known
+                 * yet" beside a prediction that was confident from the squad average alone. They now
+                 * show the same numbers the prediction was built from, which are always available, and
+                 * the home card says how much of its edge is the ground.
+                 */
+                const edgeLine = (edge, advantage) => {
+                    const value = Number(edge);
+                    if (!Number.isFinite(value)) return 'Not known yet';
+                    const advantageText = Number.isFinite(Number(advantage)) && Number(advantage) !== 0
+                        ? ` &middot; +${Number(advantage).toFixed(1)} from home advantage`
+                        : '';
+                    return `Edge ${value > 0 ? '+' : ''}${value.toFixed(1)} OVR${advantageText}`;
+                };
+
                 infoDiv.innerHTML = `
                     <div class="fm-mpv">
                         <header class="fm-mpv-band">
@@ -316,7 +340,7 @@ export function createMatchView(deps) {
                             <section class="fm-mpv-card fm-mpv-card--home">
                                 <h4 class="fm-mpv-label">Home edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(homeTeamName)}</div>
-                                <div class="fm-mpv-sub">${[withUnit(pctOfFraction(homeFormationFitness), '%'), withUnit(fixed1(homeBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
+                                <div class="fm-mpv-sub">${edgeLine(homeEdgeOvr, homeAdvantage)}</div>
                             </section>
                             <section class="fm-mpv-card fm-mpv-card--pred">
                                 <h4 class="fm-mpv-label">Prediction</h4>
@@ -329,7 +353,7 @@ export function createMatchView(deps) {
                             <section class="fm-mpv-card fm-mpv-card--away">
                                 <h4 class="fm-mpv-label">Away edge</h4>
                                 <div class="fm-mpv-team">${htmlEscape(awayTeamName)}</div>
-                                <div class="fm-mpv-sub">${[withUnit(pctOfFraction(awayFormationFitness), '%'), withUnit(fixed1(awayBenchQuality), ' bench')].filter(Boolean).join(' &middot; ') || 'Not known yet'}</div>
+                                <div class="fm-mpv-sub">${edgeLine(awayEdgeOvr, 0)}</div>
                             </section>
                         </div>
 

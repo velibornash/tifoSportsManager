@@ -28,6 +28,87 @@ export function createClubManagementFeature(deps) {
      * that had never been played. None of it existed in the database, so the screen looked
      * identical for a solvent club and a bankrupt one. Everything now comes from the ledger.
      */
+
+    /**
+     * The individual lines, scoped to a week, a month or the season (owner, 2026-10-11).
+     *
+     * <p>The owner's words: *"treba da se mogu videti tenantna nedelja (default), a da moze da se
+     * izabere mesoc ili season"*. Default is this week, because that is the question a manager opens
+     * this page to answer - what came in and what went out since the last finance day.
+     *
+     * <p>Filtered from the season's lines in the browser rather than by three server endpoints. One
+     * endpoint that returns the season and three honest scopes off it beats three endpoints that can
+     * drift apart, and the season is a handful of weeks of rows.
+     */
+    function renderLedger(lines, finances) {
+        const period = sessionStorage.getItem('financesPeriod') || 'week';
+        const currentWeek = Number(finances?.currentWeek ?? 0);
+        const seasonYear = Number(finances?.seasonYear ?? 0);
+
+        const inPeriod = (line) => {
+            const week = Number(line.week);
+            if (period === 'week') return week === currentWeek;
+            // A season is twelve weeks, so "month" is four weeks. There is no month in this world -
+            // no date exists - so a period of four weeks is the honest reading of "month".
+            if (period === 'month') {
+                const firstWeekOfMonth = Math.floor((currentWeek - 1) / 4) * 4 + 1;
+                return week >= firstWeekOfMonth && week < firstWeekOfMonth + 4;
+            }
+            return Number(line.seasonYear) === seasonYear;
+        };
+
+        const scoped = (Array.isArray(lines) ? lines : []).filter(inPeriod)
+            .sort((a, b) => Number(b.week) - Number(a.week) || Number(b.id) - Number(a.id));
+
+        const income = scoped.filter(l => l.income).reduce((sum, l) => sum + Number(l.amount), 0);
+        const costs = scoped.filter(l => !l.income).reduce((sum, l) => sum + Math.abs(Number(l.amount)), 0);
+
+        const periodLabel = period === 'week' ? `Week ${currentWeek}`
+            : period === 'month' ? `Weeks ${Math.floor((currentWeek - 1) / 4) * 4 + 1}-${Math.floor((currentWeek - 1) / 4) * 4 + 4}`
+            : `Season ${seasonYear}`;
+
+        return `
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>What came in and what went out</h3>
+                            <p class="fm-subtle">Every settled line, with what caused it.</p>
+                        </div>
+                        <div class="fm-panel-action">
+                            <label for="finances-period" class="fm-subtle">Period</label>
+                            <select id="finances-period" data-finances-period>
+                                <option value="week" ${period === 'week' ? 'selected' : ''}>This week</option>
+                                <option value="month" ${period === 'month' ? 'selected' : ''}>Last four weeks</option>
+                                <option value="season" ${period === 'season' ? 'selected' : ''}>Whole season</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="finance-legend">
+                        <span><i class="finance-dot is-income"></i>${escapeHtml(formatBudget(income))} in</span>
+                        <span><i class="finance-dot is-expense"></i>${escapeHtml(formatBudget(costs))} out</span>
+                        <span><i class="finance-dot is-balance"></i>${escapeHtml(formatBudget(income - costs))} net</span>
+                    </div>
+                    <p class="fm-subtle">${escapeHtml(periodLabel)} · ${scoped.length} line${scoped.length === 1 ? '' : 's'}</p>
+                    ${scoped.length ? `
+                    <div class="finance-chart-list">
+                        ${scoped.map(line => `
+                            <div class="finance-chart-row">
+                                <div class="finance-chart-label">
+                                    W${escapeHtml(String(line.week))} · ${escapeHtml(line.label || line.category || '')}
+                                </div>
+                                <div class="finance-chart-bars">
+                                    <div class="finance-chart-track">
+                                        <span class="finance-chart-fill ${line.income ? 'is-income' : 'is-expense'}"
+                                              style="width:${(Math.abs(Number(line.amount)) / Math.max(...scoped.map(l => Math.abs(Number(l.amount))), 1)) * 100}%;"></span>
+                                        <strong>${escapeHtml(formatBudget(Math.abs(Number(line.amount))))}</strong>
+                                    </div>
+                                    <div class="fm-subtle">${escapeHtml(line.note || '')}</div>
+                                </div>
+                            </div>`).join('')}
+                    </div>` : `<p class="fm-subtle">Nothing settled in ${escapeHtml(periodLabel)} yet.</p>`}
+                </section>`;
+    }
+
     async function loadFinances() {
         const teamId = getTeamId();
         const mainContent = document.getElementById('main-content');
@@ -42,10 +123,19 @@ export function createClubManagementFeature(deps) {
         })();
         const seasonQuery = requestedSeason ? `?seasonYear=${requestedSeason}` : '';
 
-        const [profileRes, financesRes, historyRes, boardRes, playersRes] = await Promise.all([
+        // **The ledger, not just the totals** (owner, 2026-10-11).
+        //
+        // "Stavke pojedinacne na Finance mora da se vide da se zna tacno sta i koliko je stigli i od
+        // koga i sta su tacno troskovi." Every ledger row already carries a category, an amount and a
+        // note - "78% of a tier 1 weekly wage bill of EUR 4,845,682", "Home fixture, 34,437 of 43,780
+        // at an average EUR 5.87 (79% of the ground)". This endpoint has existed the whole time and
+        // **nothing in the browser has ever called it**: a repo-wide grep for "finances/ledger" across
+        // src/main/resources returned zero hits.
+        const [profileRes, financesRes, historyRes, ledgerRes, boardRes, playersRes] = await Promise.all([
             authFetch(`/teams/${teamId}/profile`),
             authFetch(`/api/teams/${teamId}/finances${seasonQuery}`),
             authFetch(`/api/teams/${teamId}/finances/history${seasonQuery}`),
+            authFetch(`/api/teams/${teamId}/finances/ledger${seasonQuery}`),
             authFetch(`/api/teams/${teamId}/finances/board`),
             authFetch(`/teams/${teamId}/players`)
         ]);
@@ -53,6 +143,7 @@ export function createClubManagementFeature(deps) {
         const profile = profileRes.ok ? await profileRes.json() : {};
         const finances = financesRes.ok ? await financesRes.json() : null;
         const history = historyRes.ok ? await historyRes.json() : [];
+        const ledger = ledgerRes.ok ? await ledgerRes.json() : [];
         const board = boardRes.ok ? await boardRes.json() : null;
         const players = playersRes.ok ? await playersRes.json() : [];
 
@@ -179,7 +270,19 @@ export function createClubManagementFeature(deps) {
                             </div>`).join('')}
                     </div>` : `<p class="fm-subtle">No weeks settled yet. The ledger fills in as the season is played.</p>`}
                 </section>
+
+                ${renderLedger(ledger, finances)}
             </div>`;
+
+        // The period picker reloads in place, like the season one.
+        const periodPicker = mainContent.querySelector('[data-finances-period]');
+        if (periodPicker) {
+            periodPicker.addEventListener('change', event => {
+                const chosen = event.target.value;
+                if (chosen) sessionStorage.setItem('financesPeriod', chosen);
+                loadFinances();
+            });
+        }
 
         // The season picker reloads in place. Stored so the choice survives navigating away and
         // back, which is what a manager comparing two seasons will do repeatedly.

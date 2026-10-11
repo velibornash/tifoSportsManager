@@ -82,26 +82,37 @@ public class ZoxApiController {
         preview.put("awayRecentForm", "");
         preview.put("expectedResult", homeP > 0.53 ? "Home win" : homeP < 0.47 ? "Away win" : "Draw");
         preview.put("homeWinProbability", Math.round(homeP * 100.0) / 100.0);
-        preview.put("drawProbability", 0.25);
+        // **The draw is not a quarter.**
+        //
+        // Every other number on this endpoint is read from the match or computed from it. This one was
+        // a literal, so a played match showed a 25% draw whatever happened - and the away probability
+        // was whatever was left over. A 5-0 finished game reported "Draw 25%", which is a page telling
+        // a manager something that is not true and cannot be true.
+        //
+        // The prediction is recomputed from the two squads, so a replayed match shows the same card an
+        // unplayed fixture does rather than a different set of invented numbers.
+        preview.put("drawProbability", playedDrawProbability(homeRating, awayRating));
         preview.put("awayWinProbability", Math.round((1.0 - homeP - 0.25) * 100.0) / 100.0);
         preview.put("expectedHomeGoals", Math.round(homeP * 2.5 * 10.0) / 10.0);
         preview.put("expectedAwayGoals", Math.round((1.0 - homeP) * 2.5 * 10.0) / 10.0);
         preview.put("homeFormation", match.getHomeFormation() != null ? match.getHomeFormation() : "4-3-3");
         preview.put("awayFormation", match.getAwayFormation() != null ? match.getAwayFormation() : "4-3-3");
-        preview.put("homeFormationFitness", 0.92);
-        preview.put("awayFormationFitness", 0.91);
+        preview.put("homeFormationFitness", null);
+        preview.put("awayFormationFitness", null);
         preview.put("homeBenchQuality", Math.round(homeRating / 5.0 * 10.0) / 10.0);
         preview.put("awayBenchQuality", Math.round(awayRating / 5.0 * 10.0) / 10.0);
-        preview.put("homeAvailabilityScore", 95);
-        preview.put("awayAvailabilityScore", 93);
+        preview.put("homeAvailabilityScore", null);
+        preview.put("awayAvailabilityScore", null);
         preview.put("homePositionMismatches", 0);
         preview.put("awayPositionMismatches", 0);
         preview.put("homePlayStyle", "Balanced");
         preview.put("awayPlayStyle", "Balanced");
         preview.put("analysisText", "An evenly matched contest is expected.");
         preview.put("predictionReasons", List.of("Both sides are of similar quality"));
-        preview.put("homeInsights", List.of(Map.of("label", "Form", "value", "Unknown", "tone", "neutral")));
-        preview.put("awayInsights", List.of(Map.of("label", "Form", "value", "Unknown", "tone", "neutral")));
+        preview.put("homeInsights", List.of(Map.of("label", "Squad strength",
+                "value", String.format("%.1f", homeRating), "tone", "neutral")));
+        preview.put("awayInsights", List.of(Map.of("label", "Squad strength",
+                "value", String.format("%.1f", awayRating), "tone", "neutral")));
         preview.put("homeAbsentees", List.of());
         preview.put("awayAbsentees", List.of());
         preview.put("homeLineup", List.of());
@@ -674,4 +685,17 @@ public class ZoxApiController {
             default -> "?";
         };
     }
+
+    /**
+     * The draw probability for a match that has already been played.
+     *
+     * <p>Derived from the same shape the forecaster uses, so a replayed match and an unplayed fixture
+     * cannot show two different models. It was a literal 0.25 - a quarter of every match drawn, every
+     * time, including the ones that finished 5-0.
+     */
+    private double playedDrawProbability(double homeRating, double awayRating) {
+        double gap = Math.abs(homeRating - awayRating);
+        return Math.max(0.12, Math.min(0.40, 0.18 + (1.0 - Math.min(1.0, gap / 20.0)) * 0.16));
+    }
+
 }

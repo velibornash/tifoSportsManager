@@ -108,6 +108,14 @@ public class MatchPreviewService {
         preview.put("drawProbability", prediction.drawProbability() / 100.0);
         preview.put("awayWinProbability", prediction.awayWinProbability() / 100.0);
         preview.put("expectedHomeGoals", prediction.expectedHomeGoals());
+        // The edges the prediction was actually built from, so the cards and the number under them
+        // cannot disagree. They used to show formation fitness and bench quality, which are null
+        // until a manager has picked eleven for this specific fixture - hence "Not known yet" beside
+        // a prediction that was confident from the squad average alone.
+        preview.put("homeEdgeOvr", prediction.homeEdgeOvr());
+        preview.put("awayEdgeOvr", prediction.awayEdgeOvr());
+        preview.put("edgeSwing", prediction.edgeSwing());
+        preview.put("homeAdvantageOvr", prediction.homeAdvantage());
         preview.put("expectedAwayGoals", prediction.expectedAwayGoals());
         preview.put("confidence", prediction.confidence());
 

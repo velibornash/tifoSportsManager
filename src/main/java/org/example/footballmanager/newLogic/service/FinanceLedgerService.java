@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.FinanceCategory;
+import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Team;
@@ -38,6 +39,18 @@ public class FinanceLedgerService {
         this.clocks = clocks;
         this.ledger = ledger;
         this.players = players;
+    }
+
+    /**
+     * The game week, so the page can default its period to <em>this</em> week.
+     *
+     * <p>The owner asked for "this week, or a month, or the season", and the honest default is the
+     * week the game is actually in. A page that defaults to a fixed week number is right for one week
+     * of the season and wrong for the other eleven.
+     */
+    public int currentWeek() {
+        Integer week = clocks.findById(1L).map(GameClock::getCurrentWeek).orElse(null);
+        return week == null ? 1 : week;
     }
 
     /** Every season this club has a ledger for, newest first. */
@@ -102,6 +115,12 @@ public class FinanceLedgerService {
         out.put("settled", !entries.isEmpty());
         out.put("seasons", seasonsWithLedger(team.getId()));
         out.put("categories", categoryLabels());
+        // Which week the game is in, so the page can default its period to *this* week rather than
+        // guessing. The owner asked for "this week, or a month, or the season" and the honest default
+        // is the one the game is actually in - a page that defaults to a fixed week number is right
+        // once a season and wrong for the other eleven weeks.
+        out.put("currentWeek", currentWeek());
+        out.put("weeksPerSeason", org.example.footballmanager.newLogic.model.SeasonCalendar.WEEKS_PER_SEASON);
 
         // A club with no ledger yet must say so rather than render zeroes that look like a
         // genuinely broke club. This is the difference the fiction could not express.

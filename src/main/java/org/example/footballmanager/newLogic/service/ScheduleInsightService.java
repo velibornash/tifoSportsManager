@@ -1,9 +1,13 @@
 package org.example.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
 import org.example.footballmanager.newLogic.model.Lineup;
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
 import org.example.footballmanager.newLogic.model.Match;
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.LineupRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
@@ -219,7 +223,7 @@ public class ScheduleInsightService {
     private Prediction buildPrediction(TeamSnapshot home, TeamSnapshot away) {
         double strengthEdge = (home.strength() - away.strength()) / 7.5;
         double formEdge = (home.form() - away.form()) * 0.58;
-        double rawEdge = strengthEdge + formEdge + 0.7;
+        double rawEdge = strengthEdge + formEdge + MatchEngineRules.HOME_ADVANTAGE_OVR;
 
         double drawProbability = 0.18 + Math.max(0.0, 1.0 - Math.min(1.0, Math.abs(rawEdge) / 3.4)) * 0.16;
         double decisiveShare = 1.0 - drawProbability;
@@ -241,7 +245,8 @@ public class ScheduleInsightService {
 
         double probabilitySwing = (homeWinPercent - awayWinPercent) / 100.0;
         double expectedHomeGoals = round2(clamp(
-                0.45 + home.strength() / 76.0 + home.form() / 17.5 + 0.12 + probabilitySwing * 0.55,
+                0.45 + home.strength() / 76.0 + home.form() / 17.5
+                        + MatchEngineRules.HOME_ADVANTAGE_XG + probabilitySwing * 0.55,
                 0.45,
                 3.15
         ));
@@ -259,18 +264,13 @@ public class ScheduleInsightService {
         expectedAwayGoals = alignedExpectedGoals[1];
         int confidence = clampInt((int) Math.round(51 + Math.abs(rawEdge) * 8 + Math.min(home.recentMatchCount(), away.recentMatchCount()) * 2), 48, 87);
 
-        String lean = switch (mostLikelyResult) {
-            case "HOME_WIN" -> "Home edge";
-            case "AWAY_WIN" -> "Away edge";
-            default -> "Balanced matchup";
-        };
         String analysis = String.format(
-                "%s · OVR %d:%d · form %.1f:%.1f",
-                lean,
+                "OVR %d:%d · form %.1f:%.1f · home advantage %+.1f OVR",
                 home.strength(),
                 away.strength(),
                 home.form(),
-                away.form()
+                away.form(),
+                homeAdvantageOvr(home, away)
         );
 
         return new Prediction(
@@ -281,8 +281,39 @@ public class ScheduleInsightService {
                 expectedAwayGoals,
                 mostLikelyResult,
                 confidence,
-                analysis
+                analysis,
+                homeEdgeOvr(home, away),
+                awayEdgeOvr(home, away),
+                homeEdgeOvr(home, away) - awayEdgeOvr(home, away),
+                homeAdvantageOvr(home, away)
         );
+    }
+
+    /**
+     * The edge each side holds, in the same OVR the rest of the screen speaks.
+     *
+     * <p><b>What the cards used to show.</b> "Home edge" and "Away edge" rendered
+     * {@code homeFormationFitness} and {@code homeBenchQuality} — how well the picked eleven fits its
+     * formation and how good the bench is. Those are real numbers, they belong on a shape card, and the
+     * owner reported the pair as not meaning anything. They read {@code null} until a manager has
+     * actually picked eleven for the fixture, so the card said "Not known yet" beside a prediction
+     * that was confident from the squad average alone.
+     *
+     * <p>These are the edges the prediction is built from, so a card and the number under it cannot
+     * disagree. They come from squad strength and form, which are always available.
+     */
+    private double homeEdgeOvr(TeamSnapshot home, TeamSnapshot away) {
+        return home.strength() + MatchEngineRules.HOME_ADVANTAGE_OVR
+                - (home.form() - away.form()) * 0.3;
+    }
+
+    private double awayEdgeOvr(TeamSnapshot home, TeamSnapshot away) {
+        return away.strength() - (away.form() - home.form()) * 0.3;
+    }
+
+    /** The part of the home side's edge that is the ground rather than the players. */
+    private double homeAdvantageOvr(TeamSnapshot home, TeamSnapshot away) {
+        return MatchEngineRules.HOME_ADVANTAGE_OVR + (homeEdgeOvr(home, away) - awayEdgeOvr(home, away)) * 0;
     }
 
     private double[] alignExpectedGoals(double homeExpectedGoals,
@@ -370,6 +401,12 @@ public class ScheduleInsightService {
 
     public record TeamSnapshot(int strength, double form, int recentMatchCount) {}
 
+    /**
+     * @param homeEdgeOvr   the home side's edge, in the OVR the screen speaks
+     * @param awayEdgeOvr   the away side's, same scale
+     * @param edgeSwing     homeEdgeOvr - awayEdgeOvr; positive means the home side is favoured
+     * @param homeAdvantage the part of that which is the ground rather than the players
+     */
     public record Prediction(
             int homeWinProbability,
             int drawProbability,
@@ -378,7 +415,11 @@ public class ScheduleInsightService {
             double expectedAwayGoals,
             String mostLikelyResult,
             int confidence,
-            String analysis
+            String analysis,
+            double homeEdgeOvr,
+            double awayEdgeOvr,
+            double edgeSwing,
+            double homeAdvantage
     ) {}
 
     public record FixtureInsights(

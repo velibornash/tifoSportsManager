@@ -1,5 +1,6 @@
 package org.example.footballmanager.newLogic.sim.engine;
 
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
 import org.example.footballmanager.newLogic.sim.model.*;
 import org.example.footballmanager.newLogic.sim.util.SimUtils;
 import org.example.footballmanager.newLogic.sim.util.SimulationRandom;
@@ -137,6 +138,25 @@ public class DuelEngine {
                                 DuelType duelType, MatchState state) {
         double attackerPower = calculateDuelPower(attacker, duelType);
         double defenderPower = calculateDuelPower(defender, getDefensiveDuelType(duelType));
+
+        // **The ground counts.**
+        //
+        // The forecaster has told managers that the home side has an advantage since this game was
+        // written - it added 0.7 to the home edge - and the engine had never heard of it. A fixture
+        // promised at 60% came back at 50% a thousand times over and nothing anywhere said why.
+        //
+        // This is the seam, because the comment above it already says "possession follows duels":
+        // a match's shape falls out of who wins the ball, and the ball falls out of this. Home
+        // advantage belongs here rather than in a hundred small places, because here is the one place
+        // a single change moves the whole match.
+        //
+        // Expressed as a flat addition to the home side's power, so it is worth the same on every
+        // duel type and at every skill level, and it cannot compound.
+        if (MatchEngineRules.isHome(attacker.getTeam())) {
+            attackerPower += MatchEngineRules.HOME_ADVANTAGE_DUEL_POWER;
+        } else {
+            defenderPower += MatchEngineRules.HOME_ADVANTAGE_DUEL_POWER;
+        }
 
         // A duel is a MOMENT, not a comparison of two numbers. Resolving it as
         // `attackerPower + U(-1,1) > defenderPower` made it deterministic for any
