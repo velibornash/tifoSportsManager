@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.sim.result;
 
+import org.example.footballmanager.newLogic.sim.MatchEngineRules;
+
 import org.example.footballmanager.newLogic.sim.model.MatchState;
 import org.example.footballmanager.newLogic.sim.model.Player;
 
@@ -205,12 +207,24 @@ public class ProposalStatsCollector {
         else if (restartType.startsWith("THROW_IN")) ta.throwIns++;
     }
 
-    /** Call from DUEL result. */
+    /**
+     * Call from DUEL result.
+     *
+     * <p><b>The loser of a duel is not necessarily the tackler, and this used to pretend he was.</b>
+     * Every duel credited the winner's {@code duelsWon} and the loser's {@code tackles}. A striker
+     * dispossessed eight times banked eight "tackles" and +0.64 of rating for being dribbled past,
+     * and the manager was shown those eight in a tackles column.
+     *
+     * <p>The two are now what they say. A defender who wins the ball has won a duel
+     * ({@code duelsWon}); whoever <em>loses</em> it has lost one ({@code duelsLost}), which is a
+     * penalty and not a credit. Nothing here decides who was the tackler — the engine does not record
+     * that — so nothing invents it.
+     */
     public void onDuelWon(String winnerId, String loserId) {
         PlayerAcc w = players.get(winnerId);
         if (w != null) w.duelsWon++;
         PlayerAcc l = players.get(loserId);
-        if (l != null) l.tackles++; // defensive action by loser = tackle attempt
+        if (l != null) l.duelsLost++;
     }
 
     /** Call from InjuryService. */
@@ -222,13 +236,21 @@ public class ProposalStatsCollector {
     }
 
     /** Call from SubstitutionService. */
-    public void onSubstitution(String team, String playerOffId, String playerOnId, boolean forced) {
+    public void onSubstitution(String team, String playerOffId, String playerOnId, boolean forced,
+                               int atTick) {
         TeamAcc ta = teams.get(team);
         if (ta != null) ta.substitutions++;
         PlayerAcc off = players.get(playerOffId);
-        if (off != null) off.subbedOff = true;
+        if (off != null) {
+            off.subbedOff = true;
+            off.offTick = atTick;
+        }
         PlayerAcc on = players.get(playerOnId);
-        if (on != null) on.subbedOn = true;
+        if (on != null) {
+            on.subbedOn = true;
+            // Minutes are read from these, and every substitute was being reported as playing 90.
+            on.enteredTick = atTick;
+        }
     }
 
     /** Call from DisciplineService after a confirmed foul. */
@@ -349,10 +371,10 @@ public class ProposalStatsCollector {
                         p.goals, p.assists, p.shots, p.shotsOnTarget,
                         p.passesAttempted, p.passesCompleted,
                         p.dribbles, p.clearances, p.interceptions, p.deflections,
-                        p.blocks, p.saves, p.tackles, p.duelsWon,
+                        p.blocks, p.saves, p.duelsLost, p.duelsWon,
                         p.throughBalls, p.crosses, p.centers,
                         p.foulsCommitted, p.yellowCards, p.redCards,
-                        minutesPlayed(p.player),
+                        minutesPlayed(p),
                         calculateRating(p)
                 ))
                 .sorted(Comparator.comparingDouble(PlayerStats::rating).reversed())
@@ -360,11 +382,22 @@ public class ProposalStatsCollector {
     }
 
     /** Full match — unless the player was sent off, then up to his red-card tick. */
-    private static int minutesPlayed(Player player) {
-        if (player.isSentOff() && player.getSentOffTick() >= 0) {
-            return Math.max(1, player.getSentOffTick() / ProposalMatchOutcomeBuilder.TICKS_PER_MINUTE);
+    /** Ninety minutes, in ticks. Read from the builder so the two cannot drift. */
+    private static final int FULL_MATCH_TICKS = 90 * ProposalMatchOutcomeBuilder.TICKS_PER_MINUTE;
+
+    /** Minutes actually played, from when the player came on to when he went off. */
+    private static int minutesPlayed(PlayerAcc p) {
+        int start = p.subbedOn ? Math.max(0, p.enteredTick) : 0;
+        int end = FULL_MATCH_TICKS;
+        if (p.player.isSentOff() && p.player.getSentOffTick() >= 0) {
+            end = Math.min(end, p.player.getSentOffTick());
+        } else if (p.subbedOff && p.offTick >= 0) {
+            end = Math.min(end, p.offTick);
         }
-        return 90;
+        if (end <= start) {
+            return 0;
+        }
+        return (end - start) / ProposalMatchOutcomeBuilder.TICKS_PER_MINUTE;
     }
 
     /** Get HOME possession percentage. */
@@ -410,7 +443,7 @@ public class ProposalStatsCollector {
         m.put("deflections", ps.deflections());
         m.put("blocks", ps.blocks());
         m.put("saves", ps.saves());
-        m.put("tackles", ps.tackles());
+        m.put("duelsLost", ps.duelsLost());
         m.put("throughBalls", ps.throughBalls());
         m.put("crosses", ps.crosses());
         m.put("centers", ps.centers());
@@ -474,10 +507,24 @@ public class ProposalStatsCollector {
             r += Math.min(0.5, p.shotsOnTarget * 0.25) - Math.min(0.5, (p.shots - p.shotsOnTarget) * 0.12);
         }
 
-        // Defensive contributions
-        r += p.interceptions * 0.2;
-        r += p.duelsWon * 0.12;
-        r += p.tackles * 0.08; // defensive work rate
+        // Defensive work, bounded.
+        //
+        // These three were unbounded and, between them, the largest term in the formula. A match has
+        // around 268 duels, which is about twelve per player, and they all counted the same: a player
+        // who won twelve and lost twelve — a perfectly ordinary striker — banked
+        // 12 x 0.12 + 12 x 0.08 = +2.4, more than two goals.
+        //
+        // Bounded because the work is real and the *volume* is not a measure of it. A defender who
+        // wins nine duels has done his job; the tenth is not another nine-tenths of it.
+        r += Math.min(0.7, p.interceptions * 0.16);
+        r += Math.min(1.0, p.duelsWon * 0.12);
+        r += Math.max(-0.6, Math.min(0.3, p.duelsLost * -0.05));
+
+        // The team result. A defender of a 4-0 who touched nothing is not a 6.0, and a midfielder
+        // who ran the match in a 0-0 loss is not a 7.5. It is a small term because it is a shared
+        // one — twenty players share the same result — but a rating with no dimension for it cannot
+        // describe a match at all.
+        r += teamResultTerm(p);
 
         // Goalkeeper specific
         if ("GK".equals(p.player.getRole())) {
@@ -489,14 +536,50 @@ public class ProposalStatsCollector {
         r -= p.yellowCards * 0.4;
         r -= p.redCards * 3.0;
 
-        // Minutes scaling: a 45-minute sub shouldn't rate the same as a 90-minute starter
-        int minutes = minutesPlayed(p.player);
+        // Minutes scaling: a 45-minute sub shouldn't rate the same as a 90-minute starter.
+        // This was inert for everyone but a red card, because a substitute was reported as playing 90.
+        int minutes = minutesPlayed(p);
         double minuteFactor = Math.min(1.0, minutes / 90.0);
         // Anchored on the base, which is 6.0. Anchoring on the old 5.0 would have quietly moved the
         // floor of every sub and every early substitute.
         r = 6.0 + (r - 6.0) * minuteFactor;
 
         return Math.max(2.0, Math.min(10.0, Math.round(r * 10.0) / 10.0));
+    }
+
+    /**
+     * The team's result, as a share of the score and the margin, worth at most half a rating.
+     *
+     * <p>Bounded on purpose. Twenty players share one result, so a term large enough to move a rating
+     * decisively would make every player on a winning side a good player regardless of what he did —
+     * which is the mistake the comment above this formula already warns about in the other direction.
+     *
+     * <p>Read from the accumulator rather than from the engine's final score, because the formula runs
+     * per player and a player's own goal count is the only per-player fact about the result available
+     * here.
+     */
+    private double teamResultTerm(PlayerAcc p) {
+        TeamAcc forAcc = teams.get(p.player.getTeam());
+        TeamAcc againstAcc = teams.get(opponentOf(p.player.getTeam()));
+        if (forAcc == null || againstAcc == null) return 0.0;
+        int forTeam = forAcc.goals;
+        int against = againstAcc.goals;
+        if (forTeam == 0 && against == 0) {
+            return -0.15;   // nothing happened; a blank is not a good game
+        }
+        if (forTeam > against) {
+            double margin = Math.min(3, forTeam - against);
+            return 0.15 + margin * 0.12;
+        }
+        if (forTeam == against) {
+            return 0.0;
+        }
+        double margin = Math.min(3, against - forTeam);
+        return -(0.2 + margin * 0.12);
+    }
+
+    private static String opponentOf(String team) {
+        return MatchEngineRules.isHome(team) ? "AWAY" : "HOME";
     }
 
     private static class TeamAcc {
@@ -518,10 +601,12 @@ public class ProposalStatsCollector {
         int goals, assists, shots, shotsOnTarget;
         int passesAttempted, passesCompleted, dribbles, clearances;
         int interceptions, deflections, blocks, saves;
-        int tackles, duelsWon;
+        int duelsWon, duelsLost;
         int throughBalls, crosses, centers;
         int foulsCommitted, yellowCards, redCards;
         boolean subbedOff, subbedOn;   // Sprint 1.8
+        int enteredTick = -1;           // when he came on; -1 is "started"
+        int offTick = -1;               // when he went off; -1 is "played the full match"
         int injuries, injuryDays;      // Sprint 1.6
         PlayerAcc(Player p) { this.player = p; }
     }

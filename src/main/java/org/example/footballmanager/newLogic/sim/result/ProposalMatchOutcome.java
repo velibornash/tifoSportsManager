@@ -81,7 +81,8 @@ public record TeamOutcome(
         int deflections,
         int blocks,
         int saves,
-        int tackles,
+        /** Duels lost. Not tackles - see PlayerStats for why. */
+        int duelsLost,
         int duelsWon,
         int foulsCommitted,
         int yellowCards,

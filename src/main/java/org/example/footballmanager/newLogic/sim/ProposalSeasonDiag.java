@@ -188,14 +188,16 @@ public class ProposalSeasonDiag {
      * previously mistaken for a duplicated field in calibration reports.
      */
     private static Map<String, Double> playerSum(MatchOrchestrator o, String team) {
-        double duelsWon = 0, tackles = 0;
+        double duelsWon = 0, duelsLost = 0;
         for (PlayerStats p : o.getStats().buildPlayerStats(team)) {
             duelsWon += p.duelsWon();
-            tackles += p.tackles();
+            duelsLost += p.duelsLost();
         }
         Map<String, Double> out = new LinkedHashMap<>();
         out.put("duelsWon", duelsWon);
-        out.put("tackles", tackles);
+        // Labelled for what it is. This reported "tackles" and printed the number of duels LOST,
+        // which is how a diagnostic said the defence won twelve contests and won none of them.
+        out.put("duelsLost", duelsLost);
         return out;
     }
 }

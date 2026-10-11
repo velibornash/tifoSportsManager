@@ -92,7 +92,10 @@ public class SubstitutionService {
             recorder.appendEvent(state.getMatchTicks(), "SUBSTITUTION", msg, on, off);
         }
         if (stats != null) {
-            stats.onSubstitution(off.getTeam(), off.getId(), on.getId(), forced);
+            // The tick, because minutes are counted from when a player came on and went off. Without
+            // it every substitute was reported as having played the full 90, which made the minute
+            // factor dead weight for everyone except a red card.
+            stats.onSubstitution(off.getTeam(), off.getId(), on.getId(), forced, state.getMatchTicks());
         }
         return true;
     }

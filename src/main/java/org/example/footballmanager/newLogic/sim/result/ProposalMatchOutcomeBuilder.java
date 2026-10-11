@@ -125,7 +125,7 @@ public class ProposalMatchOutcomeBuilder {
                     ps.goals(), ps.assists(), ps.shots(), ps.shotsOnTarget(),
                     ps.passesAttempted(), ps.passesCompleted(),
                     ps.dribbles(), ps.clearances(), ps.interceptions(), ps.deflections(),
-                    ps.blocks(), ps.saves(), ps.tackles(), ps.duelsWon(),
+                    ps.blocks(), ps.saves(), ps.duelsLost(), ps.duelsWon(),
                     ps.foulsCommitted(), ps.yellowCards(), ps.redCards(),
                     ps.minutesPlayed(), ps.rating()
             ));

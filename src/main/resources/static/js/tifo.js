@@ -2037,7 +2037,7 @@ function buildLineupsHtml(match) {
                 <div class="cs-lineup-stat">A</div>
                 <div class="cs-lineup-stat">Min</div>
                 <div class="cs-lineup-stat">P%</div>
-                <div class="cs-lineup-stat">Tkl</div>
+                <div class="cs-lineup-stat">Duel-</div>
                 <div class="cs-lineup-stat">KP</div>
             </div>`;
         sorted.forEach(p => {
@@ -2058,7 +2058,7 @@ function buildLineupsHtml(match) {
                 <div class="cs-lineup-stat">${p.assists || ''}</div>
                 <div class="cs-lineup-stat">${p.minutesPlayed || 0}</div>
                 <div class="cs-lineup-stat">${p.passesAttempted > 0 ? Math.round(p.passesCompleted / p.passesAttempted * 100) + '%' : '-'}</div>
-                <div class="cs-lineup-stat">${p.tackles || 0}</div>
+                <div class="cs-lineup-stat">${p.duelsLost || 0}</div>
                 <div class="cs-lineup-stat">${p.keyPasses || 0}</div>
             </div>`;
         });

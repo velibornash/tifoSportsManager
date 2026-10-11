@@ -18,7 +18,13 @@ public record PlayerStats(
     int deflections,
     int blocks,
     int saves,
-    int tackles,
+    /**
+     * Duels this player <em>lost</em>. Not tackles: the engine does not record who was the tackler, so
+     * a number labelled "tackles" would be a guess. The old collector credited this from the losing
+     * side of every duel, so a striker dispossessed eight times was shown eight tackles - and rated
+     * for them.
+     */
+    int duelsLost,
     int duelsWon,
     int throughBalls,
     int crosses,
