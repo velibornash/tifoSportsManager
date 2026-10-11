@@ -1,5 +1,11 @@
 # kanbanProgress.md — the append-only log
 
+## ✅ Dashboard Recent Matches — show competition (2026-10-11)
+
+Recent match rows now show the competition name below the game day. The label uses the competition type
+when a match has no competition name, so friendly matches are still identified. The latest-three filter,
+played-match filter and all competition types remain unchanged.
+
 ## ✅ Dashboard Recent Matches — played rows were filtered out (2026-10-11)
 
 The endpoint already returned the manager's played matches across all competition types, but `MatchDTO`

@@ -14,6 +14,11 @@ still carried open was moved into **T-REST**; new work from the owner's vision a
 Closed work is not on this board. It is in [`kanbanProgress.md`](kanbanProgress.md), one entry per task,
 newest first, each carrying its commit.
 
+## Recently completed
+
+- Dashboard Recent Matches now shows the competition name for each of the latest three played matches,
+  with a type fallback for friendly matches and older records without a competition name.
+
 ---
 
 # 🔴 General information — read before taking any task

@@ -897,6 +897,14 @@ async function pollAdminDatabaseJob(loadingPopup) {
 }
 
 async function loadRecentMatches() {
+    const competitionTypeLabels = {
+        LEAGUE: 'League',
+        CUP: 'Cup',
+        INTERNATIONAL: 'International',
+        TOURNAMENT: 'Tournament',
+        FRIENDLY: 'Friendly'
+    };
+
     try {
         const response = await authFetch(`/teams/${currentUserTeamId}/matches?allCompetitions=true`);
         if (!response.ok) throw new Error('Failed to load matches');
@@ -941,6 +949,11 @@ async function loadRecentMatches() {
             const isAwayTeam = isCurrentUserTeam(match.awayTeam);
             const homeTeamLabel = escapeHtml(match.homeTeam?.name || match.homeTeam || 'Home');
             const awayTeamLabel = escapeHtml(match.awayTeam?.name || match.awayTeam || 'Away');
+            const competitionLabel = escapeHtml(
+                match.competitionName
+                    || competitionTypeLabels[String(match.competitionType || '').toUpperCase()]
+                    || 'Friendly'
+            );
 
             let resultBadge = '';
             let badgeText = '';
@@ -963,7 +976,10 @@ async function loadRecentMatches() {
             if (isHiddenResult) {
                 html += `
             <div class="match-row recent-match is-hidden-result" data-match-id="${match.id}">
-                <div class="match-date-small">${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</div>
+                <div class="match-date-small">
+                    <span>${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</span>
+                    <span class="match-competition-small">${competitionLabel}</span>
+                </div>
                 <div class="match-teams">
                     <span class="team-home">${homeTeamLabel}</span>
                     <span class="score fm-hidden-score">Result hidden</span>
@@ -976,7 +992,10 @@ async function loadRecentMatches() {
 
             html += `
             <div class="match-row recent-match is-clickable" data-match-id="${match.id}">
-                <div class="match-date-small">${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</div>
+                <div class="match-date-small">
+                    <span>${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</span>
+                    <span class="match-competition-small">${competitionLabel}</span>
+                </div>
                 <div class="match-teams">
                     <span class="team-home">${homeTeamLabel}</span>
                     <span class="match-score-stack">
