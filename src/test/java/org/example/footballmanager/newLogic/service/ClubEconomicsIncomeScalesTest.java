@@ -21,6 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -60,6 +61,10 @@ class ClubEconomicsIncomeScalesTest {
     void aStrongerClubEarnsMore() {
         Team small = aClub("Small", 8_000, 14.0, 30.0, 4);
         Team large = aClub("Large", 45_000, 22.0, 88.0, 4);
+        for (int i = 0; i < 18; i++) {
+            aPlayer(small, 800_000);
+            aPlayer(large, 6_000_000);
+        }
 
         finances.applyWeeklyFinances(small, 1, 1);
         finances.applyWeeklyFinances(large, 1, 1);
@@ -138,6 +143,9 @@ class ClubEconomicsIncomeScalesTest {
     @DisplayName("improving the pitch does not stop the club paying for its stadium")
     void improvingThePitchDoesNotRefundTheStadium() {
         Team club = aClub("Upkeep", 20_000, 18.0, 60.0, 3);
+        for (int i = 0; i < 18; i++) {
+            aPlayer(club, 1_000_000);
+        }
         // Fund the pitch so the maintenance branch is the one that runs.
         Stadium s = club.getStadium();
         s.setMaintenanceRemaining(500);
@@ -184,6 +192,67 @@ class ClubEconomicsIncomeScalesTest {
                         + "structure is a flat rate");
         assertEquals(0.0, ClubEconomics.weeklyWage(-5.0, SquadRole.STAR, 25),
                 "a negative value must not produce a negative wage");
+    }
+
+    /**
+     * A club with no squad gets nothing, because there is nothing to settle.
+     *
+     * <p>Measured on the owner's world, 2026-10-11. 14,880 clubs, of which <b>13,630 have no players
+     * at all</b> — 47 SIMULATED countries whose divisions were built as names and tables and never
+     * populated. Every one of them was being settled anyway, and with no wages, no stadium upkeep and
+     * no gate to set against it, each one received merchandising and nothing else:
+     *
+     * <pre>
+     *   13,630 clubs with no players   +199,430,400 this week, from nothing
+     *   1,250 clubs with players        -56,281,117 this week
+     * </pre>
+     *
+     * <p>That is the game's own bookkeeping creating money every week and accumulating it. A
+     * second-division shell in Austria was carrying a larger budget than a real club in Serbia.
+     */
+    @Test
+    @DisplayName("a club with no squad is not settled at all")
+    void aClubWithNoSquadIsNotSettled() {
+        Team shell = new Team();
+        shell.setName("Shell " + System.nanoTime());
+        shell.setCompetition(aLeague(3));
+        shell.setBudget(0.0);
+        shell.setReputation(40.0);
+        Stadium s = new Stadium();
+        s.setName("Shell ground");
+        s.setCapacity(12_000);
+        s.setTicketPrice(12.0);
+        s.setPitchQuality(70.0);
+        s.setPitchCondition(70);
+        s.setMaintenanceRemaining(0);
+        shell.setStadium(s);
+        shell = teams.save(shell);
+
+        WeeklyFinanceService.WeekResult result = finances.applyWeeklyFinances(shell, 1, 1);
+
+        assertTrue(result.notApplied(),
+                "a club with no players was settled. It has no wages, no upkeep and no gate, so the "
+                        + "only thing it received was merchandise - money the game invented. "
+                        + "13,630 of them did this last week.");
+        assertEquals(0, ledger.findByTeamIdAndSeasonYearAndWeekNumber(shell.getId(), 1, 1).size(),
+                "and it wrote no ledger lines, so the balance and the ledger still agree");
+    }
+
+    /** And a club with even one player is settled, so the rule is not "too small to bother with". */
+    @Test
+    @DisplayName("one player is enough to be a club with an economy")
+    void onePlayerIsEnough() {
+        Team club = aClub("One man", 8_000, 12.0, 40.0, 3);
+        aPlayer(club, 300_000);
+
+        WeeklyFinanceService.WeekResult result = finances.applyWeeklyFinances(club, 1, 1);
+
+        assertFalse(result.notApplied(),
+                "a club with a player was skipped. The rule is about having a squad, not about being "
+                        + "big enough to be worth the bookkeeping");
+        assertTrue(ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 1, 1).stream()
+                        .anyMatch(l -> l.getCategory() == FinanceCategory.WAGES),
+                "and its wage bill must actually be charged");
     }
 
     // --- helpers ---

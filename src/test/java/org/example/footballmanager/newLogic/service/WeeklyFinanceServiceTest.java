@@ -1,6 +1,8 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.FinanceCategory;
+import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Stadium;
 import org.example.footballmanager.newLogic.model.Competition;
@@ -9,7 +11,7 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
-import org.example.footballmanager.newLogic.repository.PlayerRepository;
+
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,7 +44,17 @@ class WeeklyFinanceServiceTest {
     @Autowired AdmissionService admission;
     @Autowired PitchMaintenanceService pitch;
     @Autowired FinanceLedgerService ledgerService;
+    @Autowired PlayerRepository players;
 
+    /**
+     * A club with a squad, because a club without one has no economy.
+     *
+     * <p>Since 2026-10-11 the settlement refuses a team with no players: measured on the owner's world,
+     * 13,630 clubs with no squad were being paid 199,430,400 a week for merchandise and nothing else,
+     * because they have no wages, no upkeep and no gate to set against it. The fixtures here used to
+     * build a bare club and assert that it settled — which is exactly the case that is now correct to
+     * refuse, and exactly why the bug went unnoticed for so long.
+     */
     private Team aClub(String name, int capacity, double ticketPrice, double startingBudget) {
         Team t = new Team();
         t.setName(name + "-" + System.nanoTime());
@@ -61,7 +73,18 @@ class WeeklyFinanceServiceTest {
         s.setPitchCondition(85);
         s.setMaintenanceRemaining(0);
         t.setStadium(s);
-        return teams.save(t);
+        t = teams.save(t);
+        for (int i = 0; i < 18; i++) {
+            Player p = new Player();
+            p.setName(name + " player " + i + "-" + System.nanoTime());
+            p.setTeam(t);
+            p.setAge(23);
+            p.setRating(70);
+            p.setPlayerValue(1_500_000);
+            p.setEarnings(3_000);
+            players.save(p);
+        }
+        return t;
     }
 
     @Test

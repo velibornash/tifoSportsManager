@@ -139,6 +139,26 @@ public class WeeklyFinanceService {
         // Read the squad once. Three of the lines below are a function of it, and the wage bill is
         // what the broadcast money is a share of, so they all have to see the same squad.
         List<Player> squad = playerRepository.findByTeamId(team.getId());
+
+        // **A club with no squad has no economy.**
+        //
+        // Measured on the owner's world, 2026-10-11: 14,880 clubs, of which **13,630 have no players at
+        // all** — 47 `SIMULATED` countries whose 31 divisions were built as names and tables and never
+        // populated, plus the rest of their lower tiers. Every one of them was being settled anyway,
+        // and a club with no players has no wages, no stadium upkeep and no gate, so what it received
+        // was merchandising and nothing else:
+        //
+        //     13,630 clubs with no players   +199,430,400 this week, from nothing
+        //     1,250 clubs with players       -56,281,117 this week
+        //
+        // That is money created every week by the game's own bookkeeping, and it accumulates: a
+        // second-division shell in Austria is already carrying a larger budget than a real club in
+        // Serbia. Settling nothing for a club with no squad is both the honest answer and ten times
+        // less work.
+        if (squad.isEmpty()) {
+            return WeekResult.skipped();
+        }
+
         double wageBill = ClubEconomics.wageBill(team, squad);
 
         lines.add(gate(team, seasonYear, week));
