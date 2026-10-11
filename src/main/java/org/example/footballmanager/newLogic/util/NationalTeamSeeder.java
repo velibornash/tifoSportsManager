@@ -303,8 +303,19 @@ public class NationalTeamSeeder {
         // A squad of real players is already here, so leave it alone. The emptiness test has to be on
         // `existing` and not on `generated`: on a first draw both are empty, and testing `generated`
         // returns before drawing anything, so the side is never filled at all.
-        if (!existing.isEmpty() && generated.isEmpty()) {
-            log.debug("{} already has real players; not drawing a second squad.", nationalTeam.getName());
+        //
+        // **The test is on the size, not on "has any".**
+        //
+        // This returned for any side holding at least one real player, so once a country had been drawn
+        // when its pyramid was still small it was frozen at whatever it had then: Serbia drew 7
+        // eligible under-21s on an early pass and has fielded 7 ever since, with two thousand in the
+        // pool beside it. Re-seeding could not help, because every re-seed took this branch.
+        //
+        // A squad that is *full* is done. One that is short is topped up, which is what the comment
+        // below says happens - it simply never got here.
+        if (!existing.isEmpty() && generated.isEmpty() && existing.size() >= SQUAD_SIZE) {
+            log.debug("{} already has {} real players; not drawing a second squad.",
+                    nationalTeam.getName(), existing.size());
             return;
         }
 

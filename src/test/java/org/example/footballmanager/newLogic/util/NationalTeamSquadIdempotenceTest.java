@@ -81,6 +81,18 @@ class NationalTeamSquadIdempotenceTest extends BaseTest {
         for (int i = 0; i < 30; i++) {
             aClubPlayer(club, i);
         }
+        // **Under-21 players, and enough of them.**
+        //
+        // This assertion was red before the guard changed, and not because of the guard: the age
+        // filter that keeps 29-year-olds out of a youth side (2026-10-10) left this country with six
+        // eligible players out of thirty, so the U-21 side was drawn with six and the test expected
+        // twenty-five. It was failing in the suite and was not being read.
+        //
+        // The point of the test is that the guard is per side, not per country — which is a question
+        // about the guard, and needs a country that can actually field a side.
+        for (int i = 0; i < 30; i++) {
+            aYouthPlayer(club, i, 70 + (i % 20));
+        }
 
         Team senior = teams.save(side("Senior", country));
         Team youth = teams.save(side("Youth", country));
@@ -189,6 +201,81 @@ class NationalTeamSquadIdempotenceTest extends BaseTest {
         assertTrue(after.stream().allMatch(squadBot()::isGenerated),
                 "still generated - there is nothing real to replace them with, and an empty national side "
                         + "cannot be drawn against, which is what stopped the internationals from being drawn");
+    }
+
+    // ── A short squad is not a squad ──────────────────────────────────────────────────────────────
+
+    /**
+     * The owner's report, 2026-10-11: *"umesto 25 igraca bude npr 7 a dole u national pool ih ima koliko
+     * hoces"* — seven in the U-21 squad and as many as you like in the pool.
+     *
+     * <p>Reproduced exactly. The guard was "this side already holds real players", so the first time a
+     * country was drawn — while its pyramid was still small and only a handful of under-21s were
+     * eligible — it froze at that handful. Every later pass took the same branch, which is why
+     * re-seeding did nothing and why the pool beside it was full.
+     *
+     * <p>The fix is the one line the comment under the guard always claimed: a squad is done when it is
+     * <em>full</em>, not when it is non-empty.
+     */
+    @Test
+    @Transactional
+    @DisplayName("a side that was drawn short is topped up once the pool fills")
+    void aShortSquadIsTappedUp() {
+        Country country = aCountry();
+        Team club = aClub(country);
+
+        // First draw: only seven players in the whole country are eligible.
+        for (int i = 0; i < 7; i++) {
+            aYouthPlayer(club, i, 70);
+        }
+        Team youth = teams.save(side("Youth", country));
+        NationalTeamSeeder seeder = new NationalTeamSeeder(teams, players, squadBot());
+
+        seeder.squadsFor(youth, country, true);
+        assertEquals(7, players.findByTeamId(youth.getId()).size(),
+                "precondition: the country could only field seven, so the side is drawn short");
+
+        // The rest of the pyramid arrives. A re-seed now has to fill it.
+        for (int i = 7; i < 40; i++) {
+            aYouthPlayer(club, i, 60 + (i % 10));
+        }
+        seeder.squadsFor(youth, country, true);
+
+        assertEquals(25, players.findByTeamId(youth.getId()).size(),
+                "the side is still short after a re-seed. The guard is \"does it have any real players\", "
+                        + "so once it had seven it was finished for ever — and the pool beside it had "
+                        + "thirty-three more.");
+    }
+
+    /** And it stops there: a full squad is not topped up again. */
+    @Test
+    @Transactional
+    @DisplayName("a full squad is not topped up past 25")
+    void aFullSquadStaysAtTwentyFive() {
+        Country country = aCountry();
+        Team club = aClub(country);
+        for (int i = 0; i < 40; i++) {
+            aYouthPlayer(club, i, 60 + (i % 15));
+        }
+        Team youth = teams.save(side("Youth", country));
+        NationalTeamSeeder seeder = new NationalTeamSeeder(teams, players, squadBot());
+
+        seeder.squadsFor(youth, country, true);
+        seeder.squadsFor(youth, country, true);
+        seeder.squadsFor(youth, country, true);
+
+        assertEquals(25, players.findByTeamId(youth.getId()).size(),
+                "three draws over one country must leave one squad of 25, not 75");
+    }
+
+    /** Aged 20, so a U-21 draw has something to draw from. */
+    private Player aYouthPlayer(Team club, int i, int rating) {
+        Player player = new Player();
+        player.setName("Youth player " + i + " " + UUID.randomUUID());
+        player.setTeam(club);
+        player.setRating(rating);
+        player.setAge(20);
+        return players.save(player);
     }
 
     private Player aRatedClubPlayer(Team club, int i, int rating) {
