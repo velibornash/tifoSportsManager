@@ -5,12 +5,14 @@ import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.Country;
+import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.CountryState;
 import org.example.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
+import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,19 +65,24 @@ class WeeklyFinanceScopeTest extends BaseTest {
     @Autowired private WeeklyFinanceService finances;
     @Autowired private SeasonService seasons;
     @Autowired private TeamRepository teams;
+    @Autowired private PlayerRepository players;
     @Autowired private CountryRepository countries;
     @Autowired private CompetitionRepository competitions;
     @Autowired private FinanceLedgerEntryRepository ledger;
 
     private final List<Long> createdTeams = new ArrayList<>();
+    private Long aiClubId;
     private Integer season;
 
     @BeforeEach
     void createCommittedFixtures() {
         season = seasons.getOrCreateClock().getCurrentSeason();
-        Country country = countries.save(aCountry());
-        createdTeams.add(teams.save(nationalSide(country)).getId());
-        createdTeams.add(teams.save(club(country)).getId());
+        Country active = countries.save(aCountry(CountryState.ACTIVE));
+        Country simulated = countries.save(aCountry(CountryState.SIMULATED));
+        createdTeams.add(teams.save(nationalSide(active)).getId());
+        createdTeams.add(withSquad(club(active)).getId());
+        createdTeams.add(withSquad(club(simulated)).getId());
+        aiClubId = createdTeams.get(2);
     }
 
     @AfterEach
@@ -130,6 +137,32 @@ class WeeklyFinanceScopeTest extends BaseTest {
                 club.getName() + " was reported settled but its budget did not move");
     }
 
+    /**
+     * The other half of the owner's rule (2026-10-11): a club in a simulated country has no economy.
+     *
+     * <p>"Simulirane lige i AI klubovi nemaju ekonomiju i to, tu su samo za internacionalne mečeve,
+     * bot klubovi i za NT bot reprezentacije. Samo human timovi (ili aktivne lige) imaju ekonomiju."
+     *
+     * <p>This is not tidiness. Settled, those clubs took merchandising and had no wages, no upkeep and
+     * no gate to set against it: measured on the owner's world, 13,630 of them created **199,430,400 in
+     * one week**. A second-division shell in Austria ended up carrying a bigger budget than a real club
+     * in Serbia.
+     */
+    @Test
+    @DisplayName("a club in a simulated country has no economy at all")
+    void anAiClubIsNotSettled() {
+        Team aiClub = teams.findById(aiClubId).orElseThrow();
+
+        WeeklyFinanceService.WeekResult result = finances.applyWeeklyFinances(aiClub, season, 902);
+
+        assertTrue(result.notApplied(),
+                aiClub.getName() + " is in a SIMULATED country and was settled. It exists so a "
+                        + "national side can be drawn against, and nothing else.");
+        assertTrue(rowsFor(aiClub).isEmpty(),
+                aiClub.getName() + " wrote ledger rows. With no wages, no upkeep and no gate to set "
+                        + "against them, every line is money the game invented.");
+    }
+
     // --- fixtures ---
 
     private Team nationalSideById() {
@@ -148,11 +181,39 @@ class WeeklyFinanceScopeTest extends BaseTest {
     }
 
     private Country aCountry() {
+        return aCountry(CountryState.SIMULATED);
+    }
+
+    private Country aCountry(CountryState state) {
         Country country = new Country();
         country.setName("ZZ Finance " + UUID.randomUUID());
         country.setIsoCode("I" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
-        country.setState(CountryState.SIMULATED);
+        country.setState(state);
         return countries.save(country);
+    }
+
+    /**
+     * Gives a club a squad, because a club with no players has no economy either.
+     *
+     * <p>Two guards now decide what gets settled, and both are load-bearing: a club must be in an
+     * economy-eligible country, <em>and</em> have at least one player. The second exists because the
+     * first alone was not the whole story - the 13,630 clubs that invented 199m a week were all
+     * excluded by the first, but the rule that catches the shape of the bug is "no squad, no ledger",
+     * whatever the country's state.
+     */
+    private Team withSquad(Team club) {
+        club = teams.save(club);
+        for (int i = 0; i < 18; i++) {
+            Player p = new Player();
+            p.setName("ZZ Finance player " + i + " " + UUID.randomUUID());
+            p.setTeam(club);
+            p.setAge(23);
+            p.setRating(70);
+            p.setPlayerValue(1_000_000);
+            p.setEarnings(2_500);
+            players.save(p);
+        }
+        return club;
     }
 
     private Team nationalSide(Country country) {
@@ -176,6 +237,7 @@ class WeeklyFinanceScopeTest extends BaseTest {
         team.setName("ZZ Finance club " + UUID.randomUUID());
         team.setCountry(country);
         team.setCompetition(competition);
+        team.setReputation(60.0);
         team.setType(CompetitionTeamType.CLUB);
         team.setBudget(1000.0);
         return team;

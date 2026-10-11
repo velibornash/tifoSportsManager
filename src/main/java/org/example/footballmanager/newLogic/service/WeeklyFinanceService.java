@@ -122,6 +122,25 @@ public class WeeklyFinanceService {
             return WeekResult.skipped();
         }
 
+        // **Only human teams and active countries have an economy** (owner, 2026-10-11).
+        //
+        // "Simulirane lige i AI klubovi nemaju ekonomiju i to, tu su samo za internacionalne mečeve,
+        // bot klubovi i za NT bot reprezentacije. Samo human timovi (ili aktivne lige, šta god od to
+        // dvoje) imaju ekonomiju."
+        //
+        // This check is here and not only in the weekly loop on purpose. In the loop alone, any other
+        // caller that reached for a club directly would settle it — and the failure is invisible,
+        // because settling an AI club looks exactly like settling a real one until you add up what
+        // 13,630 of them created in a week.
+        //
+        // Their players still get the default pace training and their national sides still draw.
+        // This is about money and nothing else.
+        if (team.getCountry() != null
+                && team.getCountry().getState() != org.example.footballmanager.newLogic.model.CountryState.ACTIVE
+                && !team.isHumanControlled()) {
+            return WeekResult.skipped();
+        }
+
         boolean alreadySettled = ledger
                 .findByTeamIdAndSeasonYearAndWeekNumber(team.getId(), seasonYear, week).stream()
                 .findAny().isPresent();

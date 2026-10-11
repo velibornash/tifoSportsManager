@@ -634,12 +634,21 @@ public class SeasonService {
         GameClock clock = getOrCreateClock();
         Integer season = clock.getCurrentSeason();
         Integer week = clock.getCurrentWeek();
-        // Clubs only. This read every team in the world, which at target scale is 14,880 clubs and 96
-        // national sides — and each one costs a REQUIRES_NEW transaction, so the 96 were 96 transactions
-        // to settle something that does not exist. applyWeeklyFinances refuses a team with no
-        // competition as well, so the rule is stated in both places rather than in one and assumed in
-        // the other.
-        List<Team> clubs = teamRepository.findAllClubsWithDivision();
+        // **Only the clubs that have an economy** (owner, 2026-10-11).
+        //
+        // This used to read every club in the world. At target scale that is 14,880 clubs and 96
+        // national sides, each costing a REQUIRES_NEW transaction, to settle 14,570 clubs that are not
+        // played: the owner's rule is *"simulirane lige i AI klubovi nemaju ekonomiju ... samo human
+        // timovi (ili aktivne lige) imaju ekonomiju"* - they exist so a national side can be drawn
+        // against and nothing else.
+        //
+        // Settling them was not a waste, it was a hole. A club with no squad has no wages, no upkeep
+        // and no gate, so 13,630 of them received merchandising and nothing else and created
+        // **199,430,400 in one week** - measured, on the owner's own database.
+        //
+        // Their players still get the default pace training, and their national sides still draw.
+        // This filter is about money and nothing else.
+        List<Team> clubs = teamRepository.findClubsWithAnEconomy();
         int settled = 0;
         for (Team club : clubs) {
             try {

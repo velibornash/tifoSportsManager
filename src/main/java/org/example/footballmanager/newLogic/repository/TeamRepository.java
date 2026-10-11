@@ -96,6 +96,43 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findClubTeamsForOperations();
 
     /**
+     * The clubs that have an economy (owner, 2026-10-11).
+     *
+     * <p><b>Human teams, and clubs in an active country. Nothing else.</b> The owner: *"Simulirane
+     * lige i AI klubovi nemaju ekonomiju i to, tu su samo za internacionalne mečeve, bot klubovi i
+     * za NT bot reprezentacije. Samo human timovi (ili aktivne lige, šta god od to dvoje) imaju
+     * ekonomiju."*
+     *
+     * <p>Measured on the owner's world: 14,880 clubs, of which only **310** are in an active country
+     * and have one human manager among them. The other 14,570 are 47 {@code SIMULATED} countries,
+     * built as names and tables so their national sides can be drawn against. Settling them was
+     * inventing money — 13,630 clubs with no squad earned <b>199,430,400 in one week</b> from
+     * merchandising, because with no wages, no upkeep and no gate there is nothing to set it against.
+     *
+     * <p>Two things are deliberately still true of those clubs, and this query is only about money:
+     * their players get the default pace training every week, and their national teams can still be
+     * drawn against. Excluding them here must not quietly exclude them anywhere else.
+     *
+     * <p><b>Null-safe on purpose.</b> The predicate reads {@code t.country is null or ... ACTIVE} rather
+     * than a bare equality, because a bare one silently excludes a club that has no country row: it
+     * is in no simulated league, so it is not what this filter is for, and dropping its economy without
+     * saying so is the kind of quiet hole this query exists to close. Every club
+     * {@code PyramidBuilder} creates has a country, so this costs nothing and buys the absence of a
+     * trap.
+     *
+     * <p>{@code type is null} is in the predicate for the same reason it is in
+     * {@link #findClubTeamsForOperations()}: {@code PyramidBuilder} creates every club in the world
+     * and never sets {@code type}, so an {@code = CLUB} test matches nothing at all.
+     */
+    @Query("select t from Team t "
+            + "where (t.type is null or t.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB) "
+            + "and (t.country is null "
+            + "     or t.country.state = org.example.footballmanager.newLogic.model.CountryState.ACTIVE "
+            + "     or t.humanControlled = true) "
+            + "order by t.id asc")
+    List<Team> findClubsWithAnEconomy();
+
+    /**
      * One country's clubs, by what they are rather than by which of them turn up.
      *
      * <p>{@link #findClubTeamsForOperations()} answers "every club in the world", and the national-squad
