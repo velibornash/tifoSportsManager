@@ -344,9 +344,13 @@ What exists now:
 - [x] A prepared match is unreachable through **any** read path: match-by-id, lineups, events, stats,
       preview, report and all three replay endpoints. `MatchPublicationGuard`, `404` not `403`, because
       an id space this small is enumerable and "it exists but not yet" is already an answer.
-- [ ] **Still to check:** the team match list, the round/results view and the dashboard read fixtures or
-      lists rather than a single match id, so the guard does not cover them. They need the same
-      question asked of them.
+- [x] The team match list and the dashboard's recent matches. Both are built on `m.played = true`, and
+      a prepared match is a **complete row** — goals, possession, everything — so it simply appeared.
+      `MatchRepository.NOT_PREPARED` excludes it, narrowly: only while its fixture is still unplayed.
+- [ ] **Owner decision needed:** a prepared match is deliberately still included in the **ranking
+      replays** (`findPlayedClubRankedInOrder` and its siblings), so Elo and ranking points move an
+      hour before the result is shown. Whether that is right is a product question, not a technical one:
+      should a club's rating move at T−1h, when the football is played but nothing is published yet?
 
 ## T-MATCH-2 — 🔴 P0 · the lock is real, not a message
 

@@ -34,6 +34,33 @@ disabling only the replay guard turns `noReplayEndpointServesAPreparedMatch` red
 **Not done:** the team match list, the round/results view and the dashboard do not resolve a single match
 id, so they are not covered by this guard and have not been checked. They are on the board.
 
+## ✅ The lists did not leak by id — they leaked because the row is complete (2026-10-11)
+
+`T-MATCH-1`, the list-shaped half.
+
+`MatchPublicationGuard` hid a match *by id*. The bigger hole was elsewhere: a prepared match is a fully
+formed row with `match.played = true`, goals and possession, because the football really did happen and
+the replays have to see it. So every list built on `m.played = true` served it — `TeamController`'s
+`/{teamId}/matches` and the dashboard's recent matches among them.
+
+`MatchRepository.NOT_PREPARED` excludes it, and the predicate is narrow on purpose:
+
+    AND NOT EXISTS (SELECT f FROM MatchFixture f
+                    WHERE f.preparedMatchId = m.id AND f.played = false)
+
+A published fixture keeps its `preparedMatchId` for ever, so the instant the publish job runs the match
+reappears and nothing else has to be done. `NOT EXISTS` rather than a join, so the list stays a list.
+
+**Not applied to the ranking replays.** `findPlayedClubRankedInOrder`, `findPlayedNationalRankedInOrder`
+and the two `ScoredMatch` replays still include prepared matches, so **Elo and ranking points move an
+hour before the result is shown**. That is on the board as a question for the owner rather than a
+decision taken here: it is a product call, not a technical one.
+
+**A wrong assertion worth recording.** The list test first asserted on the match id and failed its own
+control — `MatchDTO` in that list carries the *fixture* id, so `"id": preparedMatchId` was never going
+to appear and the negative assertion was vacuous. It now asserts on the scoreline, and the control is
+that the same body contains it once the fixture is published.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

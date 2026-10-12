@@ -12,6 +12,26 @@ import java.util.Optional;
 
 @Repository
 public interface MatchRepository extends JpaRepository<Match, Long> {
+
+    /**
+     * Excludes matches that have been computed but not yet published (owner, 2026-10-11).
+     *
+     * <p>A prepared match is a real, complete row: {@code played = true}, goals, possession, the lot.
+     * That is deliberate — the football happened, and the rating and table replays must see it. It
+     * also means every list built on {@code m.played = true} would show a manager his result an hour
+     * before kickoff, and two of them do: the team's match list and the dashboard's recent matches.
+     *
+     * <p>The predicate is {@code NOT EXISTS} rather than a join so the list stays a list, and it is
+     * narrow on purpose: it only hides a match whose fixture is <em>still</em> unplayed. A published
+     * fixture keeps its {@code preparedMatchId} for ever as a record of what it was, so the moment the
+     * publish job runs, the match reappears with nothing else to do.
+     *
+     * <p><b>Not applied to the ranking replays below.</b> {@code findPlayedClubRankedInOrder} and its
+     * siblings feed Elo and points replays, and a prepared match belongs in those — see the board
+     * question on whether a rating should move an hour before its result is shown.
+     */
+    String NOT_PREPARED = " AND NOT EXISTS (SELECT f FROM MatchFixture f "
+            + "WHERE f.preparedMatchId = m.id AND f.played = false)";
     List<Match> findByHomeTeamIdOrAwayTeamId(Long homeTeamId, Long awayTeamId);
     List<Match> findByCompetitionIdAndSeasonYear(Long competitionId, Integer seasonYear);
     List<Match> findBySeasonYearAndWeekNumber(Integer seasonYear, Integer weekNumber);
@@ -37,7 +57,8 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      * flush then has to dirty-check.
      */
     @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam "
-            + "WHERE m.played = true AND (m.homeTeam.id IN :teamIds OR m.awayTeam.id IN :teamIds)")
+            + "WHERE m.played = true AND (m.homeTeam.id IN :teamIds OR m.awayTeam.id IN :teamIds)"
+            + NOT_PREPARED)
     List<Match> findPlayedInvolvingAnyOf(@Param("teamIds") Collection<Long> teamIds);
 
     List<Match> findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(Long competitionId, Integer seasonYear);
@@ -203,7 +224,8 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             org.springframework.data.domain.Pageable page);
 
 
-    @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam WHERE (m.homeTeam.id = :homeId OR m.awayTeam.id = :awayId) AND m.played = true ORDER BY m.matchDate DESC")
+    @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam WHERE (m.homeTeam.id = :homeId OR m.awayTeam.id = :awayId) AND m.played = true"
+            + NOT_PREPARED + " ORDER BY m.matchDate DESC")
     List<Match> findByHomeTeamIdOrAwayTeamIdAndPlayedTrueOrderByMatchDateDesc(@Param("homeId") Long homeId, @Param("awayId") Long awayId);
 
     @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam LEFT JOIN FETCH m.homeLineup LEFT JOIN FETCH m.awayLineup LEFT JOIN FETCH m.competition LEFT JOIN FETCH m.stadium WHERE m.id = :id")

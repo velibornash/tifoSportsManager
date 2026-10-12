@@ -158,6 +158,49 @@ class PreparedMatchIsUnreadableTest extends BaseTest {
     }
 
     @Test
+    @DisplayName("a prepared match is absent from the team's match list, not just unfetchable by id")
+    void theTeamMatchListDoesNotShowAPreparedMatch() throws Exception {
+        org.example.footballmanager.newLogic.model.Team home = fixtures.findAll().stream()
+                .filter(f -> preparedMatchId.equals(f.getPreparedMatchId()))
+                .findFirst()
+                .orElseThrow()
+                .getHomeTeam();
+
+        String body = mockMvc.perform(get("/teams/" + home.getId() + "/matches")
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        // The guard above hides a match by id. This is the other shape: a list built on
+        // `m.played = true`, where a prepared match is a complete row and would simply appear.
+        //
+        // Asserted on the scoreline, not the id: MatchDTO here carries the match id but this team has
+        // exactly one match of its own, and 4-0 appears in the body only if that match was served.
+        org.assertj.core.api.Assertions.assertThat(body)
+                .as("a prepared match must not appear in the team's played-match list")
+                .doesNotContain("\"homeGoals\" : 4");
+
+        // Control: publish it, and it must appear.
+        fixtures.findAll().stream()
+                .filter(f -> preparedMatchId.equals(f.getPreparedMatchId()))
+                .findFirst()
+                .ifPresent(f -> {
+                    f.setPlayed(true);
+                    f.setPlayedMatch(matches.findById(preparedMatchId).orElseThrow());
+                    fixtures.save(f);
+                });
+
+        String after = mockMvc.perform(get("/teams/" + home.getId() + "/matches")
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        org.assertj.core.api.Assertions.assertThat(after)
+                .as("once published, the match must be in the list")
+                .contains("\"homeGoals\" : 4");
+    }
+
+    @Test
     @DisplayName("the fixture itself is still readable, and still says it has not happened")
     void theFixtureRemainsTheOnlyHonestView() throws Exception {
         MatchFixture fixture = fixtures.findAll().stream()
