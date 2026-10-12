@@ -228,6 +228,56 @@ class BrowserSourceSanityTest {
                         + "every tab including Preview");
     }
 
+    @Test
+    @DisplayName("a selected formation or style does not look like a disabled button")
+    void theSelectedTacticControlIsPaintedDifferentlyFromAnUnselectedOne() throws IOException {
+        // The owner: the formation and style buttons "look disabled, a blurred blue on grey". They
+        // were not disabled. A theme block later in the cascade grouped `.cs-tactics-btn.active` with
+        // `:hover` and painted both at 10% alpha over a 20% border, so the selected tactic's own
+        // controls were fainter than the panel behind them.
+        String css = Files.readString(StaticResourceConfigPath.CSS.resolve("dashboard.css"));
+
+        int lastActive = css.lastIndexOf(".cs-tactics-btn.active");
+        int lastHover = css.lastIndexOf(".cs-tactics-btn:hover");
+        assertTrue(lastActive > 0 && lastHover > 0, "the editor's formation/style buttons have no rule");
+
+        String activeRule = css.substring(lastActive, css.indexOf('}', lastActive));
+        String hoverRule = css.substring(lastHover, css.indexOf('}', lastHover));
+
+        double activeAlpha = alphaIn(activeRule, "background");
+        double hoverAlpha = alphaIn(hoverRule, "background");
+        double borderAlpha = alphaIn(activeRule, "border-color");
+
+        // A selected control that is barely more visible than the ones you can also press reads as
+        // unavailable, which is the exact reading the owner gave.
+        assertTrue(activeAlpha >= 0.24,
+                "the selected formation/style is painted at " + activeAlpha
+                        + " alpha, which is too faint to read as chosen");
+        assertTrue(activeAlpha > hoverAlpha,
+                "the selected formation/style is painted no stronger than a hovered one, so the two "
+                        + "are indistinguishable");
+        assertTrue(borderAlpha >= 0.6,
+                "the selected formation/style has a " + borderAlpha
+                        + " alpha border, which disappears against the panel");
+        assertTrue(activeRule.contains("box-shadow"),
+                "the selected formation/style has no ring, so nothing marks it as chosen");
+    }
+
+    /** Reads the alpha out of an {@code rgba(r, g, b, a)} declaration; -1 when there is none. */
+    private static double alphaIn(String rule, String property) {
+        Matcher m = Pattern.compile(Pattern.quote(property) + "\\s*:\\s*rgba?\\([^)]*?,\\s*([0-9.]+)\\s*\\)")
+                .matcher(rule);
+        if (!m.find()) {
+            return -1;
+        }
+        return Double.parseDouble(m.group(1));
+    }
+
+    /** Kept out of the method so the test reads as one idea rather than as path plumbing. */
+    private static final class StaticResourceConfigPath {
+        static final java.nio.file.Path CSS = JS_ROOT.getParent().resolve("css");
+    }
+
     private static List<Path> jsFiles() throws IOException {
         try (Stream<Path> files = Files.walk(JS_ROOT)) {
             return files.filter(p -> p.toString().endsWith(".js")).sorted().toList();

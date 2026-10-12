@@ -1,3 +1,24 @@
+## ✅ The formation and style buttons looked disabled (2026-10-12)
+
+Commit to follow.
+
+The owner: the buttons on the Tactic Editor's Base setup "are not the right colour, they look disabled
+because it goes somehow as a blurred blue on grey". Nothing was disabled and there is no `disabled`
+attribute on them.
+
+A theme block later in `dashboard.css` than the green `.active` rule grouped `.cs-tactics-btn:hover` and
+`.cs-tactics-btn.active` together and painted both at `rgba(143, 211, 255, 0.1)` over a `0.2` border. Same
+specificity, later in the file, so it won the cascade and the *selected* tactic's own controls were
+fainter than the panel they sit on.
+
+Hover and selected are now separate rules and differ from each other as well as from the resting state:
+hover lifts the fill to `0.16`, selected fills to `0.26` with a `0.9` border and an inset ring, and the
+resting button's border went from `0.14` to `0.22` so the row reads as controls rather than flat cards.
+
+`BrowserSourceSanityTest` reads the alpha out of the last `.cs-tactics-btn.active` and `.cs-tactics-btn:hover`
+rule in the cascade and requires the selected one to be the stronger of the two, which is the reading the
+owner gave. Dropping the active fill back to `0.1` turns it red.
+
 ## ✅ A reset no longer deletes the tactic library (2026-10-12)
 
 Commit `8a8dbb7b`.

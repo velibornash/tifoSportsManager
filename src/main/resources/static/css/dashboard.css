@@ -10,7 +10,7 @@
 
 .cs-tactics-btn {
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 10px;
     padding: 10px 12px;
     text-align: center;
@@ -4419,11 +4419,35 @@ body {
 }
 
 .training-player-card:hover,
-.training-week-item:hover,
-.cs-tactics-btn:hover,
-.cs-tactics-btn.active {
+.training-week-item:hover {
     border-color: rgba(143, 211, 255, 0.2);
     background: rgba(143, 211, 255, 0.1);
+}
+
+/*
+ * The formation and style buttons, split back out of the hover rule above.
+ *
+ * They were grouped with it, so both the hovered button and the *selected* one were
+ * painted at 10% alpha with a 20% border - and the theme block sat after the green
+ * active state further up the file, so it won the cascade. The result was the owner's
+ * report: the formation and style buttons "look disabled, a blurred blue on grey".
+ * Nothing was disabled. The selected tactic's own controls were simply painted fainter
+ * than the panel behind them, and a button you cannot press and a button you have
+ * chosen look identical that way.
+ *
+ * The hover and the selected state now differ from each other as well as from the
+ * resting one: hover lifts the fill a little, selected fills it and rings it.
+ */
+.cs-tactics-btn:hover {
+    border-color: rgba(143, 211, 255, 0.5);
+    background: rgba(143, 211, 255, 0.16);
+}
+
+.cs-tactics-btn.active {
+    border-color: rgba(143, 211, 255, 0.9);
+    background: rgba(143, 211, 255, 0.26);
+    color: #eaf6ff;
+    box-shadow: inset 0 0 0 2px rgba(143, 211, 255, 0.5);
 }
 
 #loading-popup {
