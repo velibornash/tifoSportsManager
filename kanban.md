@@ -341,8 +341,12 @@ What exists now:
       computed at kickoff and published, not lost.
 - [ ] National-tournament matchdays get the same pair (owner decision). `NationalMatchdayJob` is keyed
       on `QUALIFYING_WEEK` / `TOURNAMENT_WEEK`, not on a kickoff hour, so its hours have to be defined.
-- [ ] A prepared match is unreachable through **any** read path, not just the fixture list: match-by-id,
-      the replay endpoint, the team match list, the round view, the dashboard.
+- [x] A prepared match is unreachable through **any** read path: match-by-id, lineups, events, stats,
+      preview, report and all three replay endpoints. `MatchPublicationGuard`, `404` not `403`, because
+      an id space this small is enumerable and "it exists but not yet" is already an answer.
+- [ ] **Still to check:** the team match list, the round/results view and the dashboard read fixtures or
+      lists rather than a single match id, so the guard does not cover them. They need the same
+      question asked of them.
 
 ## T-MATCH-2 — 🔴 P0 · the lock is real, not a message
 

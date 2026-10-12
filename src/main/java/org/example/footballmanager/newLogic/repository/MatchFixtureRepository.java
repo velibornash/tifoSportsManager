@@ -62,6 +62,18 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
                                             @Param("dayNumber") Integer dayNumber);
 
     /**
+     * Whether a match id is a prepared-but-unpublished match of some fixture (owner, 2026-10-11).
+     *
+     * <p>The query behind {@link org.example.footballmanager.newLogic.service.MatchPublicationGuard}.
+     * The predicate is deliberately narrow — the id must be the <em>prepared</em> one and the fixture
+     * must still be <em>unplayed</em> — so a published match, whose fixture keeps {@code preparedMatchId}
+     * for ever as a record of what it was, reads as visible.
+     */
+    @Query("select case when count(f) > 0 then true else false end from MatchFixture f "
+            + "where f.preparedMatchId = :matchId and f.played = false")
+    boolean existsPreparedUnpublished(@Param("matchId") Long matchId);
+
+    /**
      * Unplayed <b>friendlies</b> for one day, whatever competition they belong to.
      *
      * <p><b>The query that makes a friendly playable at all.</b> Every other matchday selects by

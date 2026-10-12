@@ -21,14 +21,30 @@ public class ZoxReplayController {
 
     private final MatchStore store;
     private final MatchRepository matchRepository;
+    private final org.example.footballmanager.newLogic.service.MatchPublicationGuard publication;
     private final ReplayBuilder replayBuilder = new ReplayBuilder();
 
-    public ZoxReplayController(MatchStore store, MatchRepository matchRepository) {
+    public ZoxReplayController(MatchStore store, MatchRepository matchRepository,
+                               org.example.footballmanager.newLogic.service.MatchPublicationGuard publication) {
         this.store = store;
         this.matchRepository = matchRepository;
+        this.publication = publication;
     }
 
+    /**
+     * Resolves a database match id to the in-memory store id, and refuses a prepared match.
+     *
+     * <p>The replay is the richest thing a prepared match leaks — every tick, every event — and it was
+     * reachable: the store is populated at simulation time, an hour before kickoff. The owner asked for
+     * the links to open at kickoff, and a replay endpoint is the link.
+     *
+     * @return the store id, or {@link Long#MIN_VALUE} when the match is prepared and unpublished, which
+     *         no store will hold, so every caller below falls through to its existing 404
+     */
     private long resolveStoreMatchId(long dbMatchId) {
+        if (publication.isHidden(dbMatchId)) {
+            return Long.MIN_VALUE;
+        }
         return matchRepository.findById(dbMatchId)
                 .map(Match::getReplayId)
                 .orElse(dbMatchId);

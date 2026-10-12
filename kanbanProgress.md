@@ -1,3 +1,39 @@
+## ✅ A prepared match cannot be read through any match endpoint (2026-10-11)
+
+`T-MATCH-1`, the read-path half. Commit to follow.
+
+The prepare half stores a real row in `match` with a real id an hour before kickoff. `MatchController`
+has eight endpoints keyed on `matchId` and all eight resolved straight from `matchRepository.findById`;
+`ZoxReplayController` has three more. So the score was readable an hour early by anyone holding the id,
+and the fixture list — the only place the hidden state was visible — stopped nobody who simply had it.
+
+`MatchPublicationGuard` is the choke point: every one of those endpoints now resolves through
+`publication.visible(id)`, and an empty result becomes the 404 each of them already produced for an
+unknown match. `404` and not `403` on purpose — the replay store is in memory and is populated at
+simulation time, so the replay was the richest thing to leak, and "it exists but not yet" confirms it
+exists in an id space of one.
+
+Background readers are deliberately not routed through the guard: `MatchdayScheduler` has to find a
+prepared match to publish it, and a repair pass has to see it to decide it is intact.
+
+**Three defects found by writing the test before trusting it:**
+
+- The first guard returned a filtered id and the caller did `findById(null)`, which is not "not found" —
+  JPA rejects a null id, and the endpoint answered **500** on a match that was correctly hidden. The
+  guard now returns the `Match`.
+- The test posted to `/api/matches/...`, and `MatchController` is mounted at `/matches`. Both leak tests
+  were passing because nothing was there at all.
+- The replay test asserted 404 against an **empty** in-memory store, so it passed with the guard switched
+  off. It now populates the store, and ends with a control: publish the fixture, and the same store entry
+  must then serve 200. Without that control the 404s above would also pass if the endpoint were simply
+  broken.
+
+Mutations: disabling the guard turns `noMatchEndpointServesAPreparedMatch` red (200 instead of 404);
+disabling only the replay guard turns `noReplayEndpointServesAPreparedMatch` red.
+
+**Not done:** the team match list, the round/results view and the dashboard do not resolve a single match
+id, so they are not covered by this guard and have not been checked. They are on the board.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

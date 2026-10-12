@@ -30,6 +30,7 @@ public class MatchController {
 
     private final MatchRepository matchRepository;
     private final org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository;
+    private final org.example.footballmanager.newLogic.service.MatchPublicationGuard publication;
     private final MatchDetailService matchDetailService;
     private final MatchPlayerStatsRepository playerStatsRepository;
     private final org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures;
@@ -40,15 +41,30 @@ public class MatchController {
             MatchDetailService matchDetailService,
             MatchPlayerStatsRepository playerStatsRepository,
             org.example.footballmanager.newLogic.service.PlusFeatureService plusFeatures,
-            org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository
+            org.example.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository,
+            org.example.footballmanager.newLogic.service.MatchPublicationGuard publication
     ) {
         this.matchRepository = matchRepository;
         this.matchFixtureRepository = matchFixtureRepository;
+        this.publication = publication;
         this.matchDetailService = matchDetailService;
         this.playerStatsRepository = playerStatsRepository;
         this.plusFeatures = plusFeatures;
     }
 
+    /**
+     * Nothing keyed on a match id may read it before kickoff (owner, 2026-10-11).
+     *
+     * <p>A matchday is computed an hour early and released at kickoff. From the moment it is computed
+     * the row exists in the {@code match} table with a real id, and every endpoint in this controller
+     * resolves a match id straight against that table — so without the guard the score was readable an
+     * hour early by anyone holding the id.
+     *
+     * <p>The guard is applied here, at the single choke point all of them share, rather than inside
+     * {@code MatchRepository}: background readers have to see a prepared match in order to publish it.
+     * {@code visibleMatchId} returns null for a hidden match, which every {@code .map(...)} below
+     * already turns into a 404.
+     */
     @GetMapping("/{matchId}")
     public ResponseEntity<MatchDTO> getMatch(@PathVariable Long matchId,
                                              @AuthenticationPrincipal User user) {
@@ -56,7 +72,7 @@ public class MatchController {
         // detail fetch that ignored the viewer was a way to read a result the manager had not asked
         // for. The mask lives in the DTO, so passing the viewer is all it takes.
         Long viewerTeamId = plusFeatures.viewerTeamId(user);
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> MatchDTO.from(match, viewerTeamId))
                 .map(ResponseEntity::ok)
                 // An unplayed fixture has its own endpoint, and deliberately so. Resolving one id against
@@ -93,7 +109,7 @@ public class MatchController {
     @GetMapping("/{matchId}/lineups")
     @SuppressWarnings("unchecked")
     public ResponseEntity<Map<String, Object>> getMatchLineups(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("homeTeam", match.getHomeTeam() != null ? match.getHomeTeam().getName() : null);
@@ -124,6 +140,11 @@ public class MatchController {
 
     @GetMapping("/{matchId}/detail")
     public ResponseEntity<List<MatchEventFlatDTO>> getMatchDetail(@PathVariable Long matchId) {
+        // Guarded like the rest: this one reads through a service rather than the match table, so it
+        // would have been the path that slipped through a findById-only fix.
+        if (publication.visible(matchId).isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
         try {
             List<MatchEventFlatDTO> events = matchDetailService.getMatchEventsFlat(matchId);
             return ResponseEntity.ok(events);
@@ -134,7 +155,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/player-stats")
     public ResponseEntity<Map<String, Object>> getMatchPlayerStats(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     Map<String, Object> response = new LinkedHashMap<>();
                     response.put("matchId", matchId);
@@ -191,7 +212,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/preview")
     public ResponseEntity<Map<String, Object>> getMatchPreview(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     Map<String, Object> preview = new LinkedHashMap<>();
                     preview.put("matchId", matchId);
@@ -207,7 +228,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/report")
     public ResponseEntity<Map<String, Object>> getMatchReport(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     Map<String, Object> report = new LinkedHashMap<>();
                     report.put("matchId", matchId);
@@ -298,7 +319,7 @@ public class MatchController {
 
     @GetMapping("/{matchId}/stats")
     public ResponseEntity<Map<String, Object>> getMatchStats(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     Map<String, Object> stats = new LinkedHashMap<>();
                     stats.put("matchId", matchId);
@@ -402,7 +423,7 @@ public class MatchController {
 
     @PostMapping("/{matchId}/reveal")
     public ResponseEntity<Map<String, Object>> revealMatchResult(@PathVariable Long matchId) {
-        return matchRepository.findById(matchId)
+        return publication.visible(matchId)
                 .map(match -> {
                     match.setHomeResultRevealed(true);
                     match.setAwayResultRevealed(true);
