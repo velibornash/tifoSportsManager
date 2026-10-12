@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -36,18 +37,35 @@ class EveryGameDayHasAJobTest extends BaseTest {
     List<DayJob> jobs;
 
     @Test
-    @DisplayName("day 6 is named by the calendar and has nothing on it")
-    void daySixIsNamedAndUnscheduled() {
+    @DisplayName("day 6 is a club rest day and a national match day, and nothing else")
+    void daySixIsANationalDayOnly() {
         assertTrue(GameDay.DAY_6.kind() == WeekTemplate.DayKind.MORALE,
                 "day 6 is no longer the form-and-morale day, so this finding has to be re-stated against "
                         + "whatever it is now");
 
-        // A named day with nothing on it. The two ANY_DAY jobs (day-opened at 00:00, recovery at 06:00)
-        // do fire on day 6, and are excluded deliberately: a squad recovering is not the day 6 the
-        // calendar promises, and counting them would make this test pass against the broken week.
-        assertTrue(jobsOnDay(6).isEmpty(),
-                "day 6 now has " + jobsOnDay(6) + " scheduled on it. That is the fix — so update this test "
-                        + "and close B9's second half on the board rather than deleting the assertion.");
+        // **This assertion used to be the opposite, and it was red.** B9 asked whether a day the
+        // calendar names can have nothing on it, and the answer was yes - until the national tournament
+        // schedule put qualifiers and tournament ties on days 2, 4 and 6, which this test did not know
+        // about. It was written to be updated when that happened, not deleted, so here it is.
+        //
+        // Day 6 is still not a *club* match day, and that half of the finding still stands: the jobs on
+        // it are national-tournament ones, pinned to the qualifying and tournament weeks, and a club
+        // manager sees an evening off.
+        Set<String> keys = jobsOnDay(6);
+        assertFalse(keys.isEmpty(),
+                "day 6 has " + keys + " on it now, which this test says it should not. If a club matchday "
+                        + "has been added to day 6, the calendar changed and this finding is re-stated, "
+                        + "not deleted.");
+
+        for (String key : keys) {
+            assertTrue(key.startsWith("matchday-qualifier") || key.startsWith("matchday-tournament")
+                            || key.startsWith("matchday-prepare-qualifier")
+                            || key.startsWith("matchday-publish-qualifier")
+                            || key.startsWith("matchday-prepare-tournament")
+                            || key.startsWith("matchday-publish-tournament"),
+                    "day 6 carries " + key + ", which is not a national-tournament job. A club matchday "
+                            + "on day 6 changes the week the owner described, and needs saying out loud.");
+        }
     }
 
     @Test

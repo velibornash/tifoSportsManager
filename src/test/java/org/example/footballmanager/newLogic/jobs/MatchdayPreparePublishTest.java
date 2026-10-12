@@ -4,7 +4,9 @@ import org.example.footballmanager.newLogic.jobs.impl.MatchdayJob;
 import org.example.footballmanager.newLogic.jobs.impl.MatchdayPrepareJob;
 import org.example.footballmanager.newLogic.jobs.impl.MatchdayPublishJob;
 import org.example.footballmanager.newLogic.model.CompetitionType;
+import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.GameDay;
+import org.example.footballmanager.newLogic.model.NationalTournamentSchedule;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.service.MatchdayScheduler;
@@ -44,7 +46,11 @@ import static org.mockito.Mockito.when;
  *       football they are shown at 20:45.</li>
  * </ul>
  */
-class MatchdayPreparePublishTest {
+class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    java.util.List<org.example.footballmanager.newLogic.jobs.DayJob> registeredJobs;
+
 
     private static final int DAY = GameDay.INTERNATIONAL_DAY;
 
@@ -70,6 +76,59 @@ class MatchdayPreparePublishTest {
 
     private MatchdayPublishJob publishJob() {
         return new MatchdayPublishJob(DAY, fixtures, scheduler);
+    }
+
+    @Test
+    @DisplayName("the pair covers every match day the calendar names, club and national alike")
+    void everyMatchDayHasAPair() {
+        // Written as a property of the injected job list rather than of a class, because the failure
+        // this guards against is registration, not behaviour: eight jobs that compiled, were green,
+        // and had never run.
+        java.util.Map<Integer, java.util.Set<String>> byDay = new java.util.TreeMap<>();
+        for (DayJob job : registeredJobs) {
+            byDay.computeIfAbsent(job.day(), d -> new java.util.TreeSet<>()).add(job.key());
+        }
+
+        for (int day : new int[]{1, 3, 5, 7}) {
+            assertThat(byDay.getOrDefault(day, java.util.Set.of()))
+                    .as("club matchday %d must have a prepare and a publish", day)
+                    .contains("matchday-prepare-" + day, "matchday-publish-" + day);
+        }
+
+        // Days 2, 4 and 6 exist only for national football, and only in its two weeks - so they carry
+        // a qualifier and a tournament pair, four jobs rather than two.
+        for (int day : new int[]{2, 4, 6}) {
+            java.util.Set<String> keys = byDay.getOrDefault(day, java.util.Set.of());
+            for (String phase : new String[]{"qualifier", "tournament"}) {
+                assertThat(keys)
+                        .as("national day %d, %s week, must have a prepare and a publish", day, phase)
+                        .contains("matchday-prepare-" + phase + "-" + day,
+                                "matchday-publish-" + phase + "-" + day);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("the national pair reads the national kickoff, an hour earlier, in its own week")
+    void theNationalPairUsesTheNationalCalendar() {
+        for (int day : new int[]{2, 4, 6}) {
+            int kickoff = NationalTournamentSchedule.kickoffHour(day);
+            int week = NationalTournamentSchedule.QUALIFYING_WEEK;
+
+            assertThat(new MatchdayPrepareJob(day, kickoff, week, fixtures, scheduler).hour())
+                    .as("national day %d prepares an hour before its kickoff", day)
+                    .isEqualTo(kickoff - 1);
+            assertThat(new MatchdayPublishJob(day, kickoff, week, fixtures, scheduler).hour())
+                    .as("national day %d publishes at its kickoff", day)
+                    .isEqualTo(kickoff);
+            assertThat(new MatchdayPrepareJob(day, kickoff, week, fixtures, scheduler).week())
+                    .as("a national job must not fire in every week of the season")
+                    .isEqualTo(week);
+        }
+
+        // Day 2 has no kickoff in the club calendar, which is the whole reason the hour is passed in:
+        // reading GameDay there yields null, and a job with a null kickoff would prepare at hour 0.
+        assertThat(GameDay.of(2).kickoffHour()).isNull();
     }
 
     private void repositories() {

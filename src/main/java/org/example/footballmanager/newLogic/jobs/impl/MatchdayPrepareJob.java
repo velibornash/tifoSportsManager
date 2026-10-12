@@ -36,23 +36,71 @@ public class MatchdayPrepareJob implements DayJob {
     private static final Logger log = LoggerFactory.getLogger(MatchdayPrepareJob.class);
 
     private final int day;
+    private final Integer kickoffHour;
+    private final Integer week;
+    private final String phase;
     private final MatchFixtureRepository fixtures;
     private final MatchdayScheduler scheduler;
 
+    /**
+     * The club calendar: the kickoff hour comes from {@link org.example.footballmanager.newLogic.model.GameDay}.
+     */
     public MatchdayPrepareJob(int day, MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
+        this(day, org.example.footballmanager.newLogic.model.GameDay.of(day).kickoffHour(),
+                DayJob.ANY_WEEK, fixtures, scheduler);
+    }
+
+    /**
+     * An explicit kickoff hour, for a day whose kickoff is not in the club calendar.
+     *
+     * <p>National tournaments play on days 2, 4 and 6, which {@code GameDay} has no kickoff for, and
+     * they fall back to {@code NationalTournamentSchedule}'s own default. Passing the hour in is what
+     * lets one class serve both calendars instead of reading a calendar it does not belong to.
+     */
+    public MatchdayPrepareJob(int day, Integer kickoffHour, MatchFixtureRepository fixtures,
+                              MatchdayScheduler scheduler) {
+        this(day, kickoffHour, DayJob.ANY_WEEK, null, fixtures, scheduler);
+    }
+
+    /**
+     * A week as well as a kickoff hour, for the national calendar.
+     *
+     * <p>National football happens in two weeks of the season, and a job that fired in every one of
+     * them would be recorded as a successful national matchday that played nothing, seventy-odd times a
+     * season. The same reason {@code NationalMatchdayJob} pins its week.
+     */
+    public MatchdayPrepareJob(int day, Integer kickoffHour, Integer week, MatchFixtureRepository fixtures,
+                              MatchdayScheduler scheduler) {
+        this(day, kickoffHour, week, null, fixtures, scheduler);
+    }
+
+    /** With an explicit phase word in the key, so a second pair on the same day does not collide. */
+    public MatchdayPrepareJob(int day, Integer kickoffHour, Integer week, String phase, MatchFixtureRepository fixtures,
+                              MatchdayScheduler scheduler) {
         this.day = day;
+        this.kickoffHour = kickoffHour;
+        this.week = week == null ? DayJob.ANY_WEEK : week;
+        this.phase = phase;
         this.fixtures = fixtures;
         this.scheduler = scheduler;
     }
 
+    /**
+     * The done-flag is keyed on (season, week, day, key), so the week alone would be enough to keep two
+     * national jobs apart. The key is still made distinct, because {@code JobTriggerUniquenessTest}
+     * forbids two jobs sharing a day and a key and the rest of this package follows that rule - the
+     * national matchday jobs are named {@code matchday-qualifier-2} and {@code matchday-tournament-2}
+     * for the same reason.
+     */
     @Override
     public String key() {
-        return "matchday-prepare-" + day;
+        return phase == null ? "matchday-prepare-" + day
+                : "matchday-prepare-" + phase + "-" + day;
     }
 
     @Override
     public int week() {
-        return ANY_WEEK;
+        return week;
     }
 
     @Override
@@ -69,8 +117,7 @@ public class MatchdayPrepareJob implements DayJob {
      */
     @Override
     public int hour() {
-        Integer kickoff = org.example.footballmanager.newLogic.model.GameDay.of(day).kickoffHour();
-        return kickoff == null ? 0 : Math.max(0, kickoff - 1);
+        return kickoffHour == null ? 0 : Math.max(0, kickoffHour - 1);
     }
 
     @Override

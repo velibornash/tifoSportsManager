@@ -339,8 +339,12 @@ What exists now:
       **the same match ids** as were prepared — publishing must never re-simulate.
 - [ ] **Exit criteria, still open:** the publish fallback proven — a fixture the prepare job missed is
       computed at kickoff and published, not lost.
-- [ ] National-tournament matchdays get the same pair (owner decision). `NationalMatchdayJob` is keyed
-      on `QUALIFYING_WEEK` / `TOURNAMENT_WEEK`, not on a kickoff hour, so its hours have to be defined.
+- [x] National-tournament matchdays get the pair, for **days 2, 4 and 6 only**. Days 1, 3, 5 and 7
+      needed nothing: the club pair is `ANY_WEEK` and prepares the whole matchday, so a qualifier that
+      lands on a league day is already locked and released by those. Days 2, 4 and 6 had nothing at all
+      — a national tie started and finished with nobody watching — and now carry a qualifier and a
+      tournament pair each, with keys `matchday-prepare-qualifier-2` and so on, because two jobs on one
+      day may not share a key.
 - [x] A prepared match is unreachable through **any** read path: match-by-id, lineups, events, stats,
       preview, report and all three replay endpoints. `MatchPublicationGuard`, `404` not `403`, because
       an id space this small is enumerable and "it exists but not yet" is already an answer.
@@ -429,6 +433,10 @@ found by measuring, not by reading:
 | Whole matchday in one transaction | 20 minutes, **nothing committed**: match ids ran to 918 while the table still ended at 743. One bad fixture would have lost the evening. |
 | Per-fixture `REQUIRES_NEW` | Deadlocked. The job transaction already held the `player_discipline` rows the inner one wanted; PostgreSQL cannot see its own locks from outside. |
 | Jobs registered as arrays / `List<DayJob>` beans | Compiled, were green, and **had never run** — Spring folds neither into the `List<DayJob>` the runner reads. |
+
+- [x] Day 6 turned out **not** to be the club rest day B9 described: it carries national qualifier and
+      tournament jobs, which is why `EveryGameDayHasAJobTest` has been red at `HEAD`. The test now
+      states the finding that is actually true, and B9's second half is closed.
 
 **Exit criteria:**
 

@@ -85,6 +85,39 @@ Mutation: emptying `NOT_PREPARED` turns both `ratingsWaitForPublication` and
 **Pre-existing and not ours:** `NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` fails
 identically at `HEAD` with these changes stashed.
 
+## ✅ National matchdays get the pair, and day 6 was never the rest day (2026-10-11)
+
+The owner's answer to "only the club matchdays, or the national tournaments too" was **both**.
+
+**Days 1, 3, 5 and 7 needed nothing.** The club pair is `ANY_WEEK` and prepares the whole matchday, so a
+qualifier or tournament tie that falls on a league day is already computed an hour early and released at
+kickoff by the existing pair. Registering a second pair there would not have added a lock, only a race
+between two jobs over the same fixtures.
+
+**Days 2, 4 and 6 had nothing at all.** These carry no club match and had no job, so a national tie
+started and finished with nobody watching. Each now carries a qualifier and a tournament pair — twelve
+jobs — reading `NationalTournamentSchedule.kickoffHour(day)` rather than `GameDay`, because the club
+calendar has no kickoff for those days and `GameDay.of(2).kickoffHour()` is null. A null kickoff would
+have produced a job that prepares at hour 0. That is why both classes now take the hour in, with the
+club constructors passing `GameDay`'s own value so neither calendar is read by a job that does not
+belong to it.
+
+The two weeks need distinct keys as well as a pinned week: `matchday-prepare-qualifier-2` and
+`matchday-prepare-tournament-2`, following the naming `matchday-qualifier-2` / `matchday-tournament-2`
+already in `MatchdayJobsConfig`. Sharing a key on one day would have let the first to run mark the slot
+DONE and skip the other for ever with no error, which is exactly what `JobTriggerUniquenessTest` exists
+to prevent — it caught this.
+
+**`EveryGameDayHasAJobTest.daySixIsNamedAndUnscheduled` is no longer red.** It was red at `HEAD`, before
+any of this, because the national tournament schedule had put qualifiers and tournament ties on days 2,
+4 and 6 and the test did not know. Its own message asked for it to be updated rather than deleted when
+that happened, so it now asserts what is true: day 6 is **not** a club rest day, it carries
+national-tournament jobs only, and a club job appearing there would change the week the owner described
+and has to be said out loud. **B9's second half is closed.**
+
+Mutations: deleting the national beans turns `everyMatchDayHasAPair` red with
+*"national day 2 must have a prepare and a publish"*.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`
