@@ -278,6 +278,44 @@ class BrowserSourceSanityTest {
         static final java.nio.file.Path CSS = JS_ROOT.getParent().resolve("css");
     }
 
+    @Test
+    @DisplayName("the sponsor is escaped where it lands on the boards")
+    void theStadiumSponsorIsEscaped() throws IOException {
+        // The one field on this page a manager types arbitrary text into, and it lands in four `title`
+        // attributes and four labels. A sponsor called `"><img onerror=...>` would be a stored-XSS hole.
+        Path view = JS_ROOT.resolve("pages/views/stadium-view.js");
+        String source = Files.readString(view);
+
+        assertTrue(source.contains("stadium-ad-board"), "the advertising boards are gone");
+        assertTrue(source.contains("const label = esc(sponsor);"),
+                "the sponsor name is interpolated without being escaped");
+
+        int board = source.indexOf("function adBoards");
+        int end = source.indexOf("\n    }", board);
+        String body = source.substring(board, end);
+        assertTrue(body.contains("esc(sponsor)"),
+                "adBoards() renders the sponsor without escaping it");
+        assertTrue(!body.contains("${sponsor}"),
+                "adBoards() interpolates the raw sponsor name somewhere");
+    }
+
+    @Test
+    @DisplayName("the boards are placed on the grid, not auto-placed into it")
+    void theAdvertisingBoardsShareACellWithTheirStand() throws IOException {
+        // The plan is a CSS grid with named areas. An absolutely positioned child needs a positioned
+        // ancestor it does not have, and an unplaced grid child is auto-placed into a cell that already
+        // holds a stand - either way the whole ground shifts rather than the boards appearing on it.
+        Path css = StaticResourceConfigPath.CSS.resolve("dashboard").resolve("components.css");
+        String source = Files.readString(css);
+
+        for (String side : new String[]{"north", "south", "west", "east"}) {
+            assertTrue(source.contains(".stadium-ad-board--" + side + "{ grid-area:" + side + "; }"),
+                    "the " + side + " board is not placed on the stand it belongs to");
+        }
+        assertTrue(!source.contains(".stadium-ad-board{") || source.contains("grid-area:"),
+                "the boards are not placed by grid-area at all");
+    }
+
     private static List<Path> jsFiles() throws IOException {
         try (Stream<Path> files = Files.walk(JS_ROOT)) {
             return files.filter(p -> p.toString().endsWith(".js")).sorted().toList();

@@ -484,6 +484,9 @@ export function buildClubActionsHtml(currentPage = '') {
         { label: 'First Team', page: 'firstTeam', variant: 'primary' },
         { label: 'Schedule', page: 'schedule' },
         { label: 'Club Profile', page: 'profile' },
+        // The owner's ruling: the stadium stays reachable from Club Profile, and belongs in the
+        // menu beside the other club pages like any of them.
+        { label: 'Stadium', page: 'stadium' },
         { label: 'Medical Center', page: 'medicalCenter' },
         { label: 'Juniors', page: 'juniors' },
         // Loans is a Club concern in the same way Juniors is: it moves this club's players and this

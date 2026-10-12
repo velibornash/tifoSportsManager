@@ -31,6 +31,40 @@ public class Stadium {
      * football ground instead of a grey box.
      */
     private String image;
+
+    /**
+     * The club's sponsor, painted on the advertising boards around the pitch.
+     *
+     * <p><b>Owner request, 2026-10-12:</b> a place on the stands to put a sponsor's name, starting at
+     * "TIFO Ltd." — *"zgodno ako sutradan zaista nadjem nekog sponzora"*, handy in case he finds a real one
+     * tomorrow. It lives here rather than in {@code Sponsor} on purpose.
+     *
+     * <p>The {@code sponsor} table models a deal — tier, annual value, seasons, a performance clause —
+     * and its seeding path has no production caller, so it holds nothing. Borrowing a name out of it would
+     * mean reviving contracts to carry one string, and storing the name in both places would mean two
+     * answers to "who sponsors this club", one of which would be wrong.
+     *
+     * <p>Null means "not chosen yet" and reads as {@link #DEFAULT_SPONSOR}. That keeps the value out of a
+     * boot-time backfill, which the standing rule forbids, and means every existing ground shows it
+     * without a write.
+     */
+    @Column(name = "sponsor_name", length = 120)
+    private String sponsorName;
+
+    /** The sponsor a ground shows until its manager names one. */
+    public static final String DEFAULT_SPONSOR = "TIFO Ltd.";
+
+    /**
+     * The sponsor this ground actually carries, chosen or default.
+     *
+     * <p><b>This method exists because the rule was written twice and the two copies disagreed.</b>
+     * The stadium page fell back to {@link #DEFAULT_SPONSOR} and the Finance page did not, so a ground
+     * whose manager had named nobody showed TIFO Ltd. painted on its boards while the sponsorship line
+     * it was supposed to be paying for did not exist at all. One rule, called by both.
+     */
+    public String effectiveSponsorName() {
+        return sponsorName == null || sponsorName.isBlank() ? DEFAULT_SPONSOR : sponsorName.trim();
+    }
     @ManyToOne(fetch = FetchType.LAZY)
     @EqualsAndHashCode.Exclude
     @JsonManagedReference

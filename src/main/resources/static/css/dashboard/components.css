@@ -586,6 +586,44 @@ recent-match:hover .result-badge {
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
 }
 
+/*
+ * The sponsor's advertising boards.
+ *
+ * Owner request, 2026-10-12: a place on the stands for a sponsor's name, starting at TIFO Ltd.
+ *
+ * Placed by grid-area rather than by absolute position, sharing a cell with the stand it sits on: the
+ * plan is a grid with named areas, so an unplaced child is auto-placed into a cell that already has a
+ * stand in it and the whole ground shifts. Sharing the area overlays instead.
+ */
+.stadium-ad-board{
+    display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:0 10px; margin:0; min-width:0;
+    background:#0d1620;
+    border:1px solid rgba(143,211,255,0.28);
+    border-radius:4px;
+    color:#eaf6ff;
+    font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase;
+    white-space:nowrap; overflow:hidden;
+    pointer-events:auto;
+}
+.stadium-ad-logo{ height:15px; width:auto; flex:0 0 auto; }
+.stadium-ad-board span{ overflow:hidden; text-overflow:ellipsis; }
+
+.stadium-ad-board--north{ grid-area:north; }
+.stadium-ad-board--south{ grid-area:south; }
+.stadium-ad-board--west{ grid-area:west; }
+.stadium-ad-board--east{ grid-area:east; }
+
+.stadium-ad-board--west,
+.stadium-ad-board--east{ flex-direction:column; gap:4px; padding:8px 0; }
+
+/* The field that names the sponsor, beside the colours. */
+.stadium-sponsor-field{ margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); }
+.stadium-sponsor-label{ display:block; margin-bottom:7px; font-size:12px; font-weight:700;
+    letter-spacing:0.05em; text-transform:uppercase; color:var(--fm-subtle-text,#9fb3c8); }
+.stadium-sponsor-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.stadium-sponsor-preview{ height:30px; width:auto; border-radius:5px; border:1px solid rgba(143,211,255,0.22); }
+
 .stadium-plan-legend{
     display:grid;
     grid-template-columns:repeat(auto-fit,minmax(140px,1fr));

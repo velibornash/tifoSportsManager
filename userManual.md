@@ -103,6 +103,15 @@ Shows your club's upcoming fixtures and their competition, round, date, venue an
 Shows the public club identity, manager, league, squad overview, stadium information and club milestones.
 Other managers can reach a club's manager profile from the club page.
 
+### Stadium
+
+Opens the ground itself: the plan of the pitch with its four stands and four corners, the photograph, the
+eight sections with their capacity, seating and roof, the colours, the prices and the upkeep, and the pitch
+condition. The stands carry the club's sponsor, and the sponsor's name is what the Finance page lists
+against the sponsorship income.
+
+Reachable from here and from the Stadium button on the Club Profile page.
+
 ### Medical Center
 
 Shows injured players, injury details and recovery actions. It helps you decide whether a player is

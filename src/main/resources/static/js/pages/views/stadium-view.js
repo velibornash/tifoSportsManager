@@ -188,6 +188,23 @@ export function createStadiumView(deps) {
                             <strong>${esc(s.upkeepCategory || 'Facility upkeep')}</strong>
                         </div>
                     </div>
+                    <div class="stadium-sponsor-field">
+                        <label class="stadium-sponsor-label" for="stadium-sponsor-input">
+                            Sponsor on the boards
+                        </label>
+                        <div class="stadium-sponsor-row">
+                            <img class="stadium-sponsor-preview" src="/images/tifo-ltd.svg" alt="">
+                            <input id="stadium-sponsor-input" class="fm-input" type="text" maxlength="120"
+                                   value="${esc(s.sponsor || '')}" placeholder="TIFO Ltd.">
+                            <button type="button" class="fm-action-btn secondary" data-stadium-save-sponsor>
+                                Save sponsor
+                            </button>
+                        </div>
+                        <p class="fm-subtle">
+                            Painted around the pitch, and named against the sponsorship income on the
+                            Finance page.
+                        </p>
+                    </div>
                 </section>
             </div>
 
@@ -314,6 +331,30 @@ export function createStadiumView(deps) {
         </div>`;
     }
 
+    /**
+     * The sponsor's boards, on all four touchlines.
+     *
+     * <p><b>Owner request, 2026-10-12:</b> *"na tribinama stadiona dodaj negde mesto kao da se upise
+     * sponzor (stavi za pocetka TIFO Ltd.)"* — a place on the stands to put a sponsor, starting at
+     * TIFO Ltd. so there is something to see before a sponsor is found.
+     *
+     * <p>Escaped, because the name is a manager's own text and it lands in four {@code title} attributes
+     * and four labels. A sponsor called {@code "><img onerror=...>} is a stored-XSS hole and this is
+     * exactly the field someone types arbitrary text into.
+     */
+    function adBoards(s) {
+        const sponsor = (s.sponsor || '').trim();
+        if (!sponsor) {
+            return '';
+        }
+        const label = esc(sponsor);
+        return ['north', 'west', 'east', 'south'].map(side => `
+            <div class="stadium-ad-board stadium-ad-board--${side}" title="${label}">
+                <img class="stadium-ad-logo" src="/images/tifo-ltd.svg" alt="">
+                <span>${label}</span>
+            </div>`).join('');
+    }
+
     /** A top-down plan of the ground with the four sides and four corners in place. */
     function plan(s) {
         const c = (v) => v || NEUTRAL;
@@ -323,6 +364,7 @@ export function createStadiumView(deps) {
             <div class="stadium-plan-pitch">
                 <div class="stadium-plan-strip stadium-plan-strip--north" style="background:${c(s.northColour)}"
                      title="North stand"></div>
+                ${adBoards(s)}
                 <div class="stadium-plan-strip stadium-plan-strip--west" style="background:${c(s.westColour)}"
                      title="West stand"></div>
                 <div class="stadium-plan-middle">
@@ -395,6 +437,7 @@ export function createStadiumView(deps) {
     function wire(main, teamId) {
         wireSections(main, teamId);
         wireColours(main, teamId);
+        wireSponsor(main, teamId);
         wirePicture(main, teamId);
         wireMaintenance(main, teamId);
     }
@@ -514,6 +557,44 @@ export function createStadiumView(deps) {
             `).join('')}
         </div>
         <p class="fm-subtle">${esc(quote.note || '')}</p>`;
+    }
+
+    /**
+     * Naming the sponsor on the boards.
+     *
+     * <p>Its own wiring, beside the colour one rather than inside it, for the same reason the picture
+     * upload was moved out: a handler that shares a block with another cannot be attached on its own,
+     * and {@code response.ok} is checked before the body is read so a refusal is reported as a refusal
+     * instead of as a parse error.
+     */
+    function wireSponsor(main, teamId) {
+        const btn = main.querySelector('[data-stadium-save-sponsor]');
+        const input = main.querySelector('#stadium-sponsor-input');
+        if (!btn || !input) return;
+        btn.addEventListener('click', async () => {
+            const name = input.value.trim();
+            const restore = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                const res = await authFetch(`/api/teams/${teamId}/stadium/sponsor`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sponsor: name }),
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    btn.textContent = body.error || `Refused (${res.status})`;
+                    return;
+                }
+                await loadStadium();
+            } catch (err) {
+                btn.textContent = `Not saved. ${err.message || ''}`;
+            } finally {
+                btn.disabled = false;
+                if (btn.textContent === 'Saving…') btn.textContent = restore;
+            }
+        });
     }
 
     function wireColours(main, teamId) {

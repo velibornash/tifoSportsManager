@@ -312,18 +312,60 @@ public class WeeklyFinanceService {
      * from the club's own budget. The money existed only in the browser and was never paid to
      * anyone, so the wage bill was measured against income that was not real.
      */
+    /**
+     * What a named sponsor on the boards pays a club with no signed contract.
+     *
+     * <p>A fifth of {@code StaffSponsorService}'s smallest seeded contract (18,000 a year), so the line
+     * reads on the Finance page without moving the economy.
+     */
+    private static final double BOARD_WEEKLY = 70.0;
+
     private FinanceLedgerEntry sponsorship(Team team, Integer seasonYear, Integer week) {
         int season = seasonYear == null ? 1 : seasonYear;
         double contracted = staffSponsors.weeklySponsorshipIncome(team.getId(), season);
-        if (contracted <= 0) return null;
+        String sponsor = sponsorName(team);
+        if (contracted <= 0 && sponsor == null) return null;
+
         // Sponsors are seeded by division, so on their own they pay every club in a league the same.
         // What separates a club's shirt from another's is the club, so that is what the deal is
         // scaled by - and the contract value is still shown, because the manager signed it.
         double reputation = team.getReputation() == null ? 50 : team.getReputation();
-        double income = contracted * (0.45 + reputation / 100.0 * 1.35);
+        double scale = 0.45 + reputation / 100.0 * 1.35;
+        String note;
+        double income;
+        if (contracted > 0) {
+            income = contracted * scale;
+            note = String.format("%s of contracted value, reputation %d", money(contracted),
+                    Math.round(reputation));
+        } else {
+            // No signed contract, but a sponsor's name is painted on the boards and that is a deal too.
+            //
+            // <p>This line is new and it changes the economy: the `sponsor` table has no production
+            // seeder, so it was empty, this method returned null, and <b>no club in the world had any
+            // sponsorship income at all</b>. The Finance page had no sponsor line to name, which is what
+            // the owner reported. Kept deliberately small - BOARD_WEEKLY is a fifth of the smallest
+            // seeded contract - so it is a visible line rather than a rebalance, and it is named so the
+            // manager can see who is paying it.
+            income = BOARD_WEEKLY * scale;
+            note = String.format("%s, the name on the boards, reputation %d", sponsor,
+                    Math.round(reputation));
+        }
+        // The contract path did not name the sponsor either; the owner asked for the name on this line.
         return FinanceLedgerEntry.of(team, season, week, FinanceCategory.SPONSORSHIP, income,
-                String.format("%s of contracted value, reputation %d", money(contracted),
-                        Math.round(reputation)));
+                sponsor == null ? note : note + " - " + sponsor);
+    }
+
+    /**
+     * The club's sponsor: the ground's named boards, or nothing.
+     *
+     * <p>One name, stored once. The {@code sponsor} table models contracts and the stadium holds the
+     * name, and this prefers the stadium because that is where a manager sets it and where he sees it.
+     */
+    private String sponsorName(Team team) {
+        Stadium ground = team == null ? null : team.getStadium();
+        // A club with no ground has no boards, so it has no sponsor income. A club with a ground it has
+        // not named a sponsor for carries the default one - the same rule the stadium page uses.
+        return ground == null ? null : ground.effectiveSponsorName();
     }
 
     /**

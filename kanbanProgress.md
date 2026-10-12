@@ -1,3 +1,50 @@
+## ✅ A sponsor on the stands, and on the Finance page (2026-10-12)
+
+Commit to follow.
+
+The owner: *"pod Club profile imamo stadium i otvara stranu sa stadionom.. nek ostane tu ali dodaj u sve
+postojece opcije pod Club (pored prvog tima, juniora, medical centra, treninga itd) i stadion. Na tribinama
+stadiona (na vizuelnom prikazu) dodaj negde mesto kao da se upise sponzor (stavi za pocetka TIFO Ltd.,
+iskoristi tifo logo ili napravi drugi). Takodje u prihodima od sponzora na finance strani neka pise TIFO
+Ltd. kao sponzor"* — handy in case he finds a real sponsor tomorrow.
+
+**Navigation.** `buildClubActionsHtml` is one function reused on twenty club pages, so Stadium was one
+line. The mobile drawer in `dashboard.html` is a hand-written duplicate and was missing `Tactic Editor`
+and `Results` as well; it has all three now. `UserManualMatchesTheClubMenuTest` parses the menu out of the
+JS and compares it to `userManual.md` §4, so the manual gained a Stadium section — that test is the reason
+the two cannot drift.
+
+**The name lives on `Stadium`, once.** The `sponsor` table models contracts — tier, annual value, seasons,
+a performance clause — and its seeding path has no production caller, so it holds nothing. Borrowing a name
+out of it would mean reviving contracts to carry one string, and storing the name in both places would mean
+two answers to "who sponsors this club".
+
+**The rule was written twice and the copies disagreed.** The stadium page fell back to `TIFO Ltd.` when no
+sponsor was named; the Finance page did not. So a ground with nobody named on its boards showed TIFO Ltd.
+painted on them while the sponsorship line it was paying for did not exist. Both now call
+`Stadium#effectiveSponsorName()`, and the test calls that too rather than re-implementing it.
+
+**The boards are placed by `grid-area`, not by `position: absolute`.** The plan is a CSS grid with named
+areas; an absolutely positioned child needs a positioned ancestor it does not have, and an unplaced grid
+child is auto-placed into a cell that already holds a stand — either way the whole ground shifts instead of
+the boards appearing on it. Each board shares the cell of the stand it sits on.
+
+**Two economy notes, because this changes money:**
+
+- `sponsor` was empty, so `WeeklyFinanceService.sponsorship` returned null and **no club in the world had
+  any sponsorship income at all**. There was no line to put a name on, which is what the owner reported.
+- A club with a ground now earns `BOARD_WEEKLY` (70, about a fifth of the smallest seeded contract), scaled
+  by reputation, when it has no signed contract. A club with **no ground at all** earns nothing — no boards,
+  no sponsor. Deliberately small: a visible line, not a rebalance.
+
+**Seen:** the default reads `TIFO Ltd.` from the live endpoint, `POST /stadium/sponsor` wrote `Vukovar
+Group` and read it back, and `OFK Omladinac Stadium` holds `sponsor_name = 'TIFO Ltd.'` in the database. The
+Finance line names the sponsor in a settled week — asserted against persisted ledger rows, not a return
+value, because the live world is on week 1 and has not settled a week yet.
+
+The name is escaped where it lands: four `title` attributes and four labels, on the one field a manager
+types arbitrary text into.
+
 ## ✅ The formation and style buttons looked disabled (2026-10-12)
 
 Commit to follow.

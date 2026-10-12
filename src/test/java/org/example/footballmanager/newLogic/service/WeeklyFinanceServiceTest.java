@@ -105,6 +105,53 @@ class WeeklyFinanceServiceTest {
     }
 
     @Test
+    @DisplayName("the sponsorship line names the sponsor on the boards")
+    void theSponsorshipLineNamesTheSponsor() {
+        // Owner request, 2026-10-12: the sponsor's income on the Finance page should say TIFO Ltd.
+        // The `sponsor` table has no production seeder, so this method used to return null and no club
+        // in the world had a sponsorship line at all - there was nothing to put a name on.
+        Team club = aClub("Sponsor named", 20_000, 18.0, 1_000_000);
+        Stadium ground = new Stadium();
+        ground.setName("ZZ Sponsor ground");
+        ground.setSponsorName("Vukovar Group");
+        club.setStadium(ground);
+        teams.saveAndFlush(club);
+
+        finances.applyWeeklyFinances(club, 3, 11);
+
+        FinanceLedgerEntry line = ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 3, 11).stream()
+                .filter(e -> e.getCategory() == FinanceCategory.SPONSORSHIP)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "no sponsorship line was settled, so the Finance page shows the owner nothing "
+                                + "to name a sponsor on"));
+        assertTrue(line.getNote().contains("Vukovar Group"),
+                "the sponsorship line does not name the sponsor: " + line.getNote());
+    }
+
+    @Test
+    @DisplayName("a ground with no sponsor named still earns, and says TIFO Ltd.")
+    void anUnnamedSponsorStillPaysAndSaysSo() {
+        Team club = aClub("Sponsor unnamed", 20_000, 18.0, 1_000_000);
+        // A ground exists - every real club has one - but its manager has not named a sponsor yet.
+        Stadium ground = new Stadium();
+        ground.setName("ZZ Unnamed ground");
+        club.setStadium(ground);
+        teams.saveAndFlush(club);
+
+        finances.applyWeeklyFinances(club, 3, 12);
+
+        FinanceLedgerEntry line = ledger.findByTeamIdAndSeasonYearAndWeekNumber(club.getId(), 3, 12).stream()
+                .filter(e -> e.getCategory() == FinanceCategory.SPONSORSHIP)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "a ground the manager has not named a sponsor for still has TIFO Ltd. on the "
+                                + "boards, and that is a deal"));
+        assertTrue(line.getNote().contains(Stadium.DEFAULT_SPONSOR),
+                "an unnamed ground does not fall back to " + Stadium.DEFAULT_SPONSOR + ": " + line.getNote());
+    }
+
+    @Test
     @DisplayName("wages are a real cost and are stored negative")
     void wagesAreACost() {
         Team club = aClub("Wages", 10_000, 15.0, 1_000_000);

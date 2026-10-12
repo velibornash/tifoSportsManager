@@ -224,6 +224,41 @@ public class StadiumSettingsController {
     }
 
     /**
+     * Names the sponsor on the advertising boards, or clears it back to the default.
+     *
+     * <p>An empty value is not an error and does not store an empty string: it clears the column so the
+     * ground reads {@link Stadium#DEFAULT_SPONSOR} again, which is what "no sponsor chosen" means here.
+     * Blanket-trimming the input rather than trusting the browser is the same rule the paint route uses.
+     */
+    @PostMapping("/sponsor")
+    public ResponseEntity<?> sponsor(@PathVariable Long teamId,
+                                    @RequestBody(required = false) Map<String, String> in,
+                                    @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        Stadium ground = team.getStadium();
+        if (ground == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No stadium"));
+        }
+        String name = in == null || in.get("sponsor") == null ? "" : in.get("sponsor").trim();
+        // 120 is the column; anything longer would fail the write at flush time with a constraint error
+        // the manager cannot act on, so it is refused here with something he can.
+        if (name.length() > 120) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Sponsor name is too long (120 max)"));
+        }
+        ground.setSponsorName(name.isEmpty() ? null : name);
+        // Saved through the club, the same way StadiumImageService saves the photograph: the ground is
+        // reached from the team and that is the side that owns the cascade.
+        teamRepository.save(team);
+        return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium")));
+    }
+
+    /**
      * May this caller change <b>this</b> club's ground?
      *
      * <p>The same rule {@code TeamController} and the stadium's own {@code /image} route already apply. It
@@ -334,6 +369,7 @@ public class StadiumSettingsController {
         // The key stadium-view.js has always read. It was never sent, so the page has never shown a
         // real ground. imageFor resolves null to the Dunjareal fallback rather than a grey box.
         stadium.put("image", stadiumImages.imageFor(s));
+        stadium.put("sponsor", s.effectiveSponsorName());
         stadium.put("standardTicketPrice", admission.priceOf(s, TicketType.STANDARD));
         stadium.put("prices", admission.allPrices(s));
         stadium.put("pitchCondition", pitch.conditionOf(s));
