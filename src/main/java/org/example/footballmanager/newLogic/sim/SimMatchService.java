@@ -624,6 +624,10 @@ public class SimMatchService {
             st.setYellowCards(po.yellowCards());
             st.setRedCards(po.redCards());
             st.setMinutesPlayed(po.minutesPlayed());
+            // The slot the player actually occupied (T-MATCH-8). Carried by the outcome all along and
+            // dropped on the floor here, which is the whole reason training could not tell a minute
+            // played at full-back from a minute played at centre midfield.
+            st.setPositionPlayed(parseRole(po.role()));
             st.setRating(rating100(po.rating()));
             st.setInterceptions(po.interceptions());
             st.setSaves(po.saves());
@@ -712,6 +716,30 @@ public class SimMatchService {
                 dbPlayer.setInjuryWeekNumber(week);
             }
             playerRepository.save(dbPlayer);
+        }
+    }
+
+    /**
+     * The simulation's slot name as a {@link org.example.footballmanager.newLogic.model.Position}, or null
+     * when it is not one we know.
+     *
+     * <p>Null is the answer for an unrecognised role and not an error: training counts every minute for a
+     * player whose slot was not recorded, which is the old behaviour and the safe one. Mapping an unknown
+     * role onto a default would quietly move those minutes to whichever slot happened to be first.
+     */
+    private static org.example.footballmanager.newLogic.model.Position parseRole(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim().toUpperCase();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        try {
+            return org.example.footballmanager.newLogic.model.Position.valueOf(trimmed);
+        } catch (IllegalArgumentException unknownRole) {
+            log.debug("Unknown simulation role '{}', recorded as no position.", raw);
+            return null;
         }
     }
 

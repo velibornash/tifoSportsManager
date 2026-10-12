@@ -1,3 +1,49 @@
+## ✅ T-MATCH-8, the half that was not built at all (2026-10-12)
+
+Commit to follow.
+
+**The owner's rule:** *"ako je igrač na trening strani stavljen da trenira u npr MID slotu (posebno bitno za
+ove u advanced slotu ali važi i za ove van advanced) u formulu za računanje treninga mu ulaze SAMO minuti
+provenedeni na MID slotu ali on apsolutno može da igra na bilo kom slotu u meču."*
+
+**The gap was three layers deep, and the top one was a bare POJO.**
+
+| Piece | Before |
+|---|---|
+| `TrainingAssignment` (slot, advanced) | a POJO with **no `@Entity`, no `@Id`, no repository, no caller** — while the `training` table sat in the database with a unique constraint on `player_id` and **zero rows** |
+| The slot a player occupied | **never written**: `ProposalMatchOutcome.PlayerOutcome.role()` carries it, two other readers use it, and `SimMatchService` dropped it |
+| The training sum | `byPlayer.merge(id, line.getMinutesPlayed(), Integer::sum)` over **every** stat row |
+
+So a player set to train MID was credited with 90 minutes at full-back, and there was nothing anywhere to
+compare against: the table that held the training position had no entity, the match row held no slot, and
+the formula asked for neither.
+
+**Mapped onto the existing `training` table rather than adding one.** The columns were already there, one
+row per player. `trainingPosition` lives in the column the table calls `formation` — the name predates the
+rule, and renaming it would be a migration that buys nothing.
+
+**Two deliberate escapes, both keeping a player on his old behaviour:** no training position set, and a
+result with no recorded slot. Every result already in the database has a null slot, and counting nothing
+for all of them would have stopped training across the world the day this shipped.
+
+`MatchPlayerStats.positionPlayed` is a new column, written from the outcome's own `role` and left null for a
+role we do not recognise — mapping an unknown role onto a default would have quietly moved those minutes to
+whichever slot happened to be first.
+
+**Eight tests, and the mutation is the point.** Switching the filter off turns four red, including
+`expected: <0> but was: <90>` — the owner's sentence, as a number. The control (90 minutes at MID, all 90
+counted) stays green under the mutation, which is what makes it a control and not a tautology. The other
+half of the rule — a manager may still field the player anywhere — has a test too, because it is the half
+that is easy to break by accident while fixing the first.
+
+**Verified:** `position_played` exists with an enum check constraint, 83 training tests green, and the
+formula filters against persisted rows through the real repository.
+
+**Not yet verified end to end:** the simulation write path. His club has no fixture in the current round and
+the round simulator only walks the clock's own week and day, so no live match has been run to watch
+`position_played` populated. The line is one call from the outcome that already carries the slot, and the
+filter is proven against stored rows, but the two have not been seen joined by a real match.
+
 ## ✅ The calendar beside the kickoff, and the club menu on the setup tab (2026-10-12)
 
 Commits to follow.

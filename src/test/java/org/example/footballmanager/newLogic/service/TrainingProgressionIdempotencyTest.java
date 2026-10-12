@@ -74,9 +74,13 @@ class TrainingProgressionIdempotencyTest {
                 reportRepository,
                 // Real service, mocked inputs: the training percentage is not stubbed here, because
                 // the point of this test is that growth still happens and is still idempotent.
+                // The third collaborator is the training-position table (T-MATCH-8). A world with no rows
+                // in it trains every player on all his minutes, which is what this test asserts growth
+                // against.
                 new TrainingPercentService(
                         mock(org.example.footballmanager.newLogic.repository.StaffMemberRepository.class),
-                        mock(org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository.class)),
+                        mock(org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository.class),
+                        mock(org.example.footballmanager.newLogic.repository.TrainingAssignmentRepository.class)),
                 new TrainingIntensityService(
                         mock(org.example.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.PlayerRepository.class),

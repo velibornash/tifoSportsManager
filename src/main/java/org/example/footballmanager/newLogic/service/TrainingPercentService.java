@@ -2,10 +2,13 @@ package org.example.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.model.Position;
+import org.example.footballmanager.newLogic.model.TrainingAssignment;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.model.StaffMember;
 import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
+import org.example.footballmanager.newLogic.repository.TrainingAssignmentRepository;
 import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +37,11 @@ public class TrainingPercentService {
 
     private final StaffMemberRepository staff;
     private final MatchPlayerStatsRepository stats;
+    /**
+     * The slot each player trains in. Nullable: a world built before T-MATCH-8 has no rows at all,
+     * and every player then trains on all his minutes, which is what happened before.
+     */
+    private final TrainingAssignmentRepository trainingAssignments;
 
     /** Minutes per player for the week, so a squad costs one query rather than twenty-five. */
     private final Map<String, Map<Long, Integer>> weekCache = new HashMap<>();
@@ -124,17 +132,65 @@ public class TrainingPercentService {
             if (teamId == null || teamId < 0 || season == null || week == null) {
                 return byPlayer;
             }
-            for (MatchPlayerStats line : stats.findByTeamAndSeasonAndWeek(teamId, season, week)) {
+            List<MatchPlayerStats> lines = stats.findByTeamAndSeasonAndWeek(teamId, season, week);
+            Map<Long, Position> trainingSlot = trainingSlotsFor(lines);
+
+            for (MatchPlayerStats line : lines) {
                 // Defensive: a stat row without a player or minutes is not worth failing a week's
                 // training over.
                 if (line == null || line.getPlayer() == null || line.getPlayer().getId() == null) {
                     continue;
                 }
-                byPlayer.merge(line.getPlayer().getId(), Math.max(0, line.getMinutesPlayed()),
-                        Integer::sum);
+                long playerId = line.getPlayer().getId();
+
+                // **T-MATCH-8: only the minutes spent in the slot the player trains in count.**
+                //
+                // Before this, every stat row was summed and a player set to train MID was credited with
+                // 90 minutes at full-back. The slot was on the simulation's own output and was not written
+                // down, so there was nothing to compare against — which is why this reads
+                // `positionPlayed`, a column added with this change.
+                //
+                // Two deliberate escapes, both of which keep a player on their old, unchanged behaviour:
+                // no training position set, and a match that recorded no slot (every result written before
+                // this column existed). Counting nothing for all of them would silently change how every
+                // existing player develops.
+                Position trainsIn = trainingSlot.get(playerId);
+                if (trainsIn != null && line.getPositionPlayed() != null
+                        && line.getPositionPlayed() != trainsIn) {
+                    continue;
+                }
+                byPlayer.merge(playerId, Math.max(0, line.getMinutesPlayed()), Integer::sum);
             }
             return byPlayer;
         });
+    }
+
+    /**
+     * The slot each player in these stat rows trains in.
+     *
+     * <p>One query for the whole squad rather than one per player: this runs for every club in the world
+     * once a week, and a query per player would be 33,000 of them on a fresh world.
+     */
+    private Map<Long, Position> trainingSlotsFor(List<MatchPlayerStats> lines) {
+        if (trainingAssignments == null || lines == null || lines.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> playerIds = lines.stream()
+                .filter(l -> l != null && l.getPlayer() != null && l.getPlayer().getId() != null)
+                .map(l -> l.getPlayer().getId())
+                .distinct()
+                .toList();
+        if (playerIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Position> slots = new HashMap<>();
+        for (TrainingAssignment assignment : trainingAssignments.findByPlayerIds(playerIds)) {
+            if (assignment != null && assignment.getPlayerId() != null
+                    && assignment.getTrainingPosition() != null) {
+                slots.put(assignment.getPlayerId(), assignment.getTrainingPosition());
+            }
+        }
+        return slots;
     }
 
     /**
