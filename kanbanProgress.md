@@ -501,6 +501,46 @@ break the second while fixing the first. Fixing "only MID minutes count" by filt
 manager may pick would satisfy the first and destroy the second. The board's last exit criterion exists
 only to make that mistake visible.
 
+## 🔴 The tactic shelf rendered perfectly and every button did nothing (2026-10-12)
+
+**Found by the owner looking at the app, not by a test.** His report: *"na stranici tactical editor NEMA
+UI koji obezbeđuje da se snimi više različitih taktika pod različitim imenima"* — and, when the page
+broke outright, a `ReferenceError: wireShelf is not defined`.
+
+**What was wrong, twice over.**
+
+1. `wireShelf()` was called by a standalone statement placed **before** `render()` had painted
+   anything. Every listener was bound to an element that did not exist yet: the shelf appeared, all four
+   buttons looked right, and none of them did anything. The file parsed perfectly.
+2. The declaration order was also unsafe. `const wireShelf` sat **after** `bindEvents`, which calls it, so
+   the correctness depended on `bindEvents` happening to run after that line — which is exactly the kind
+   of thing a later edit breaks, and did break.
+
+**Two corrections to claims in this log, because both were wrong and both cost time.**
+
+- *"There is no node, no `nodejs`, no `bun`, no `deno` or `quickjs` in this environment."* **False.**
+  `node` v22 is installed at `/usr/local/bin/node`; it was simply not on the `PATH` the shell was using,
+  and I concluded from one `which` that it did not exist. Every "JS OK" and "the file parses" in this log
+  before today was an `echo` printing after a command that had failed.
+- *"No browser automation, so the page cannot be verified."* **Wrong conclusion from that premise.** There
+  is no browser, but node can **run** the page.
+
+**What that buys, and what it does not.** All 51 JavaScript files parse — checked, not assumed. More
+usefully, `tactic-editor-shelf.test.mjs` imports the real view module, stubs the DOM, renders the page and
+**presses the buttons**, asserting that Copy, Mirror and Delete each issue their request. It reports:
+
+    OK  the shelf renders with every tactic, every operation and the cap
+    OK  Copy, Mirror and Delete each issue their request when clicked
+
+Mutation: moving `wireShelf()` back before the paint turns the second line red with *"the Copy button has
+no click handler: it would look perfect and do nothing"* — the owner's bug, reproduced and caught.
+
+`BrowserSourceSanityTest` runs all of that from Maven, and skips — loudly — when node is absent, because a
+missing tool is not a broken page.
+
+**Still not verified, and it cannot be:** that the page *looks* right. Every assertion here is about
+behaviour and structure. Somebody still has to look at it.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

@@ -443,6 +443,8 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
       (no node, no agent-browser), so the API it calls is verified and its rendering and click handlers
       are **not**. That is a real gap and the page should not be trusted until somebody has looked at it.
 - [ ] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built.
+- [ ] **Match settings must look like Sokker's**, per the owner: a General / Squad / Orders set of tabs
+      over one match, with the tactic picker in General. T-MATCH-9.
 
 ### How this page was verified, and how it was not
 
@@ -485,12 +487,12 @@ mid-match, which is T-MATCH-6's engine requirement and is already in place.
       *Save order only* posts the whole order in one request. The "when" fields are left on their own
       slots when swapping, and the page says so — moving a tactic must not carry one slot's minute and
       condition to the other.
-- [ ] **The picker is still unverified in a browser**, and now there are two pages: the library shelf and
-      this one. **This environment has no node, no `node --check` and no agent-browser**, so the JavaScript
-      has not been parsed by anything, let alone rendered. An earlier entry in this log claimed
-      `node --check` proved the editor file parses; **that was false** — the command was missing and a
-      following `echo` printed anyway. Bracket counting says both files balance; that is a count, not a
-      parse.
+- [x] **The page runs.** `tactic-editor-shelf.test.mjs` imports the real view module against a stub DOM,
+      renders it and **presses Copy, Mirror and Delete**, asserting each issues its request. Mutation: the
+      wiring moved back before the paint turns it red.
+- [ ] **Nobody has looked at how it looks.** Node can run the page; it cannot say whether the shelf is
+      readable, whether the pitch still fits with a shelf above it, or whether the arrows are obvious.
+      Still wants a human eye.
 
 ## T-MATCH-5 — 🔴 P0 · the squad page
 
@@ -587,6 +589,27 @@ makes this a persistence and a training-formula change, not a simulation change.
 - [ ] `MatchPlayerStats` persists the slot played, and the training formula filters on it.
 - [ ] **Nothing may constrain the lineup by the training position.** A test that fails if it ever does,
       because that is the half of the rule that is easy to break by accident while fixing the other half.
+
+---
+
+## T-MATCH-9 — 🔴 P0 · match settings in Sokker's shape (owner, 2026-10-12)
+
+*"match settings da lici dosta na sokker"* — the match settings should look a great deal like Sokker's.
+
+Three tabs over one match, the way Sokker has them:
+
+| Tab | What it holds | Where it is |
+|---|---|---|
+| **General** | the shape, the tactic picker (3 of the 10, any into any slot), basic settings | `match-tactic-plan-view.js` exists; the 3-of-10 picker exists |
+| **Squad** | slots 1–11 and a bench, swap, remove, a position per slot, suggest lineup | service and suggester built; **the page is not** |
+| **Orders** | substitution and tactic orders: minute, condition, action | **not built**; the caps are 20 and 10 |
+
+**Exit criteria:**
+
+- [ ] One screen with three tabs, not three pages a manager has to find.
+- [ ] Each tab refuses to save on a computed match, saying the same thing the other tabs say.
+- [ ] A manager can go fixture → General → Squad → Orders without a page reload in between.
+- [ ] The names and the order of the tabs match Sokker's, because that is the request.
 
 ---
 

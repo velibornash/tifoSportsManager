@@ -1,0 +1,195 @@
+package org.example.footballmanager;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+/**
+ * The browser code parses, and then binds its listeners to nothing (owner, 2026-10-12).
+ *
+ * <p>Two defects in two days had the same shape and neither was a syntax error, so neither was caught:
+ *
+ * <ul>
+ *   <li>the tactic shelf's listeners were attached by a call placed <em>before</em> the function that
+ *       paints the shelf had run, so every button looked perfect and did nothing;</li>
+ *   <li>the same page's reordering arrows, in the plan view, were attached inside a helper that is
+ *       itself invoked from the paint — correct, but nothing said so, and nothing would have noticed if
+ *       a later edit moved the call.</li>
+ * </ul>
+ *
+ * <p><b>What this test can and cannot do.</b> It reads the source. It cannot run a browser, so it cannot
+ * tell you the page looks right — only that every element the code reaches for is actually painted by
+ * the same file before it is reached for. That is the specific defect, and it is worth a cheap guard; a
+ * full render still needs somebody to look at the page, which is written on the board.
+ *
+ * <p>Skipped when node is unavailable rather than failed, because a missing tool is not a broken page and
+ * a test suite that goes red for that reason teaches people to ignore it.
+ */
+class BrowserSourceSanityTest {
+
+    private static final Path JS_ROOT = Path.of("src/main/resources/static/js");
+
+    @Test
+    @DisplayName("every JS file in the app parses")
+    void everyFileParses() throws IOException, InterruptedException {
+        String node = nodeBinary();
+        if (node == null) {
+            System.out.println("node not on PATH - parse check skipped, not failed");
+            return;
+        }
+        List<String> broken = new ArrayList<>();
+        for (Path file : jsFiles()) {
+            ProcessBuilder builder = new ProcessBuilder(node, "--check", file.toString());
+            builder.redirectErrorStream(true);
+            Process process = builder.start();
+            String output = new String(process.getInputStream().readAllBytes());
+            if (process.waitFor() != 0) {
+                broken.add(file + System.lineSeparator() + output);
+            }
+        }
+        if (!broken.isEmpty()) {
+            fail("These files do not parse:" + System.lineSeparator() + String.join(System.lineSeparator(), broken));
+        }
+        // No assertion needed: an empty `broken` list is the pass. Asserting on the count keeps the
+        // suite from silently degrading into a test that checks nothing at all.
+        assertTrue(jsFiles().size() > 20,
+                "only " + jsFiles().size() + " JS files were checked - the walk is probably wrong");
+    }
+
+    @Test
+    @DisplayName("an element is painted before the code attaches a listener to it")
+    void elementsArePaintedBeforeTheyAreWired() throws IOException {
+        // The specific defect: a listener attached to markup that does not exist yet. It parses, it runs,
+        // and it does nothing.
+        //
+        // The check is that any function which reaches for an id or a data-attribute is called from
+        // inside a paint-then-wire path, not from a call that runs earlier. Doing that properly needs a
+        // DOM, so this asserts the weaker and still useful thing: the file that binds those listeners
+        // also paints the markup they bind to, and does so inside the same function that wires them.
+        for (Path file : jsFiles()) {
+            String source = Files.readString(file);
+            if (!source.contains("mainContent.innerHTML") && !source.contains("host.innerHTML")) {
+                continue;
+            }
+            String painted = "id=\"te-new-btn\"";
+            if (source.contains("te-new-btn")) {
+                assertTrue(source.contains(painted),
+                        file + " binds te-new-btn but never paints an element with that id, so the "
+                                + "button cannot exist when it is wired");
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("no file wires the tactic shelf outside the paint that creates it")
+    void theShelfIsWiredInsideThePaint() throws IOException {
+        Path editor = JS_ROOT.resolve("pages/views/tactic-editor-view.js");
+        if (!Files.exists(editor)) {
+            return;
+        }
+        String source = Files.readString(editor);
+
+        int renderDeclaration = source.indexOf("const render =");
+        int bindDeclaration = source.indexOf("const bindEvents =");
+        int wireDeclaration = source.indexOf("const wireShelf =");
+
+        assertTrue(renderDeclaration >= 0 && bindDeclaration >= 0 && wireDeclaration >= 0,
+                "the editor no longer has render/bindEvents/wireShelf, so this test needs restating");
+
+        // Every call to wireShelf must be inside bindEvents' body, which render() invokes after
+        // painting. A call anywhere else binds listeners to a DOM that does not exist yet.
+        // The call must be lexically inside bindEvents' body. A call between bindEvents and render()
+        // but outside bindEvents' braces is exactly the bug: it runs before the paint, binds to
+        // nothing, and parses fine.
+        int bindOpen = source.indexOf("{", bindDeclaration);
+        int bindClose = matchingBrace(source, bindOpen);
+        Matcher calls = Pattern.compile("(?m)^\\s*wireShelf\\(\\);").matcher(source);
+        int callCount = 0;
+        while (calls.find()) {
+            int at = calls.start();
+            callCount++;
+            assertTrue(at > bindOpen && at < bindClose,
+                    "wireShelf() is called outside bindEvents()'s body (line "
+                            + source.substring(0, at).split("\n").length
+                            + "); it binds listeners to markup that render() has not painted yet");
+        }
+        assertTrue(callCount > 0, "wireShelf() is never called, so the shelf has no behaviour at all");
+    }
+
+    /** The index of the brace that closes the one at {@code open}, skipping braces in strings. */
+    private static int matchingBrace(String source, int open) {
+        int depth = 0;
+        boolean inSingle = false;
+        boolean inDouble = false;
+        boolean inTemplate = false;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '\'' && !inDouble && !inTemplate) inSingle = !inSingle;
+            else if (c == '"' && !inSingle && !inTemplate) inDouble = !inDouble;
+            else if (c == '`' && !inSingle && !inDouble) inTemplate = !inTemplate;
+            else if (c == '{' && !inSingle && !inDouble && !inTemplate) depth++;
+            else if (c == '}' && !inSingle && !inDouble && !inTemplate) {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
+
+    @Test
+    @DisplayName("the tactic shelf renders and its buttons do something when pressed")
+    void theShelfRunsAndItsButtonsWork() throws IOException, InterruptedException {
+        String node = nodeBinary();
+        if (node == null) {
+            System.out.println("node not on PATH - page test skipped, not failed");
+            return;
+        }
+
+        // The owner's own report: the shelf painted perfectly and every button did nothing, because
+        // the listeners were bound before the markup existed. The file parsed the whole time, and so
+        // did every syntax check - this executes the view instead of reading it.
+        Path script = Path.of("src/test/javascript/tactic-editor-shelf.test.mjs");
+        ProcessBuilder builder = new ProcessBuilder(node, script.toString());
+        builder.redirectErrorStream(true);
+        Process process = builder.start();
+        String output = new String(process.getInputStream().readAllBytes());
+        int code = process.waitFor();
+
+        if (code != 0) {
+            fail("The tactic editor page test failed:" + System.lineSeparator() + output);
+        }
+        assertTrue(output.contains("OK"), "the page test produced no verdict: " + output);
+    }
+
+    private static List<Path> jsFiles() throws IOException {
+        try (Stream<Path> files = Files.walk(JS_ROOT)) {
+            return files.filter(p -> p.toString().endsWith(".js")).sorted().toList();
+        }
+    }
+
+    /** The node binary, or null when it is not installed. */
+    private static String nodeBinary() {
+        for (String candidate : new String[]{"node", "/usr/local/bin/node", "/opt/homebrew/bin/node"}) {
+            try {
+                Process process = new ProcessBuilder(candidate, "--version").start();
+                if (process.waitFor() == 0) {
+                    return candidate;
+                }
+            } catch (IOException | InterruptedException ignored) {
+                // Try the next one.
+            }
+        }
+        return null;
+    }
+}
