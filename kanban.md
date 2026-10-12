@@ -444,6 +444,16 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
       are **not**. That is a real gap and the page should not be trusted until somebody has looked at it.
 - [ ] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built.
 
+### How this page was verified, and how it was not
+
+| | |
+|---|---|
+| `reorder` accepts an order and reorders | **live, against the running app** — Charlie into slot 1, Bravo staying in the middle, Alpha into slot 3 |
+| a duplicate is refused | **live** — *"The same tactic cannot hold two slots at once."* |
+| a fourth entry is refused | **live** — *"A match takes 3 tactics, not 4."* |
+| a prepared match refuses the plan | **live** — **423**, *"This match has already been decided…"* |
+| the arrows and the buttons | **not verified** — nothing here has parsed or rendered the JavaScript |
+
 ## T-MATCH-4 — 🔴 P0 · three tactics per match, any into any slot
 
 **Nothing built.** A manager picks **3** of the club's 10 tactics for the next match, and any slot can
@@ -469,9 +479,18 @@ mid-match, which is T-MATCH-6's engine requirement and is already in place.
 - [x] **The lock.** This page had the same hole as the squad page and the orders page, found on the
       **fourth page in a row**: it refused a *played* fixture, and a prepared fixture is not played, so the
       plan was writable through the locked hour. Now 423, with the reason naming the decision.
-- [ ] **Exactly three are selectable, the other seven visible but not selectable** — the UI. The shelf
-      exists but the match page has no picker yet, and it is the part that cannot be verified without a
-      browser.
+- [x] **The picker existed already** — three slots, each a select over the club's tactics, with a
+      condition and a minute. Found by reading, not by rebuilding.
+- [x] **Any into any slot in the page**: arrows on each slot swap it with the one above or below, and
+      *Save order only* posts the whole order in one request. The "when" fields are left on their own
+      slots when swapping, and the page says so — moving a tactic must not carry one slot's minute and
+      condition to the other.
+- [ ] **The picker is still unverified in a browser**, and now there are two pages: the library shelf and
+      this one. **This environment has no node, no `node --check` and no agent-browser**, so the JavaScript
+      has not been parsed by anything, let alone rendered. An earlier entry in this log claimed
+      `node --check` proved the editor file parses; **that was false** — the command was missing and a
+      following `echo` printed anyway. Bracket counting says both files balance; that is a count, not a
+      parse.
 
 ## T-MATCH-5 — 🔴 P0 · the squad page
 

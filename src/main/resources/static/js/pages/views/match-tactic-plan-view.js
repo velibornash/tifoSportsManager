@@ -103,7 +103,15 @@ export function createMatchTacticPlanView(deps) {
                             const current = byPriority.get(slot.priority);
                             return `
                             <fieldset class="fm-tactic-slot" data-tactic-slot="${slot.priority}">
-                                <legend class="fm-subtle">${htmlEscape(slot.label)}</legend>
+                                <legend class="fm-subtle">
+                                    ${htmlEscape(slot.label)}
+                                    <span class="fm-tactic-swap">
+                                        <button type="button" class="fm-subtle" data-tactic-up
+                                            title="Swap with the slot above">&uarr;</button>
+                                        <button type="button" class="fm-subtle" data-tactic-down
+                                            title="Swap with the slot below">&darr;</button>
+                                    </span>
+                                </legend>
                                 <label class="fm-subtle">Tactic
                                     <select class="fm-input" data-tactic-id>
                                         <option value="">— none —</option>
@@ -126,7 +134,13 @@ export function createMatchTacticPlanView(deps) {
                             </fieldset>`;
                         }).join('')}
                     </div>
-                    <button type="button" class="fm-action-btn" data-tactic-save>Save game plan</button>
+                    <div class="fm-admin-toolbar">
+                        <button type="button" class="fm-action-btn" data-tactic-save>Save game plan</button>
+                        <button type="button" class="fm-action-btn" data-tactic-order>Save order only</button>
+                    </div>
+                    <p class="fm-subtle" id="tactic-order-note">Any tactic can go in any slot - use the
+                        arrows to swap two of them, then <em>Save order only</em>. The arrows move the
+                        tactics; <em>Save game plan</em> also saves each slot's "when" setting.</p>
                     <p class="fm-subtle">Leave a slot empty to ignore it. A tactic named here is one the
                         engine can use; anything else falls back to your default.</p>
                 </div>`
@@ -143,6 +157,71 @@ export function createMatchTacticPlanView(deps) {
     }
 
     function wire(host, fixtureId) {
+        // ---- any tactic into any slot ----
+        //
+        // Swapping two slots is the owner's "bilo koja koju promeniš". Done locally on the selects and
+        // saved in one request, because saving it as three separate slot writes passes through a state
+        // where two slots hold the same tactic.
+        const slotOf = priority => host.querySelector(`[data-tactic-slot="${priority}"]`);
+
+        const swapSlots = async (priority, withPriority) => {
+            const here = slotOf(priority);
+            const other = slotOf(withPriority);
+            if (!here || !other) return;
+
+            const a = here.querySelector('[data-tactic-id]');
+            const b = other.querySelector('[data-tactic-id]');
+            const aValue = a.value;
+            a.value = b.value;
+            b.value = aValue;
+
+            // The "when" fields belong to the instruction, not to the slot. Swapping tactics must not
+            // carry one slot's minute and condition to the other, so they are left where they are and
+            // the note below says what saving the order will do to them.
+            saveOrder();
+        };
+
+        host.querySelectorAll('[data-tactic-up]').forEach(button => {
+            button.addEventListener('click', () => {
+                const priority = Number(button.closest('[data-tactic-slot]').dataset.tacticSlot);
+                if (priority > 1) swapSlots(priority, priority - 1);
+            });
+        });
+        host.querySelectorAll('[data-tactic-down]').forEach(button => {
+            button.addEventListener('click', () => {
+                const priority = Number(button.closest('[data-tactic-slot]').dataset.tacticSlot);
+                if (priority < SLOTS.length) swapSlots(priority, priority + 1);
+            });
+        });
+
+        const orderBtn = host.querySelector('[data-tactic-order]');
+        async function saveOrder() {
+            if (!orderBtn) return;
+            const order = Array.from(host.querySelectorAll('[data-tactic-slot]'))
+                .map(slot => slot.querySelector('[data-tactic-id]').value)
+                .filter(Boolean)
+                .map(Number);
+
+            orderBtn.disabled = true;
+            try {
+                const response = await authFetch(`/api/sim/fixtures/${fixtureId}/tactic-plan/reorder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order })
+                });
+                if (!response.ok) {
+                    // The refusal carries the reason - the limit of three, a duplicate, another club's
+                    // tactic - and showing it is the whole point of refusing loudly.
+                    window.alert(await reasonOf(response));
+                    return;
+                }
+                await loadPlan(fixtureId, host);
+            } finally {
+                orderBtn.disabled = false;
+            }
+        }
+        if (orderBtn) orderBtn.addEventListener('click', saveOrder);
+
         const save = host.querySelector('[data-tactic-save]');
         if (!save) return;
 

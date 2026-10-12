@@ -405,6 +405,40 @@ Validation checks against **the club on that side**, not the home club: club 1's
 tactic 1 are both 1, so an away-side reorder checked against the home club would refuse the away manager's
 own tactics or accept the home manager's.
 
+## 🟡 The picker: any tactic into any slot (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-4**, page half.
+
+**The picker was already built.** Three slots, each a select over the club's tactics with a condition and
+a minute-from, and a save that writes each slot on its own. Found by reading the view, so what was added is
+only what was missing: **arrows that swap two slots**, and *Save order only*, which posts the whole order
+to the new `reorder` endpoint in one request.
+
+Swapping on the page moves the **tactics** and leaves each slot's "when" fields where they are. Carrying
+slot 1's minute and condition to slot 3 would be a bug, not a convenience — those describe the situation
+the instruction answers, not the slot it sits in. The page says so under the buttons.
+
+**Verified live, against the running app:**
+
+| | |
+|---|---|
+| reorder into a new order | Charlie → slot 1, **Bravo stayed in slot 2**, Alpha → slot 3 |
+| a duplicate | 400, *"The same tactic cannot hold two slots at once."* |
+| a fourth entry | 400, *"A match takes 3 tactics, not 4."* |
+| a prepared fixture | **423**, *"This match has already been decided, so its tactics are closed."* |
+
+The three test tactics and the assignment were deleted afterwards; `tactic` and `match_tactic_assignment`
+are back to zero rows, and fixture 11's prepared markers were cleared.
+
+**A false claim in this log, corrected.** An earlier entry said *"`node --check` proves the file parses and
+nothing more."* **That was not true.** There is no node, no `nodejs`, no `bun`, `deno` or `quickjs` in this
+environment; the command failed with `command not found` and a following `echo "JS OK"` printed anyway, so
+the output looked like a pass. I read that echo as a success and reported it.
+
+What can honestly be said about the two JavaScript files: a bracket count balances in both. That is a
+count, not a parse, and it would not notice a missing semicolon, a bad template literal or a typo in an
+identifier. **Neither page has been rendered by anything.**
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`
