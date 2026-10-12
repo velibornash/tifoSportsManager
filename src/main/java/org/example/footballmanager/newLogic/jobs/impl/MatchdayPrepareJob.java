@@ -139,11 +139,21 @@ public class MatchdayPrepareJob implements DayJob {
 
     @Override
     public void run(JobContext context) {
-        long prepared = scheduler.prepareUnplayedOn(context.seasonYear(), context.weekNumber(), day,
+        MatchdayScheduler.MatchdayOutcome outcome = scheduler.prepareUnplayedOn(
+                context.seasonYear(), context.weekNumber(), day,
                 fixtures.findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day));
-        if (prepared > 0) {
+
+        // Thrown so JobRunner records FAILED and does not mark the slot DONE. A matchday that lost
+        // fixtures to an exception is not a matchday that happened, and recording it as one is how a
+        // run that prepared 0 of 155 came to sit in the table looking like a quiet evening.
+        if (!outcome.complete()) {
+            throw new IllegalStateException("Matchday prepare day " + day + " for week "
+                    + context.weekNumber() + ": " + outcome.prepared() + " fixture(s) computed and "
+                    + outcome.failed() + " failed");
+        }
+        if (outcome.prepared() > 0) {
             log.info("Matchday prepare day {}: {} fixture(s) computed and locked for week {}.",
-                    day, prepared, context.weekNumber());
+                    day, outcome.prepared(), context.weekNumber());
         }
     }
 

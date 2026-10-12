@@ -117,11 +117,20 @@ public class MatchdayPublishJob implements DayJob {
 
     @Override
     public void run(JobContext context) {
-        int published = scheduler.publishUnplayedOn(context.seasonYear(), context.weekNumber(), day,
+        MatchdayScheduler.MatchdayOutcome outcome = scheduler.publishUnplayedOn(
+                context.seasonYear(), context.weekNumber(), day,
                 fixtures.findUnpublishedOnDay(context.seasonYear(), context.weekNumber(), day));
-        if (published > 0) {
+
+        // Same rule as the prepare job: a result a manager was promised and did not get must not be
+        // recorded as a matchday that happened.
+        if (!outcome.complete()) {
+            throw new IllegalStateException("Matchday publish day " + day + " for week "
+                    + context.weekNumber() + ": " + outcome.prepared() + " result(s) released and "
+                    + outcome.failed() + " failed");
+        }
+        if (outcome.prepared() > 0) {
             log.info("Matchday publish day {}: {} result(s) released for week {}.",
-                    day, published, context.weekNumber());
+                    day, outcome.prepared(), context.weekNumber());
         }
     }
 }

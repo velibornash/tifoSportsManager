@@ -118,6 +118,42 @@ and has to be said out loud. **B9's second half is closed.**
 Mutations: deleting the national beans turns `everyMatchDayHasAPair` red with
 *"national day 2 must have a prepare and a publish"*.
 
+## ✅ A matchday that failed on every fixture was recorded as a matchday that happened (2026-10-12)
+
+The worst defect of the session, and it was only visible in the database.
+
+**What happened.** With the job-wide transaction removed (so fixtures could commit one at a time), the
+simulation ran outside any transaction. `simulate` walks the fixture's home and away teams, which arrive
+as lazy proxies, so **every fixture failed** with:
+
+    could not initialize proxy [org.example.footballmanager.newLogic.model.Team#128] - no Session
+
+775 of them, on one matchday. The job returned normally, so `JobRunner` recorded it **DONE** in
+`job_run` — row 81, `matchday-prepare-3`, week 2, day 3, status DONE, empty message — having produced
+exactly zero matches. From the table you would check to see whether it worked, that row reads like a
+quiet evening.
+
+**Two fixes.**
+
+1. **The simulation goes inside the fixture transaction.** It looked like an optimisation to avoid
+   holding a connection through the expensive part, and it is why the teams could not load. The
+   transaction is short-lived — one fixture, a few seconds — and there is no alternative to a session.
+
+2. **A pass that lost a fixture is recorded as FAILED.** `MatchdayScheduler` returns a
+   `MatchdayOutcome(prepared, failed)`, and both jobs throw when `failed > 0` so `JobRunner` records
+   FAILED and the slot is not marked DONE. An **empty** matchday stays a clean pass, because a week with
+   no fixtures is a quiet week and must not retry for ever.
+
+**The test that catches it is behavioural, not a grep.** A first version read the source text and
+asserted the ordering; it broke the moment a return type changed and would have told us nothing. It
+uses a `PlatformTransactionManager` that records `begin`/`commit` and a stub that records `simulate`,
+and asserts the order. Moving `sim.simulate` back outside the transaction turns it red with
+`[the simulation must be inside the transaction, not after it: [simulate]]`.
+
+**Still open:** one whole matchday has not yet been seen computed and released end to end. The prepare
+half was seen at 15 of 155, the publish half at 15, and the lazy-loading fix has not yet been seen
+against the real database.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

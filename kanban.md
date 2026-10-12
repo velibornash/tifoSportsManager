@@ -332,13 +332,14 @@ What exists now:
 
 **Exit criteria, still open:**
 
-- [ ] Seen in the database: a matchday of 155 fixtures computed, `prepared_match_id` set, `played =
-      false`, none of them readable — **partly seen (15 of 155 before the deadlock, killed by the owner
-      session ending; must be re-run to completion)**.
-- [ ] Seen in the database: `MatchdayPublishJob` releasing a prepared matchday, `played = true`, and
-      **the same match ids** as were prepared — publishing must never re-simulate.
-- [ ] **Exit criteria, still open:** the publish fallback proven — a fixture the prepare job missed is
-      computed at kickoff and published, not lost.
+- [x] Seen in the database: `MatchdayPublishJob` releasing a prepared matchday —
+      `Matchday publish day 7: 15 result(s) released for week 1`, the 15 fixtures a killed session had
+      left prepared.
+- [ ] Seen in the database: **one whole matchday** computed and released end to end. The prepare half
+      was seen at 15 of 155 and the publish half at 15; a clean 155 through both is not yet a fact, and
+      a matchday takes 10–15 minutes of football in this world.
+- [ ] The publish fallback proven live — a fixture the prepare job missed is computed at kickoff and
+      published, not lost.
 - [x] National-tournament matchdays get the pair, for **days 2, 4 and 6 only**. Days 1, 3, 5 and 7
       needed nothing: the club pair is `ANY_WEEK` and prepares the whole matchday, so a qualifier that
       lands on a league day is already locked and released by those. Days 2, 4 and 6 had nothing at all

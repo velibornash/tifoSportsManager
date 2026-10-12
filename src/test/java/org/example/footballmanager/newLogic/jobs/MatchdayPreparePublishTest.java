@@ -20,8 +20,10 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
@@ -131,6 +133,10 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
         assertThat(GameDay.of(2).kickoffHour()).isNull();
     }
 
+    private static java.util.List<String> subList(java.util.List<String> all, int from, int to) {
+        return new java.util.ArrayList<>(all.subList(from, to));
+    }
+
     private void repositories() {
         fixtures = mock(MatchFixtureRepository.class);
         scheduler = mock(MatchdayScheduler.class);
@@ -197,9 +203,9 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
             return 9001L;
         });
 
-        int prepared = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
 
-        assertThat(prepared).isEqualTo(1);
+        assertThat(outcome.prepared()).isEqualTo(1);
         // The whole point. If this ever becomes true, a manager can read the result an hour early.
         assertThat(fixture.isPlayed()).isFalse();
         assertThat(fixture.getPreparedMatchId()).isEqualTo(9001L);
@@ -226,9 +232,9 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
         prepared.setId(9001L);
         when(matches.findById(9001L)).thenReturn(java.util.Optional.of(prepared));
 
-        int published = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
 
-        assertThat(published).isEqualTo(1);
+        assertThat(outcome.prepared()).isEqualTo(1);
         assertThat(fixture.isPlayed()).isTrue();
         assertThat(fixture.getPlayedMatch()).isSameAs(prepared);
         assertThat(fixture.isPrepared()).isFalse();
@@ -253,12 +259,68 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
         when(sim.simulate(any(), any(Boolean.class))).thenReturn(new SimMatchService.SimMatchOutcome(
                 org.mockito.Mockito.mock(ProposalMatchOutcome.class), 7L, null, null, null));
 
-        int published = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
 
         // Late rather than lost. This is the case that would silently eat a matchday.
-        assertThat(published).isEqualTo(1);
+        assertThat(outcome.prepared()).isEqualTo(1);
         verify(sim).simulate(any(), any(Boolean.class));
         verify(sim).persist(any(), any(), any(Long.class), any());
+    }
+
+    @Test
+    @DisplayName("the fixture is simulated inside its own transaction, where its teams can load")
+    void theSimulationRunsInsideTheFixtureTransaction() {
+        // A transaction manager that records what it was asked to do, so the order is observed rather
+        // than read out of the source text - the source-text version broke the moment a return type
+        // changed and would have told us nothing at all.
+        //
+        // The live bug this guards: 775 fixtures failed with "could not initialize proxy Team#128 - no
+        // Session" because simulate ran outside any transaction. The job was logged as run, recorded
+        // DONE, and had produced nothing.
+        java.util.List<String> events = new java.util.ArrayList<>();
+        PlatformTransactionManager recording = new AbstractPlatformTransactionManager() {
+            @Override protected Object doGetTransaction() {
+                events.add("get");
+                return new Object();
+            }
+
+            @Override protected void doBegin(Object transaction, TransactionDefinition definition) {
+                events.add("begin");
+            }
+
+            @Override protected void doCommit(DefaultTransactionStatus status) {
+                events.add("commit");
+            }
+
+            @Override protected void doRollback(DefaultTransactionStatus status) {
+                events.add("rollback");
+            }
+        };
+
+        SimMatchService sim = mock(SimMatchService.class);
+        when(sim.simulate(any(), any(Boolean.class))).thenAnswer(call -> {
+            events.add("simulate");
+            return null;
+        });
+
+        MatchdayScheduler real = new MatchdayScheduler(mock(MatchFixtureRepository.class),
+                mock(org.example.footballmanager.newLogic.repository.MatchRepository.class),
+                sim, recording);
+
+        MatchFixture fixture = new MatchFixture();
+        fixture.setId(42L);
+        real.prepareUnplayedOn(1, 2, DAY, List.of(fixture));
+
+        int simulateAt = events.indexOf("simulate");
+        assertThat(simulateAt).as("the fixture should have been simulated at all: %s", events)
+                .isNotNegative();
+        assertThat(events.lastIndexOf("begin"))
+                .as("a transaction should have been opened before the simulation: %s", events)
+                .isLessThan(simulateAt);
+        int commitAt = subList(events, simulateAt, events.size()).indexOf("commit");
+        assertThat(commitAt)
+                .as("the simulation must be inside the transaction, not after it: %s", events)
+                .isNotNegative();
     }
 
     @Test
@@ -273,9 +335,9 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
         fixture.setId(42L);
         fixture.setPreparedMatchId(9001L);
 
-        int prepared = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
 
-        assertThat(prepared).isZero();
+        assertThat(outcome.prepared()).isZero();
         verify(sim, never()).simulate(any(), any(Boolean.class));
     }
 }

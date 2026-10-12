@@ -53,10 +53,35 @@ public class MatchdayScheduler {
      * still ended at 743 — twenty minutes of football, none of it committed, and one bad fixture at
      * the end losing the whole evening.
      *
-     * <p>Simulation itself stays outside this transaction. It is the expensive part and it writes
-     * nothing, so there is no reason to hold a database connection while it runs.
+     * <p><b>The simulation runs inside it, not beside it.</b> That looked like an optimisation to avoid
+     * holding a connection through the expensive part, and it cost 775 fixtures in one run:
+     * {@code simulate} walks the fixture's home and away teams, which arrive as lazy proxies, and with
+     * no session open every one of them failed with *"could not initialize proxy Team#128 - no
+     * Session"*. The job was green the whole time and did nothing.
+     *
+     * <p>Which is the old rule again: a job can be registered, scheduled, logged as run, and have
+     * failed on every single fixture, and the only thing that catches it is looking at the data.
      */
     private final TransactionTemplate perFixture;
+
+    /**
+     * What a matchday pass actually did, and what it could not do.
+     *
+     * <p>The counts are here because {@code JobRunner} marks a job DONE when its body returns
+     * normally, and for a matchday "returned normally" is not the same as "played". A run with the
+     * lazy-loading fault prepared **0 of 155** fixtures, logged 155 warnings and was recorded as a
+     * successful matchday — which is how a broken world looks exactly like a working one, from the
+     * table you would check to see whether it worked.
+     *
+     * @param prepared fixtures computed this pass
+     * @param failed fixtures that existed and could not be prepared or published
+     */
+    public record MatchdayOutcome(int prepared, int failed) {
+        /** A pass that hit a fixture it could not handle must not be recorded as a clean matchday. */
+        public boolean complete() {
+            return failed == 0;
+        }
+    }
 
     public MatchdayScheduler(MatchFixtureRepository fixtures, MatchRepository matches, SimMatchService sim,
                              PlatformTransactionManager transactionManager) {
@@ -80,31 +105,37 @@ public class MatchdayScheduler {
      * commits itself through {@code SimMatchService}, so a fixture that fails costs that fixture and
      * not the evening.
      */
-    public int prepareUnplayedOn(int seasonYear, int week, int day, List<MatchFixture> candidates) {
+    public MatchdayOutcome prepareUnplayedOn(int seasonYear, int week, int day,
+                                             List<MatchFixture> candidates) {
         int prepared = 0;
+        int failed = 0;
         for (MatchFixture fixture : candidates) {
             if (fixture == null || fixture.isPlayed() || fixture.getPreparedMatchId() != null) {
                 continue;
             }
             try {
-                var outcome = sim.simulate(fixture, false);
-                if (outcome == null) {
-                    continue;
-                }
                 Long[] matchId = new Long[1];
-                perFixture.executeWithoutResult(status -> matchId[0] =
-                        sim.prepareMatch(fixture, outcome.outcome(), outcome.replayId(), outcome.snapshots()));
+                perFixture.executeWithoutResult(status -> {
+                    var outcome = sim.simulate(fixture, false);
+                    if (outcome != null) {
+                        matchId[0] = sim.prepareMatch(fixture, outcome.outcome(), outcome.replayId(),
+                                outcome.snapshots());
+                    }
+                });
                 if (matchId[0] != null) {
                     prepared++;
                 }
             } catch (RuntimeException e) {
                 // One fixture failing must not lose the whole matchday, and must not stop the ones
-                // after it. The publish job falls back to computing at kickoff.
+                // after it. It must also not be forgotten: a fixture that failed is a fixture the
+                // manager will not see at kickoff, so the pass reports it and the job is recorded as
+                // FAILED rather than DONE.
+                failed++;
                 log.warn("Could not prepare fixture {} for week {} day {}: {}",
                         fixture.getId(), week, day, e.getMessage());
             }
         }
-        return prepared;
+        return new MatchdayOutcome(prepared, failed);
     }
 
     /**
@@ -118,8 +149,10 @@ public class MatchdayScheduler {
      * <p>Like the prepare path, this is not one transaction: publishing must be able to show a
      * manager his result while the rest of the matchday is still coming out of the ground.
      */
-    public int publishUnplayedOn(int seasonYear, int week, int day, List<MatchFixture> candidates) {
+    public MatchdayOutcome publishUnplayedOn(int seasonYear, int week, int day,
+                                             List<MatchFixture> candidates) {
         int published = 0;
+        int failed = 0;
         for (MatchFixture fixture : candidates) {
             if (fixture == null || fixture.isPlayed()) {
                 continue;
@@ -144,18 +177,26 @@ public class MatchdayScheduler {
                             + "computing it at kickoff instead.", fixture.getId(),
                             fixture.getPreparedMatchId());
                 }
-                var outcome = sim.simulate(fixture, false);
-                if (outcome != null) {
-                    perFixture.executeWithoutResult(status ->
-                            sim.persist(fixture, outcome.outcome(), outcome.replayId(), outcome.snapshots()));
+                // Simulated inside the transaction for the same reason as the prepare path: the
+                // fixture's teams are lazy proxies and there is no session without one.
+                Long[] done = new Long[1];
+                perFixture.executeWithoutResult(status -> {
+                    var outcome = sim.simulate(fixture, false);
+                    if (outcome != null) {
+                        sim.persist(fixture, outcome.outcome(), outcome.replayId(), outcome.snapshots());
+                        done[0] = 1L;
+                    }
+                });
+                if (done[0] != null) {
                     published++;
                 }
             } catch (RuntimeException e) {
+                failed++;
                 log.warn("Could not publish fixture {} for week {} day {}: {}",
                         fixture.getId(), week, day, e.getMessage());
             }
         }
-        return published;
+        return new MatchdayOutcome(published, failed);
     }
 
     /** Whether a fixture is computed but not yet shown. The hour before kickoff. */
