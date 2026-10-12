@@ -32,7 +32,15 @@ export function createMatchView(deps) {
         // already-played game. Callers now pass `fixture: true`, and the two spaces have two endpoints.
         const isFixture = options.fixture === true;
 
-        const MATCH_TABS = ['preview', 'goals', 'report'];
+        // **Match Setup is its own tab, and it used not to be.** The owner's report: *"podesavanje
+        // lineupa i taktike ne treba da bude na Preview tabu meca, bolje dodaj Match Setup tab i stavi na
+        // njega deo za lineup, taktike itd"* - setting the eleven and the tactics should not be on the
+        // Preview tab, they should be on a Match Setup tab.
+        //
+        // They were, all three panels, underneath the pre-match preview. So the tab a manager opens to
+        // *look at* a match also let him *change* it, and the preview buried the prediction under an
+        // eleven, a game plan and a substitution sheet.
+        const MATCH_TABS = ['preview', 'setup', 'goals', 'report'];
         const requestedTab = String(options.initialTab || '').toLowerCase();
         const initialTab = MATCH_TABS.includes(requestedTab) ? requestedTab : 'preview';
         if (caller === "undefined") {
@@ -179,6 +187,7 @@ export function createMatchView(deps) {
                 </div>
                 <div id="match-buttons-container" class="fm-match-actions">
                     <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
+                    <button type="button" id="view-setup" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ''}>Match Setup</button>
                     <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
                     <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
                     <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
@@ -186,9 +195,15 @@ export function createMatchView(deps) {
                     <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
-                <div id="fm-substitution-plan"></div>
-                <div id="fm-match-tactic-plan"></div>
-                <div id="fm-match-lineup"></div>
+                <div id="fm-match-setup">
+                    <p class="fm-subtle" style="margin-bottom:14px;">
+                        Set the eleven, the tactics and the orders for this match. Everything here is
+                        closed an hour before kickoff, when the match is decided.
+                    </p>
+                    <div id="fm-match-lineup"></div>
+                    <div id="fm-match-tactic-plan"></div>
+                    <div id="fm-substitution-plan"></div>
+                </div>
                 <div style="text-align:center; margin-top:30px;">
                     <button id="back-button" style="padding:10px 24px; font-size:1.1em;">Back</button>
                 </div>
@@ -747,9 +762,25 @@ export function createMatchView(deps) {
             else if (initialTab === 'goals') showGoals();
             else void showPreview();
 
-            void mountSubstitutionPlan();
-            void mountTacticPlan();
-            void mountLineup();
+            if (initialTab === 'setup') void mountSetupPanels();
+
+            // **Only for the Match Setup tab.** They were mounted on every visit, which is how a
+            // preview page came to carry three editable panels nobody put there on purpose.
+            async function mountSetupPanels() {
+                const host = document.getElementById('fm-match-setup');
+                if (!host) return;
+                // After a match is played there is nothing to set, and the tab says so rather than
+                // offering controls that would be refused.
+                if (hasPlayedMatch) {
+                    host.innerHTML = `<p class="fm-subtle">This match has been played. Its lineup,
+                        tactics and orders are part of the record now.</p>`;
+                    return;
+                }
+                host.innerHTML = '';
+                await mountLineup();
+                await mountTacticPlan();
+                await mountSubstitutionPlan();
+            }
 
             /**
              * Puts the conditional-substitution plan on this screen, which is where a manager actually is.
@@ -824,7 +855,17 @@ export function createMatchView(deps) {
                 }
             }
 
-            document.getElementById("view-preview").addEventListener("click", () => void showPreview());
+            document.getElementById("view-preview").addEventListener("click", () => {
+                // Leaving Match Setup empties its panels, so a preview is a preview and not a preview
+                // with three editors still sitting underneath it.
+                const setup = document.getElementById('fm-match-setup');
+                if (setup) setup.innerHTML = '';
+                void showPreview();
+            });
+            document.getElementById("view-setup")?.addEventListener("click", () => {
+                infoDiv.innerHTML = '';
+                void mountSetupPanels();
+            });
             document.getElementById("view-lineups").addEventListener("click", () => {
                 if (!lineupsPayload || (!lineupsPayload.homeLineup && !lineupsPayload.awayLineup)) {
                     infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Lineups are not available for this match.</p>`;

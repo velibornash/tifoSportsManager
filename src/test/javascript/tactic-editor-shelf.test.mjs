@@ -255,6 +255,10 @@ assert.match(html, /3 of 10/, 'the page does not say how much of the cap is used
 // was that the tactics in it could not be told apart.
 assert.match(html, /te-tactic-row/, 'the tactics are not rendered as a list');
 assert.match(html, /4-4-2 · Balanced/, 'a tactic does not say its shape and style');
+// "Default 4-4-2  4-4-2 - BALANCED" is the repetition the owner pointed at: the shape is in the name
+// already, so it must not be printed beside it as well.
+assert.ok(!/Default 4-4-2\s*4-4-2/.test(html),
+    'a tactic whose name already says its shape repeats it beside the name');
 assert.match(html, /club default/, 'the club default is not marked');
 
 // And "based on" is chosen, not assumed.
@@ -262,7 +266,20 @@ const sourceSelect = elementsFor(html, '#te-copy-source')[0];
 assert.ok(sourceSelect, 'there is no dropdown choosing what the copy is based on');
 assert.ok(html.includes('<select id="te-copy-source"'), 'the copy source dropdown is missing');
 
-console.log('OK  the shelf renders as a readable list, with every operation and the cap');
+// The shelf belongs **below** the club frame, not above it: the owner's second note, showing the whole
+// page with the shelf sitting on top of the header, the navigation and the Shape/Slots/Rules summary.
+// Asserting the order is the only way to keep it there.
+const shelfAt = html.indexOf('te-tactic-list');
+const headerAt = html.indexOf('Tactic Editor');
+const summaryAt = html.search(/<span>Slots<\/span>/);
+assert.ok(shelfAt > 0, 'the shelf did not render at all');
+assert.ok(headerAt >= 0 && summaryAt >= 0, 'the club frame did not render, so the order means nothing');
+assert.ok(shelfAt > headerAt,
+    'the shelf is above the club header; it belongs below the club frame');
+assert.ok(shelfAt > summaryAt,
+    'the shelf is above the Shape/Slots/Rules summary; it belongs below the club frame');
+
+console.log('OK  the shelf renders as a readable list, below the club frame, with every operation');
 
 // ---------------------------------------------------------------- the buttons do something
 

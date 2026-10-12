@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -170,6 +171,61 @@ class BrowserSourceSanityTest {
             fail("The tactic editor page test failed:" + System.lineSeparator() + output);
         }
         assertTrue(output.contains("OK"), "the page test produced no verdict: " + output);
+    }
+
+    @Test
+    @DisplayName("the lineup, tactics and orders are not on the Preview tab")
+    void setupPanelsAreNotOnThePreviewTab() throws IOException {
+        // The owner's instruction: setting the eleven and the tactics should not be on the Preview tab,
+        // they should be on a Match Setup tab. They were all three sitting under the pre-match preview,
+        // so the tab a manager opened to *look at* a match also let him change it.
+        //
+        // This reads the file rather than running it - match-view pulls half a dozen endpoints and
+        // rendering it faithfully is a bigger job than the check is worth. It pins the structure that
+        // the bug lived in: the three hosts live inside the setup container, and nothing on the preview
+        // path mounts them.
+        Path view = JS_ROOT.resolve("pages/views/match-view.js");
+        String source = Files.readString(view);
+
+        assertTrue(source.contains("id=\"fm-match-setup\""),
+                "there is no Match Setup container to hold the three panels");
+        for (String host : new String[]{"fm-match-lineup", "fm-match-tactic-plan", "fm-substitution-plan"}) {
+            int at = source.indexOf("\"" + host + "\"");
+            assertTrue(at > 0, host + " is not on the match page at all");
+            int containerAt = source.indexOf("id=\"fm-match-setup\"");
+            assertTrue(at > containerAt,
+                    host + " appears before the Match Setup container, so it is still on the preview");
+        }
+
+        // The preview path must not mount them.
+        int previewFn = source.indexOf("async function showPreview()");
+        int previewEnd = source.indexOf("\n            }", previewFn);
+        String previewBody = source.substring(previewFn, previewEnd);
+        for (String mount : new String[]{"mountLineup", "mountTacticPlan", "mountSubstitutionPlan"}) {
+            assertTrue(!previewBody.contains(mount),
+                    "showPreview() calls " + mount + ", which puts an editor back on the Preview tab");
+        }
+
+        // **Exactly two call sites, and one of them is guarded by the tab.** A mutation that moved the
+        // mount back to the top level - which is where it was before this tab existed, and where the
+        // first version of this check missed it - makes a third, unguarded call.
+        Matcher calls = Pattern.compile("mountSetupPanels\\(\\);").matcher(source);
+        int callSites = 0;
+        boolean guardedByTab = false;
+        while (calls.find()) {
+            callSites++;
+            int lineStart = source.lastIndexOf('\n', calls.start()) + 1;
+            String line = source.substring(lineStart, source.indexOf('\n', calls.start()));
+            if (line.contains("initialTab === 'setup'")) {
+                guardedByTab = true;
+            }
+        }
+        assertEquals(2, callSites,
+                "mountSetupPanels() should be called from the Match Setup button and from the guarded "
+                        + "initial-tab branch, and nowhere else");
+        assertTrue(guardedByTab,
+                "the initial-tab call must be guarded by initialTab === 'setup', or the panels load on "
+                        + "every tab including Preview");
     }
 
     private static List<Path> jsFiles() throws IOException {

@@ -23,6 +23,24 @@ async function loadLibrary(teamId, authFetch) {
     }
 }
 
+/**
+ * A tactic's shape and style, unless its name already says the shape.
+ *
+ * <p>The owner's first tactic is called *"Default 4-4-2"*, and the row read
+ * `Default 4-4-2   4-4-2 · BALANCED` — the shape twice, once as the name and once beside it. Repetition
+ * makes a list longer than it needs to be and reads as a rendering fault.
+ */
+function shapeOf(tactic) {
+    const formation = htmlEscape(tactic.formation || '');
+    const style = tactic.style ? htmlEscape(tactic.style) : '';
+    const name = (tactic.name || '');
+    const saysShape = formation && name.includes(formation);
+    if (saysShape) {
+        return style || formation;
+    }
+    return style ? `${formation} · ${style}` : formation;
+}
+
 function renderLibraryShelf(library, selectedId, locked) {
     // A list, not a row of buttons. The owner's words on the first version: *"treba jasnije da stoji
     // lista taktika, ovo sa ovim zatamnjenim pomalo blurovanim dugmadima nije vidljivo"* — the row of
@@ -32,7 +50,7 @@ function renderLibraryShelf(library, selectedId, locked) {
         <button type="button" class="te-tactic-row${t.id === selectedId ? ' is-selected' : ''}"
                 data-te-pick="${t.id}" aria-current="${t.id === selectedId}">
             <span class="te-tactic-name">${htmlEscape(t.name)}</span>
-            <span class="te-tactic-shape">${htmlEscape(t.formation)}${t.style ? ' · ' + htmlEscape(t.style) : ''}</span>
+            <span class="te-tactic-shape">${shapeOf(t)}</span>
             ${t.isDefault ? '<span class="te-tactic-flag">club default</span>' : ''}
             ${t.id === selectedId ? '<span class="te-tactic-flag is-open">editing this one</span>' : ''}
         </button>`).join('');
@@ -504,7 +522,6 @@ export function createTacticEditorView(deps) {
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--club">
                     ${locked ? renderMatchLockBanner(matchLock) : ''}
-                    ${renderLibraryShelf(library, selectedTacticId, locked)}
                     <section class="fm-panel fm-club-hero">
                         <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                         <div class="fm-club-hero-main">
@@ -522,6 +539,7 @@ export function createTacticEditorView(deps) {
                             <div><strong>${draftLoaded ? 'Draft' : `v${editor.version || 0}`}</strong><span>Status</span></div>
                         </div>
                     </section>
+                    ${renderLibraryShelf(library, selectedTacticId, locked)}
                     <section class="fm-panel">
                         <div class="fm-panel-head">
                             <div>
