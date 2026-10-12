@@ -238,6 +238,23 @@ export function createMatchView(deps) {
             }
 
             function renderMatchPreview(previewPayload) {
+                // Owner request, 2026-10-12: the Preview tab should carry the season, the week and the
+                // day as well as the kickoff time. The header above already had it; the tab itself did
+                // not, so the one screen a manager reads before a match gave him a time and no date.
+                const season = previewPayload?.seasonNumber ?? matchMeta?.seasonNumber ?? null;
+                const week = previewPayload?.weekNumber ?? matchMeta?.weekNumber ?? null;
+                const day = previewPayload?.dayNumber ?? matchMeta?.dayNumber ?? null;
+                const kickoff = previewPayload?.matchDate ?? matchMeta?.matchDate ?? null;
+                const calendarBits = [];
+                if (season !== null && season !== undefined) calendarBits.push(`Season ${season}`);
+                if (week !== null && week !== undefined) calendarBits.push(`Week ${week}`);
+                if (day !== null && day !== undefined) calendarBits.push(`Day ${day}`);
+                const calendarLine = calendarBits.length
+                    ? `<div class="fm-match-calendar">
+                           ${calendarBits.map(htmlEscape).join(' &middot; ')}
+                           ${kickoff ? ` &middot; ${htmlEscape(String(kickoff).slice(0, 16).replace('T', ' '))}` : ''}
+                       </div>`
+                    : '';
                 const predictionReasons = Array.isArray(previewPayload?.predictionReasons) ? previewPayload.predictionReasons : [];
                 const homeInsights = Array.isArray(previewPayload?.homeInsights) ? previewPayload.homeInsights : [];
                 const awayInsights = Array.isArray(previewPayload?.awayInsights) ? previewPayload.awayInsights : [];
@@ -342,6 +359,7 @@ export function createMatchView(deps) {
                             <h3 class="fm-mpv-band-title">${htmlEscape(homeTeamName)} v ${htmlEscape(awayTeamName)}</h3>
                         </header>
 
+                        ${calendarLine}
                         <div class="fm-mpv-shapes">
                             ${shapePanel('Home', homeTeamName, previewPayload?.homeFormation,
                                 previewPayload?.homeFormationFitness, previewPayload?.homeBenchQuality,
@@ -776,10 +794,47 @@ export function createMatchView(deps) {
                         tactics and orders are part of the record now.</p>`;
                     return;
                 }
-                host.innerHTML = '';
-                await mountLineup();
-                await mountTacticPlan();
-                await mountSubstitutionPlan();
+                // **Each panel gets a heading and reports its own failure.**
+                //
+                // All three mounts swallow their errors into `console.warn` — which is right for a panel
+                // on a working page and wrong here. Three swallowed failures leave an empty container,
+                // so the owner's report was "Match Setup shows nothing on this page": a blank tab with no
+                // heading, no panel and no message, from three loaders that were told to stay quiet.
+                host.innerHTML = `
+                    <p class="fm-subtle" style="margin-bottom:14px;">
+                        Set the eleven, the tactics and the orders for this match. Everything here is
+                        closed an hour before kickoff, when the match is decided.
+                    </p>
+                    ${PANELS.map(({ host: id, title, load }) => `
+                        <section class="fm-panel fm-setup-section">
+                            <div class="fm-panel-head">${title}</div>
+                            <div class="fm-setup-section-body" id="${id}">
+                                <p class="fm-subtle">Loading…</p>
+                            </div>
+                        </section>`).join('')}`;
+
+                // Sequential, and each one guarded: one panel failing must not leave the other two blank.
+                for (const panel of PANELS) {
+                    const body = document.getElementById(panel.host);
+                    if (!body) continue;
+                    try {
+                        await panel.load(body);
+                    } catch (error) {
+                        body.innerHTML = `<p class="fm-setup-error">${titleOf(panel)} could not be
+                            loaded: ${htmlEscape(error && error.message ? error.message : String(error))}</p>`;
+                    }
+                }
+            }
+
+            /** The three things a manager sets before kickoff, in the order a manager does them. */
+            const PANELS = [
+                { host: 'fm-match-lineup', title: 'The eleven', load: (body) => mountLineup(body) },
+                { host: 'fm-match-tactic-plan', title: 'Game plan', load: (body) => mountTacticPlan(body) },
+                { host: 'fm-substitution-plan', title: 'Substitutions and orders', load: (body) => mountSubstitutionPlan(body) },
+            ];
+
+            function titleOf(panel) {
+                return panel.title;
             }
 
             /**
@@ -809,42 +864,51 @@ export function createMatchView(deps) {
              * substitution condition names a player, and a manager who has not picked his eleven has
              * nothing for it to refer to.
              */
-            async function mountLineup() {
-                const host = document.getElementById('fm-match-lineup');
+            async function mountLineup(host) {
                 if (!host) return;
                 const managerTeamId = await resolveTeamId();
-                if (!managerTeamId) return;
+                if (!managerTeamId) {
+                    host.innerHTML = '<p class="fm-setup-error">Your club could not be resolved on this page.</p>';
+                    return;
+                }
                 try {
                     const lineupView = deps.createMatchLineupView?.();
-                    if (!lineupView) return;
+                    if (!lineupView) throw new Error('the lineup module did not load');
                     await lineupView.loadPlan(matchId, host);
                 } catch (error) {
                     console.warn('Could not load the team selection:', error);
                 }
             }
 
-            async function mountTacticPlan() {
-                const host = document.getElementById('fm-match-tactic-plan');
+            async function mountTacticPlan(host) {
                 if (!host) return;
                 const managerTeamId = await resolveTeamId();
-                if (!managerTeamId) return;
+                if (!managerTeamId) {
+                    host.innerHTML = '<p class="fm-setup-error">Your club could not be resolved on this page.</p>';
+                    return;
+                }
                 try {
                     const planView = deps.createMatchTacticPlanView?.();
-                    if (!planView) return;
+                    if (!planView) throw new Error('the game plan module did not load');
                     await planView.loadPlan(matchId, host);
                 } catch (error) {
                     console.warn('Could not load the game plan:', error);
                 }
             }
 
-            async function mountSubstitutionPlan() {
-                const host = document.getElementById('fm-substitution-plan');
+            async function mountSubstitutionPlan(host) {
                 if (!host) return;
                 const managerTeamId = await resolveTeamId();
-                if (!managerTeamId || !homeTeamId || Number(managerTeamId) !== Number(homeTeamId)) return;
+                if (!managerTeamId || !homeTeamId || Number(managerTeamId) !== Number(homeTeamId)) {
+                    // Said plainly rather than left blank. "Your club is not at home in this fixture"
+                    // is the answer, and a manager looking at an empty panel has no way to know it.
+                    host.innerHTML = `<p class="fm-subtle">The substitution plan is the home club's
+                        instruction, so it is not shown when you are away.</p>`;
+                    return;
+                }
                 try {
                     const planView = deps.createSubstitutionPlanView?.();
-                    if (!planView) return;
+                    if (!planView) throw new Error('the substitution plan module did not load');
                     // The two id spaces are kept apart on purpose. `matchId` above is a fixture id when
                     // `isFixture` is true and a match id otherwise, and passing the wrong one to the
                     // wrong endpoint is the defect the owner's P0 report was about.

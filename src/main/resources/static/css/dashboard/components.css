@@ -554,25 +554,37 @@ recent-match:hover .result-badge {
     max-height:320px;
     margin:0 auto;
 }
-.stadium-plan-strip--north{ grid-area:north; }
-.stadium-plan-strip--south{ grid-area:south; }
-.stadium-plan-strip--west{ grid-area:west; }
-.stadium-plan-strip--east{ grid-area:east; }
+.stadium-plan-strip--north{ grid-area:north; border-radius:16px 16px 0 0; }
+.stadium-plan-strip--south{ grid-area:south; border-radius:0 0 16px 16px; }
+.stadium-plan-strip--west{ grid-area:west; border-radius:16px 0 0 16px; }
+.stadium-plan-strip--east{ grid-area:east; border-radius:0 16px 16px 0; }
 .stadium-plan-strip{ border-radius:5px; min-width:0; }
 
+/*
+ * The bowl: four sides and four corners as one shape.
+ *
+ * Owner report, 2026-10-12: the corners sat *inside* the north and east stands instead of in the angle
+ * between them, and the two southern corners did not show at all.
+ *
+ * The corners were 18px slivers in the middle grid, which put them at the very edge of the pitch rather
+ * than in a corner section, and only two of the four were ever rendered. They are real sections now -
+ * they have a seat count and a price and they can be built - so they get a third of the width and height
+ * and an outer radius, and the eight segments read as one continuous bowl rather than as four bars with
+ * two slivers beside them.
+ */
 .stadium-plan-middle{
     grid-area:middle;
     display:grid;
-    grid-template-columns:18px 1fr 18px;
-    grid-template-rows:18px 1fr 18px;
+    grid-template-columns:30% 1fr 30%;
+    grid-template-rows:30% 1fr 30%;
     gap:3px;
     min-width:0;
 }
-.stadium-plan-corner{ border-radius:4px; }
-.stadium-plan-corner--nw{ grid-area:1/1; }
-.stadium-plan-corner--ne{ grid-area:1/3; }
-.stadium-plan-corner--sw{ grid-area:3/1; }
-.stadium-plan-corner--se{ grid-area:3/3; }
+.stadium-plan-corner{ border-radius:0; }
+.stadium-plan-corner--nw{ grid-area:1/1; border-radius:16px 0 0 0; }
+.stadium-plan-corner--ne{ grid-area:1/3; border-radius:0 16px 0 0; }
+.stadium-plan-corner--sw{ grid-area:3/1; border-radius:0 0 0 16px; }
+.stadium-plan-corner--se{ grid-area:3/3; border-radius:0 0 16px 0; }
 
 /* The turf: mown stripes, because a plan view of a bare rectangle reads as a table. */
 .stadium-plan-turf{
@@ -606,7 +618,7 @@ recent-match:hover .result-badge {
     white-space:nowrap; overflow:hidden;
     pointer-events:auto;
 }
-.stadium-ad-logo{ height:15px; width:auto; flex:0 0 auto; }
+.stadium-ad-logo{ height:17px; width:17px; object-fit:contain; flex:0 0 auto; border-radius:3px; }
 .stadium-ad-board span{ overflow:hidden; text-overflow:ellipsis; }
 
 .stadium-ad-board--north{ grid-area:north; }
@@ -695,3 +707,13 @@ recent-match:hover .result-badge {
 .fm-honour--bronze .fm-honour-medal{ background:linear-gradient(145deg,#e0a877,#96603a); }
 .fm-honour-name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fm-honour-season{ color:#8b98ad; font-size:.78rem; }
+
+/* The season, week and day at the top of the Preview tab, beside the kickoff time. */
+.fm-match-calendar{
+    text-align:center; font-size:0.95em; font-weight:700; letter-spacing:0.04em;
+    color:var(--fm-subtle-text,#9fb3c8); margin:0 0 14px;
+}
+
+/* One section per thing a manager sets, so a panel that fails is visible as a failed panel. */
+.fm-setup-section{ margin-bottom:14px; }
+.fm-setup-error{ color:#ffb3b3; margin:0; }

@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -314,6 +315,52 @@ class BrowserSourceSanityTest {
         }
         assertTrue(!source.contains(".stadium-ad-board{") || source.contains("grid-area:"),
                 "the boards are not placed by grid-area at all");
+    }
+
+    @Test
+    @DisplayName("the ground draws all four corners, not two")
+    void allFourCornersAreDrawn() throws IOException {
+        // The owner: the north-west and north-east corners sat inside the north and east stands instead
+        // of in the angle between them, and the two southern corners were not visible at all.
+        //
+        // They were not mis-drawn, they were **absent**: `plan()` rendered two of the four, while the
+        // colour pickers, the legend and the eight buildable sections all carried four. The CSS has held
+        // placements for all four since it was written, which is why nothing about this was ever red.
+        String source = Files.readString(JS_ROOT.resolve("pages/views/stadium-view.js"));
+
+        for (String corner : new String[]{"nw", "ne", "sw", "se"}) {
+            assertTrue(source.contains("stadium-plan-corner--" + corner),
+                    "the " + corner + " corner is not drawn on the ground at all");
+        }
+
+        // And every corner the legend promises is one the plan actually renders, so a fifth corner added
+        // to the legend cannot again be a corner with no pixels.
+        for (String key : new String[]{"northWest", "northEast", "southWest", "southEast"}) {
+            assertTrue(source.contains("s." + key + "CornerColour)"),
+                    "the " + key + " corner has no colour in the plan");
+        }
+    }
+
+    @Test
+    @DisplayName("a corner is a corner section, not a sliver beside the pitch")
+    void theCornersAreSizedLikeCorners() throws IOException {
+        // 18px cells made the corners read as strips tucked inside the stands, which is the reading the
+        // owner gave. They are real sections with a seat count and a price.
+        String css = Files.readString(StaticResourceConfigPath.CSS.resolve("dashboard").resolve("components.css"));
+
+        Matcher columns = Pattern.compile("\\.stadium-plan-middle\\{[^}]*grid-template-columns:\\s*([^;]+);")
+                .matcher(css);
+        assertTrue(columns.find(), "the bowl's middle grid was not found");
+        String columnSizes = columns.group(1).trim();
+        assertFalse(columnSizes.startsWith("18px"),
+                "the corner columns are " + columnSizes + ", which draws them as slivers inside the "
+                        + "stands instead of sections in the angle");
+
+        Matcher rows = Pattern.compile("\\.stadium-plan-middle\\{[^}]*grid-template-rows:\\s*([^;]+);")
+                .matcher(css);
+        assertTrue(rows.find(), "the bowl's middle grid was not found");
+        assertFalse(rows.group(1).trim().startsWith("18px"),
+                "the corner rows are slivers, so the corners read as inside the stands");
     }
 
     private static List<Path> jsFiles() throws IOException {

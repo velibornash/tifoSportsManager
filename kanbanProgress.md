@@ -1,3 +1,38 @@
+## ✅ The ground had two corners missing, and Match Setup was blank (2026-10-12)
+
+Commits to follow.
+
+**The stadium plan, from the owner's report:** the north-west and north-east corners sit *inside* the
+north and east stands instead of in the angle between them, and the two southern corners are not visible
+at all.
+
+**Two defects, one symptom.** `plan()` rendered two of the four corners — south-west and south-east were
+never in the markup — while the colour pickers, the legend and the eight buildable sections all carried
+four, and the API returned all four colours. The data was always there. The CSS has carried
+`grid-area` placements for all four corners since it was written, which is exactly why nothing was ever
+red about it. And the two that were drawn were 18px cells, so they read as slivers beside the pitch rather
+than as sections. They are 30% now, with an outer radius each, and the four sides match, so the eight
+segments read as one bowl.
+
+`BrowserSourceSanityTest` now requires all four corners in the markup, a colour for each, and corner cells
+that are not slivers. Deleting the two southern corners again turns it red on `the sw corner is not drawn on
+the ground at all`.
+
+**The sponsor logo.** The SVG wordmark read as a dark block sitting next to the ground rather than on the
+stand, so it is gone and `logoside.jpg` is used on the boards and beside the input — the owner's own logo,
+as asked. The file is no longer referenced by anything.
+
+**Match Setup showed nothing.** All three panels swallow their errors into `console.warn`, which is right
+for a panel on a working page and wrong when the three panels *are* the page: three swallowed failures
+leave an empty container, so the tab was blank with no heading, no panel and no message. Each panel now has
+a heading, loads into its own body element, and reports its own failure. A missing module is a thrown error
+rather than a silent `return`. The substitution plan says why it is empty when you are away instead of
+leaving nothing.
+
+**Preview carried a kickoff time and no date.** The header had the season, week and day; the tab itself
+did not, so the one screen a manager reads before a match gave him a time and no date. It is at the top of
+the Preview tab now.
+
 ## ✅ A sponsor on the stands, and on the Finance page (2026-10-12)
 
 Commit to follow.

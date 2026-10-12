@@ -193,7 +193,7 @@ export function createStadiumView(deps) {
                             Sponsor on the boards
                         </label>
                         <div class="stadium-sponsor-row">
-                            <img class="stadium-sponsor-preview" src="/images/tifo-ltd.svg" alt="">
+                            <img class="stadium-sponsor-preview" src="/images/logoside.jpg" alt="">
                             <input id="stadium-sponsor-input" class="fm-input" type="text" maxlength="120"
                                    value="${esc(s.sponsor || '')}" placeholder="TIFO Ltd.">
                             <button type="button" class="fm-action-btn secondary" data-stadium-save-sponsor>
@@ -350,7 +350,7 @@ export function createStadiumView(deps) {
         const label = esc(sponsor);
         return ['north', 'west', 'east', 'south'].map(side => `
             <div class="stadium-ad-board stadium-ad-board--${side}" title="${label}">
-                <img class="stadium-ad-logo" src="/images/tifo-ltd.svg" alt="">
+                <img class="stadium-ad-logo" src="/images/logoside.jpg" alt="">
                 <span>${label}</span>
             </div>`).join('');
     }
@@ -368,11 +368,24 @@ export function createStadiumView(deps) {
                 <div class="stadium-plan-strip stadium-plan-strip--west" style="background:${c(s.westColour)}"
                      title="West stand"></div>
                 <div class="stadium-plan-middle">
+                    <!--
+                        All four corners, in the angle between the two stands they sit in.
+
+                        Two of them were never drawn: the page rendered north-west and north-east only,
+                        so south-west and south-east existed in the colour pickers, in the legend and
+                        among the eight buildable sections, and appeared nowhere on the ground itself.
+                        The CSS has carried placements for all four since it was written, which is how a
+                        half-drawn ground stayed green in every test.
+                    -->
                     <div class="stadium-plan-corner stadium-plan-corner--nw" style="background:${c(s.northWestCornerColour)}"
                          title="North-west corner"></div>
-                    <div class="stadium-plan-turf"></div>
                     <div class="stadium-plan-corner stadium-plan-corner--ne" style="background:${c(s.northEastCornerColour)}"
                          title="North-east corner"></div>
+                    <div class="stadium-plan-turf"></div>
+                    <div class="stadium-plan-corner stadium-plan-corner--sw" style="background:${c(s.southWestCornerColour)}"
+                         title="South-west corner"></div>
+                    <div class="stadium-plan-corner stadium-plan-corner--se" style="background:${c(s.southEastCornerColour)}"
+                         title="South-east corner"></div>
                 </div>
                 <div class="stadium-plan-strip stadium-plan-strip--east" style="background:${c(s.eastColour)}"
                      title="East stand"></div>
