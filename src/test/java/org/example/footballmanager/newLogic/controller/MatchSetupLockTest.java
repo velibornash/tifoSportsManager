@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -141,6 +142,37 @@ class MatchSetupLockTest extends BaseTest {
                         .contentType("application/json")
                         .content(tacticsPayload()))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("the page can be told, before the manager tries, that his match is closed")
+    void theLockIsReadableWithoutTrying() throws Exception {
+        // A 423 only reaches a manager who has already tried to save something, and a disabled button
+        // with no explanation is worse than either: it reads as a broken game. The page needs to ask.
+        mockMvc.perform(get("/teams/{id}/match-lock", home.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, home)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locked").value(false));
+
+        prepareTodaysFixture();
+
+        mockMvc.perform(get("/teams/{id}/match-lock", home.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, home)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locked").value(true))
+                .andExpect(jsonPath("$.homeOrAway").value("HOME"))
+                .andExpect(jsonPath("$.opponent").value(away.getName()))
+                // Day 3 is the 19:00 league slot. The hour comes from the calendar, not from a literal.
+                .andExpect(jsonPath("$.kickoffHour").value(19))
+                .andExpect(jsonPath("$.reason").isNotEmpty());
+
+        // The same question from the other side must answer about the same match, not the other one.
+        mockMvc.perform(get("/teams/{id}/match-lock", away.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, away)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.locked").value(true))
+                .andExpect(jsonPath("$.homeOrAway").value("AWAY"))
+                .andExpect(jsonPath("$.opponent").value(home.getName()));
     }
 
     @Test

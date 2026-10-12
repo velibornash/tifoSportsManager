@@ -379,11 +379,19 @@ decided match. A fixture that is computed and not published is exactly that fact
 - [x] The away side is locked too — which side a club is drawn must not decide whether it is locked.
 - [x] Open again at kickoff: a published fixture is not a lock, and a club with no match in the hour is
       never locked.
-- [ ] The **squad** and **orders** writes do not exist yet. They arrive with T-MATCH-5 and T-MATCH-6 and
-      must call `MatchLockService` — that is the contract, and it is the thing to check when they land.
-- [ ] The lock is **not in the browser yet**. Nothing shows a manager that his match is closed, and the
-      423 is only visible if he happens to save something and read the error. Needs the reason, the
-      opponent and the kickoff time on the match page.
+- [x] **The squad and the orders both had the hole, and both are closed.** The squad page's `editable`
+      flag was `!fixture.isPlayed()` — and a **prepared fixture is not played**, so the one page where a
+      manager picks his eleven was the one page still accepting changes. The orders page used a one-hour
+      time cutoff and knew nothing about the prepare lock, so it said "open for another 45 minutes" about
+      a match decided an hour ago. Both now refuse on `isPrepared()`, asked at the fixture so a manager
+      with two fixtures in a week is refused for the decided one and not the other.
+- [x] **It is in the browser.** `GET /teams/{id}/match-lock` is the question the pages ask before they
+      offer to change anything; `renderMatchLockBanner` names the opponent, the day and the kickoff hour,
+      and the tactic editor's Save reads *"Closed until kick-off"* instead of failing on click. The squad
+      page shows the same reason in its existing "Closed" line, and carries `lockedAt`.
+- [ ] **A behaviour change to note:** a closed plan now answers **423 Locked** where it answered 400.
+      Both are non-2xx so the browser is unaffected, and 400 always meant "malformed request", which it
+      never was.
 - [ ] The engine reads the locked state rather than the club's live settings. With today's club-level
       model this is true by construction — the result was computed from the settings as they were, and
       nothing can change them afterwards. It stops being true the moment tactics become per-match in

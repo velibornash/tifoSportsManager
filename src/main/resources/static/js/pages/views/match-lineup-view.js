@@ -70,7 +70,9 @@ export function createMatchLineupView(deps) {
                             ? (plan.perMatch
                                 ? 'Saved for this fixture.'
                                 : 'Showing your default eleven — save to pick a different one for this match.')
-                            : '<strong>Closed</strong> — the team has been picked.'}</p>
+                            : (plan.lockReason
+                                ? `<strong>Closed</strong> — ${htmlEscape(plan.lockReason)}`
+                                : '<strong>Closed</strong> — the team has been picked.')}</p>
                 </div></div>
 
                 ${warnings.length ? `

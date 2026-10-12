@@ -46,6 +46,7 @@ public class MatchLineupController {
     private final MatchLineupService lineups;
     private final SquadRegistrationService squadRegistration;
     private final TeamRepository teams;
+    private final org.example.footballmanager.newLogic.service.MatchLockService lockReasons;
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(
@@ -76,7 +77,14 @@ public class MatchLineupController {
         view.put("opponentName", "HOME".equals(sideOf(fixture, club))
                 ? nameOf(fixture.getAwayTeam()) : nameOf(fixture.getHomeTeam()));
         view.put("kickoff", fixture.getMatchDate() == null ? null : fixture.getMatchDate().toString());
-        view.put("editable", !fixture.isPlayed());
+        // A prepared fixture is NOT played, so `!isPlayed()` said yes to every edit during the hour
+        // before kickoff - which is exactly the hour the owner closed. The screen already honours this
+        // flag, so the whole fix is here.
+        view.put("editable", !fixture.isPlayed() && !fixture.isPrepared());
+        if (fixture.isPrepared()) {
+            view.put("lockReason", lockReasons.refusalReason(fixture));
+            view.put("lockedAt", fixture.getPreparedAt());
+        }
         view.put("formation", chosen == null ? "4-4-2" : chosen.getFormation());
         view.put("starters", idsOf(chosen, true));
         view.put("bench", idsOf(chosen, false));
@@ -125,6 +133,13 @@ public class MatchLineupController {
         if (!playsIn(fixture, club)) {
             return ResponseEntity.badRequest().body(Map.of("error", "NOT_IN_THIS_FIXTURE",
                     "message", "Your club is not playing in this fixture."));
+        }
+        // The same lock as the tactic editor, asked at the fixture rather than the club: a manager with
+        // two fixtures in a week is refused for the one that is decided and not for the one that is not.
+        if (fixture.isPrepared()) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
+                    .body(Map.of("error", "MATCH_CLOSED",
+                            "message", lockReasons.refusalReason(fixture)));
         }
 
         try {

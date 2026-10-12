@@ -184,7 +184,12 @@ void saveReplaces() throws Exception {
                         .header("Authorization", bearer)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"rules\":\"[A]\"}"))
-                .andExpect(status().isBadRequest())
+                // 423 Locked, not 400. It used to be 400 for the time cutoff alone, and 423 is now
+                // used for the other reason a plan closes - the match was computed an hour early. Two
+                // statuses for one meaning ("you may not write this now") is a distinction no client
+                // can act on, and both are non-2xx, so the browser's handling is unchanged. 400 meant
+                // "this request was malformed"; it was never true.
+                .andExpect(status().isLocked())
                 .andExpect(jsonPath("$.error").value("PLAN_CLOSED"))
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("already picked")));

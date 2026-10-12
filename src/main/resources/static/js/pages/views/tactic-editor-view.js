@@ -1,5 +1,5 @@
 // pages/views/tactic-editor-view.js
-import { htmlEscape } from './utils.js';
+import { htmlEscape, fetchMatchLock, renderMatchLockBanner, isPageLocked } from './utils.js';
 
 export function createTacticEditorView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml } = deps;
@@ -22,6 +22,12 @@ export function createTacticEditorView(deps) {
             return;
         }
         const editor = await editorRes.json();
+
+        // An hour before kickoff the match has been computed. The server refuses the save with 423
+        // either way; this asks first so the page can say why, rather than letting a manager find out
+        // by pressing Save and being told "locked" with no explanation.
+        const matchLock = await fetchMatchLock(authFetch, getTeamId());
+        const locked = isPageLocked(matchLock);
 
         let draft = null;
         try { const raw = localStorage.getItem(DRAFT_KEY); if (raw) draft = JSON.parse(raw); } catch (_) { draft = null; }
@@ -186,7 +192,12 @@ export function createTacticEditorView(deps) {
             const clearSlotBtn = document.getElementById('te-clear-slot'); if (clearSlotBtn) clearSlotBtn.addEventListener('click', () => { clearFocusedSlotRules(); render(); });
             const discardDraftBtn = document.getElementById('te-discard-draft'); if (discardDraftBtn) discardDraftBtn.addEventListener('click', async () => { localStorage.removeItem(DRAFT_KEY); await loadTacticEditor(); });
             const saveBtn = document.getElementById('te-save-btn');
-            if (saveBtn) {
+            if (saveBtn && locked) {
+                // Presentation, not security: the PUT is refused regardless. A button that looks live
+                // and fails on click is the thing the banner exists to prevent.
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Closed until kick-off';
+            } else if (saveBtn) {
                 saveBtn.addEventListener('click', async () => {
                     saveBtn.disabled = true;
                     try {
@@ -211,6 +222,7 @@ export function createTacticEditorView(deps) {
 
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--club">
+                    ${locked ? renderMatchLockBanner(matchLock) : ''}
                     <section class="fm-panel fm-club-hero">
                         <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                         <div class="fm-club-hero-main">

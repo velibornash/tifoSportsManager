@@ -197,6 +197,45 @@ does not add it back.
   afterwards. It stops being true the moment tactics become per-match in T-MATCH-3, which is where a
   snapshot has to be stored.
 
+## ✅ The lock is in the browser, and it closes the two pages it had missed (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-2**, finished. The tactic editor was locked last commit and the other two
+match-setup pages were **not**, and the reason is the same in both: each asked a question that was true
+about everything except the one hour that matters.
+
+**The squad page.** `MatchLineupController` set `editable = !fixture.isPlayed()` — and **a prepared
+fixture is not played**. The hour before kickoff is precisely the hour that predicate is wrong, so the
+page where a manager picks his eleven was the page still accepting changes. The screen already honoured
+`editable`, so the flag was the entire bug. The write endpoint refused nothing at all.
+
+**The orders page.** `SubstitutionPlanController` had a one-hour time cutoff and `isPlayed`, and knew
+nothing about the prepare lock. A decided match whose kickoff is still an hour away looked open, and the
+refusal message would have said *"closed 45 minute(s) before kickoff"* about a match settled an hour
+ago — the right arithmetic for the wrong question. Each reason now names itself.
+
+**Both ask at the fixture, not at the club.** A manager with two fixtures in a week is refused for the
+one that is decided and not for the one that is not; the club-level question could not tell them apart.
+
+**In the browser.** `GET /teams/{id}/match-lock` is what the pages ask before offering to change
+anything — a separate endpoint because three pages need it and none is the other's business.
+`renderMatchLockBanner` names the opponent, the day and the kickoff hour, because a disabled button with
+no explanation reads as a broken game. The tactic editor's Save reads *"Closed until kick-off"* rather
+than failing on click; the squad page puts the reason into the "Closed" line it already had, and carries
+`lockedAt` so a manager can see when his match was closed, not only that it is.
+
+**A status change worth naming.** A closed plan answers **423 Locked** where it answered 400. Two reasons
+to close, and one meaning — "you may not write this now" — is not worth two statuses; 400 also always
+meant "malformed request", which it never was. Both are non-2xx, so no browser behaviour changes.
+`SubstitutionPlanFixtureKeyTest.closesAnHourBeforeKickoff` asserted the old 400 and was updated with the
+reasoning above in place of the assertion.
+
+Mutations: reverting the squad guard turns `closedOnceTheMatchIsComputed` red with
+`"editable" expected:<false> but was:<true>` and `savingIsRefusedOnceTheMatchIsComputed` red.
+
+**Still not done, and on the board:** T-MATCH-3 through T-MATCH-6 — the tactics editor, three tactics per
+match, the squad page's own features, and the orders page with the owner's caps of 20 substitution orders
+and 10 tactic swaps per match.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

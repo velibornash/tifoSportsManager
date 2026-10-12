@@ -599,6 +599,48 @@ public class TeamController {
     }
 
     /**
+     * Whether this club's next match is already decided, for the pages that must not offer to change it.
+     *
+     * <p>An hour before kickoff the match has been computed, and everything a manager could still change
+     * about it is a fiction. The server refuses those writes with 423; this is the other half, so the
+     * page can say so <em>before</em> he tries — with the opponent, the day and the kickoff hour, because
+     * a disabled button with no explanation is the thing that makes a manager think the game is broken.
+     *
+     * <p>A separate endpoint rather than a field on the tactics or lineup payload, because three pages
+     * need this and none of them is the other two's business: the tactic editor, the squad page, and the
+     * match page itself.
+     *
+     * @return {@code locked} false when the club has nothing to protect, in which case the rest is absent
+     */
+    @GetMapping("/{teamId}/match-lock")
+    public ResponseEntity<Map<String, Object>> matchLock(@PathVariable Long teamId) {
+        var lock = matchLocks.lockFor(teamId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (lock.isEmpty()) {
+            out.put("locked", false);
+            return ResponseEntity.ok(out);
+        }
+
+        org.example.footballmanager.newLogic.model.MatchFixture fixture = lock.get();
+        Long teamIdHome = fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getId();
+        boolean isHome = teamIdHome != null && teamIdHome.equals(teamId);
+        org.example.footballmanager.newLogic.model.Team opponent =
+                isHome ? fixture.getAwayTeam() : fixture.getHomeTeam();
+        Integer kickoffHour = fixture.getDayNumber() == null
+                ? null
+                : org.example.footballmanager.newLogic.model.GameDay.of(fixture.getDayNumber()).kickoffHour();
+
+        out.put("locked", true);
+        out.put("reason", matchLocks.refusalReason(fixture));
+        out.put("fixtureId", fixture.getId());
+        out.put("opponent", opponent == null ? null : opponent.getName());
+        out.put("homeOrAway", isHome ? "HOME" : "AWAY");
+        out.put("day", fixture.getDayNumber());
+        out.put("kickoffHour", kickoffHour);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
      * Whether this caller may change <b>this</b> club.
      *
      * <p>Fails closed: no principal, no club id, no club and a caller who is neither its manager nor an

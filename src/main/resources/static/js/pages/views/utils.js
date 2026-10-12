@@ -568,3 +568,62 @@ export async function fetchPlayerRatingSummary(playerId, authFetch) {
         return unknown;
     }
 }
+
+/**
+ * Asks whether this club's next match has already been decided.
+ *
+ * <p>An hour before kickoff the match is computed and everything a manager could still change about it
+ * is a fiction. The server refuses those writes with 423; this asks first, so the page can say so with
+ * the opponent and the kickoff hour instead of letting a manager discover it by saving something.
+ *
+ * <p>Never throws. A page that cannot learn whether it is locked must still draw — a banner is worth
+ * having, a blank tactic editor because the lock call failed is not.
+ *
+ * @returns {Promise<{locked: boolean, reason?: string, opponent?: string, kickoffHour?: number}>}
+ */
+export async function fetchMatchLock(authFetch, teamId) {
+    if (!teamId) return { locked: false };
+    try {
+        const response = await authFetch(`/teams/${teamId}/match-lock`);
+        if (!response || !response.ok) return { locked: false };
+        const lock = await response.json();
+        return lock && typeof lock === 'object' ? lock : { locked: false };
+    } catch (_) {
+        return { locked: false };
+    }
+}
+
+/**
+ * The banner a locked page shows instead of an unexplained disabled button.
+ *
+ * <p>Names the opponent and the kickoff hour, because a manager who cannot change his lineup for the
+ * hour before kickoff deserves to know which match and how long he has, and "locked" on its own reads
+ * as a bug rather than as the game's own rule.
+ *
+ * @returns {string} HTML, empty when the club is not locked
+ */
+export function renderMatchLockBanner(lock) {
+    if (!lock || !lock.locked) return '';
+    const when = typeof lock.kickoffHour === 'number'
+        ? ` Kick-off is day ${lock.day} at ${lock.kickoffHour}:00.`
+        : '';
+    return `<div class="fm-panel" style="border-left:4px solid #b8860b; margin-bottom:16px;">
+                <div style="padding:14px 16px;">
+                    <strong>This match is closed.</strong>
+                    ${htmlEscape(lock.reason || 'Your match has already been decided.')}${when}
+                    Tactic changes, the eleven and the orders can be set again after the match.
+                </div>
+            </div>`;
+}
+
+/**
+ * Whether a save button on a locked page should be inert.
+ *
+ * <p>The server refuses these writes with 423 regardless, so this is presentation and not security — but
+ * a button that looks live and fails on click is the exact thing the banner is meant to prevent.
+ *
+ * @returns {boolean} true when the page must not offer to save
+ */
+export function isPageLocked(lock) {
+    return !!(lock && lock.locked);
+}

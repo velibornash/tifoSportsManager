@@ -95,13 +95,8 @@ public class SubstitutionPlanController {
         MatchFixture fixture = found.get();
 
         if (!isStillEditable(fixture)) {
-            long minutesToKickoff = fixture.getMatchDate() == null ? CUTOFF.toMinutes()
-                    : java.time.Duration.between(java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes();
-            return ResponseEntity.badRequest().body(Map.of(
-                    "error", "PLAN_CLOSED",
-                    "message", "Substitutions closed "
-                            + Math.max(0, minutesToKickoff) + " minute(s) before kickoff. "
-                            + "The team is already picked."));
+            return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
+                    .body(Map.of("error", "PLAN_CLOSED", "message", whyClosed(fixture)));
         }
 
         // Parse, validate, and refuse — in that order. (T1-16.)
@@ -217,7 +212,35 @@ public class SubstitutionPlanController {
         // record. Writing it would be accepted and would change nothing, which is the worst of the three
         // outcomes: it looks like it worked.
         if (fixture.isPlayed()) return false;
+
+        // **The same lock as the tactic editor and the squad page, asked at the fixture.**
+        //
+        // The cutoff below was the only deadline here, and it is the wrong one on its own: a matchday is
+        // computed an hour before kickoff and this is the one page where a manager writes instructions
+        // about the coming minutes. A fixture that has been decided and is merely not yet played still
+        // has its kickoff in the future, so the cutoff said "open" through the exact hour the owner
+        // closed, and the rule a manager wrote could not have reached the match.
+        if (fixture.isPrepared()) return false;
+
         return fixture.getMatchDate() == null || java.time.Duration.between(
                 java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes() > CUTOFF.toMinutes();
+    }
+
+    /**
+     * Why the plan cannot be written, in the manager's words.
+     *
+     * <p>The old message always spoke in minutes to kickoff, which is the wrong arithmetic for a match
+     * that was computed early: it would have said "open for another 45 minutes" about a match decided an
+     * hour ago. Each reason now names itself.
+     */
+    private String whyClosed(MatchFixture fixture) {
+        if (fixture.isPrepared()) {
+            return "This match has already been decided, so its substitutions and orders are closed. "
+                    + "They can be set again after kick-off.";
+        }
+        long minutesToKickoff = fixture.getMatchDate() == null ? CUTOFF.toMinutes()
+                : java.time.Duration.between(java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes();
+        return "Substitutions closed " + Math.max(0, minutesToKickoff)
+                + " minute(s) before kickoff. The team is already picked.";
     }
 }
