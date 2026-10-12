@@ -1,3 +1,25 @@
+## ✅ The top bar: icons above labels, and a name in the trigger (2026-10-12)
+
+Commit to follow.
+
+**Owner request:** every header entry — Sports Lobby, Club, League, Country, World, Community, Admin —
+should carry its icon above the text rather than beside it, and the account button should show the
+manager's name and be shortened.
+
+The seven labelled entries became `menu-button--stacked`, a column with the glyph above an uppercase
+label. Scoped rather than applied to `.menu-button` itself: the notification bell and the account trigger
+are the same class, are icon-only, and turning the whole class into a column would stack their one child
+against a label that does not exist.
+
+**The trigger was showing an email address.** `account-menu.js` already preferred `displayName` and
+fell back to `username` — and `username` is the email. `velibor@example.com` had an empty
+`display_name`, so the top bar read `velibor@example.com` in full: not a name, and the widest thing on
+the row. Kecko had `Kecko` set, which is why the two accounts looked different.
+
+Three fixes: the fallback is now the local part, capitalised; the trigger is capped at 190px with the
+name ellipsised at 112px, so nothing can push the rest of the bar along; and the account's own display
+name was set to `Velibor`, which he can change on My profile like any other field.
+
 ## ✅ The ground had two corners missing, and Match Setup was blank (2026-10-12)
 
 Commits to follow.

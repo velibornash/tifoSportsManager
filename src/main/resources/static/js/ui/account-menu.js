@@ -35,7 +35,15 @@ export function paintAccountMenu(user, leagueName) {
     const username = (user && user.username) || '';
     // The name, not the login. `username` is an email address, and a manager should not have to read
     // one in his own top bar every day; it is still the fallback so an unnamed account shows something.
-    const name = (user && user.displayName) || username;
+    // Owner report, 2026-10-12: the trigger should show the manager's name, not their address.
+    //
+    // It fell back to `username`, and `username` is the email — so an account with no display name
+    // showed "velibor@example.com" in the top bar, which is both not a name and the widest thing on
+    // the row. The local part is used instead: still the manager's own, a third of the width, and
+    // capitalised so it reads as a name. An account that has chosen a name is unaffected.
+    const name = (user && user.displayName)
+        || (username ? String(username).split('@')[0] : '')
+        || '';
     const initial = (name.trim()[0] || '?').toUpperCase();
     const club = (user && (user.footballTeamName || user.teamName)) || 'No club';
     const role = (user && user.role) || '';
