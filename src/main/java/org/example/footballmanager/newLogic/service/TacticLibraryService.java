@@ -205,31 +205,81 @@ public class TacticLibraryService {
     }
 
     /**
+     * The last column of the editor grid, which is what a mirror reflects about.
+     *
+     * <p>The playable grid is <b>six columns wide and seven rows deep</b>, 0-based: {@code TacticsRules
+     * .ballStateKey} clamps the column to 0–5 with the touchlines outside, and {@code parseCell} turns
+     * {@code CELL_r_c} into the physical centre {@code (r + 1.5, c + 1.5)}. So column 0 is the left
+     * touchline and column 5 the right.
+     *
+     * <p>Six columns is an <b>even</b> width, which has a consequence worth stating: there is no centre
+     * column, and every column pairs with a different one. An earlier version of this reflected about 3
+     * and left the middle column alone, which is what a 7-wide pitch would want and is wrong here — it
+     * mapped 1↔3 instead of 1↔4 and silently left columns 0 and 5 exactly where they were.
+     */
+    private static final int LAST_EDITOR_COLUMN = 5;
+
+    /**
      * Swaps the column of every {@code targetCellKey}, leaving rows and every other field alone.
      *
-     * <p>Written as a text rewrite rather than a parse-and-reserialise because the rules are authored JSON
-     * that a manager may have written by hand, and a round trip through a parser would reformat every
-     * line of it. Only the cell key is touched, and only when it matches the shape.
+     * <p><b>Rows are not mirrored.</b> This is a left-right flip — the same shape playing the other way
+     * across the pitch — not a goal-to-goal one. Flipping rows as well would produce a tactic that
+     * defends where it attacks.
+     *
+     * <p>Written as a text rewrite rather than a parse-and-reserialise because these rules are authored
+     * JSON a manager may have written by hand, and a round trip through a parser would reformat every
+     * line of it. Only the cell key is touched, and only when it names a column this grid actually has.
      */
     static String mirrorRules(String rulesJson) {
         if (rulesJson == null || rulesJson.isBlank()) {
             return rulesJson;
         }
+        return mirrorCorners(mirrorCells(rulesJson));
+    }
+
+    /**
+     * Swaps the column of every {@code CELL_r_c}, leaving the row alone.
+     *
+     * <p>Six columns is an <b>even</b> width, so there is no centre column and every column pairs with a
+     * different one: 0↔5, 1↔4, 2↔3. An earlier version reflected about column 3 and left anything
+     * outside 1–3 untouched, which mapped 1↔3 instead of 1↔4 and silently kept columns 0 and 5 as they
+     * were. Its test passed because every cell in it was in the three columns that version happened to
+     * handle.
+     */
+    private static String mirrorCells(String json) {
         java.util.regex.Pattern cell = java.util.regex.Pattern.compile("CELL_(\\d)_(\\d)");
-        java.util.regex.Matcher matcher = cell.matcher(rulesJson);
+        java.util.regex.Matcher matcher = cell.matcher(json);
         StringBuilder out = new StringBuilder();
         while (matcher.find()) {
             int row = Integer.parseInt(matcher.group(1));
             int column = Integer.parseInt(matcher.group(2));
-            // Three columns: 1 and 3 exchange, 2 is its own mirror image. A cell outside that is left
-            // exactly as it was, because guessing at an unfamiliar shape would corrupt it.
-            String mirrored = column < 1 || column > 3
+            // A column outside the vocabulary is left exactly as it is. The editor only ever offers
+            // 0–5, so this is a guard against hand-edited JSON rather than a rule of the game.
+            String mirrored = column < 0 || column > LAST_EDITOR_COLUMN
                     ? matcher.group(0)
-                    : "CELL_" + row + "_" + (4 - column);
+                    : "CELL_" + row + "_" + (LAST_EDITOR_COLUMN - column);
             matcher.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(mirrored));
         }
         matcher.appendTail(out);
         return out.toString();
+    }
+
+    /**
+     * Swaps the four corner states, left for right.
+     *
+     * <p>Corners are not cells — {@code FormationSlotCatalog} lists them as named ball states beside the
+     * grid — and they carry the side in the name. A rule written for the attacking left corner mirrors
+     * to the attacking <em>right</em> corner, and mirroring only the cells would have quietly left every
+     * corner rule pointing at the corner the manager was deliberately not using.
+     */
+    private static String mirrorCorners(String json) {
+        String out = json;
+        for (String phase : new String[]{"ATTACK", "DEFEND"}) {
+            out = out.replace(phase + "_LEFT_CORNER", phase + "\u0000CORNER")
+                    .replace(phase + "_RIGHT_CORNER", phase + "_LEFT_CORNER")
+                    .replace(phase + "\u0000CORNER", phase + "_RIGHT_CORNER");
+        }
+        return out;
     }
 
     /** Promotes one of a club's tactics to be its default, demoting whatever held it. */

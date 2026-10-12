@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.model.tactics.Tactic;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.repository.TacticRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -341,38 +342,114 @@ class TacticLibraryServiceTest {
     }
 
     @Test
-    @DisplayName("mirror swaps the flanks and leaves the middle column alone")
-    void mirrorSwapsLeftAndRight() {
-        // Sokker's Mirror: the same shape, playing the other way. Cells are CELL_<row>_<col>, so the
-        // mirror is the column and nothing else - CELL_1_1 with CELL_1_3, and CELL_r_2 where it stands.
+    @DisplayName("mirror agrees with the perspective transformer the engine already uses")
+    void mirrorAgreesWithTheEnginesOwnMirror() {
+        // **The test this should have had from the start.**
+        //
+        // The first mirror implementation reflected about column 3 and left anything outside columns 1–3
+        // untouched. Its test passed — because every cell in it was CELL_1_1, CELL_1_2 or CELL_1_3, the
+        // three columns that formula happened to handle. The engine's own mirror is
+        // `TacticalPerspectiveTransformer`: `8 - physical column`. Deriving the expectation from THAT
+        // rather than from the implementation is what catches a mirror that is merely self-consistent.
+        //
+        // parseCell turns CELL_r_c into the physical centre (r + 1.5, c + 1.5), and the AWAY mirror is
+        // `8 - column`, so mirroring an editor cell must land on 8 - (c + 1.5) - 1.5 = 5 - c.
+        for (int column = 0; column <= 5; column++) {
+            String key = "CELL_2_" + column;
+            String mirrored = TacticLibraryService.mirrorRules(
+                    "[{\"targetCellKey\":\"" + key + "\"}]");
+
+            double physical = column + 1.5;
+            double mirroredPhysical = 8.0 - physical;
+            int expected = (int) Math.round(mirroredPhysical - 1.5);
+
+            Assertions.assertThat(mirrored).as("mirroring %s", key).contains("CELL_2_" + expected);
+            Assertions.assertThat(mirrored).as("a six-wide grid has no fixed column, so %s must move", key)
+                    .doesNotContain("CELL_2_" + column);
+        }
+    }
+
+    @Test
+    @DisplayName("mirror is correct for every cell the editor actually offers")
+    void mirrorIsCorrectForEveryCellTheEditorOffers() {
+        // **The test whose absence cost the most.** The first mirror reflected about column 3 and left
+        // columns outside 1–3 alone; its test used CELL_1_1, CELL_1_2 and CELL_1_3 — exactly the columns
+        // that version handled — and was green.
+        //
+        // So this iterates the editor's REAL vocabulary, taken from FormationSlotCatalog rather than
+        // written out here, and checks two things per cell against the engine's own mirror
+        // (`TacticalPerspectiveTransformer`: 8 - physical column, with parseCell giving (c + 1.5)):
+        //
+        //   - it lands on the cell the engine would mirror it to;
+        //   - it is a cell the editor could name.
+        //
+        // Adding a column to the editor without teaching the mirror about it fails here.
+        List<String> offered = new org.example.footballmanager.demo.service.tactics
+                .FormationSlotCatalog().getSupportedTargetCells();
+
+        assertTrue(offered.size() >= 40, "the vocabulary should be the 7x6 grid, got " + offered.size());
+
+        for (String cell : offered) {
+            String[] parts = cell.split("_");
+            int row = Integer.parseInt(parts[1]);
+            int column = Integer.parseInt(parts[2]);
+
+            String mirrored = TacticLibraryService.mirrorRules("[{\"targetCellKey\":\"" + cell + "\"}]");
+
+            double physical = column + 1.5;
+            int expected = (int) Math.round((8.0 - physical) - 1.5);
+
+            Assertions.assertThat(mirrored)
+                    .as("mirroring %s should reach CELL_%d_%d", cell, row, expected)
+                    .contains("CELL_" + row + "_" + expected);
+
+            Assertions.assertThat(offered)
+                    .as("mirroring %s produced CELL_%d_%d, which the editor cannot name",
+                            cell, row, expected)
+                    .contains("CELL_" + row + "_" + expected);
+        }
+    }
+
+    @Test
+    @DisplayName("mirror swaps the corners, which carry the side in their name")
+    void mirrorSwapsTheCorners() {
+        // Corners are named states rather than cells, so a mirror that only touched CELL_r_c would leave
+        // every corner rule pointing at the corner the manager was deliberately not using.
+        String rules = "[{\"ballStateKey\":\"ATTACK_LEFT_CORNER\",\"targetCellKey\":\"CELL_2_1\"},"
+                + "{\"ballStateKey\":\"DEFEND_RIGHT_CORNER\",\"targetCellKey\":\"CELL_4_4\"}]";
+
+        String mirrored = TacticLibraryService.mirrorRules(rules);
+
+        Assertions.assertThat(mirrored).contains("ATTACK_RIGHT_CORNER").doesNotContain("ATTACK_LEFT_CORNER");
+        Assertions.assertThat(mirrored).contains("DEFEND_LEFT_CORNER").doesNotContain("DEFEND_RIGHT_CORNER");
+        // And the cells inside those rules mirrored as well.
+        Assertions.assertThat(mirrored).contains("CELL_2_4").contains("CELL_4_1");
+    }
+
+    @Test
+    @DisplayName("mirror flips the flanks and leaves the rows alone")
+    void mirrorFlipsTheFlanksAndLeavesTheRows() {
         String rules = "["
                 + "{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"},"
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_0\"},"
                 + "{\"slotKey\":\"CMR\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_2\"},"
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_5\"},"
                 + "{\"slotKey\":\"ML\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_3\"},"
-                + "{\"slotKey\":\"STR\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_2_2\"}]";
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_3_2\"}]";
         library.save(club.getId(), "Left bias", "4-4-2", "Balanced", rules, null, true);
 
         Tactic mirrored = library.mirror(club.getId(), library.forTeam(club.getId()).get(0).getId());
 
-        // Exact equality, not "contains". A first version asserted with || over both directions and
-        // passed on a copy that had been mirrored not at all - every disjunction was already satisfied
-        // by the source, so it measured nothing.
-        String expected = "["
-                + "{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_3\"},"
-                + "{\"slotKey\":\"CMR\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_2\"},"
-                + "{\"slotKey\":\"ML\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"},"
-                + "{\"slotKey\":\"STR\",\"possessionContext\":\"WE_HAVE_BALL\","
-                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_2_2\"}]";
-
-        assertEquals(expected, mirrored.getRulesJson(),
-                "every cell should have swapped columns and nothing else should have moved");
+        // The left touchline and the right touchline exchange; row 3 stays row 3, because this is a
+        // left-right flip and not a goal-to-goal one.
+        assertEquals("["
+                        + "{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                        + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_5\"},"
+                        + "{\"slotKey\":\"CMR\",\"possessionContext\":\"WE_HAVE_BALL\","
+                        + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_0\"},"
+                        + "{\"slotKey\":\"ML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                        + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_3_3\"}]",
+                mirrored.getRulesJson());
         assertEquals("4-4-2", mirrored.getFormation(), "mirroring changes the direction, not the shape");
     }
 

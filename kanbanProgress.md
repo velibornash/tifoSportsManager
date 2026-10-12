@@ -321,6 +321,52 @@ and no agent-browser, so I could exercise the API the page calls but not its ren
 handlers. `node --check` proves the file parses and nothing more. The shelf may well be wrong in ways no
 test here would show, and it should not be trusted until somebody has looked at it.
 
+## 🔴 Mirror was reflecting about the wrong axis, and I should have asked (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-3**. A correction, written down because the wrong version was reported as working.
+
+**What I said last time was wrong.** I reported "mirror swaps `CELL_1_1` → `CELL_1_3`, a real
+transformation". It was a real transformation, of the **wrong** pitch.
+
+**What was wrong.** The first implementation reflected about column 3 and left anything outside columns
+1–3 untouched. It mapped 1↔3 and silently kept columns 0, 4, 5 and 6 exactly where they were. The
+playable grid is six columns wide, so the pairs are 0↔5, 1↔4, 2↔3, and **there is no centre column at
+all** — six is even. My formula mapped the left touchline onto the middle of the pitch.
+
+**Why the tests were green.** Every cell in them was `CELL_1_1`, `CELL_1_2` or `CELL_1_3` — precisely the
+three columns the broken formula handled. A test built from hand-picked examples of the thing that is
+broken is the worst kind: it is not short, it is not unclear, and it measures the bug.
+
+**Where the right answer came from — not from me.**
+- `FormationSlotCatalog.buildTargetCells()` generates the editor's whole vocabulary:
+  `for (r = 0; r < 7; r++) for (c = 0; c < 6; c++)` — **7 rows × 6 columns**, columns 0–5.
+- `TacticsRules.parseCell` turns `CELL_r_c` into the physical centre `(r + 1.5, c + 1.5)`.
+- `TacticalPerspectiveTransformer` mirrors AWAY as `8 - physical column`.
+- `PROPOSAL_CURRENT_STATE.md:52` records the axis as **col 4.0**, and col 3.5 as a **fixed P0 bug** — so
+  the engine's mirror was already correct and my "fix" was the one introducing the error.
+
+Composing those: mirroring an editor cell must land on `8 - (c + 1.5) - 1.5` = **`5 - c`**.
+
+**The question I nearly asked does not exist.** I was about to ask what Mirror should do with a rule
+pointing into an out-of-bounds column, since the editor keys in use span columns 0–6. They do not: the
+`CELL_*_6` strings live only in a demo diagnostics JSON and are never offered. Corners are not cells at
+all — they are four named ball states.
+
+**And that reading found a real gap I had not looked for.** Corners carry the side in their name
+(`ATTACK_LEFT_CORNER`), so a mirror that only rewrote `CELL_r_c` left every corner rule pointing at the
+corner the manager was deliberately not using. `mirrorCorners` swaps them now.
+
+**The test that should have existed from the start**
+(`mirrorIsCorrectForEveryCellTheEditorOffers`) iterates the **real vocabulary** taken from
+`FormationSlotCatalog`, and for every cell checks two things against the engine's own definition: it
+lands where `8 - physical` says it should, and the cell it lands on is one the editor can name. Adding a
+column to the editor without teaching the mirror about it fails that test. Mutation: restoring
+`LAST_EDITOR_COLUMN = 3` and skipping the corner swap turns **four** tests red.
+
+**The lesson, on the board because it is the second time in two days:** a test written from examples I
+picked myself proved nothing about the space. The first instance was the `||` assertions on mirror cells;
+this one was picking three columns out of six.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

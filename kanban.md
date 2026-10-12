@@ -415,9 +415,18 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
       A manager working on his tenth must not be told the library is full.
 - [x] **Copy — the owner's "create based on"** — creates a separate row, so editing the copy cannot reach
       its source.
-- [x] **Mirror** is a real transformation, not a copy. Cells are `CELL_<row>_<col>`, so the mirror is the
-      column: `CELL_1_1` and `CELL_1_3` exchange and the middle column stays. It is involutive, and it
-      never edits the tactic it was taken from.
+- [x] **Mirror** is a real transformation, not a copy — **corrected 2026-10-12, it was reflecting about
+      the wrong axis and now has the wrong answer in the log above it.** The editor's vocabulary is 7 rows
+      × **6** columns (`FormationSlotCatalog.buildTargetCells`), and `parseCell` gives `CELL_r_c` the
+      physical centre `(r + 1.5, c + 1.5)`, so the mirror is `5 - c`: 0↔5, 1↔4, 2↔3, and **no centre
+      column**, because six is even. It agrees with `TacticalPerspectiveTransformer` (`8 - physical`,
+      the axis `PROPOSAL_CURRENT_STATE.md` records as col 4.0). Rows are not mirrored — this is a
+      left-right flip, not a goal-to-goal one. Involution tested, source never edited.
+- [x] **Corners mirror too.** They are named ball states carrying the side in the name, not cells, so
+      they need swapping separately or every corner rule keeps pointing at the corner the manager was
+      not using.
+- [x] Tested against the **real vocabulary**, not hand-picked cells: every cell `FormationSlotCatalog`
+      offers must mirror to the cell `8 - physical` names, and that cell must be one the editor can name.
 - [x] Copy and mirror are refused across clubs. Two id spaces overlap — club 1's tactic 1 and club 2's
       tactic 1 are both 1 — and a copy from another club would be a manager's team playing somebody
       else's shape.
