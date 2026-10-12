@@ -236,6 +236,49 @@ Mutations: reverting the squad guard turns `closedOnceTheMatchIsComputed` red wi
 match, the squad page's own features, and the orders page with the owner's caps of 20 substitution orders
 and 10 tactic swaps per match.
 
+## 🟡 The tactic library: the cap, copy and mirror (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-3**, model and API half. The page is not built.
+
+**The model already existed, which was the finding.** `Tactic` is a real entity — club, name, formation,
+style, rules, set pieces, default flag, version — with `uk_tactic_team_name` and an index on `club_id`.
+`TacticLibraryService` already had list, save-by-name, make-default and delete-with-promotion, all with
+tests, and `TacticsRulesProvider.forTactic(teamId, tacticId)` existed with a check that the tactic belongs
+to the club. Building a model here would have duplicated a working one and left two sources of truth for
+a manager's shape.
+
+What was genuinely missing was the owner's sentence: *"imaš 10 taktika i 3 biram za meč ... ima copy
+paste mirror"*.
+
+- **The cap of 10** is `TacticLibraryService.MAX_TACTICS_PER_CLUB`, checked **before** the insert so a
+  refused save leaves no row behind, and the refusal **names the number** — a manager told "refused" with
+  no reason is left guessing.
+- **Editing at the cap still works.** A save keyed by an existing name is an edit, not an eleventh
+  tactic. Getting that wrong would lock a manager out of his tenth tactic exactly when he wants it.
+- **Copy** is the owner's "create based on": one operation, a separate row, so editing the copy cannot
+  reach its source.
+- **Mirror** is a transformation. Cells are `CELL_<row>_<col>`, three across, so the mirror is the column
+  and nothing else: `CELL_1_1` ↔ `CELL_1_3`, the middle column standing where it is. It is involutive,
+  and it creates a new tactic rather than rewriting the original — a button that quietly overwrote its
+  source would lose the manager's work with the undo being a delete.
+- **Copy and mirror are refused across clubs.** Club 1's tactic 1 and club 2's tactic 1 are both 1.
+
+**Two defects the tests caught, both mine.**
+
+- `mirrorSwapsLeftAndRight` asserted with `||` over both directions of every cell, and every
+  disjunction was already satisfied by the *unmirrored* source — so it passed on a plain copy and proved
+  nothing. It now asserts exact equality with the mirrored rules.
+- `atCap` on the list payload was computed as `i + 1 >= MAX`, so **only the last row said true** and a
+  page reading row 0 would have believed there was room, filled in a form, and been refused on save. It
+  is a club-level fact, decided once and repeated on every row.
+
+Mutations: raising the cap to 100 turns `tenIsTheCapAndTheMessageSaysSo` and `copyRespectsTheCap` red;
+replacing `mirrorRules` with a plain copy turns `mirrorIsInvolutiveAndLeavesTheSourceAlone` red.
+
+**Not done, and on the board:** the page itself — the editor still edits one club-level profile and does
+not list the ten, name them, or offer copy, mirror or delete. And **Paste**, which is the clipboard half
+of Sokker's Copy/Paste and means copy between clubs.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

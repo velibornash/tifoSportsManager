@@ -310,7 +310,7 @@ Decisions the owner took when asked, 2026-10-11:
 |---|---|
 | Cap on conditional substitution orders | **20 per match** |
 | Cap on tactic-swap orders | **10 per match** |
-| Saved tactics per club | **10** |
+| Saved tactics per club | **10** (`MAX_TACTICS_PER_CLUB`, enforced in `TacticLibraryService`) |
 | Tactics selectable for one match | **3**, any tactic into any slot |
 | Opponent Setup Archive | **not now** |
 | Set-piece takers (free kicks, penalties) | **not in this pass** — tactics, squad, orders only |
@@ -399,16 +399,33 @@ decided match. A fixture that is computed and not published is exactly that fact
 
 ## T-MATCH-3 — 🔴 P0 · the tactics editor
 
-**Nothing built.** Up to **10 saved tactics per club**. Copy/Paste/Mirror/Save, and "create based on"
-any existing one. The layout is Sokker's: a pitch, the shape, the sliders and the rest of the settings.
+**The model and the API are built. The page is not.**
+
+Found while starting this: **most of the model already existed.** `Tactic` is a real entity with a club, a
+name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps names unique per club, and
+`TacticLibraryService` already had list, save-by-name, make-default and delete-with-promotion, all tested.
+`TacticsRulesProvider.forTactic(teamId, tacticId)` even existed. So this task is the **cap**, the
+**operations**, and the **page** — not the model, which would have been the expensive assumption to make.
 
 **Exit criteria:**
 
-- [ ] A tactic can be created, edited, saved, copied and deleted; the 10 cap is enforced and stated.
-- [ ] "Create based on" any of the 10.
-- [ ] Mirror (swap sides) and Paste behave as in Sokker, including into a different club's slot.
-- [ ] The editor is reachable from the club and from the upcoming match.
-- [ ] A green editor test that fails when the tactic is not saved.
+- [x] **The cap of 10, enforced in the service and stated.** `MAX_TACTICS_PER_CLUB`, checked before the
+      insert so a refused save leaves no row. The refusal names the number.
+- [x] Editing at the cap still works: a save keyed by an existing name is an edit, not an eleventh tactic.
+      A manager working on his tenth must not be told the library is full.
+- [x] **Copy — the owner's "create based on"** — creates a separate row, so editing the copy cannot reach
+      its source.
+- [x] **Mirror** is a real transformation, not a copy. Cells are `CELL_<row>_<col>`, so the mirror is the
+      column: `CELL_1_1` and `CELL_1_3` exchange and the middle column stays. It is involutive, and it
+      never edits the tactic it was taken from.
+- [x] Copy and mirror are refused across clubs. Two id spaces overlap — club 1's tactic 1 and club 2's
+      tactic 1 are both 1 — and a copy from another club would be a manager's team playing somebody
+      else's shape.
+- [x] `GET/POST/DELETE /teams/{id}/tactics` with copy, mirror, delete and `/limits`. Every row carries
+      `maxTactics` and `atCap`, so a page can disable "new tactic" with the reason visible.
+- [ ] **The page.** The editor still edits one club-level profile; it does not list the ten, name them,
+      or offer copy, mirror or delete. This is the remaining half of the task.
+- [ ] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built.
 
 ## T-MATCH-4 — 🔴 P0 · three tactics per match, any into any slot
 

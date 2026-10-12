@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.model.tactics.Tactic;
 import org.example.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.example.footballmanager.newLogic.repository.TacticRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -245,5 +246,152 @@ class TacticLibraryServiceTest {
 
         assertEquals(5, rulesProvider.forTeam(club.getId()).getRuleCount(),
                 "an edit that saved and did nothing is the failure this eviction exists to prevent");
+    }
+
+    // ---------- the owner's cap, and the operations a library needs (2026-10-12) ----------
+
+    /**
+     * The owner: *"imaš 10 taktika i 3 biram za meč"*. Ten per club, stated rather than enforced
+     * silently.
+     *
+     * <p><b>Why ten and not "unlimited".</b> The engine reads one tactic per match and the manager
+     * chooses three of the ten; a hundred would make the choice meaningless and would put the whole
+     * library through the editor on every matchday. The number is the owner's and lives in one constant.
+     */
+    @Test
+    @DisplayName("a club holds ten tactics and the eleventh is refused with the number in the message")
+    void tenIsTheCapAndTheMessageSaysSo() {
+        for (int i = 1; i <= 10; i++) {
+            library.save(club.getId(), "Tactic " + i, "4-4-2", "Balanced", derbyRules(), null, i == 1);
+        }
+        assertEquals(10, library.forTeam(club.getId()).size(), "ten tactics should be allowed");
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.save(club.getId(), "The eleventh", "4-4-2", "Balanced",
+                        derbyRules(), null, false),
+                "the eleventh tactic should be refused rather than silently accepted");
+
+        assertTrue(refused.getMessage().contains("10"),
+                "the message must name the cap, or the manager is left guessing at an arbitrary "
+                        + "refusal: " + refused.getMessage());
+
+        assertEquals(10, library.forTeam(club.getId()).size(), "a refused save must not leave a row behind");
+    }
+
+    @Test
+    @DisplayName("saving over an existing name is an edit, not an eleventh tactic")
+    void editingAnExistingTacticIsNotANewOne() {
+        for (int i = 1; i <= 10; i++) {
+            library.save(club.getId(), "Tactic " + i, "4-4-2", "Balanced", derbyRules(), null, i == 1);
+        }
+
+        // The whole point of a cap: a manager at the limit must still be able to work on his tenth tactic.
+        library.save(club.getId(), "Tactic 10", "4-3-3", "Attacking", cupRules(), null, false);
+
+        assertEquals(10, library.forTeam(club.getId()).size());
+        assertEquals("4-3-3", library.forTeam(club.getId()).get(9).getFormation(),
+                "the tenth tactic should have been edited in place");
+    }
+
+    @Test
+    @DisplayName("copy creates a new tactic from an existing one - 'create based on'")
+    void copyIsCreateBasedOn() {
+        library.save(club.getId(), "Derby 4-4-2", "4-4-2", "Balanced", derbyRules(), null, true);
+
+        Tactic copy = library.copy(club.getId(), library.forTeam(club.getId()).get(0).getId(),
+                "Derby 4-4-2 wide");
+
+        assertEquals("Derby 4-4-2 wide", copy.getName());
+        assertEquals("4-4-2", copy.getFormation(), "a copy keeps the shape it was made from");
+        assertEquals(derbyRules(), copy.getRulesJson(), "a copy keeps the rules it was made from");
+        assertNotEquals(library.forTeam(club.getId()).get(0).getId(), copy.getId(),
+                "a copy is a second tactic, not a rename of the first");
+    }
+
+    @Test
+    @DisplayName("a copy at the cap is refused, naming the cap")
+    void copyRespectsTheCap() {
+        for (int i = 1; i <= 10; i++) {
+            library.save(club.getId(), "Tactic " + i, "4-4-2", "Balanced", derbyRules(), null, i == 1);
+        }
+        Long first = library.forTeam(club.getId()).get(0).getId();
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.copy(club.getId(), first, "One too many"));
+
+        assertTrue(refused.getMessage().contains("10"), refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("a copy cannot be taken from another club's tactic")
+    void copyIsRefusedAcrossClubs() {
+        Team other = new Team();
+        other.setName("Other Tactic Club " + System.nanoTime());
+        other = teams.save(other);
+        library.save(other.getId(), "Theirs", "4-4-2", "Balanced", derbyRules(), null, true);
+        library.save(club.getId(), "Mine", "4-4-2", "Balanced", derbyRules(), null, true);
+
+        Long theirs = library.forTeam(other.getId()).get(0).getId();
+
+        // Two id spaces overlap: club 1's tactic 1 and club 2's tactic 1 are both 1.
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.copy(club.getId(), theirs, "Stolen"));
+
+        assertTrue(refused.getMessage().contains(String.valueOf(theirs)), refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("mirror swaps the flanks and leaves the middle column alone")
+    void mirrorSwapsLeftAndRight() {
+        // Sokker's Mirror: the same shape, playing the other way. Cells are CELL_<row>_<col>, so the
+        // mirror is the column and nothing else - CELL_1_1 with CELL_1_3, and CELL_r_2 where it stands.
+        String rules = "["
+                + "{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"},"
+                + "{\"slotKey\":\"CMR\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_2\"},"
+                + "{\"slotKey\":\"ML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_3\"},"
+                + "{\"slotKey\":\"STR\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_2_2\"}]";
+        library.save(club.getId(), "Left bias", "4-4-2", "Balanced", rules, null, true);
+
+        Tactic mirrored = library.mirror(club.getId(), library.forTeam(club.getId()).get(0).getId());
+
+        // Exact equality, not "contains". A first version asserted with || over both directions and
+        // passed on a copy that had been mirrored not at all - every disjunction was already satisfied
+        // by the source, so it measured nothing.
+        String expected = "["
+                + "{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_3\"},"
+                + "{\"slotKey\":\"CMR\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_2\"},"
+                + "{\"slotKey\":\"ML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"},"
+                + "{\"slotKey\":\"STR\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_2_2\"}]";
+
+        assertEquals(expected, mirrored.getRulesJson(),
+                "every cell should have swapped columns and nothing else should have moved");
+        assertEquals("4-4-2", mirrored.getFormation(), "mirroring changes the direction, not the shape");
+    }
+
+    @Test
+    @DisplayName("mirroring twice is the original, and mirroring never touches the source")
+    void mirrorIsInvolutiveAndLeavesTheSourceAlone() {
+        String rules = "[{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"}]";
+        library.save(club.getId(), "Original", "4-4-2", "Balanced", rules, null, true);
+        Tactic source = library.forTeam(club.getId()).get(0);
+
+        Tactic once = library.mirror(club.getId(), source.getId());
+        assertNotEquals(rules, once.getRulesJson(), "the mirror should differ from its source");
+
+        Tactic twice = library.mirror(club.getId(), once.getId());
+        assertEquals(rules, twice.getRulesJson(),
+                "mirroring a mirror should land back on the original");
+
+        assertEquals(rules, source.getRulesJson(),
+                "mirroring must never edit the tactic it was taken from - it creates a new one");
     }
 }

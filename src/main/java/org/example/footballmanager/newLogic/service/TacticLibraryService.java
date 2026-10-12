@@ -32,6 +32,15 @@ import java.util.Optional;
 @Slf4j
 public class TacticLibraryService {
 
+    /**
+     * How many tactics one club may hold (owner, 2026-10-11): *"imaš 10 taktika i 3 biram za meč"*.
+     *
+     * <p>Ten, because the manager chooses three of them for a match and a library without a ceiling makes
+     * that choice meaningless. It is a constant here rather than a number in the page so the rule, the
+     * refusal and the message that names it cannot disagree.
+     */
+    public static final int MAX_TACTICS_PER_CLUB = 10;
+
     private final TacticRepository tactics;
     private final TeamRepository teams;
     private final TacticsRulesProvider rulesProvider;
@@ -66,7 +75,20 @@ public class TacticLibraryService {
             throw new IllegalArgumentException("A tactic needs a formation");
         }
 
-        Tactic tactic = tactics.findByTeamIdAndName(teamId, trimmedName).orElseGet(Tactic::new);
+        Tactic tactic = tactics.findByTeamIdAndName(teamId, trimmedName).orElse(null);
+        if (tactic == null) {
+            // The cap, enforced here and not in the page. The owner: ten tactics a club, three of them
+            // chosen for a match. A library without a ceiling makes the choice meaningless and puts the
+            // whole lot through the editor every matchday.
+            //
+            // It is checked before the insert and not after it, so a refused save leaves no row behind.
+            long held = tactics.findByTeamIdOrderByIdAsc(teamId).size();
+            if (held >= MAX_TACTICS_PER_CLUB) {
+                throw new IllegalArgumentException("This club already holds " + MAX_TACTICS_PER_CLUB
+                        + " tactics. Delete one, or edit an existing tactic by saving over its name.");
+            }
+            tactic = new Tactic();
+        }
         tactic.setTeam(team);
         tactic.setName(trimmedName);
         tactic.setFormation(trimmedFormation);
@@ -92,6 +114,107 @@ public class TacticLibraryService {
             rulesProvider.evict(teamId, saved.getId());
         }
         return saved;
+    }
+
+    /**
+     * Copies a tactic into a new one — the owner's *"create based on"*.
+     *
+     * <p>One operation rather than two, because they are the same thing: a new tactic that starts as a
+     * copy of an existing one. The copy keeps the formation and the rules and is a <b>separate</b> row,
+     * so editing it afterwards cannot reach the tactic it came from.
+     *
+     * @param newName the copy's name; must be free, because (club, name) is unique
+     * @throws IllegalArgumentException if the source is not this club's, the name is taken, or the club
+     *         already holds {@link #MAX_TACTICS_PER_CLUB} tactics
+     */
+    @Transactional
+    public Tactic copy(Long teamId, Long tacticId, String newName) {
+        Tactic source = tactics.findByIdAndTeamId(tacticId, teamId).orElseThrow(
+                () -> new IllegalArgumentException(
+                        "Tactic " + tacticId + " does not belong to club " + teamId));
+
+        String trimmedName = newName == null ? "" : newName.trim();
+        if (trimmedName.isEmpty()) {
+            throw new IllegalArgumentException("A copy needs a name");
+        }
+        if (tactics.findByTeamIdAndName(teamId, trimmedName).isPresent()) {
+            throw new IllegalArgumentException("This club already has a tactic called " + trimmedName);
+        }
+
+        return save(teamId, trimmedName, source.getFormation(), source.getStyle(),
+                source.getRulesJson(), source.getSetPiecesJson(), false);
+    }
+
+    /**
+     * Mirrors a tactic: the same shape playing the other way.
+     *
+     * <p>Sokker's Mirror, and it is a real transformation rather than a copy. Cells are
+     * {@code CELL_<row>_<col>}, three rows deep and three across, so the mirror is the column and
+     * nothing else: {@code CELL_1_1} and {@code CELL_1_3} exchange, and {@code CELL_r_2} — the middle
+     * column — stands where it is, because its mirror image is itself.
+     *
+     * <p>Mirroring creates a <b>new</b> tactic and never edits the source. A button that quietly rewrote
+     * the tactic it was taken from would lose the manager's original, and the undo would be the delete.
+     *
+     * @param newName the mirrored tactic's name
+     * @throws IllegalArgumentException if the source is not this club's, or the club is at the cap
+     */
+    @Transactional
+    public Tactic mirror(Long teamId, Long tacticId) {
+        Tactic source = tactics.findByIdAndTeamId(tacticId, teamId).orElseThrow(
+                () -> new IllegalArgumentException(
+                        "Tactic " + tacticId + " does not belong to club " + teamId));
+
+        long held = tactics.findByTeamIdOrderByIdAsc(teamId).size();
+        if (held >= MAX_TACTICS_PER_CLUB) {
+            throw new IllegalArgumentException("This club already holds " + MAX_TACTICS_PER_CLUB
+                    + " tactics, so there is no room for a mirrored copy.");
+        }
+
+        // Unique on (club, name), so a mirrored copy cannot collide with its own source. The numbering
+        // is readable and says what it is, rather than leaving the manager to invent a name.
+        String mirroredName = nextFreeMirrorName(teamId, source.getName());
+        return save(teamId, mirroredName, source.getFormation(), source.getStyle(),
+                mirrorRules(source.getRulesJson()), source.getSetPiecesJson(), false);
+    }
+
+    /** "4-4-2 wide", then "4-4-2 wide (mirrored)", then "(mirrored 2)". */
+    private String nextFreeMirrorName(Long teamId, String sourceName) {
+        String base = sourceName + " (mirrored)";
+        String candidate = base;
+        int n = 2;
+        while (tactics.findByTeamIdAndName(teamId, candidate).isPresent()) {
+            candidate = sourceName + " (mirrored " + n++ + ")";
+        }
+        return candidate;
+    }
+
+    /**
+     * Swaps the column of every {@code targetCellKey}, leaving rows and every other field alone.
+     *
+     * <p>Written as a text rewrite rather than a parse-and-reserialise because the rules are authored JSON
+     * that a manager may have written by hand, and a round trip through a parser would reformat every
+     * line of it. Only the cell key is touched, and only when it matches the shape.
+     */
+    static String mirrorRules(String rulesJson) {
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return rulesJson;
+        }
+        java.util.regex.Pattern cell = java.util.regex.Pattern.compile("CELL_(\\d)_(\\d)");
+        java.util.regex.Matcher matcher = cell.matcher(rulesJson);
+        StringBuilder out = new StringBuilder();
+        while (matcher.find()) {
+            int row = Integer.parseInt(matcher.group(1));
+            int column = Integer.parseInt(matcher.group(2));
+            // Three columns: 1 and 3 exchange, 2 is its own mirror image. A cell outside that is left
+            // exactly as it was, because guessing at an unfamiliar shape would corrupt it.
+            String mirrored = column < 1 || column > 3
+                    ? matcher.group(0)
+                    : "CELL_" + row + "_" + (4 - column);
+            matcher.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(mirrored));
+        }
+        matcher.appendTail(out);
+        return out.toString();
     }
 
     /** Promotes one of a club's tactics to be its default, demoting whatever held it. */
