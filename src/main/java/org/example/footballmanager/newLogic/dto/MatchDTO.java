@@ -20,7 +20,7 @@ public class MatchDTO {
     private Integer homeGoals;
     private Integer awayGoals;
     private String matchDate;
-    /** The game's own clock, e.g. "Season 1 · Day 3 · 18:00". Null when the calendar slot is unknown. */
+    /** The game's own clock, e.g. "Season 1 · Week 3 · Day 3 · 18:00". Null when the calendar slot is unknown. */
     private String seasonDayLabel;
     private Integer seasonNumber;
     private Integer dayNumber;
@@ -162,7 +162,8 @@ public class MatchDTO {
         dto.setHomeGoals(homeGoals);
         dto.setAwayGoals(awayGoals);
         dto.setMatchDate(formattedDate);
-        dto.setSeasonDayLabel(buildSeasonDayLabel(match.getSeasonYear(), match.getDayNumber(), match.getMatchDate()));
+        dto.setSeasonDayLabel(buildSeasonDayLabel(match.getSeasonYear(), match.getWeekNumber(), match.getDayNumber(),
+                match.getMatchDate()));
         dto.setSeasonNumber(match.getSeasonYear());
         dto.setDayNumber(match.getDayNumber());
         dto.setWeekNumber(match.getWeekNumber());
@@ -177,20 +178,29 @@ public class MatchDTO {
     }
 
     /**
-     * "Season 1 · Day 3 · 18:00" - the in-game slot, not the wall clock.
+     * "Season 1 · Week 3 · Day 3 · 18:00" - the in-game slot, not the wall clock.
      *
      * <p>The owner wants both: the real time the match was played and the season it belongs to. They
      * are different facts, and the season one is the one the game's own calendar is built on.
      *
      * <p>The hour comes from the match date because that is the slot the fixture was placed in; the
-     * season and day come from the fixture's own columns. Anything unknown is left out rather than
+     * season, week and day come from the fixture's own columns. Anything unknown is left out rather than
      * rendered as a zero, so a missing day does not read as "Day 0".
      */
-    static String buildSeasonDayLabel(Integer seasonNumber, Integer dayNumber, LocalDateTime matchDate) {
+    static String buildSeasonDayLabel(Integer seasonNumber, Integer weekNumber, Integer dayNumber,
+                                      LocalDateTime matchDate) {
         if (seasonNumber == null) {
             return null;
         }
         StringBuilder label = new StringBuilder("Season ").append(seasonNumber);
+        // The week is not decoration. The owner reported two different matches on the same day: they
+        // were twelve days apart, in week 1 and week 3, and both read "Season 1 · Day 3 · 19:00". A
+        // season is twelve weeks of seven days, so the day alone names eighty-four different slots and
+        // the label was ambiguous for every one of them. His week 1 day 7 match read as a fixture still
+        // to come while the clock sat on week 3.
+        if (weekNumber != null) {
+            label.append(" · Week ").append(weekNumber);
+        }
         if (dayNumber != null) {
             label.append(" · Day ").append(dayNumber);
         }

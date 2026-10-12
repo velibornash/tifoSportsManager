@@ -670,12 +670,17 @@ public class TeamController {
         return ALLOWED_STYLES.contains(style) ? style : "BALANCED";
     }
 
-    /** "Season 1 · Day 3 · 18:00", matching MatchDTO so both surfaces read the same. */
+    /** "Season 1 · Week 3 · Day 3 · 18:00", matching MatchDTO so both surfaces read the same. */
     private String buildSeasonDayLabel(MatchFixture fixture) {
         if (fixture.getSeasonYear() == null) {
             return null;
         }
         StringBuilder label = new StringBuilder("Season ").append(fixture.getSeasonYear());
+        // The week belongs in the label for the same reason it belongs on the fixture: "Day 3" on its
+        // own names eighty-four slots in a season. See MatchDTO#buildSeasonDayLabel.
+        if (fixture.getWeekNumber() != null) {
+            label.append(" \u00b7 Week ").append(fixture.getWeekNumber());
+        }
         if (fixture.getDayNumber() != null) {
             label.append(" \u00b7 Day ").append(fixture.getDayNumber());
         }
