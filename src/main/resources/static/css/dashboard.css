@@ -6109,3 +6109,59 @@ body {
     border-color: rgba(126, 217, 160, 0.5);
     color: #dff2e6;
 }
+
+/* The tactic shelf: a readable list, not a row of buttons.
+ *
+ * The owner, on the first version: "treba jasnije da stoji lista taktika, ovo sa ovim zatamnjenim
+ * pomalo blurovanim dugmadima nije vidljivo" - the tactics could not be told apart. Each row now says
+ * what a tactic is: its name, its shape, and whether it is the club default or the one being edited. */
+.te-tactic-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.te-tactic-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--fm-panel-alt, rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 3px solid transparent;
+    border-radius: 6px;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.te-tactic-row:hover { border-color: rgba(255, 255, 255, 0.28); }
+
+.te-tactic-row.is-selected {
+    border-left-color: var(--fm-accent, #4a9eff);
+    background: rgba(74, 158, 255, 0.10);
+}
+
+.te-tactic-name { font-weight: 600; }
+
+.te-tactic-shape { opacity: 0.75; font-size: 0.9em; }
+
+.te-tactic-flag {
+    margin-left: auto;
+    font-size: 0.8em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+}
+
+.te-tactic-flag.is-open { opacity: 1; }
+
+.te-tactic-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}

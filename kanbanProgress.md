@@ -541,6 +541,47 @@ missing tool is not a broken page.
 **Still not verified, and it cannot be:** that the page *looks* right. Every assertion here is about
 behaviour and structure. Somebody still has to look at it.
 
+## 🔴 An edit made after "Copy (based on)" was saved over the original (2026-10-12)
+
+**Found by the owner, in use:** create a tactic, save it, Copy (based on), change one slot, save — *"ne
+zapamti izmenu, ostane ista kao originalna taktika!"* The change was not remembered; the tactic stayed as
+the original. **The edit was lost, and the tactic it was copied from was silently overwritten.** No error,
+and the save returned 200 both times.
+
+**Cause.** Every shelf action reloads the page, and the reload set `selectedTacticId` back to
+`library.tactics[0]` — the **first** tactic in the library, which after a copy is the *original*. The
+manager then changed a slot on what he believed was the copy, and Save wrote it to `workingName`, which
+was still the original's name. The copy he was looking at never changed, and the original silently took
+his edit.
+
+**Fix.** The tactic being edited is remembered across a reload (`preferredTacticId`, module scope
+precisely so a reload cannot lose it), and New, Copy, Mirror, Delete and picking from the list all set
+it. **Mutating it back** — forcing the old "always the first tactic" — turns the page test red with:
+
+    Save wrote to "Alpha" instead of the copy that was just made:
+    the edit was lost and the tactic it was copied from was overwritten
+
+**The same owner's second and third notes, fixed in the same commit.**
+
+- *"treba jasnije da stoji lista taktika, ovo sa ovim zatamnjenim pomalo blurovanim dugmadima nije
+  vidljivo."* The tactics were a row of small `cs-tactics-btn` buttons with the name and a star. Each is
+  now a **row** that says what it is — name, shape, style, and whether it is the club default or the one
+  being edited — with CSS to make it legible.
+- *"Copy based on (mora jasno na pop upu da pise na osnovu koje, cak drop down da se izabere koja)."*
+  The copy now takes its source from a **dropdown** listing all ten, and the prompt says
+  `Name for the copy of "…"`. Previously the source was whatever happened to be open.
+
+**Verification is now real, and it caught all three.** The node harness renders the page, presses the
+buttons and follows the save:
+
+    OK  the shelf renders as a readable list, with every operation and the cap
+    OK  an edit made after Copy is saved to the copy, not to the tactic it came from
+    OK  Copy, Mirror and Delete each issue their request when clicked
+
+The stub server keeps a real library — a copy joins it, a save updates the tactic of that name — because
+a stub that accepted a write and returned an id the library had never heard of makes a correct page look
+broken.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

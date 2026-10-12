@@ -24,10 +24,17 @@ async function loadLibrary(teamId, authFetch) {
 }
 
 function renderLibraryShelf(library, selectedId, locked) {
+    // A list, not a row of buttons. The owner's words on the first version: *"treba jasnije da stoji
+    // lista taktika, ovo sa ovim zatamnjenim pomalo blurovanim dugmadima nije vidljivo"* — the row of
+    // small buttons was hard to read and the tactics in it were hard to tell apart. Each tactic is now a
+    // row that says what it is: its name, its shape, and whether it is the club default.
     const rows = library.tactics.map(t => `
-        <button type="button" class="cs-tactics-btn ${t.id === selectedId ? 'active' : ''}"
-                data-te-pick="${t.id}">
-            ${htmlEscape(t.name)}${t.isDefault ? ' ★' : ''}
+        <button type="button" class="te-tactic-row${t.id === selectedId ? ' is-selected' : ''}"
+                data-te-pick="${t.id}" aria-current="${t.id === selectedId}">
+            <span class="te-tactic-name">${htmlEscape(t.name)}</span>
+            <span class="te-tactic-shape">${htmlEscape(t.formation)}${t.style ? ' · ' + htmlEscape(t.style) : ''}</span>
+            ${t.isDefault ? '<span class="te-tactic-flag">club default</span>' : ''}
+            ${t.id === selectedId ? '<span class="te-tactic-flag is-open">editing this one</span>' : ''}
         </button>`).join('');
 
     const disabled = locked ? ' disabled' : '';
@@ -36,24 +43,48 @@ function renderLibraryShelf(library, selectedId, locked) {
              existing tactic by saving over its name.</p>`
         : `<p class="fm-subtle">${library.tactics.length} of ${library.maxTactics} tactics.</p>`;
 
+    // "Based on" is chosen, not assumed. Copying from the wrong tactic was half of what made the save
+    // land somewhere surprising, so the source is a dropdown the manager can see and change.
+    const sourceOptions = library.tactics.map(t =>
+        `<option value="${t.id}"${t.id === selectedId ? ' selected' : ''}>${htmlEscape(t.name)}</option>`).join('');
+
     return `
-        <section class="fm-panel" style="margin-bottom:16px;">
+        <section class="fm-panel te-tactic-shelf" style="margin-bottom:16px;">
             <div class="fm-panel-head"><div>
                 <h3>My tactics</h3>
                 ${capNote}
             </div></div>
-            <div class="cs-tactics-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
-                ${rows || '<span class="fm-subtle">No tactics yet — create one below.</span>'}
+            <div class="te-tactic-list" role="list">
+                ${rows || '<p class="fm-subtle">No tactics yet — create one below.</p>'}
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" id="te-new-btn" class="big-button"${disabled}${library.atCap ? ' disabled' : ''}>New</button>
-                <button type="button" id="te-copy-btn" class="big-button"${disabled}>Copy (based on)</button>
+            <div class="te-tactic-actions">
+                <button type="button" id="te-new-btn" class="big-button"${disabled}${library.atCap ? ' disabled' : ''}>New tactic</button>
+                <label class="fm-subtle" style="display:flex; align-items:center; gap:6px;">
+                    Copy based on
+                    <select id="te-copy-source" class="fm-input"${disabled || library.tactics.length ? '' : ' disabled'}>
+                        ${sourceOptions}
+                    </select>
+                </label>
+                <button type="button" id="te-copy-btn" class="big-button"${disabled}>Copy</button>
                 <button type="button" id="te-mirror-btn" class="big-button"${disabled}>Mirror</button>
                 <button type="button" id="te-delete-btn" class="big-button"${disabled}>Delete</button>
             </div>
+            <p class="fm-subtle" style="margin-top:8px;">
+                Saving stores your changes into the tactic you are editing. Copy creates a new one from the
+                tactic you pick, so you can change it without touching the original.
+            </p>
             ${library.failed ? '<p class="fm-subtle" style="margin-top:8px;">The tactic list could not be loaded. Editing still works; the shelf is unavailable.</p>' : ''}
+            <p id="te-shelf-message" class="fm-subtle" style="margin-top:8px;"></p>
         </section>`;
 }
+
+/**
+ * The tactic the grid is editing, remembered between loads of the page.
+ *
+ * Module scope rather than a local, because every shelf action reloads the view and a local would be
+ * gone by then — which is exactly the bug it exists to fix.
+ */
+let preferredTacticId = null;
 
 export function createTacticEditorView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml } = deps;
@@ -85,8 +116,17 @@ export function createTacticEditorView(deps) {
 
         // Which tactic the grid is editing. The shelf is the library; the grid below edits one of them.
         const library = await loadLibrary(getTeamId(), authFetch);
-        let selectedTacticId = library.tactics.length ? library.tactics[0].id : null;
-        let workingName = library.tactics.length ? library.tactics[0].name : '';
+        // **The tactic the manager is on survives a reload.** It used to snap back to the first in the
+        // library, which meant that after "Copy (based on)" the page reloaded onto the *original* — and
+        // the next Save wrote his changes back over the original, leaving the copy untouched. That is
+        // silent loss of an edit, and the manager's report was "the change is not remembered".
+        const stillThere = preferredTacticId !== null
+            && library.tactics.some(t => t.id === preferredTacticId);
+        const focusedId = stillThere ? preferredTacticId
+            : (library.tactics.length ? library.tactics[0].id : null);
+        const focused = library.tactics.find(t => t.id === focusedId);
+        let selectedTacticId = focusedId;
+        let workingName = focused ? focused.name : '';
 
         let draft = null;
         try { const raw = localStorage.getItem(DRAFT_KEY); if (raw) draft = JSON.parse(raw); } catch (_) { draft = null; }
@@ -298,6 +338,7 @@ export function createTacticEditorView(deps) {
                 button.addEventListener('click', async () => {
                     const picked = Number(button.getAttribute('data-te-pick'));
                     selectedTacticId = picked;
+                    preferredTacticId = picked;
                     const found = library.tactics.find(t => t.id === picked);
                     workingName = found ? found.name : '';
                     // The grid keeps its own draft; loading a different tactic under a stale draft is
@@ -320,6 +361,8 @@ export function createTacticEditorView(deps) {
                         : { name, formation: '4-4-2', style: 'Balanced' };
                     const saved = await postJson(`/teams/${getTeamId()}/tactics`, body);
                     if (saved) {
+                        // Stay on what was just made, or the next Save writes over the first tactic.
+                        preferredTacticId = saved.id;
                         localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {
@@ -332,12 +375,20 @@ export function createTacticEditorView(deps) {
             if (copyBtn) {
                 copyBtn.addEventListener('click', async () => {
                     if (!selectedTacticId) return;
-                    const source = library.tactics.find(t => t.id === selectedTacticId);
-                    const name = prompt('Name for the copy', `${source ? source.name : 'Tactic'} copy`);
+                    // **The source is whatever the dropdown says**, not whatever happens to be open.
+                    // The owner asked for this explicitly, and it is the other half of why a save after a
+                    // copy went somewhere surprising.
+                    const chosen = document.getElementById('te-copy-source');
+                    const sourceId = chosen && chosen.value ? Number(chosen.value) : selectedTacticId;
+                    const source = library.tactics.find(t => t.id === sourceId);
+                    const name = prompt(
+                        `Name for the copy of "${source ? source.name : 'Tactic'}"`,
+                        `${source ? source.name : 'Tactic'} copy`);
                     if (!name) return;
                     const saved = await postJson(
-                        `/teams/${getTeamId()}/tactics/${selectedTacticId}/copy`, { name });
+                        `/teams/${getTeamId()}/tactics/${sourceId}/copy`, { name });
                     if (saved) {
+                        preferredTacticId = saved.id;
                         localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {
@@ -353,6 +404,7 @@ export function createTacticEditorView(deps) {
                     const saved = await postJson(
                         `/teams/${getTeamId()}/tactics/${selectedTacticId}/mirror`, null);
                     if (saved) {
+                        preferredTacticId = saved.id;
                         localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {

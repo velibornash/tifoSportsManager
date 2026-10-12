@@ -96,8 +96,9 @@ function installDom() {
     };
 
     // `prompt` is how the page asks for a tactic's name, `confirm` how it asks before deleting one.
-    // Answer both without stopping the run.
-    globalThis.prompt = () => 'Delta';
+    // Accept whatever the page offers as the default, which is what a manager pressing Enter does -
+    // and it means the test asserts on the name the *page* proposed, not one this file invented.
+    globalThis.prompt = (message, suggested) => (suggested === undefined ? 'Delta' : suggested);
     globalThis.confirm = () => true;
 
     globalThis.window = {
@@ -135,11 +136,13 @@ function installDom() {
 
 // ---------------------------------------------------------------- what the server answers
 
-const TACTICS = [
+const TACTICS_LIST = [
     { id: 11, name: 'Alpha', formation: '4-4-2', style: 'Balanced', isDefault: true, position: 0, maxTactics: 10, atCap: false },
     { id: 12, name: 'Bravo', formation: '4-3-3', style: 'Attacking', isDefault: false, position: 1, maxTactics: 10, atCap: false },
     { id: 13, name: 'Charlie', formation: '3-5-2', style: 'Defensive', isDefault: false, position: 2, maxTactics: 10, atCap: false }
 ];
+
+let nextId = 14;
 
 const EDITOR = {
     formation: '4-4-2',
@@ -174,13 +177,47 @@ function installServer() {
             return { ok: true, status: 200, json: async () => ({ locked: false }) };
         }
         if (url.endsWith('/tactics') && method === 'GET') {
-            return { ok: true, status: 200, json: async () => TACTICS };
+            return { ok: true, status: 200, json: async () => TACTICS_LIST };
+        }
+
+        // A real copy/mirror/save, so the library the page re-reads actually contains what it made.
+        // A stub that accepted the write and returned an id the library has never heard of would make
+        // the page look broken for a reason that is the stub's.
+        const copyMatch = url.match(/\/tactics\/(\d+)\/copy$/);
+        if (copyMatch && method === 'POST') {
+            const source = TACTICS_LIST.find(t => t.id === Number(copyMatch[1]));
+            const made = { ...source, id: nextId++, name: options.body ? JSON.parse(options.body).name : 'copy',
+                isDefault: false, position: TACTICS_LIST.length };
+            TACTICS_LIST.push(made);
+            return { ok: true, status: 200, json: async () => made };
+        }
+        const mirrorMatch = url.match(/\/tactics\/(\d+)\/mirror$/);
+        if (mirrorMatch && method === 'POST') {
+            const source = TACTICS_LIST.find(t => t.id === Number(mirrorMatch[1]));
+            const made = { ...source, id: nextId++, name: `${source.name} (mirrored)`,
+                isDefault: false, position: TACTICS_LIST.length };
+            TACTICS_LIST.push(made);
+            return { ok: true, status: 200, json: async () => made };
         }
         if (/\/tactics\/\d+$/.test(url) && method === 'GET') {
-            return { ok: true, status: 200, json: async () => ({ ...TACTICS[0], rulesJson: '[]', setPiecesJson: '{}' }) };
+            return { ok: true, status: 200, json: async () => ({ ...TACTICS_LIST[0], rulesJson: '[]', setPiecesJson: '{}' }) };
+        }
+        if (url.endsWith('/tactics') && method === 'POST') {
+            // Save is keyed by name, exactly as the server does: (club, name) is unique.
+            const body = JSON.parse(options.body);
+            const existing = TACTICS_LIST.find(t => t.name === body.name);
+            if (existing) {
+                existing.formation = body.formation;
+                existing.style = body.style;
+                existing.rulesJson = body.rulesJson;
+                return { ok: true, status: 200, json: async () => existing };
+            }
+            const made = { id: nextId++, name: body.name, formation: body.formation,
+                style: body.style, isDefault: false, position: TACTICS_LIST.length };
+            TACTICS_LIST.push(made);
+            return { ok: true, status: 200, json: async () => made };
         }
         if (url.includes('/tactics')) {
-            // Any write: accepted. The page should reload afterwards.
             return { ok: true, status: 200, json: async () => ({ id: 14, name: 'Delta' }) };
         }
         return { ok: true, status: 200, json: async () => ({}) };
@@ -208,13 +245,24 @@ assert.match(html, /My tactics/, 'the shelf heading is missing: the manager cann
 assert.match(html, /Alpha/, 'a saved tactic is not listed by name');
 assert.match(html, /Bravo/, 'the second tactic is not listed');
 assert.match(html, /Charlie/, 'the third tactic is not listed');
-assert.match(html, /New/, 'there is no way to create a tactic under a new name');
-assert.match(html, /Copy \(based on\)/, 'there is no way to copy a tactic');
+assert.match(html, /New tactic/, 'there is no way to create a tactic under a new name');
+assert.match(html, /Copy based on/, 'the copy does not say what it is based on');
 assert.match(html, /Mirror/, 'there is no way to mirror a tactic');
 assert.match(html, /Delete/, 'there is no way to delete a tactic');
 assert.match(html, /3 of 10/, 'the page does not say how much of the cap is used');
 
-console.log('OK  the shelf renders with every tactic, every operation and the cap');
+// The list must be readable, not a row of small buttons: the owner's complaint about the first version
+// was that the tactics in it could not be told apart.
+assert.match(html, /te-tactic-row/, 'the tactics are not rendered as a list');
+assert.match(html, /4-4-2 · Balanced/, 'a tactic does not say its shape and style');
+assert.match(html, /club default/, 'the club default is not marked');
+
+// And "based on" is chosen, not assumed.
+const sourceSelect = elementsFor(html, '#te-copy-source')[0];
+assert.ok(sourceSelect, 'there is no dropdown choosing what the copy is based on');
+assert.ok(html.includes('<select id="te-copy-source"'), 'the copy source dropdown is missing');
+
+console.log('OK  the shelf renders as a readable list, with every operation and the cap');
 
 // ---------------------------------------------------------------- the buttons do something
 
@@ -223,26 +271,63 @@ console.log('OK  the shelf renders with every tactic, every operation and the ca
  * nothing, because the listeners were bound before the markup existed. Parsing could never catch it.
  */
 
-const copyButton = elementsFor(html, '#te-copy-btn')[0];
-assert.ok(copyButton, 'the Copy button is not in the markup');
-assert.ok((copyButton.listeners.click || []).length > 0,
+/**
+ * A button from the markup as it stands **now**.
+ *
+ * Every shelf action reloads the page, which repaints and re-binds. A snapshot taken once would be stale
+ * by the second click - and, because the registry hands back the same object the page bound to, asking
+ * for a fresh one after a repaint would get an element with no handlers at all.
+ */
+const button = id => elementsFor(dom.rendered(), `#${id}`)[0];
+
+/**
+ * The owner's exact sequence, in order, because the order is the defect:
+ * create a tactic, save it, **Copy (based on)**, change a slot, save.
+ *
+ * The page reloaded onto the *original* after the copy, so the save overwrote the original and the edit
+ * was lost. No error anywhere - the save returned 200 both times.
+ */
+
+const sourceTactic = TACTICS_LIST[0];
+const copyName = `${sourceTactic.name} copy`;
+
+// ---- 1. copy
+const copyButton = button('te-copy-btn');
+assert.ok(copyButton && (copyButton.listeners.click || []).length > 0,
     'the Copy button has no click handler: it would look perfect and do nothing');
 await copyButton.click();
-assert.ok(requests.some(r => r.url.includes('/tactics/11/copy') && r.method === 'POST'),
-    'clicking Copy asked the server for nothing');
 
-const mirrorButton = elementsFor(html, '#te-mirror-btn')[0];
-assert.ok(mirrorButton && (mirrorButton.listeners.click || []).length > 0,
-    'the Mirror button has no click handler');
-await mirrorButton.click();
-assert.ok(requests.some(r => r.url.includes('/tactics/11/mirror')),
+const copyRequest = requests.filter(r => r.url.includes('/copy')).pop();
+assert.ok(copyRequest, 'clicking Copy asked the server for nothing');
+assert.equal(copyRequest.body.name, copyName, 'the copy should be named in the popup');
+assert.ok(copyRequest.url.includes(`/tactics/${sourceTactic.id}/copy`),
+    `the copy should be based on the tactic that is open; asked for ${copyRequest.url}`);
+
+// ---- 2. change a slot and save
+const saveButton = button('te-save-btn');
+assert.ok(saveButton && (saveButton.listeners.click || []).length > 0,
+    'the Save button has no click handler');
+await saveButton.click();
+
+const saveRequest = requests.filter(r => r.method === 'POST' && r.url.endsWith('/tactics')
+    && !r.url.includes('/copy') && !r.url.includes('/mirror')).pop();
+assert.ok(saveRequest, 'Save never reached the server');
+assert.equal(saveRequest.body.name, copyName,
+    'Save wrote to "' + saveRequest.body.name + '" instead of the copy that was just made: '
+    + 'the edit was lost and the tactic it was copied from was overwritten');
+assert.ok('rulesJson' in saveRequest.body, 'Save sent no movement rules');
+assert.notEqual(saveRequest.body.name, sourceTactic.name,
+    'the original was overwritten, which is how the edit was lost the first time');
+
+console.log('OK  an edit made after Copy is saved to the copy, not to the tactic it came from');
+
+// ---- 3. the other two operations, on whatever is now open
+await button('te-mirror-btn').click();
+assert.ok(requests.some(r => r.url.endsWith('/mirror')),
     'clicking Mirror asked the server for nothing');
 
-const deleteButton = elementsFor(html, '#te-delete-btn')[0];
-assert.ok(deleteButton && (deleteButton.listeners.click || []).length > 0,
-    'the Delete button has no click handler');
-await deleteButton.click();
-assert.ok(requests.some(r => r.method === 'DELETE' && r.url.includes('/tactics/11')),
+await button('te-delete-btn').click();
+assert.ok(requests.some(r => r.method === 'DELETE'),
     'clicking Delete asked the server for nothing');
 
 console.log('OK  Copy, Mirror and Delete each issue their request when clicked');

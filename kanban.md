@@ -488,8 +488,13 @@ mid-match, which is T-MATCH-6's engine requirement and is already in place.
       slots when swapping, and the page says so — moving a tactic must not carry one slot's minute and
       condition to the other.
 - [x] **The page runs.** `tactic-editor-shelf.test.mjs` imports the real view module against a stub DOM,
-      renders it and **presses Copy, Mirror and Delete**, asserting each issues its request. Mutation: the
-      wiring moved back before the paint turns it red.
+      renders it, **presses the buttons and follows the save**. Mutation: the wiring moved back before the
+      paint turns it red; so does forcing the edit to snap back to the first tactic.
+- [x] **An edit after "Copy (based on)" is saved to the copy.** It was being written over the original —
+      silent loss of the manager's work, found by the owner in use.
+- [x] **The list is readable** — a row per tactic with name, shape, style and which one is being edited,
+      rather than a row of small buttons that could not be told apart.
+- [x] **"Copy based on" is chosen from a dropdown**, and the prompt names the source.
 - [ ] **Nobody has looked at how it looks.** Node can run the page; it cannot say whether the shelf is
       readable, whether the pitch still fits with a shelf above it, or whether the arrows are obvious.
       Still wants a human eye.
