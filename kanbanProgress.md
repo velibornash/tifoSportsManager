@@ -465,6 +465,42 @@ holding a detached lineup gets *"failed to lazily initialize ... no Session"* �
 The first attempt marked the getter `@PostLoad`, which would not have fired on a property read and would
 not have fixed anything.
 
+## 🔴 A training position would count for nothing, and an orphan model proves it was intended (2026-10-12)
+
+`kanban.md` **T-MATCH-8**, written up rather than started. Raised by the owner mid-task.
+
+**The rule:** a player set to train in MID has **only the minutes he spent at MID** counted in his training
+formula — advanced or not — and he may **absolutely play any slot** in a match. The second half holds today
+and must keep holding; the first half does not exist.
+
+**What is actually there.**
+
+- `TrainingAssignment` carries `playerId`, `trainingPosition`, `advanced` and `minutesPlayedLastWeek` —
+  **exactly the four fields the rule needs.** It is referenced by **nothing**: no service, no repository, no
+  job, no test. The model was drawn for this feature and never built on.
+- `MatchPlayerStats` has **one `minutesPlayed` per player per match and no position column.** A match played
+  at left-back and a match played at striker produce the same shape of row, so the minutes **cannot** be
+  split by slot without recording the slot.
+- `TrainingPercentService.minutesForWeekKey` merges **every** stat row for a player that week into one
+  total, with no reference to any training position. A player training MID is credited with minutes spent in
+  every slot.
+
+**Where the missing data already is.** The engine carries a per-player `role` — `ProposalStatsCollector`
+writes it, `SimReportMapper` exposes it as the match report's "position", and `ProposalMatchOutcomeBuilder`
+derives the formation string by counting roles. So the slot exists in the simulation's output and is simply
+**not persisted** onto the stats row. This is a persistence and training-formula change, not a simulation
+change, which is why it is tractable.
+
+**Why it is on the board rather than half-started.** Building it means a schema change to a hot table
+(`match_player_stats` gains a column across millions of rows), a change to the training formula that
+**alters every existing player's development**, and a guard that the lineup is never constrained by the
+training position. Doing that between two pages of UI work would be the wrong order.
+
+**One thing worth stating plainly:** the rule's two halves pull in opposite directions, and it is easy to
+break the second while fixing the first. Fixing "only MID minutes count" by filtering which players a
+manager may pick would satisfy the first and destroy the second. The board's last exit criterion exists
+only to make that mistake visible.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

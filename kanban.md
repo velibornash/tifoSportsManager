@@ -547,6 +547,49 @@ and a tactic order is *minute + condition + tactic*. Sokker's 24 conditions were
 - [ ] An order that fires switches the engine's tactics **live at that minute**, not from the start.
 - [ ] Orders are part of the T-MATCH-2 lock.
 
+## T-MATCH-8 — 🔴 P0 · a player trains in one slot and may play in any (owner, 2026-10-12)
+
+**The owner's rule, in full:** *"ako je igrač na trening strani stavljen da trenira u npr MID slotu
+(posebno bitno za ove u advanced slotu ali važi i za ove van advanced) u formulu za računanje treninga
+mu ulaze SAMO minuti provedeni na MID slotu ali on apsolutno može da igra na bilo kom slotu u meču."*
+
+Two halves. The second half already holds and must stay true: **a training position must never restrict
+where a manager may field a player.** Nothing in the codebase does restrict it, and the squad page must not
+start to.
+
+**The first half is not implemented at all.** The model was drawn for it and then nothing was built on it.
+
+| Piece | State |
+|---|---|
+| `TrainingAssignment` with `trainingPosition`, `advanced`, `minutesPlayedLastWeek` | **exists, and is referenced by nothing** — no service, no repository, no job |
+| Minutes split by the slot actually played | **not recorded** — `MatchPlayerStats` has one `minutesPlayed` per player per match and **no position column** |
+| Training counting only that slot's minutes | **not implemented** — `TrainingPercentService.minutesForWeekKey` sums *every* stat row for the player, with no reference to any training position |
+| Player free to play any slot whatever his training says | ✅ correct, and must stay true |
+
+**The gap in one sentence:** a player set to train MID is currently credited with minutes played in *any*
+slot, because nothing anywhere records the slot he occupied and nothing anywhere compares it to his
+training position.
+
+**Where the data would come from.** The engine already carries a per-player `role` — `ProposalStatsCollector`
+and `SimReportMapper` read it, and `ProposalMatchOutcomeBuilder` derives the formation string from it. So
+the slot exists in the simulation's output and is simply **not persisted** onto `MatchPlayerStats`. That
+makes this a persistence and a training-formula change, not a simulation change.
+
+**Exit criteria:**
+
+- [ ] A failing test first: a player who trains MID and plays 90 minutes at full-back gets **zero** of those
+      90 minutes toward his MID training.
+- [ ] The same player, playing 90 at MID, gets all 90 — the control, so the test is not vacuous.
+- [ ] `advanced` respected: advanced training takes only the minutes in its own slot, which is the case the
+      owner singled out.
+- [ ] A player with no training position set keeps today's behaviour — **all** minutes count. Changing this
+      silently would alter every existing player's development.
+- [ ] `MatchPlayerStats` persists the slot played, and the training formula filters on it.
+- [ ] **Nothing may constrain the lineup by the training position.** A test that fails if it ever does,
+      because that is the half of the rule that is easy to break by accident while fixing the other half.
+
+---
+
 ## T-MATCH-7 — 🔵 P1 · a matchday is 155 matches and the job framework was not built for it
 
 **Found while building T-MATCH-1.** `JobRunner` wraps every job in one `REQUIRES_NEW` transaction,
