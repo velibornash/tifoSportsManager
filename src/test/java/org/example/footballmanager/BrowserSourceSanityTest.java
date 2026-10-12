@@ -309,12 +309,21 @@ class BrowserSourceSanityTest {
         Path css = StaticResourceConfigPath.CSS.resolve("dashboard").resolve("components.css");
         String source = Files.readString(css);
 
+        // Placed explicitly, row and column. They used to be `grid-area: <side>`, which made each board
+        // fill its whole stand and hide the colour the manager had just picked; they now take the middle
+        // 54% and stand on the same row/column as their stand.
         for (String side : new String[]{"north", "south", "west", "east"}) {
-            assertTrue(source.contains(".stadium-ad-board--" + side + "{ grid-area:" + side + "; }"),
-                    "the " + side + " board is not placed on the stand it belongs to");
+            assertTrue(source.contains(".stadium-ad-board--" + side),
+                    "the " + side + " board has no rule");
         }
-        assertTrue(!source.contains(".stadium-ad-board{") || source.contains("grid-area:"),
-                "the boards are not placed by grid-area at all");
+        assertTrue(source.contains("grid-row:1; grid-column:1 / 4;")
+                        && source.contains("grid-row:3; grid-column:1 / 4;")
+                        && source.contains("grid-row:2; grid-column:1;")
+                        && source.contains("grid-row:2; grid-column:3;"),
+                "the boards are not placed on the grid, so they are auto-placed into cells that "
+                        + "already hold a stand");
+        assertTrue(source.contains("width:54%"),
+                "the board fills its whole stand again, hiding the stand's colour");
     }
 
     @Test

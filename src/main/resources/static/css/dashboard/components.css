@@ -728,3 +728,9 @@ recent-match:hover .result-badge {
 /* One section per thing a manager sets, so a panel that fails is visible as a failed panel. */
 .fm-setup-section{ margin-bottom:14px; }
 .fm-setup-error{ color:#ffb3b3; margin:0; }
+
+/* The kickoff and the season/week/day, on one line, as the owner asked. */
+.fm-match-when-calendar {
+    font-weight: 600;
+    color: #9fb3c8;
+}

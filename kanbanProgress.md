@@ -1,3 +1,32 @@
+## ✅ The calendar beside the kickoff, and the club menu on the setup tab (2026-10-12)
+
+Commits to follow.
+
+**Owner request:** move `Season 1 • Week 1 · Day 3 (League)` next to the `📅 16:00` so the calendar carries
+the season, the week, the day and the time together.
+
+The header printed the kickoff and then, on a second line, `seasonDayLabel` — **and that was null on the
+fixture path**, because it comes from the match metadata, which an unplayed fixture has no row for. So
+every unplayed match showed a bare `16:00` with no date at all, which is most matches. The label is built
+from the fixture's own columns now, falling back to the server's, and sits on one line:
+`📅 16:00 · Season 1 · Week 1 · Day 7`. The trailing time is stripped, because it is already printed
+beside it.
+
+**The club menu on Match Setup.** The owner asked for the identical menu to Club - Tactics, plus the three
+dropdowns. The dropdowns already existed — **First choice / Second choice / Third choice**, each listing
+every tactic, capped at three — and were invisible because of the stopwatch bug above. Measured once it
+opened: three dropdowns, both tactics in each.
+
+The menu was not there. First attempt put it in the host's static template and rendered nothing, because
+`mountSetupPanels()` replaces that host's innerHTML wholesale — the one place that could have been
+checked before shipping and was not. It is written where the menu survives, which is inside the template
+the function renders.
+
+**The browser earned its place twice more.** It caught `calendarSuffix is not defined` — a declaration
+whose insertion had silently done nothing because that edit carried no assertion, so the page died with
+"Error loading match". And it caught the missing menu, which a passing parse check and a green suite both
+missed completely.
+
 ## ✅ "Why is changing the team closed?" — a stopwatch where the game's own lock belongs (2026-10-12)
 
 Commit to follow.

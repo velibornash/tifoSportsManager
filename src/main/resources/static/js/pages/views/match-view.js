@@ -137,7 +137,19 @@ export function createMatchView(deps) {
             const competitionHeading = matchMeta?.competitionName
                 ? `<div style="text-align:center; margin-bottom:6px; color:#8fd18f; font-weight:600;">${htmlEscape(matchMeta.competitionName)}${matchMeta.competitionType ? ` <span style="color:#aaa; font-weight:400;">· ${htmlEscape(matchMeta.competitionType)}</span>` : ''}</div>`
                 : '';
-            const seasonDayLabel = matchMeta?.seasonDayLabel || null;
+            // Owner request, 2026-10-12: the season, the week and the day belong next to the kickoff
+            // time, not on a line of their own under it.
+            //
+            // The label was taken from `matchMeta.seasonDayLabel` and that is null on the fixture path,
+            // so the header showed a bare "16:00" with no date at all for every unplayed match - which is
+            // most of them. Built from the fixture's own columns instead, and falling back to whatever
+            // the server sent, so a played match and an unplayed one read the same way.
+            const seasonDayLabel = buildCalendarLabel(matchMeta);
+            // The server's label ends with the kickoff time, and the time is already printed beside it,
+            // so it is dropped rather than shown twice.
+            const calendarSuffix = seasonDayLabel
+                ? seasonDayLabel.replace(/\s*·\s*\d{1,2}:\d{2}\s*$/, '').trim()
+                : '';
 
             // **An unrecognised caller goes back where it came from, not to the league results page.**
             //
@@ -182,8 +194,9 @@ export function createMatchView(deps) {
                     </div>
                 </div>
                 <div style="text-align:center; color:#aaa; margin-bottom:25px;">
-                    &#128197; ${formattedDate}
-                    ${seasonDayLabel ? `<div style="margin-top:4px; font-size:0.9em;">${htmlEscape(seasonDayLabel)}</div>` : ''}
+                    <span class="fm-match-when">
+                        &#128197; ${htmlEscape(formattedDate)}${calendarSuffix ? ` <span class="fm-match-when-calendar">· ${htmlEscape(calendarSuffix)}</span>` : ''}
+                    </span>
                 </div>
                 <div id="match-buttons-container" class="fm-match-actions">
                     <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
@@ -235,6 +248,26 @@ export function createMatchView(deps) {
                 } catch (error) {
                     console.warn(`Reveal skipped for match ${matchId}:`, error);
                 }
+            }
+
+            /**
+             * "Season 1 · Week 1 · Day 7", from whatever the payload carries.
+             *
+             * <p>Prefer the server's own label when there is one and build it otherwise, because the
+             * fixture path has no `seasonDayLabel` and the played-match path does. Returns null when
+             * neither carries the numbers, rather than a label with holes in it.
+             */
+            function buildCalendarLabel(meta) {
+                if (!meta) return null;
+                if (meta.seasonDayLabel) return meta.seasonDayLabel;
+                const season = meta.seasonNumber ?? meta.seasonYear;
+                const week = meta.weekNumber;
+                const day = meta.dayNumber;
+                const bits = [];
+                if (season !== null && season !== undefined) bits.push(`Season ${season}`);
+                if (week !== null && week !== undefined) bits.push(`Week ${week}`);
+                if (day !== null && day !== undefined) bits.push(`Day ${day}`);
+                return bits.length ? bits.join(' · ') : null;
             }
 
             function renderMatchPreview(previewPayload) {
@@ -800,7 +833,19 @@ export function createMatchView(deps) {
                 // on a working page and wrong here. Three swallowed failures leave an empty container,
                 // so the owner's report was "Match Setup shows nothing on this page": a blank tab with no
                 // heading, no panel and no message, from three loaders that were told to stay quiet.
+                // The same club menu every other club page carries.
+                //
+                // Owner request, 2026-10-12: this tab should open the identical menu as
+                // Club - Tactics. A manager who wants to change one of the three tactics has to be able
+                // to go and build it from here, or he has to go back, remember where he was, and come
+                // back - and the tab he was setting up is the one that loses its state.
+                //
+                // It is written here rather than into the host's own markup because this function
+                // replaces the host wholesale, which is why the first attempt at this put the menu in
+                // the template and then rendered nothing at all.
+                const clubMenu = deps.buildClubActionsHtml ? deps.buildClubActionsHtml('tacticEditor') : '';
                 host.innerHTML = `
+                    ${clubMenu}
                     <p class="fm-subtle" style="margin-bottom:14px;">
                         Set the eleven, the tactics and the orders for this match. Everything here is
                         closed an hour before kickoff, when the match is decided.

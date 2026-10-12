@@ -412,6 +412,9 @@ function buildPageNavState(page, options = {}) {
         createSubstitutionPlanView: () => substitutionPlanView,
         createMatchTacticPlanView: () => createMatchTacticPlanView({ authFetch, getTeamId: () => currentUserTeamId }),
         createMatchLineupView: () => createMatchLineupView({ authFetch, getTeamId: () => currentUserTeamId }),
+        // The Match Setup tab carries the same club menu as the club pages, so a manager can reach
+        // Tactics and Tactic Editor from the screen where he chooses his three tactics.
+        buildClubActionsHtml,
         getNavigationDeps: () => ({ pushNavState })
     });
     const playerView = createPlayerView({
