@@ -439,6 +439,32 @@ What can honestly be said about the two JavaScript files: a bracket count balanc
 count, not a parse, and it would not notice a missing semicolon, a bad template literal or a typo in an
 identifier. **Neither page has been rendered by anything.**
 
+## 🟡 A position for every slot (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-5**, the model half. The page is not built.
+
+**Sokker lets a manager stand a midfielder at full-back and a striker in goal.** The player carries his own
+position, so a slot's position cannot be read from the man in it — it has to be stored beside the slot.
+`Lineup.starterPositions` is index-aligned with the starter order, and holds the *slot's* job, not the
+player's.
+
+**The part that matters is what happens when there is no position.** Every lineup saved before this column
+existed has none, and a manager who changes his eleven without setting them must not lose his side. So:
+
+- no positions at all → each slot reads as **its own player's position**;
+- a half-filled list → **padded**, not rejected;
+- an unrecognised name → **skipped**, not fatal, because the column is a string a manager can hand-edit.
+
+Rejecting any of those three would take every existing XI out of the game to make a new column tidy.
+Mutation: removing the padding turns three of the five tests red.
+
+**`MatchLineupService.starterPositionsOf` exists because the accessor cannot be called safely from outside
+a session.** `Lineup.getOrderedStarterPositions()` walks `startingPlayers`, a lazy collection, and a caller
+holding a detached lineup gets *"failed to lazily initialize ... no Session"* — the same fault that cost
+775 matchday fixtures, arriving here instead. The service owns the session and hands back plain values.
+The first attempt marked the getter `@PostLoad`, which would not have fired on a property read and would
+not have fixed anything.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

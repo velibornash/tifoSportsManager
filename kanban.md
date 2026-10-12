@@ -521,9 +521,16 @@ smuggled in.**
       match is silently written as the **club's standing template** and applies to every match — and the
       API says so in `perMatch: false`, having known it all along. This needs a `MatchFixture` reference
       on `Lineup` and a re-pointing of the resolution order, and it changes what the engine reads.
-- [ ] Eleven slots and a bench, both editable, **with swap and remove and a position per slot** — the
-      page. The service has ordering and validation; the per-slot **position** does not exist anywhere and
-      is a model change, not a page change.
+- [x] **A position per slot**, which was a model change and not a page change. `Lineup.starterPositions`
+      is index-aligned with the starter order, and it is deliberately **not** the player's own position —
+      a midfielder at full-back is a slot saying DEF while the man remains MID.
+- [x] **The fallback is the safety, not a convenience.** A lineup with no positions at all — every XI
+      saved before the column existed — reads each slot as its player's own position, and a half-filled
+      list is padded rather than rejected. Rejecting those would take every existing lineup out of the
+      game.
+- [x] An unknown position name is skipped, not fatal: the column is a string a manager can hand-edit.
+- [ ] Eleven slots and a bench, both editable, **with swap and remove** — the page. Ordering and validation
+      exist in the service; the per-slot picker does not.
 - [ ] **Unverified in a browser**, like the other two pages.
 
 ## T-MATCH-6 — 🔴 P0 · the orders page

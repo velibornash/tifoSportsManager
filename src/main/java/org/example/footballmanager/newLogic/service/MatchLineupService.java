@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.Lineup;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Player;
@@ -56,6 +57,50 @@ public class MatchLineupService {
     private final MatchFixtureRepository fixtures;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
     private final DisciplineService discipline;
+
+    /**
+     * Each slot's position for a lineup, read inside a session.
+     *
+     * <p><b>This exists because {@link Lineup#getOrderedStarterPositions()} cannot be called safely from
+     * outside one.</b> It walks {@code startingPlayers}, a lazy collection, and a caller holding a lineup
+     * loaded elsewhere gets <em>"failed to lazily initialize ... no Session"</em> — the same fault that
+     * cost 775 matchday fixtures, arriving here instead. The service owns the session; this hands back
+     * plain values so no caller has to own one.
+     *
+     * @param lineup the lineup, possibly detached
+     * @return one position per starter, in starter order
+     */
+    @Transactional(readOnly = true)
+    public List<Position> starterPositionsOf(Lineup lineup) {
+        if (lineup == null || lineup.getId() == null) {
+            return List.of();
+        }
+        // Re-read rather than using the caller's instance: the caller's is detached by now, and its
+        // lazy collection is exactly what cannot be walked.
+        return lineups.findById(lineup.getId())
+                .map(Lineup::getOrderedStarterPositions)
+                .orElseGet(List::of);
+    }
+
+    /**
+     * Saves an XI <b>with a position for each slot</b> — the owner asked for a squad page in the shape
+     * Sokker has, where a midfielder can stand at full-back.
+     *
+     * <p>The positions are index-aligned with {@code starterIds} and are deliberately allowed to be
+     * shorter, longer, or absent: the slot's position is the one piece of a lineup that a manager may fill
+     * in halfway and leave the rest, and rejecting the save would lose the eleven he did pick.
+     *
+     * <p>The older six-argument {@link #save} is this one with no positions, so every existing caller is
+     * unchanged.
+     */
+    @Transactional
+    public Lineup save(Long teamId, Long fixtureId, List<Long> starterIds, List<Long> benchIds,
+                       String formation, String style, List<?> starterPositions) {
+        Lineup lineup = save(teamId, fixtureId, starterIds, benchIds, formation, style);
+        lineup.setStarterPositionsFrom(starterPositions);
+        return lineups.save(lineup);
+    }
+
 
     /**
      * Saves the club's XI for one fixture.

@@ -94,6 +94,75 @@ public class Lineup {
                 .toList();
     }
 
+    /**
+     * The position of each slot, index-aligned with {@link #starterOrder}.
+     *
+     * <p><b>Why this is not the player's position.</b> Sokker's squad page lets a manager stand a
+     * midfielder at full-back or a striker in goal, and the owner asked for the same. The player keeps the
+     * position he is; the slot carries the job. Reading the job off the man in it would make those two
+     * impossible to express, and would make a saved XI mean something different from the one on screen.
+     *
+     * <p>Stored beside the order rather than in a join table, for the same reason the order is: it is a
+     * property of <em>the slot</em>, and slots only exist as positions in that list.
+     */
+    @Column(name = "starter_positions", length = 512)
+    private String starterPositions;
+
+    /**
+     * Each slot's position, in starter order, padded from the players' own where none was set.
+     *
+     * <p><b>Falling back is the point, not a convenience.</b> Every lineup saved before this column
+     * existed has no positions at all, and a manager who changes his eleven without setting them must not
+     * lose his side. An absent position is therefore the player's own, and a short list is padded, rather
+     * than the lineup being rejected or truncated.
+     *
+     * @return one position per starter, the same length as the starters
+     */
+    public List<Position> getOrderedStarterPositions() {
+        List<Player> starters = getOrderedStartingPlayers();
+        List<String> stored = starterPositions == null || starterPositions.isBlank()
+                ? List.of()
+                : Arrays.stream(starterPositions.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList();
+
+        List<Position> out = new ArrayList<>(starters.size());
+        for (int i = 0; i < starters.size(); i++) {
+            Position slot = i < stored.size() ? parsePosition(stored.get(i)) : null;
+            Player player = starters.get(i);
+            // A name that is not a position is skipped, not fatal: this column is a JSON string a manager
+            // can hand-edit, and one bad word must not take an XI out of the game.
+            out.add(slot != null ? slot
+                    : (player == null ? Position.MID
+                            : (player.getPosition() == null ? Position.MID : player.getPosition())));
+        }
+        return out;
+    }
+
+    private static Position parsePosition(String raw) {
+        try {
+            return Position.valueOf(raw);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /** Writes the slot positions from an ordered list; null or empty clears them. */
+    public void setStarterPositionsFrom(List<? extends Object> positions) {
+        if (positions == null || positions.isEmpty()) {
+            this.starterPositions = null;
+            return;
+        }
+        this.starterPositions = positions.stream()
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .reduce((left, right) -> left + "," + right)
+                .orElse(null);
+    }
+
     public void setStarterOrderFromIds(List<Long> ids) {
         this.starterOrder = encodeOrder(ids);
     }
