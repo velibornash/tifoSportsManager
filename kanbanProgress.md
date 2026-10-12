@@ -154,6 +154,49 @@ and asserts the order. Moving `sim.simulate` back outside the transaction turns 
 half was seen at 15 of 155, the publish half at 15, and the lazy-loading fix has not yet been seen
 against the real database.
 
+## ✅ The lock is real, and the fixtures are loaded where they are played (2026-10-12) — commit `fa25c5a5`
+
+`kanban.md` **T-MATCH-2**, and the last of the lazy-loading faults.
+
+**The lock.** The owner's rule is *"sat vremena pre početka utakmice igrač ne sme više podešavati taktiku
+za taj meč."* `MatchSetupLockTest` wrote that sentence down and ran it before the guard existed: saving
+tactics on a prepared fixture answered **200**. It now answers **423 Locked** with a reason naming the
+opponent and the kickoff hour. Same for the lineup template, same for the away side, and open again at
+kickoff — a club with no match in the hour is never locked.
+
+**The lock is the prepared fixture, not a clock reading.** The tempting implementation is "within an hour
+of kickoff", comparing timestamps. That is the wrong source of truth twice over: a change must be refused
+because *the match was already decided without it*, and an app that was down for the hour still has a
+decided match. The prepared, unpublished fixture is that fact, and it is already stored.
+
+**The lazy-loading fault, third and final form.** I first read it as "no transaction", and moving the
+simulation inside a transaction did not fix it. The real cause: the day's fixtures were fetched once,
+outside any session, and their `Team` references are lazy proxies owned by a persistence context that
+closed when the query returned. **Opening a transaction afterwards does not help — a new context cannot
+revive a proxy owned by a dead one.** The scheduler works on ids now and re-reads each fixture inside its
+own transaction, where the fixture, its two teams, their squads and their players all belong to a session
+open for as long as the football takes. Publishing does the whole decision in one transaction for the same
+reason: reading the fixture, reading its prepared match and saving it are three steps over two entities
+that reference each other.
+
+**The test that could have caught it, and did not exist.** `MatchdaySchedulerPreparesRealFixturesTest`
+runs the scheduler exactly as the job runs it — fixtures fetched, ids taken, each re-read inside its own
+transaction, the container's own transaction manager. Its **first version carried `@Transactional`** and
+passed, because the test's own transaction held a session open. That is the whole fault, reproduced
+faithfully except for the thing that was broken. The comment above the test says so, so the next person
+does not add it back.
+
+**Not done, and written on the board:**
+
+- **The lock is not in the browser.** Nothing tells a manager his match is closed; the 423 is only visible
+  if he happens to save something and reads the error.
+- **The squad and the orders writes do not exist yet** — they arrive with T-MATCH-5 and T-MATCH-6 and
+  must call `MatchLockService`. That is the contract to check when they land.
+- **The engine reads the locked state only by accident.** With today's club-level tactics this is true by
+  construction: the result was computed from the settings as they were and nothing can change them
+  afterwards. It stops being true the moment tactics become per-match in T-MATCH-3, which is where a
+  snapshot has to be stored.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`
@@ -200,8 +243,13 @@ set and `played = false`, none published, before the deadlock below stopped it.
 
 **Not done:**
 
-- The publish half has never been seen changing data. A matchday has to be prepared to completion and
-  then released.
+- ~~The publish half has never been seen changing data.~~ **Done, 2026-10-11:**
+  `Matchday publish day 7: 15 result(s) released for week 1` — the 15 fixtures a killed session had left
+  prepared.
+- **Still not done:** one whole 155-fixture matchday computed and released end to end. Both halves have
+  been seen at 15, never together at full size. It takes 10–15 minutes of football per matchday, the game
+  clock is anchored to the wall clock so the window moves while you watch, and a `DONE` row written by a
+  bad run suppresses the slot until it is deleted by hand. **This wants a human with a stopwatch.**
 - The fallback — a fixture the prepare job missed, computed at kickoff instead — is tested but unseen.
 - National-tournament matchdays do not have the pair (owner decision, `kanban.md` T-MATCH-1).
 - **The lock does not exist.** Nothing stops a manager editing tactics at 19:50, and the engine does
