@@ -8,6 +8,7 @@ import org.example.footballmanager.newLogic.model.*;
 import org.example.commonmanager.model.User;
 import org.example.commonmanager.model.UserRole;
 import org.example.commonmanager.repository.UserRepository;
+import org.example.footballmanager.newLogic.model.tactics.Tactic;
 import org.example.footballmanager.newLogic.model.tactics.TeamTacticsProfile;
 import org.example.footballmanager.newLogic.repository.*;
 import org.example.footballmanager.newLogic.service.ResetService;
@@ -134,6 +135,7 @@ public class DatabaseInitializer {
     private final CompetitionEntryRepository competitionEntryRepository;
     private final PromotionRuleRepository promotionRuleRepository;
     private final TeamTacticsProfileRepository teamTacticsProfileRepository;
+    private final TacticRepository tacticRepository;
     private final PlayerFactory playerFactory;
     private final TeamFactory teamFactory;
     private final EconomyProfileService economyProfile;
@@ -489,6 +491,7 @@ public class DatabaseInitializer {
         log.info("Clearing football data (preserving owner account + tactics profiles)...");
         progressListener.accept("Snapshotting tactics profiles...");
         List<TacticsProfileSnapshot> tacticsSnapshots = snapshotTacticsProfiles();
+        List<TacticLibrarySnapshot> librarySnapshots = snapshotTacticLibrary();
         progressListener.accept("Resetting database...");
         resetService.resetDatabase();
         // Re-seed Omladinac team + players + re-link common User's CTeam reference
@@ -496,6 +499,7 @@ public class DatabaseInitializer {
         seedOwnerAfterReset();
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
+        restoreTacticLibrary(librarySnapshots, tacticRepository, teamRepository);
         log.info("Database cleared. Use Initialize to rebuild the football structure.");
         progressListener.accept("Clear completed.");
     }
@@ -508,6 +512,7 @@ public class DatabaseInitializer {
         log.info("Počinje automatska inicijalizacija baze podataka...");
         progressListener.accept("Snapshotting tactics profiles...");
         List<TacticsProfileSnapshot> tacticsSnapshots = snapshotTacticsProfiles();
+        List<TacticLibrarySnapshot> librarySnapshots = snapshotTacticLibrary();
         progressListener.accept("Resetting football data...");
         resetService.resetDatabase();
         // 1. Always run structure init after a full reset.
@@ -524,6 +529,7 @@ public class DatabaseInitializer {
         createSecondUserIfNotExists();
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
+        restoreTacticLibrary(librarySnapshots, tacticRepository, teamRepository);
         progressListener.accept("Assigning squad numbers and juniors...");
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         seedStandInTransferActivity();
@@ -917,6 +923,115 @@ public class DatabaseInitializer {
         // {@code football_team_id} on the first Phase 2 start, while the seeded second manager's was
         // fine because {@code createSecondUserIfNotExists} set it differently.
         owner.setFootballTeam(ownerTeam);
+    }
+
+    /**
+     * Takes every club's tactic library before a reset deletes it.
+     *
+     * <p>The database is the only source here, unlike {@link #snapshotTacticsProfiles()} which also
+     * reads the backup file. The file is written on editor save and predates the library — the owner's
+     * copy still held one tactic called "4-4-2" while his database held the renamed default and its
+     * copy — and preferring it would undo his rename on every reset.
+     */
+    private List<TacticLibrarySnapshot> snapshotTacticLibrary() {
+        Map<String, TacticLibrarySnapshot> byClub = new LinkedHashMap<>();
+        for (Tactic tactic : tacticRepository.findAll()) {
+            Team team = tactic.getTeam();
+            if (team == null || team.getName() == null || team.getName().isBlank()) {
+                continue;
+            }
+            TacticLibrarySnapshot snapshot = byClub.computeIfAbsent(team.getName(), name -> {
+                TacticLibrarySnapshot created = new TacticLibrarySnapshot();
+                created.teamName = name;
+                return created;
+            });
+            TacticEntry entry = new TacticEntry();
+            entry.name = tactic.getName();
+            entry.formation = tactic.getFormation();
+            entry.style = tactic.getStyle();
+            entry.rulesJson = tactic.getRulesJson();
+            entry.setPiecesJson = tactic.getSetPiecesJson();
+            entry.version = tactic.getVersion() == null ? 0L : tactic.getVersion();
+            entry.isDefault = tactic.isDefaultTactic();
+            snapshot.tactics.add(entry);
+        }
+        return new ArrayList<>(byClub.values());
+    }
+
+    /**
+     * Snapshots one club's library through the production path, for the test that proves the restore.
+     *
+     * <p>The snapshot types are private because nothing outside this class should build one by hand —
+     * a test that assembled its own would be asserting against its own fixture rather than against the
+     * snapshot the reset actually takes. Filtering the real snapshot keeps the test honest.
+     */
+    List<TacticLibrarySnapshot> snapshotTacticLibraryForTest(String teamName) {
+        List<TacticLibrarySnapshot> all = snapshotTacticLibrary();
+        if (teamName == null) {
+            return all;
+        }
+        return all.stream().filter(s -> teamName.equals(s.teamName)).toList();
+    }
+
+    /**
+     * Puts the tactic libraries back, against the clubs the re-init has just rebuilt.
+     *
+     * <p>Package-private so the restore can be tested without a database, the same way
+     * {@link #restoreTacticsProfiles} is.
+     *
+     * <p>Exactly one default per club survives. The cap of ten is the library's own rule and is not
+     * re-applied here: a snapshot over ten means the cap was already broken when it was taken, and
+     * silently dropping the owner's newest tactics on reset would be a worse answer than restoring
+     * them.
+     */
+    void restoreTacticLibrary(List<TacticLibrarySnapshot> snapshots,
+                              TacticRepository tacticRepository,
+                              TeamRepository teamRepository) {
+        if (snapshots == null || snapshots.isEmpty()) {
+            return;
+        }
+        for (TacticLibrarySnapshot snapshot : snapshots) {
+            if (snapshot == null || snapshot.teamName == null || snapshot.tactics == null
+                    || snapshot.tactics.isEmpty()) {
+                continue;
+            }
+            Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
+            if (team == null || team.getId() == null) {
+                log.warn("Tactic library skipped: no club named {} after the reset.", snapshot.teamName);
+                continue;
+            }
+            int restored = 0;
+            boolean haveDefault = false;
+            for (TacticEntry entry : snapshot.tactics) {
+                if (entry == null || entry.name == null || entry.name.isBlank()) {
+                    continue;
+                }
+                // The club may already hold a tactic by this name - the re-init seeds a default - and
+                // the unique constraint on (team_id, name) would turn a second insert into a failed
+                // reset rather than a merge.
+                if (tacticRepository.findByTeamIdAndName(team.getId(), entry.name).isPresent()) {
+                    continue;
+                }
+                Tactic tactic = new Tactic();
+                tactic.setTeam(team);
+                tactic.setName(entry.name);
+                tactic.setFormation(entry.formation);
+                tactic.setStyle(entry.style);
+                tactic.setRulesJson(entry.rulesJson);
+                tactic.setSetPiecesJson(entry.setPiecesJson);
+                tactic.setVersion(entry.version);
+                // A second default would leave the library ambiguous, so the first one keeps the flag
+                // and the rest are ordinary tactics.
+                boolean isDefault = entry.isDefault && !haveDefault;
+                tactic.setDefaultTactic(isDefault);
+                if (isDefault) {
+                    haveDefault = true;
+                }
+                tacticRepository.save(tactic);
+                restored++;
+            }
+            log.info("Restored {} tactics for {} after reset.", restored, snapshot.teamName);
+        }
     }
 
     private List<TacticsProfileSnapshot> snapshotTacticsProfiles() {
@@ -1568,6 +1683,34 @@ public class DatabaseInitializer {
         rule.setTargetCompetition(target);
         rule.setIsPlayoff(isPlayoff);
         promotionRuleRepository.save(rule);
+    }
+
+    /**
+     * One club's tactic library, taken before a reset destroys it.
+     *
+     * <p><b>The library was not in the snapshot, and the reset deleted it.</b> {@link TacticsProfileSnapshot}
+     * covers {@code team_tactics_profile}, the table that existed before the multi-tactic library, and
+     * {@code PRESERVED_TABLES} in {@code ResetService} keeps {@code tactics} and {@code formation} for the
+     * same reason. None of them is the {@code tactic} table the owner actually edits from: a reset wiped
+     * both his tactics — the renamed default and the copy made minutes earlier — and nothing said so.
+     *
+     * <p>Keyed on the club name for the same reason as the profile snapshot: the rows carry
+     * {@code team_id}, and every club is rebuilt with a new id by the re-init that follows the reset.
+     */
+    private static class TacticLibrarySnapshot {
+        private String teamName;
+        private List<TacticEntry> tactics = new ArrayList<>();
+    }
+
+    /** A single tactic in the snapshot: everything about it except the id and the club. */
+    private static class TacticEntry {
+        private String name;
+        private String formation;
+        private String style;
+        private String rulesJson;
+        private String setPiecesJson;
+        private long version;
+        private boolean isDefault;
     }
 
     private static class TacticsProfileSnapshot {
