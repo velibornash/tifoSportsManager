@@ -1,3 +1,27 @@
+## ✅ The simulation write path, closed (2026-10-12)
+
+Commit to follow.
+
+The previous entry left one thing open and named it: the filter is proven against stored rows, but the two
+halves had not been seen joined by a real match. His club has no fixture in the current round and the round
+simulator only walks the clock's own week and day, so this is closed with a test instead of by waiting for
+the calendar.
+
+`SimulatedSlotIsPersistedTest` builds a `ProposalMatchOutcome` carrying a player with `role = "MID"`, calls
+`sim.persist(fixture, outcome, -1L)` — the same entry point the national-tournament tests use — and reads
+the row back out of the repository.
+
+Three cases, and each one is a decision that had to be made rather than defaulted into:
+
+- **`"MID"`** lands as `Position.MID`.
+- **`"SOMETHING_NEW"`** lands as **null**. Mapping an unknown role onto a default would have moved that
+  player's minutes into whichever slot happened to be first, silently, forever.
+- **`"def"`** lands as `Position.DEF`, because the engine is not careful about case and a lower-case role
+  dropped on the floor would have been a silent hole in the training of whoever it happened to.
+
+Dropping the one-line write turns two of the three red: `expected: <MID> but was: <null>`. 63 training and
+simulation tests green.
+
 ## ✅ T-MATCH-8, the half that was not built at all (2026-10-12)
 
 Commit to follow.
