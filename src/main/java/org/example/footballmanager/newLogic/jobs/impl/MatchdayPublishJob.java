@@ -2,6 +2,7 @@ package org.example.footballmanager.newLogic.jobs.impl;
 
 import org.example.footballmanager.newLogic.jobs.DayJob;
 import org.example.footballmanager.newLogic.jobs.JobContext;
+import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.service.MatchdayScheduler;
 import org.slf4j.Logger;
@@ -93,6 +94,13 @@ public class MatchdayPublishJob implements DayJob {
         return day;
     }
 
+    /**
+     * The day's fixtures as ids, not entities — see {@link MatchdayPrepareJob}.
+     */
+    private static java.util.List<Long> idsOf(java.util.List<MatchFixture> fixtures) {
+        return fixtures.stream().map(MatchFixture::getId).filter(java.util.Objects::nonNull).toList();
+    }
+
     /** The kickoff hour itself, from the template. Day 1 is 20:45 and lands on hour 20. */
     @Override
     public int hour() {
@@ -119,7 +127,7 @@ public class MatchdayPublishJob implements DayJob {
     public void run(JobContext context) {
         MatchdayScheduler.MatchdayOutcome outcome = scheduler.publishUnplayedOn(
                 context.seasonYear(), context.weekNumber(), day,
-                fixtures.findUnpublishedOnDay(context.seasonYear(), context.weekNumber(), day));
+                idsOf(fixtures.findUnpublishedOnDay(context.seasonYear(), context.weekNumber(), day)));
 
         // Same rule as the prepare job: a result a manager was promised and did not get must not be
         // recorded as a matchday that happened.

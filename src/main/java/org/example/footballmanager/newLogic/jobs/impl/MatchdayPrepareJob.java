@@ -141,7 +141,7 @@ public class MatchdayPrepareJob implements DayJob {
     public void run(JobContext context) {
         MatchdayScheduler.MatchdayOutcome outcome = scheduler.prepareUnplayedOn(
                 context.seasonYear(), context.weekNumber(), day,
-                fixtures.findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day));
+                idsOf(fixtures.findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day)));
 
         // Thrown so JobRunner records FAILED and does not mark the slot DONE. A matchday that lost
         // fixtures to an exception is not a matchday that happened, and recording it as one is how a
@@ -155,6 +155,17 @@ public class MatchdayPrepareJob implements DayJob {
             log.info("Matchday prepare day {}: {} fixture(s) computed and locked for week {}.",
                     day, outcome.prepared(), context.weekNumber());
         }
+    }
+
+    /**
+     * The day's fixtures as ids, not entities.
+     *
+     * <p>The scheduler re-reads each one inside its own transaction. Handing it the entities instead
+     * hands the simulation lazy proxies owned by a persistence context that closed when the query
+     * returned, and every fixture then fails with "no Session".
+     */
+    private static java.util.List<Long> idsOf(java.util.List<MatchFixture> fixtures) {
+        return fixtures.stream().map(MatchFixture::getId).filter(java.util.Objects::nonNull).toList();
     }
 
     /** Kept so the day is visible on the job list, which is how a manager reads what is scheduled. */

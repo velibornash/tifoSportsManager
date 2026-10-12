@@ -65,6 +65,7 @@ public class TeamController {
     private final SeasonService seasonService;
     private final TeamMedicalService teamMedicalService;
     private final TeamTacticsService teamTacticsService;
+    private final org.example.footballmanager.newLogic.service.MatchLockService matchLocks;
     private final ClubOwnershipLinker clubOwnership;
     private final SquadRegistrationService squadRegistration;
 
@@ -80,6 +81,7 @@ public class TeamController {
                           SeasonService seasonService,
                           TeamMedicalService teamMedicalService,
                           TeamTacticsService teamTacticsService,
+                          org.example.footballmanager.newLogic.service.MatchLockService matchLocks,
                           PlusFeatureService plusFeatures,
                           ClubOwnershipLinker clubOwnership,
                           SquadRegistrationService squadRegistration) {
@@ -95,6 +97,7 @@ public class TeamController {
         this.seasonService = seasonService;
         this.teamMedicalService = teamMedicalService;
         this.teamTacticsService = teamTacticsService;
+        this.matchLocks = matchLocks;
         this.plusFeatures = plusFeatures;
         this.clubOwnership = clubOwnership;
         this.squadRegistration = squadRegistration;
@@ -486,6 +489,12 @@ public class TeamController {
         if (!mayManage(user, teamId)) {
             return notYourClub();
         }
+        // Same lock as the tactics, and for the same reason: the eleven is part of what was decided.
+        var lock = matchLocks.lockFor(teamId);
+        if (lock.isPresent()) {
+            return ResponseEntity.status(HttpStatus.LOCKED)
+                    .body(Map.of("reason", matchLocks.refusalReason(lock.get())));
+        }
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.notFound().build();
@@ -571,11 +580,19 @@ public class TeamController {
      * orchestrator, so the edit changed how the next match was actually simulated.
      */
     @PutMapping("/{teamId}/tactics-editor")
-    public ResponseEntity<TacticsEditorDTO> saveTacticsEditor(@PathVariable Long teamId,
-                                                              @RequestBody TacticsEditorSaveRequest request,
-                                                              @AuthenticationPrincipal User user) {
+    public ResponseEntity<?> saveTacticsEditor(@PathVariable Long teamId,
+                                               @RequestBody TacticsEditorSaveRequest request,
+                                               @AuthenticationPrincipal User user) {
         if (!mayManage(user, teamId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        // An hour before kickoff the match has already been computed, so a change now could not reach
+        // it. Refusing is the honest answer; 423 says "locked" rather than "forbidden", because the
+        // manager is allowed to do this - just not this week.
+        var lock = matchLocks.lockFor(teamId);
+        if (lock.isPresent()) {
+            return ResponseEntity.status(HttpStatus.LOCKED)
+                    .body(Map.of("reason", matchLocks.refusalReason(lock.get())));
         }
         TacticsEditorDTO dto = teamTacticsService.saveTacticsEditor(teamId, request);
         return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);

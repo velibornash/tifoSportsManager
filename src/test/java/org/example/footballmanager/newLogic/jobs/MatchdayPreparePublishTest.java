@@ -194,6 +194,7 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
         when(sim.simulate(any(), any(Boolean.class))).thenReturn(new SimMatchService.SimMatchOutcome(
                 org.mockito.Mockito.mock(ProposalMatchOutcome.class), 7L, null, null, null));
         // The real prepareMatch writes the id onto the fixture; the stub has to do the same, or this
@@ -203,7 +204,7 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
             return 9001L;
         });
 
-        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(42L));
 
         assertThat(outcome.prepared()).isEqualTo(1);
         // The whole point. If this ever becomes true, a manager can read the result an hour early.
@@ -225,14 +226,16 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
         fixture.setPreparedMatchId(9001L);
 
         org.example.footballmanager.newLogic.model.Match prepared =
                 new org.example.footballmanager.newLogic.model.Match();
         prepared.setId(9001L);
         when(matches.findById(9001L)).thenReturn(java.util.Optional.of(prepared));
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
 
-        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(42L));
 
         assertThat(outcome.prepared()).isEqualTo(1);
         assertThat(fixture.isPlayed()).isTrue();
@@ -256,10 +259,11 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
         when(sim.simulate(any(), any(Boolean.class))).thenReturn(new SimMatchService.SimMatchOutcome(
                 org.mockito.Mockito.mock(ProposalMatchOutcome.class), 7L, null, null, null));
 
-        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.publishUnplayedOn(1, 3, DAY, List.of(42L));
 
         // Late rather than lost. This is the case that would silently eat a matchday.
         assertThat(outcome.prepared()).isEqualTo(1);
@@ -303,13 +307,19 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
             return null;
         });
 
-        MatchdayScheduler real = new MatchdayScheduler(mock(MatchFixtureRepository.class),
+        MatchFixtureRepository repo = mock(MatchFixtureRepository.class);
+        MatchFixture fixture = new MatchFixture();
+        fixture.setId(42L);
+        // The scheduler works on ids and re-reads the fixture inside its own transaction. Stubbing the
+        // read is not a formality: it is the behaviour under test, since an entity read outside the
+        // transaction is what carried proxies no session could ever revive.
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
+
+        MatchdayScheduler real = new MatchdayScheduler(repo,
                 mock(org.example.footballmanager.newLogic.repository.MatchRepository.class),
                 sim, recording);
 
-        MatchFixture fixture = new MatchFixture();
-        fixture.setId(42L);
-        real.prepareUnplayedOn(1, 2, DAY, List.of(fixture));
+        real.prepareUnplayedOn(1, 2, DAY, List.of(42L));
 
         int simulateAt = events.indexOf("simulate");
         assertThat(simulateAt).as("the fixture should have been simulated at all: %s", events)
@@ -333,9 +343,10 @@ class MatchdayPreparePublishTest extends org.example.footballmanager.BaseTest {
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
+        when(repo.findById(42L)).thenReturn(java.util.Optional.of(fixture));
         fixture.setPreparedMatchId(9001L);
 
-        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(fixture));
+        var outcome = real.prepareUnplayedOn(1, 3, DAY, List.of(42L));
 
         assertThat(outcome.prepared()).isZero();
         verify(sim, never()).simulate(any(), any(Boolean.class));

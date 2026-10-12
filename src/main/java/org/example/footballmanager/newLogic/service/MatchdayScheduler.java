@@ -53,14 +53,17 @@ public class MatchdayScheduler {
      * still ended at 743 — twenty minutes of football, none of it committed, and one bad fixture at
      * the end losing the whole evening.
      *
-     * <p><b>The simulation runs inside it, not beside it.</b> That looked like an optimisation to avoid
-     * holding a connection through the expensive part, and it cost 775 fixtures in one run:
-     * {@code simulate} walks the fixture's home and away teams, which arrive as lazy proxies, and with
-     * no session open every one of them failed with *"could not initialize proxy Team#128 - no
-     * Session"*. The job was green the whole time and did nothing.
+     * <p><b>The fixture is loaded inside it, and so is everything the fixture reaches.</b> Not an
+     * optimisation question but the whole bug: the day's fixtures were fetched once, outside any
+     * session, and their {@code Team} references are lazy proxies bound to a persistence context that
+     * has since closed. Opening a transaction afterwards does not help — a new context does not revive
+     * a proxy owned by a dead one — so every fixture failed with *"could not initialize proxy Team#128
+     * - no Session"*, 775 at a time, and the job was recorded as a successful matchday.
      *
-     * <p>Which is the old rule again: a job can be registered, scheduled, logged as run, and have
-     * failed on every single fixture, and the only thing that catches it is looking at the data.
+     * <p>So the scheduler works on <b>ids</b> and re-reads each fixture inside its own transaction,
+     * where the fixture, its two teams, their squads and their players all belong to a session that is
+     * open for as long as the football takes. Which is the old rule again: a job can be registered,
+     * scheduled, logged as run, and have failed on every single fixture, and only the data catches it.
      */
     private final TransactionTemplate perFixture;
 
@@ -106,16 +109,22 @@ public class MatchdayScheduler {
      * not the evening.
      */
     public MatchdayOutcome prepareUnplayedOn(int seasonYear, int week, int day,
-                                             List<MatchFixture> candidates) {
+                                             List<Long> fixtureIds) {
         int prepared = 0;
         int failed = 0;
-        for (MatchFixture fixture : candidates) {
-            if (fixture == null || fixture.isPlayed() || fixture.getPreparedMatchId() != null) {
+        for (Long fixtureId : fixtureIds) {
+            if (fixtureId == null) {
                 continue;
             }
             try {
                 Long[] matchId = new Long[1];
                 perFixture.executeWithoutResult(status -> {
+                    MatchFixture fixture = loadForSimulation(fixtureId);
+                    // Already computed, so already locked. Simulating it again would leave the
+                    // manager locked into a result nobody has been shown.
+                    if (fixture == null || fixture.getPreparedMatchId() != null) {
+                        return;
+                    }
                     var outcome = sim.simulate(fixture, false);
                     if (outcome != null) {
                         matchId[0] = sim.prepareMatch(fixture, outcome.outcome(), outcome.replayId(),
@@ -131,8 +140,16 @@ public class MatchdayScheduler {
                 // manager will not see at kickoff, so the pass reports it and the job is recorded as
                 // FAILED rather than DONE.
                 failed++;
-                log.warn("Could not prepare fixture {} for week {} day {}: {}",
-                        fixture.getId(), week, day, e.getMessage());
+                if (failed == 1) {
+                    // The first failure carries its stack; the other 154 carry a line each. A matchday
+                    // that loses every fixture to the same fault used to produce 155 identical one-line
+                    // warnings and nothing that said where in the simulation it happened.
+                    log.warn("Could not prepare fixture {} for week {} day {}: {}",
+                            fixtureId, week, day, e.getMessage(), e);
+                } else {
+                    log.warn("Could not prepare fixture {} for week {} day {}: {}",
+                            fixtureId, week, day, e.getMessage());
+                }
             }
         }
         return new MatchdayOutcome(prepared, failed);
@@ -150,53 +167,77 @@ public class MatchdayScheduler {
      * manager his result while the rest of the matchday is still coming out of the ground.
      */
     public MatchdayOutcome publishUnplayedOn(int seasonYear, int week, int day,
-                                             List<MatchFixture> candidates) {
+                                             List<Long> fixtureIds) {
         int published = 0;
         int failed = 0;
-        for (MatchFixture fixture : candidates) {
-            if (fixture == null || fixture.isPlayed()) {
+        for (Long fixtureId : fixtureIds) {
+            if (fixtureId == null) {
                 continue;
             }
             try {
-                if (fixture.getPreparedMatchId() != null) {
-                    Match match = matches.findById(fixture.getPreparedMatchId()).orElse(null);
-                    if (match != null) {
-                        // A manager watching the clock should see his result appear as the matchday
-                        // is released, not twenty minutes later when the whole day finally commits.
-                        perFixture.executeWithoutResult(status -> {
+                // The whole publish decision happens inside one transaction. Reading the fixture,
+                // reading its prepared match and saving the fixture are three steps over two entities
+                // that reference each other; split them across transactions and the match arrives
+                // detached with proxies no session can revive, which is the failure this file has now
+                // produced twice.
+                Boolean[] released = new Boolean[]{false};
+                Long[] gone = new Long[]{null};
+
+                perFixture.executeWithoutResult(status -> {
+                    MatchFixture fixture = loadForSimulation(fixtureId);
+                    if (fixture == null || fixture.isPlayed()) {
+                        return;
+                    }
+                    if (fixture.getPreparedMatchId() != null) {
+                        Match match = matches.findById(fixture.getPreparedMatchId()).orElse(null);
+                        if (match != null) {
                             fixture.setPlayedMatch(match);
                             fixture.setPlayed(true);
                             fixtures.save(fixture);
-                        });
-                        published++;
-                        continue;
+                            released[0] = true;
+                            return;
+                        }
+                        // The prepared row is gone. Fall through and compute it now rather than
+                        // publish a fixture that points at nothing.
+                        gone[0] = fixture.getPreparedMatchId();
                     }
-                    // The prepared row is gone. Fall through and compute it now rather than publish a
-                    // fixture that points at nothing.
-                    log.warn("Fixture {} was prepared into match {} and that match is gone; "
-                            + "computing it at kickoff instead.", fixture.getId(),
-                            fixture.getPreparedMatchId());
-                }
-                // Simulated inside the transaction for the same reason as the prepare path: the
-                // fixture's teams are lazy proxies and there is no session without one.
-                Long[] done = new Long[1];
-                perFixture.executeWithoutResult(status -> {
+                    // Simulated here for the same reason as the prepare path: the fixture's teams are
+                    // lazy proxies and there is no session without one.
                     var outcome = sim.simulate(fixture, false);
                     if (outcome != null) {
                         sim.persist(fixture, outcome.outcome(), outcome.replayId(), outcome.snapshots());
-                        done[0] = 1L;
+                        released[0] = true;
                     }
                 });
-                if (done[0] != null) {
+
+                if (gone[0] != null) {
+                    log.warn("Fixture {} was prepared into match {} and that match is gone; "
+                            + "computing it at kickoff instead.", fixtureId, gone[0]);
+                }
+                if (Boolean.TRUE.equals(released[0])) {
                     published++;
                 }
             } catch (RuntimeException e) {
                 failed++;
                 log.warn("Could not publish fixture {} for week {} day {}: {}",
-                        fixture.getId(), week, day, e.getMessage());
+                        fixtureId, week, day, e.getMessage());
             }
         }
         return new MatchdayOutcome(published, failed);
+    }
+
+    /**
+     * Re-reads a fixture inside the caller's transaction, skipping one that no longer needs work.
+     *
+     * <p>Must be called from within {@link #perFixture}. A fixture read outside it would hand the
+     * simulation proxies that can never be initialised.
+     */
+    private MatchFixture loadForSimulation(Long fixtureId) {
+        MatchFixture fixture = fixtures.findById(fixtureId).orElse(null);
+        if (fixture == null || fixture.isPlayed()) {
+            return null;
+        }
+        return fixture;
     }
 
     /** Whether a fixture is computed but not yet shown. The hour before kickoff. */

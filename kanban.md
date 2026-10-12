@@ -335,9 +335,13 @@ What exists now:
 - [x] Seen in the database: `MatchdayPublishJob` releasing a prepared matchday —
       `Matchday publish day 7: 15 result(s) released for week 1`, the 15 fixtures a killed session had
       left prepared.
-- [ ] Seen in the database: **one whole matchday** computed and released end to end. The prepare half
-      was seen at 15 of 155 and the publish half at 15; a clean 155 through both is not yet a fact, and
-      a matchday takes 10–15 minutes of football in this world.
+- [x] Per-fixture commits confirmed against PostgreSQL: 15 fixtures computed and stored while the
+      matchday was still running, which is what the per-fixture transaction is for.
+- [ ] **Seen in the database: one whole matchday, 155 fixtures, computed and released end to end.**
+      Both halves have been seen at 15, never together at full size. It takes 10–15 minutes of football
+      per matchday, the game clock is anchored to the wall clock so the window moves while you watch,
+      and a `DONE` row written by a bad run suppresses the slot until it is deleted by hand.
+      **This is the one thing on T-MATCH-1 left, and it wants a human with a stopwatch.**
 - [ ] The publish fallback proven live — a fixture the prepare job missed is computed at kickoff and
       published, not lost.
 - [x] National-tournament matchdays get the pair, for **days 2, 4 and 6 only**. Days 1, 3, 5 and 7
@@ -360,18 +364,30 @@ What exists now:
 
 ## T-MATCH-2 — 🔴 P0 · the lock is real, not a message
 
-**Nothing built.** An hour before kickoff the tactics, the eleven, the bench and the orders are to be
-closed to the manager, and the match must be simulated from **the state that was locked**, not from
-whatever the club's current settings happen to be at kickoff.
+**Partly built.** `MatchLockService` and the guards on the two write endpoints that exist today.
+
+The lock is **the prepared fixture, not a clock reading**. "Within an hour of kickoff" would be the
+wrong source of truth: a manager's change must be refused because *the match was already decided
+without it*, not because a number was crossed — and an app that was down for the hour still has a
+decided match. A fixture that is computed and not published is exactly that fact, and it is stored.
 
 **Exit criteria:**
 
-- [ ] A failed test first: changing a tactic at 19:50 on a prepared fixture is rejected.
-- [ ] Changing the eleven, the bench or the orders is rejected the same way.
-- [ ] The lock survives a page reload and is shown with a reason and a time, not a silent disabled
-      button.
-- [ ] The engine reads the locked snapshot, so a change made after the lock cannot reach the match.
-- [ ] A `savedAt`/locked-at stamp on the prepared fixture so the UI can say "your match is closed".
+- [x] A failed test first: changing tactics on a prepared fixture was **200**, now **423 Locked** with a
+      reason naming the opponent and the kickoff hour. `MatchSetupLockTest`.
+- [x] The lineup template is refused the same way.
+- [x] The away side is locked too — which side a club is drawn must not decide whether it is locked.
+- [x] Open again at kickoff: a published fixture is not a lock, and a club with no match in the hour is
+      never locked.
+- [ ] The **squad** and **orders** writes do not exist yet. They arrive with T-MATCH-5 and T-MATCH-6 and
+      must call `MatchLockService` — that is the contract, and it is the thing to check when they land.
+- [ ] The lock is **not in the browser yet**. Nothing shows a manager that his match is closed, and the
+      423 is only visible if he happens to save something and read the error. Needs the reason, the
+      opponent and the kickoff time on the match page.
+- [ ] The engine reads the locked state rather than the club's live settings. With today's club-level
+      model this is true by construction — the result was computed from the settings as they were, and
+      nothing can change them afterwards. It stops being true the moment tactics become per-match in
+      T-MATCH-3, which is where a snapshot has to be stored.
 
 ## T-MATCH-3 — 🔴 P0 · the tactics editor
 

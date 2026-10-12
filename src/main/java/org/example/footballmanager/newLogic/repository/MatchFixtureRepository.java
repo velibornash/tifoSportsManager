@@ -74,6 +74,21 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     boolean existsPreparedUnpublished(@Param("matchId") Long matchId);
 
     /**
+     * Fixtures of a club that are computed but not published (owner, 2026-10-11).
+     *
+     * <p>The query behind {@link org.example.footballmanager.newLogic.service.MatchLockService}: "is this
+     * club's next match already decided?". Both sides are matched, because a manager's club is drawn
+     * home or away with no say in it and the lock must not depend on which.
+     *
+     * <p>Ordered so that, on the rare day a club has two, the earlier one is reported — that is the one
+     * the manager is about to be told he cannot change.
+     */
+    @Query("select f from MatchFixture f where f.played = false and f.preparedMatchId is not null "
+            + "and (f.homeTeam.id = :teamId or f.awayTeam.id = :teamId) "
+            + "order by f.dayNumber asc, f.id asc")
+    List<MatchFixture> findPreparedUnpublishedInvolving(@Param("teamId") Long teamId);
+
+    /**
      * Unplayed <b>friendlies</b> for one day, whatever competition they belong to.
      *
      * <p><b>The query that makes a friendly playable at all.</b> Every other matchday selects by
