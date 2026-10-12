@@ -101,6 +101,76 @@ public class MatchTacticAssignmentService {
         return assignments.save(assignment);
     }
 
+    /**
+     * Rewrites one side's whole order in a single transaction.
+     *
+     * <p>The owner's *"bilo koja koju promeniš"* — any tactic into any slot. Done as three one-slot writes
+     * it cannot be: putting the third tactic into slot 1 while the first is still there is an
+     * intermediate state where two slots hold one tactic, and a failure halfway through leaves a mangled
+     * plan that no longer says what the manager meant. One transaction means the plan is either the old
+     * order or the new one.
+     *
+     * <p><b>Reorder replaces the plan for that side</b>, so everything not in the list is dropped. Each
+     * entry comes back as "always, from the start", which is what reorder is for: it says <em>which three
+     * tactics and in what order</em>. The minute and the condition on an instruction belong to the orders
+     * page, and a version of this that tried to carry them across a move would be claiming to preserve
+     * something it had to overwrite anyway — the table holds one row per (fixture, team, priority), so a
+     * move cannot keep a row in place.
+     *
+     * @param tacticIdsInOrder the tactics, slot 1 first; at most {@link #MAX_PER_SIDE}, no duplicates,
+     *        and every one of them belonging to <em>this side's</em> club
+     * @throws IllegalArgumentException naming the rule that was broken
+     */
+    @Transactional
+    public void reorder(Long fixtureId, String side, java.util.List<Long> tacticIdsInOrder) {
+        java.util.List<Long> order = tacticIdsInOrder == null ? java.util.List.of() : tacticIdsInOrder;
+        String normalised = normaliseSide(side, null);
+
+        if (order.size() > MAX_PER_SIDE) {
+            throw new IllegalArgumentException("A match takes " + MAX_PER_SIDE
+                    + " tactics, not " + order.size() + ".");
+        }
+        if (new java.util.HashSet<>(order).size() != order.size()) {
+            // Two slots holding one tactic is not "three of the ten": it is one tactic and a gap, and the
+            // engine would resolve the same rules whichever slot it read.
+            throw new IllegalArgumentException("The same tactic cannot hold two slots at once.");
+        }
+
+        // **Checked against the club on this side**, not the home club. Club 1's tactic 1 and club 2's
+        // tactic 1 are both 1, so an away-side reorder validated against the home club would either
+        // refuse the away manager's own tactics or accept the home manager's.
+        Long clubId = clubForSide(fixtureId, normalised);
+        if (clubId == null) {
+            throw new IllegalArgumentException("Fixture " + fixtureId + " has no " + normalised + " side.");
+        }
+        for (Long tacticId : order) {
+            if (tacticId == null || tactics.findByIdAndTeamId(tacticId, clubId).isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Tactic " + tacticId + " does not belong to this club.");
+            }
+        }
+
+        // **The guarantee that a refusal changes nothing is this method's @Transactional, not the order of
+        // these statements.** Clearing first and validating afterwards was tried, and a test asserting the
+        // manager's three tactics survive a refusal stayed green either way - the throw rolls the clear
+        // back. So the order is not the safety, and a future reader must not reorder these lines and then
+        // drop @Transactional, which would turn a harmless difference into one that takes a manager's
+        // plan away and refuses to put it back.
+        clear(fixtureId, normalised);
+        for (int i = 0; i < order.size(); i++) {
+            assign(fixtureId, normalised, order.get(i), i + 1, TacticMatchCondition.ALWAYS, 0);
+        }
+    }
+
+    /** The club on one side of a fixture, which is what a tactic id has to be checked against. */
+    private Long clubForSide(Long fixtureId, String side) {
+        return fixtures.findById(fixtureId)
+                .map(f -> "AWAY".equals(side)
+                        ? (f.getAwayTeam() == null ? null : f.getAwayTeam().getId())
+                        : (f.getHomeTeam() == null ? null : f.getHomeTeam().getId()))
+                .orElse(null);
+    }
+
     @Transactional
     public void clear(Long fixtureId, String side) {
         assignments.deleteAll(forSide(fixtureId, normaliseSide(side, null)));

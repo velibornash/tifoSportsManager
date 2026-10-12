@@ -449,11 +449,29 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
 **Nothing built.** A manager picks **3** of the club's 10 tactics for the next match, and any slot can
 be swapped to any other tactic.
 
+**The model and the engine's reading of it already existed**, which is the finding: `MatchTacticAssignment`
+carries a priority of 1–3 with `MAX_PER_SIDE = 3`, and `MatchTacticPlan.inForce` takes the **lowest**
+priority whose condition holds — so a plain assignment (`ALWAYS` from minute 0) means the match runs on
+slot 1 from the first tick. `MatchOrchestrator` re-resolves every tick, so a swap can also take effect
+mid-match, which is T-MATCH-6's engine requirement and is already in place.
+
 **Exit criteria:**
 
-- [ ] Exactly three are selectable, the other seven are visible but not selectable.
-- [ ] Swapping slot 1 and 3 changes the order of the other two, as in Sokker.
-- [ ] The engine starts the match on slot 1.
+- [x] **The engine starts the match on slot 1** — verified by reading `inForce`: lowest priority wins, and
+      a plain assignment holds from minute 0.
+- [x] **Any tactic into any slot**, in one write: `POST /api/sim/fixtures/{id}/tactic-plan/reorder` takes
+      the whole order. Three one-slot writes cannot do it — putting the third tactic into slot 1 while the
+      first is still there is an intermediate state where two slots hold one tactic.
+- [x] Reorder refuses a duplicate, a fourth entry, and another club's tactic — **checked against the club
+      on that side**, since club 1's tactic 1 and club 2's tactic 1 are both 1.
+- [x] Reordering down to two drops the third, rather than leaving an instruction pointing at a tactic the
+      manager took off the pitch.
+- [x] **The lock.** This page had the same hole as the squad page and the orders page, found on the
+      **fourth page in a row**: it refused a *played* fixture, and a prepared fixture is not played, so the
+      plan was writable through the locked hour. Now 423, with the reason naming the decision.
+- [ ] **Exactly three are selectable, the other seven visible but not selectable** — the UI. The shelf
+      exists but the match page has no picker yet, and it is the part that cannot be verified without a
+      browser.
 
 ## T-MATCH-5 — 🔴 P0 · the squad page
 

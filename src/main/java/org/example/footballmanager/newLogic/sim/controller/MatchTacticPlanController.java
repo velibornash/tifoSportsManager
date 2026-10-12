@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -104,6 +105,82 @@ public class MatchTacticPlanController {
         return ResponseEntity.ok(view);
     }
 
+    /**
+     * Why this fixture's tactics can no longer be written, or null when they can.
+     *
+     * <p>Two reasons, and they used to be confused. A <b>played</b> fixture is in the record. A
+     * <b>prepared</b> fixture has been computed an hour before kickoff and is not played at all — which
+     * is exactly the hour the owner closed, and exactly the hour {@code isPlayed()} said the plan was open.
+     * The same hole the squad page and the orders page had, found on the fourth page in a row.
+     *
+     * <p>Each reason names itself, because the old single message spoke in minutes to kickoff, which is
+     * the wrong arithmetic for a match decided an hour ago.
+     */
+    private ResponseEntity<Map<String, Object>> closed(MatchFixture fixture) {
+        if (fixture.isPrepared()) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
+                    .body(Map.of("error", "PLAN_CLOSED", "message",
+                            "This match has already been decided, so its tactics are closed. "
+                                    + "They can be set again after kick-off."));
+        }
+        if (fixture.isPlayed()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "PLAN_CLOSED",
+                    "message", "This fixture has been played. Its tactics are part of the record now."));
+        }
+        return null;
+    }
+
+    /**
+     * Puts a side's three tactics into a new order in one write — the owner's *"bilo koja koju
+     * promeniš"*.
+     *
+     * <p>One endpoint rather than three one-slot writes, because a reorder in three steps passes through
+     * a state where two slots hold the same tactic, and a failure halfway through leaves a plan that no
+     * longer says what the manager meant.
+     */
+    @PostMapping("/reorder")
+    public ResponseEntity<Map<String, Object>> reorder(
+            @PathVariable Long fixtureId,
+            @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal org.example.commonmanager.model.User user) {
+
+        java.util.Optional<MatchFixture> found = fixtures.findById(fixtureId);
+        if (found.isEmpty()) return ResponseEntity.notFound().build();
+        MatchFixture fixture = found.get();
+
+        Team club = clubOf(user);
+        if (club == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "NO_TEAM",
+                    "message", "Your account does not manage a club."));
+        }
+        String side = sideOf(fixture, club);
+        if (side == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "NOT_IN_THIS_FIXTURE",
+                    "message", "Your club is not playing in this fixture."));
+        }
+        if (closed(fixture) != null) {
+            return closed(fixture);
+        }
+
+        java.util.List<Long> order = new java.util.ArrayList<>();
+        if (body.get("order") instanceof java.util.List<?> raw) {
+            for (Object entry : raw) {
+                order.add(asLong(entry));
+            }
+        }
+
+        try {
+            assignments.reorder(fixtureId, side, order);
+        } catch (IllegalArgumentException e) {
+            // The service refuses with the reason and the reason is the message: the limit of three, a
+            // tactic in two slots, or a tactic belonging to another club. Swallowing it would give a
+            // screen that accepts a drag and quietly drops it.
+            return ResponseEntity.badRequest().body(Map.of("error", "ORDER_REFUSED",
+                    "message", String.valueOf(e.getMessage())));
+        }
+        return get(fixtureId, user);
+    }
+
     @PutMapping
     public ResponseEntity<Map<String, Object>> save(
             @PathVariable Long fixtureId,
@@ -124,9 +201,8 @@ public class MatchTacticPlanController {
             return ResponseEntity.badRequest().body(Map.of("error", "NOT_IN_THIS_FIXTURE",
                     "message", "Your club is not playing in this fixture."));
         }
-        if (fixture.isPlayed()) {
-            return ResponseEntity.badRequest().body(Map.of("error", "PLAN_CLOSED",
-                    "message", "This fixture has been played. Its tactics are part of the record now."));
+        if (closed(fixture) != null) {
+            return closed(fixture);
         }
 
         Long tacticId = asLong(body.get("tacticId"));

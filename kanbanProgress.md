@@ -367,6 +367,44 @@ column to the editor without teaching the mirror about it fails that test. Mutat
 picked myself proved nothing about the space. The first instance was the `||` assertions on mirror cells;
 this one was picking three columns out of six.
 
+## 🟡 Three tactics per match, any into any slot (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-4**. The UI is not built.
+
+**The model and the engine were already there.** `MatchTacticAssignment` carries `priority` 1–3 with
+`MAX_PER_SIDE = 3`, and `MatchTacticPlan.inForce` filters by `minuteFrom <= minute` and
+`condition.holds(scoreDifference)` then takes the **lowest** priority. A plain assignment is `ALWAYS` from
+minute 0, so the match runs on slot 1 from the first tick — which is T-MATCH-4's last exit criterion, and it
+was already true. `MatchOrchestrator` calls `liveTactics.resolve(...)` every tick before the movement
+engine, so a swap can also take effect mid-match: T-MATCH-6's engine requirement is in place too.
+
+**Two things were missing.**
+
+- **The same lock hole as the squad page and the orders page, on the fourth page in a row.**
+  `MatchTacticPlanController` refused a *played* fixture, and a prepared fixture is not played — so the
+  tactic plan was writable through the exact hour the owner closed. Now 423, and each reason names itself,
+  because the old single message spoke in minutes to kickoff, which is the wrong arithmetic for a match
+  decided an hour ago.
+- **"Any tactic into any slot" was three one-slot writes.** Reordering 1 and 3 that way passes through a
+  state where two slots hold one tactic, and a failure halfway leaves a plan that no longer says what the
+  manager meant. `reorder` takes the whole order in one transaction.
+
+**Reorder replaces the plan for that side**, and each entry comes back as "always, from the start". That is
+a deliberate narrowing, and the first version tried to carry conditions across a move — which cannot work,
+because the table holds one row per `(fixture, team, priority)` and a move therefore cannot keep a row in
+place. Reorder says *which three tactics and in what order*; the minute and the condition belong to the
+orders page, T-MATCH-6.
+
+**One finding worth keeping.** The comment claimed that validating before clearing is what makes a
+refusal harmless. Moving the clear first left every test green — because the method is `@Transactional` and
+the throw rolls the clear back. **The safety is the transaction, not the order of the statements**, and the
+comment now says exactly that, so the next reader does not reorder the lines and then drop
+`@Transactional`.
+
+Validation checks against **the club on that side**, not the home club: club 1's tactic 1 and club 2's
+tactic 1 are both 1, so an away-side reorder checked against the home club would refuse the away manager's
+own tactics or accept the home manager's.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`
