@@ -80,6 +80,32 @@ public class TeamTacticsLibraryController {
         return ResponseEntity.ok(out);
     }
 
+    /**
+     * One tactic in full — the payload the editor loads into its pitch and rules grid.
+     *
+     * <p>Separate from the list because the list is a shelf: id, name, shape, and whether it is the
+     * default. The editor needs the movement rules and the set pieces, which are large and which no list
+     * of ten should carry.
+     */
+    @GetMapping("/{tacticId}")
+    public ResponseEntity<Map<String, Object>> get(@PathVariable Long teamId,
+                                                  @PathVariable Long tacticId) {
+        Tactic tactic = library.find(teamId, tacticId);
+        if (tactic == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("id", tactic.getId());
+        out.put("name", tactic.getName());
+        out.put("formation", tactic.getFormation());
+        out.put("style", tactic.getStyle());
+        out.put("rulesJson", tactic.getRulesJson());
+        out.put("setPiecesJson", tactic.getSetPiecesJson());
+        out.put("isDefault", tactic.isDefaultTactic());
+        out.put("version", tactic.getVersion());
+        return ResponseEntity.ok(out);
+    }
+
     /** The cap, on its own, so the editor does not have to infer it from a list it may not be showing. */
     @GetMapping("/limits")
     public ResponseEntity<Map<String, Object>> limits() {

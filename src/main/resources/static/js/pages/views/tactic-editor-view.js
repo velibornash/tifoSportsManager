@@ -1,6 +1,60 @@
 // pages/views/tactic-editor-view.js
 import { htmlEscape, fetchMatchLock, renderMatchLockBanner, isPageLocked } from './utils.js';
 
+// The library: the club's tactics, the cap, and the three operations Sokker has (owner, 2026-10-11).
+// "Ten a club, three of them for a match" - the cap is the owner's and the server repeats it in every
+// refusal, so the page shows it rather than letting a manager fill in a form that cannot save.
+async function loadLibrary(teamId, authFetch) {
+    try {
+        const response = await authFetch(`/teams/${teamId}/tactics`);
+        if (!response || !response.ok) return { tactics: [], maxTactics: 10, atCap: false };
+        const tactics = await response.json();
+        const list = Array.isArray(tactics) ? tactics : [];
+        const first = list[0] || {};
+        return {
+            tactics: list,
+            maxTactics: first.maxTactics || 10,
+            atCap: !!first.atCap
+        };
+    } catch (_) {
+        // The editor must still draw without the shelf. A library that will not load is a missing
+        // convenience; a blank tactic editor is a broken page.
+        return { tactics: [], maxTactics: 10, atCap: false, failed: true };
+    }
+}
+
+function renderLibraryShelf(library, selectedId, locked) {
+    const rows = library.tactics.map(t => `
+        <button type="button" class="cs-tactics-btn ${t.id === selectedId ? 'active' : ''}"
+                data-te-pick="${t.id}">
+            ${htmlEscape(t.name)}${t.isDefault ? ' ★' : ''}
+        </button>`).join('');
+
+    const disabled = locked ? ' disabled' : '';
+    const capNote = library.atCap
+        ? `<p class="fm-subtle">All ${library.maxTactics} tactics are in use. Delete one, or edit an
+             existing tactic by saving over its name.</p>`
+        : `<p class="fm-subtle">${library.tactics.length} of ${library.maxTactics} tactics.</p>`;
+
+    return `
+        <section class="fm-panel" style="margin-bottom:16px;">
+            <div class="fm-panel-head"><div>
+                <h3>My tactics</h3>
+                ${capNote}
+            </div></div>
+            <div class="cs-tactics-row" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+                ${rows || '<span class="fm-subtle">No tactics yet — create one below.</span>'}
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" id="te-new-btn" class="big-button"${disabled}${library.atCap ? ' disabled' : ''}>New</button>
+                <button type="button" id="te-copy-btn" class="big-button"${disabled}>Copy (based on)</button>
+                <button type="button" id="te-mirror-btn" class="big-button"${disabled}>Mirror</button>
+                <button type="button" id="te-delete-btn" class="big-button"${disabled}>Delete</button>
+            </div>
+            ${library.failed ? '<p class="fm-subtle" style="margin-top:8px;">The tactic list could not be loaded. Editing still works; the shelf is unavailable.</p>' : ''}
+        </section>`;
+}
+
 export function createTacticEditorView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml } = deps;
 
@@ -28,6 +82,11 @@ export function createTacticEditorView(deps) {
         // by pressing Save and being told "locked" with no explanation.
         const matchLock = await fetchMatchLock(authFetch, getTeamId());
         const locked = isPageLocked(matchLock);
+
+        // Which tactic the grid is editing. The shelf is the library; the grid below edits one of them.
+        const library = await loadLibrary(getTeamId(), authFetch);
+        let selectedTacticId = library.tactics.length ? library.tactics[0].id : null;
+        let workingName = library.tactics.length ? library.tactics[0].name : '';
 
         let draft = null;
         try { const raw = localStorage.getItem(DRAFT_KEY); if (raw) draft = JSON.parse(raw); } catch (_) { draft = null; }
@@ -191,6 +250,153 @@ export function createTacticEditorView(deps) {
             const clearActiveBtn = document.getElementById('te-clear-active'); if (clearActiveBtn) clearActiveBtn.addEventListener('click', () => { clearFocusedRule(); render(); });
             const clearSlotBtn = document.getElementById('te-clear-slot'); if (clearSlotBtn) clearSlotBtn.addEventListener('click', () => { clearFocusedSlotRules(); render(); });
             const discardDraftBtn = document.getElementById('te-discard-draft'); if (discardDraftBtn) discardDraftBtn.addEventListener('click', async () => { localStorage.removeItem(DRAFT_KEY); await loadTacticEditor(); });
+            // ---------- the shelf ----------
+            const wireShelf = () => {
+                document.querySelectorAll('[data-te-pick]').forEach(button => {
+                    button.addEventListener('click', async () => {
+                        const picked = Number(button.getAttribute('data-te-pick'));
+                        selectedTacticId = picked;
+                        const found = library.tactics.find(t => t.id === picked);
+                        workingName = found ? found.name : '';
+                        // The grid keeps its own draft; loading a different tactic under a stale draft is
+                        // how a manager edits one shape and saves it over another.
+                        localStorage.removeItem(DRAFT_KEY);
+                        await loadTacticEditor();
+                    });
+                });
+
+                const newBtn = document.getElementById('te-new-btn');
+                if (newBtn) {
+                    newBtn.addEventListener('click', async () => {
+                        if (library.atCap) return;
+                        const name = prompt('Name for the new tactic', nextFreeName(library, 'New tactic'));
+                        if (!name) return;
+                        // "New" is created based on what is open, which is what a manager means by it:
+                        // a variation of the tactic they are looking at.
+                        const body = selectedTacticId
+                            ? await copyBody(selectedTacticId, name)
+                            : { name, formation: '4-4-2', style: 'Balanced' };
+                        const saved = await postJson(`/teams/${getTeamId()}/tactics`, body);
+                        if (saved) {
+                            localStorage.removeItem(DRAFT_KEY);
+                            await loadTacticEditor();
+                        } else {
+                            say(shelfMessage);
+                        }
+                    });
+                }
+
+                const copyBtn = document.getElementById('te-copy-btn');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', async () => {
+                        if (!selectedTacticId) return;
+                        const source = library.tactics.find(t => t.id === selectedTacticId);
+                        const name = prompt('Name for the copy', `${source ? source.name : 'Tactic'} copy`);
+                        if (!name) return;
+                        const saved = await postJson(
+                            `/teams/${getTeamId()}/tactics/${selectedTacticId}/copy`, { name });
+                        if (saved) {
+                            localStorage.removeItem(DRAFT_KEY);
+                            await loadTacticEditor();
+                        } else {
+                            say(shelfMessage);
+                        }
+                    });
+                }
+
+                const mirrorBtn = document.getElementById('te-mirror-btn');
+                if (mirrorBtn) {
+                    mirrorBtn.addEventListener('click', async () => {
+                        if (!selectedTacticId) return;
+                        const saved = await postJson(
+                            `/teams/${getTeamId()}/tactics/${selectedTacticId}/mirror`, null);
+                        if (saved) {
+                            localStorage.removeItem(DRAFT_KEY);
+                            await loadTacticEditor();
+                        } else {
+                            say(shelfMessage);
+                        }
+                    });
+                }
+
+                const deleteBtn = document.getElementById('te-delete-btn');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', async () => {
+                        if (!selectedTacticId) return;
+                        const source = library.tactics.find(t => t.id === selectedTacticId);
+                        if (!confirm(`Delete "${source ? source.name : 'this tactic'}"?`)) return;
+                        try {
+                            await authFetch(`/teams/${getTeamId()}/tactics/${selectedTacticId}`, { method: 'DELETE' });
+                            selectedTacticId = null;
+                            localStorage.removeItem(DRAFT_KEY);
+                            await loadTacticEditor();
+                        } catch (error) {
+                            say(String(error.message || error));
+                        }
+                    });
+                }
+            };
+
+            /** "New tactic", "New tactic 2", ... — the server refuses duplicates, so the page avoids asking. */
+            const nextFreeName = (lib, base) => {
+                const taken = new Set(lib.tactics.map(t => t.name));
+                if (!taken.has(base)) return base;
+                let n = 2;
+                while (taken.has(`${base} ${n}`)) n++;
+                return `${base} ${n}`;
+            };
+
+            /** Copies the open tactic server-side and returns the body that would have created it. */
+            const copyBody = async (tacticId, name) => {
+                try {
+                    const response = await authFetch(`/teams/${getTeamId()}/tactics/${tacticId}`);
+                    if (!response.ok) return null;
+                    const full = await response.json();
+                    return {
+                        name,
+                        formation: full.formation,
+                        style: full.style,
+                        rulesJson: full.rulesJson,
+                        setPiecesJson: full.setPiecesJson
+                    };
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            /**
+             * Posts and says what happened.
+             *
+             * <p>The refusal carries the reason - the cap, a taken name, another club's tactic - and that
+             * text is the whole point of the shelf refusing loudly. Swallowing it leaves a manager
+             * clicking a button that appears to do nothing.
+             */
+            const postJson = async (url, body) => {
+                try {
+                    const response = await authFetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: body ? JSON.stringify(body) : undefined
+                    });
+                    if (response.ok) return await response.json();
+                    const failure = await response.json().catch(() => ({}));
+                    say(failure.message || 'The tactic could not be saved.');
+                    return null;
+                } catch (error) {
+                    say(String(error.message || error));
+                    return null;
+                }
+            };
+
+            let shelfMessage = '';
+            const say = (message) => {
+                shelfMessage = message || '';
+                const bar = document.getElementById('te-shelf-message');
+                if (bar) bar.textContent = shelfMessage;
+            };
+
+            wireShelf();
+
             const saveBtn = document.getElementById('te-save-btn');
             if (saveBtn && locked) {
                 // Presentation, not security: the PUT is refused regardless. A button that looks live
@@ -201,10 +407,19 @@ export function createTacticEditorView(deps) {
                 saveBtn.addEventListener('click', async () => {
                     saveBtn.disabled = true;
                     try {
-                        await authFetch(`/teams/${getTeamId()}/tactics-editor`, {
-                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ formation: state.formation, style: state.style, starterIds: currentStarterIds, benchIds: currentBenchIds, movementRules: serializeRules(), setPieceAssignments: state.setPieces })
-                        });
+                        // Saves into the library, under the name the tactic was opened with, so a save
+                        // is an edit of that tactic rather than a new one. The old club-level profile
+                        // endpoint is what this replaced: it could only ever hold one shape, which is the
+                        // opposite of ten tactics a club keeps.
+                        const payload = {
+                            name: workingName || 'Tactic',
+                            formation: state.formation,
+                            style: state.style,
+                            rulesJson: JSON.stringify(serializeRules()),
+                            setPiecesJson: JSON.stringify(state.setPieces)
+                        };
+                        const saved = await postJson(`/teams/${getTeamId()}/tactics`, payload);
+                        if (!saved) throw new Error(shelfMessage || 'The tactic was not saved.');
                         localStorage.removeItem(DRAFT_KEY); localStorage.setItem(FORMATION_KEY, state.formation);
                         saveBtn.textContent = 'Saved'; await loadTacticEditor();
                     } catch (error) { console.error('Failed to save tactic editor', error); saveBtn.disabled = false; saveBtn.textContent = 'Save failed'; setTimeout(() => { saveBtn.textContent = 'Save Tactic Editor'; }, 1400); }
@@ -223,6 +438,7 @@ export function createTacticEditorView(deps) {
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--club">
                     ${locked ? renderMatchLockBanner(matchLock) : ''}
+                    ${renderLibraryShelf(library, selectedTacticId, locked)}
                     <section class="fm-panel fm-club-hero">
                         <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
                         <div class="fm-club-hero-main">

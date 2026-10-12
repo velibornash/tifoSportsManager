@@ -126,6 +126,57 @@ class TeamTacticsLibraryControllerTest extends BaseTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    @DisplayName("one tactic loads in full for the editor, and only from its own club")
+    void oneTacticLoadsInFull() throws Exception {
+        Long id = library.save(club.getId(), "Editable", "4-3-3", "Attacking", rules("CM"), null, true)
+                .getId();
+
+        mockMvc.perform(get("/teams/{id}/tactics/{t}", club.getId(), id)
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, club)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Editable"))
+                .andExpect(jsonPath("$.formation").value("4-3-3"))
+                .andExpect(jsonPath("$.style").value("Attacking"))
+                // The rules are what the editor's grid loads and what save must write back. A payload
+                // without them would render an empty pitch and then save the emptiness over the tactic.
+                .andExpect(jsonPath("$.rulesJson").isNotEmpty());
+
+        // Somebody else's tactic is not found rather than served: club 1's tactic 1 and club 2's are
+        // both 1, and a bare findById would hand over another manager's shape.
+        Team theirs = new Team();
+        theirs.setName("Elsewhere " + java.util.UUID.randomUUID());
+        theirs = teams.save(theirs);
+
+        mockMvc.perform(get("/teams/{id}/tactics/{t}", theirs.getId(), id)
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, theirs)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("saving an edited tactic writes the rules back, not just the shape")
+    void savingWritesTheRules() throws Exception {
+        Long id = library.save(club.getId(), "Editable", "4-4-2", "Balanced", rules("CML"), null, true)
+                .getId();
+        String edited = "[{\"slotKey\":\"CML\",\"possessionContext\":\"WE_HAVE_BALL\","
+                + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_3\"}]";
+
+        mockMvc.perform(post("/teams/{id}/tactics", club.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, club))
+                        .contentType("application/json")
+                        .content("{\"name\":\"Editable\",\"formation\":\"4-4-2\","
+                                + "\"style\":\"Balanced\",\"rulesJson\":" + jsonString(edited) + "}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/teams/{id}/tactics/{t}", club.getId(), id)
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, club)))
+                .andExpect(jsonPath("$.rulesJson").value(edited));
+    }
+
+    private static String jsonString(String raw) {
+        return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
     private static String rules(String slotKey) {
         return "[{\"slotKey\":\"" + slotKey + "\",\"possessionContext\":\"WE_HAVE_BALL\","
                 + "\"ballStateKey\":\"POSSESSION\",\"targetCellKey\":\"CELL_1_1\"}]";

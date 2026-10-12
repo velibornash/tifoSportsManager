@@ -279,6 +279,48 @@ replacing `mirrorRules` with a plain copy turns `mirrorIsInvolutiveAndLeavesTheS
 not list the ten, name them, or offer copy, mirror or delete. And **Paste**, which is the clipboard half
 of Sokker's Copy/Paste and means copy between clubs.
 
+## 🟡 The tactic library page (2026-10-12) — commit below
+
+`kanban.md` **T-MATCH-3**, page half. **Not verified in a browser — see the end.**
+
+**What the page does now.** The editor carries a shelf above the pitch: the club's tactics in order with
+the default starred, `x of 10`, and **New / Copy (based on) / Mirror / Delete**. New is disabled when the
+club is full *and the reason is shown*, because a page that discovers the cap by being refused has already
+let the manager fill in a form.
+
+**The save changed where it goes, which is the substantive part.** It used to PUT the club-level
+`tactics-editor` profile, which could only ever hold one shape — the opposite of a library of ten. It now
+POSTs to `/teams/{id}/tactics` under the name the tactic was opened with, so a save is an edit of *that*
+tactic and not the creation of a new one at every cap.
+
+Picking a different tactic clears the local draft first. The editor keeps an unsaved draft in
+`localStorage`; switching tactics under a live draft would save one shape over another, and that is how
+work disappears without a word.
+
+**Verified against the running app**, against OFK Omladinac and then cleaned up:
+
+| Checked | Result |
+|---|---|
+| First tactic saves and becomes the default | id 1, `isDefault: true`, `position: 0`, `maxTactics: 10` |
+| Copy creates a separate row | `Base wide`, `position: 1`, keeps `4-4-2` |
+| Mirror is a real transformation | `Base 4-4-2 (mirrored)`, and `CELL_1_1` became `CELL_1_3` in the stored rules |
+| The eleventh is refused, naming the cap | *"This club already holds 10 tactics. Delete one, or edit an existing tactic by saving over its name."* |
+| `atCap` is a club fact, not a row position | `true` on row 0 when full, `false` after a delete |
+| Editing at the cap still works | save over `Tactic 10` → 200, formation became `4-3-3`, count stayed 10 |
+| Cross-club copy | **403** |
+| A tactic id that is not this club's | *"Tactic 9999 does not belong to club 1"* |
+| Delete | count 9, `atCap` back to false |
+
+**The world was left as it was found.** Those nine tactics were real rows on the owner's club, and while
+they existed OFK Omladinac's default tactic resolved to `Base 4-4-2` instead of its own profile — I had
+silently changed how the club plays. All nine were deleted afterwards; `select count(*) from tactic` is
+back to 0 and the club resolves to its legacy profile again (`4-4-2`, `ATTACKING`, 11 slots).
+
+**What is NOT verified.** **The page has never been opened in a browser.** This environment has no node
+and no agent-browser, so I could exercise the API the page calls but not its rendering or its click
+handlers. `node --check` proves the file parses and nothing more. The shelf may well be wrong in ways no
+test here would show, and it should not be trusted until somebody has looked at it.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

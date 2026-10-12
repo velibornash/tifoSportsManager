@@ -49,6 +49,21 @@ public class TacticLibraryService {
         return tactics.findByTeamIdOrderByIdAsc(teamId);
     }
 
+    /**
+     * One of this club's tactics, or null.
+     *
+     * <p>Checked against the club rather than fetched by id alone. The two id spaces overlap — club 1's
+     * tactic 1 and club 2's tactic 1 are both 1 — so a bare findById would hand one manager another's
+     * shape, which is the exact shape of the P0 fixture defect this repository has been bitten by.
+     */
+    @Transactional(readOnly = true)
+    public Tactic find(Long teamId, Long tacticId) {
+        if (teamId == null || tacticId == null) {
+            return null;
+        }
+        return tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
+    }
+
     public Optional<Tactic> defaultFor(Long teamId) {
         return tactics.findDefaultsForTeam(teamId).stream().findFirst();
     }

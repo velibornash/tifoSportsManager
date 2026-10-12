@@ -423,8 +423,16 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
       else's shape.
 - [x] `GET/POST/DELETE /teams/{id}/tactics` with copy, mirror, delete and `/limits`. Every row carries
       `maxTactics` and `atCap`, so a page can disable "new tactic" with the reason visible.
-- [ ] **The page.** The editor still edits one club-level profile; it does not list the ten, name them,
-      or offer copy, mirror or delete. This is the remaining half of the task.
+- [x] **The page has a shelf**: the ten listed in order with the default starred, `x of 10`, New / Copy
+      (based on) / Mirror / Delete, and New disabled **with the reason shown** when the club is full.
+- [x] **Save now targets the library.** The editor's Save writes to `/teams/{id}/tactics` under the name
+      the tactic was opened with, so a save is an edit of *that* tactic. It used to write the club-level
+      `tactics-editor` profile, which could only ever hold one shape — the opposite of ten tactics.
+- [x] Picking another tactic clears the local draft first; editing one shape over another is how a
+      manager loses work without being told.
+- [ ] **The page has not been opened in a browser.** There is no browser automation in this environment
+      (no node, no agent-browser), so the API it calls is verified and its rendering and click handlers
+      are **not**. That is a real gap and the page should not be trusted until somebody has looked at it.
 - [ ] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built.
 
 ## T-MATCH-4 — 🔴 P0 · three tactics per match, any into any slot
