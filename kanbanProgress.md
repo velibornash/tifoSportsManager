@@ -61,6 +61,30 @@ control — `MatchDTO` in that list carries the *fixture* id, so `"id": prepared
 to appear and the negative assertion was vacuous. It now asserts on the scoreline, and the control is
 that the same body contains it once the fixture is published.
 
+## ✅ A rating moves when the result is published, not when the football is played (2026-10-11)
+
+The owner was asked and answered: **published**. `kanban.md` T-MATCH-1.
+
+`MatchRepository.NOT_PREPARED` is now applied to the five ranking replays as well as to the two
+user-facing lists, so Elo and ranking points do not move during the hour before kickoff.
+
+This is safe only because every one of those consumers is a **full replay** over the played match table
+rather than an increment: `ClubRatingService.recompute` walks every played club match and recomputes
+every rating from scratch. Excluding one match therefore defers its effect to the next replay rather than
+losing it, and needs no bookkeeping. An incremental consumer of the same rows would not have had that
+property, and would have been the reason to think twice before doing this with a query predicate.
+
+**The test asserts the replay's own count, not a club's rating**, and the reason is worth keeping:
+`recompute()` only rates clubs that carry a division, so a bare test team is never in the list at all.
+An assertion on `eloRating` would have been green forever with the query doing nothing at all. It was
+written that way first, failed for an unrelated reason, and was rewritten.
+
+Mutation: emptying `NOT_PREPARED` turns both `ratingsWaitForPublication` and
+`theTeamMatchListDoesNotShowAPreparedMatch` red.
+
+**Pre-existing and not ours:** `NationalRatingServiceTest.theWorldIsLevelUntilSomethingIsPlayed` fails
+identically at `HEAD` with these changes stashed.
+
 # kanbanProgress.md — the append-only log
 
 ## 🟡 The match is computed an hour before kickoff and released at kickoff (2026-10-11) — commit `f23dc810`

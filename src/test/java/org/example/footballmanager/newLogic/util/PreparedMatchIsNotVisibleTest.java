@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.util;
 import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.Match;
 import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
 import org.example.footballmanager.newLogic.service.MatchdayScheduler;
@@ -49,6 +50,7 @@ class PreparedMatchIsNotVisibleTest extends BaseTest {
     @Autowired private MatchFixtureRepository fixtures;
     @Autowired private MatchRepository matches;
     @Autowired private org.example.footballmanager.newLogic.repository.TeamRepository teams;
+    @Autowired private org.example.footballmanager.newLogic.service.ClubRatingService clubRatings;
     @Autowired private org.example.footballmanager.newLogic.repository.CompetitionRepository competitions;
 
     @Test
@@ -131,11 +133,43 @@ class PreparedMatchIsNotVisibleTest extends BaseTest {
                 "prepareMatch must be transactional, or each fixture would not commit on its own");
     }
 
+    @Test
+    @Transactional
+    @DisplayName("a prepared match is outside the rating replay until it is published")
+    void ratingsWaitForPublication() {
+        // The owner, asked directly: a rating should move when the result is published, not when the
+        // football is played an hour earlier. Every rating service here is a full replay over the
+        // played match table rather than an increment, so excluding a prepared match defers its effect
+        // to the next replay instead of losing it - which is why this is safe as a query predicate with
+        // no bookkeeping behind it.
+        //
+        // The assertion is on the replay's own count rather than on a club's rating, because
+        // recompute() only rates clubs that carry a division and a bare test team does not: asserting
+        // on eloRating here would have passed forever without the query being right.
+        MatchFixture fixture = newFixture();
+
+        int before = clubRatings.recompute().matchesReplayed();
+
+        sim.prepareMatch(fixture, score(fixture, 4, 0), -1L, null);
+        assertEquals(before, clubRatings.recompute().matchesReplayed(),
+                "a prepared match must stay out of the replay an hour before it is published");
+
+        fixture.setPlayed(true);
+        fixture.setPlayedMatch(matches.findById(fixture.getPreparedMatchId()).orElseThrow());
+        fixtures.save(fixture);
+
+        assertEquals(before + 1, clubRatings.recompute().matchesReplayed(),
+                "once published, the same match must be in the replay");
+    }
+
     private MatchFixture newFixture() {
         var competition = new org.example.footballmanager.newLogic.model.Competition();
         competition.setName("ZZ Prepared " + java.util.UUID.randomUUID());
         competition.setType(org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE);
         competition.setTier(1);
+        // Without this the club rating replay skips the fixture entirely: its query separates the
+        // club pool from the national one on teamType, and a null never matches CLUB.
+        competition.setTeamType(org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB);
         competition = competitions.save(competition);
 
         MatchFixture fixture = new MatchFixture();

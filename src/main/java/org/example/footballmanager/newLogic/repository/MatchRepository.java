@@ -26,9 +26,16 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
      * fixture keeps its {@code preparedMatchId} for ever as a record of what it was, so the moment the
      * publish job runs, the match reappears with nothing else to do.
      *
-     * <p><b>Not applied to the ranking replays below.</b> {@code findPlayedClubRankedInOrder} and its
-     * siblings feed Elo and points replays, and a prepared match belongs in those — see the board
-     * question on whether a rating should move an hour before its result is shown.
+     * <p><b>Applied to the ranking replays as well.</b> The owner was asked whether a rating should
+     * move at T−1h, when the football is played but nothing is published, and answered that it should
+     * move at publication. So {@code findPlayedClubRankedInOrder} and its siblings filter prepared
+     * matches out too.
+     *
+     * <p>That is safe precisely because they are full replays rather than increments: each one
+     * recomputes every rating from every played match, so excluding a prepared match does not lose
+     * anything — it defers it, and the next replay after the publish job picks it up with no special
+     * case. An incremental consumer of these rows would not have had that property, and would have
+     * been the reason to think twice.
      */
     String NOT_PREPARED = " AND NOT EXISTS (SELECT f FROM MatchFixture f "
             + "WHERE f.preparedMatchId = m.id AND f.played = false)";
@@ -83,6 +90,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
             + "WHERE m.played = true AND m.competition.type = :type "
+            + NOT_PREPARED
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<ScoredMatch> findPlayedScoredByCompetitionTypeInOrder(
             @Param("type") org.example.footballmanager.newLogic.model.CompetitionType type);
@@ -128,6 +136,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "LEFT JOIN home.competition homeComp LEFT JOIN away.competition awayComp "
             + "WHERE m.played = true AND c.teamType = "
             + "org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB "
+            + NOT_PREPARED
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<RankedMatch> findPlayedClubRankedInOrder();
 
@@ -149,6 +158,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
             + "WHERE m.played = true AND c.teamType = "
             + "org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM "
+            + NOT_PREPARED
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<RankedNationalMatch> findPlayedNationalRankedInOrder();
 
@@ -158,6 +168,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "WHERE m.played = true AND m.competition.type IN ("
             + "org.example.footballmanager.newLogic.model.CompetitionType.INTERNATIONAL, "
             + "org.example.footballmanager.newLogic.model.CompetitionType.TOURNAMENT) "
+            + NOT_PREPARED
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<ScoredMatch> findPlayedNationalScoredInOrder();
 
@@ -184,6 +195,7 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
             + "WHERE m.played = true AND m.competition.type IN ("
             + "org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE, "
             + "org.example.footballmanager.newLogic.model.CompetitionType.CUP) "
+            + NOT_PREPARED
             + "ORDER BY m.matchDate ASC, m.id ASC")
     List<ScoredMatch> findPlayedClubScoredInOrder();
 

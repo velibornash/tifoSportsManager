@@ -347,10 +347,11 @@ What exists now:
 - [x] The team match list and the dashboard's recent matches. Both are built on `m.played = true`, and
       a prepared match is a **complete row** — goals, possession, everything — so it simply appeared.
       `MatchRepository.NOT_PREPARED` excludes it, narrowly: only while its fixture is still unplayed.
-- [ ] **Owner decision needed:** a prepared match is deliberately still included in the **ranking
-      replays** (`findPlayedClubRankedInOrder` and its siblings), so Elo and ranking points move an
-      hour before the result is shown. Whether that is right is a product question, not a technical one:
-      should a club's rating move at T−1h, when the football is played but nothing is published yet?
+- [x] **Owner decision taken, 2026-10-11:** a rating moves at **publication**, not when the football is
+      played. `MatchRepository.NOT_PREPARED` is applied to the ranking replays as well, so Elo and
+      ranking points stay still for the hour before kickoff. Safe because every one of them is a full
+      replay over the played match table rather than an increment — excluding a match defers it to the
+      next replay instead of losing it.
 
 ## T-MATCH-2 — 🔴 P0 · the lock is real, not a message
 
