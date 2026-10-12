@@ -92,6 +92,41 @@ class MatchTacticPlanLockAndReorderTest extends BaseTest {
         }
     }
 
+    /**
+     * Owner report, 2026-10-12: *"zasto je zatvoreno menjanje tima?"*
+     *
+     * <p>His fixture was Week 1 Day 7 — four game-days away — and its wall-clock stamp was 16:00 on a
+     * clock reading 23:11, because fixture dates are written once from the calendar and never move. The
+     * panel compared the two with a stopwatch and closed, and the reason it gave was "the team is already
+     * picked", which was not true of anything.
+     */
+    @Test
+    @DisplayName("a fixture whose wall-clock stamp has passed is still editable")
+    void aFixtureStampedInThePastIsStillEditable() throws Exception {
+        fixture.setMatchDate(java.time.LocalDateTime.now().minusHours(7));
+        fixtures.save(fixture);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/sim/fixtures/{id}/tactic-plan", fixture.getId())
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editable").value(true));
+    }
+
+    @Test
+    @DisplayName("a decided fixture is closed, whatever its date says")
+    void aPreparedFixtureIsStillClosed() throws Exception {
+        fixture.setMatchDate(java.time.LocalDateTime.now().plusHours(30));
+        fixture.setPreparedMatchId(4242L);
+        fixtures.save(fixture);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/sim/fixtures/{id}/tactic-plan", fixture.getId())
+                        .header("Authorization", bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editable").value(false));
+    }
+
     @Test
     @DisplayName("three tactics can be placed, and the order is the order they were given")
     void threeCanBePlacedInOrder() throws Exception {

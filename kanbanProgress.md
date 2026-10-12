@@ -1,3 +1,34 @@
+## ✅ "Why is changing the team closed?" — a stopwatch where the game's own lock belongs (2026-10-12)
+
+Commit to follow.
+
+The owner, on the Match Setup tab: the eleven panel was editable but **Game plan** and **Substitutions**
+both said *"Closed — the team is already picked."* Nothing was picked. The answer, read from the fixture:
+
+    id | week | day | played | prepared | match_date
+     6 |   1 |   7 | f      |          | 2026-10-12 16:00
+
+**Week 1 Day 7 — four game-days away, unplayed and unprepared — with a wall-clock stamp that had already
+gone by.** The clock read 23:11.
+
+Fixture dates are stamped once from the game calendar and never move again. The calendar advances in real
+time, so a later game day carries an *earlier* wall-clock time within the day: Day 7 was later in the
+season, and its stamp was placed at 16:00 while Day 3 sat later in the evening. `MatchTacticPlanController`
+compared the two with `Duration.between(now, matchDate)` and closed the panel, then the view told the
+manager the reason was that the team was picked.
+
+This is the same wall-clock/season-clock confusion as the dashboard's "a day 7 fixture that has not been
+played yet", and the same shape of defect as the prepared-fixture-is-not-played bug: a second stopwatch
+answering a question the game already answers.
+
+**The hour's lock is real and already enforced** — `MatchdayPrepareJob` prepares the matchday an hour
+before kickoff, which sets the prepared flag, and `MatchLockService` is what the squad page asks. So both
+panels now answer `!played && !prepared`, the same rule `MatchLineupController` has used all along, which
+is why the eleven was editable while the other two were not: it was the only one asking the right question.
+
+Two tests: a fixture stamped seven hours in the past is editable, and a prepared fixture is closed whatever
+its date says. Putting the stopwatch back turns both red.
+
 ## ✅ Verified in a browser, and three defects it found (2026-10-12)
 
 The owner was right that this session had a browser: `agent-browser` was installed and I had said

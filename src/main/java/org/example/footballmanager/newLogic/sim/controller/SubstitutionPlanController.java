@@ -222,8 +222,18 @@ public class SubstitutionPlanController {
         // closed, and the rule a manager wrote could not have reached the match.
         if (fixture.isPrepared()) return false;
 
+        /*
+         * <b>Owner report, 2026-10-12.</b> The cutoff below was the third condition, and it closed this
+         * panel on a match four game-days away for the same reason the game plan closed: fixture dates are
+         * stamped once from the calendar and never move, so a later game day can carry a wall-clock time
+         * that has already gone by. The hour's lock is the prepared flag, set by the matchday job, and it
+         * is checked above.
+         */
+        return true;
+
+        /* Kept for the record — this is what answered "is there time left", and it is the wrong question:
         return fixture.getMatchDate() == null || java.time.Duration.between(
-                java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes() > CUTOFF.toMinutes();
+                java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes() > CUTOFF.toMinutes(); */
     }
 
     /**

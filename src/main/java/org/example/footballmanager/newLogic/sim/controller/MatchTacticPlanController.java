@@ -75,9 +75,25 @@ public class MatchTacticPlanController {
         view.put("opponentName", "HOME".equals(side)
                 ? nameOf(fixture.getAwayTeam()) : nameOf(fixture.getHomeTeam()));
         view.put("kickoff", fixture.getMatchDate() == null ? null : fixture.getMatchDate().toString());
-        view.put("editable", !fixture.isPlayed() && fixture.getMatchDate() != null
-                && java.time.Duration.between(java.time.LocalDateTime.now(), fixture.getMatchDate())
-                        .toMinutes() > 0);
+        /*
+         * Editable means the same thing it means on the squad page: the match has not been decided.
+         *
+         * <p><b>Owner report, 2026-10-12: "zasto je zatvoreno menjanje tima?"</b> — why is changing the
+         * team closed? Because this line compared wall-clock time to the fixture's own date.
+         *
+         * <p>Fixture dates are stamped once, from the game calendar, and never move again. The calendar
+         * advances in real time, so a fixture four game-days away can carry a wall-clock timestamp that
+         * has already passed: his was Week 1 Day 7 at 16:00 on a clock that read 23:11, because Day 7 is
+         * later in the season and its stamp was placed earlier in the day. The panel then closed on an
+         * unplayed, unprepared match four days away, and said the reason was that the team was picked.
+         *
+         * <p>It is the same wall-clock/season-clock confusion as the dashboard's "a day 7 fixture that has
+         * not been played yet", and the same defect as the prepared-fixture-is-not-played bug. The hour's
+         * lock is real and already enforced elsewhere: `MatchdayPrepareJob` prepares the matchday an hour
+         * before kickoff, which sets the prepared flag, and `MatchLockService` is what the other panels
+         * ask. So the answer is the flag, not a second stopwatch.
+         */
+        view.put("editable", !fixture.isPlayed() && !fixture.isPrepared());
 
         List<Map<String, Object>> available = new ArrayList<>();
         for (TacticLibraryService.TacticView tactic : library.view(club.getId())) {
