@@ -494,15 +494,37 @@ mid-match, which is T-MATCH-6's engine requirement and is already in place.
 
 ## T-MATCH-5 — 🔴 P0 · the squad page
 
-**Nothing built.** Match settings → **Squad**: slots 1–11 and a bench, player swap, player removal, a
-position per slot, and a suggested lineup.
+**The suggester and the lock are built. Two structural gaps are found and written up rather than
+smuggled in.**
 
 **Exit criteria:**
 
-- [ ] Eleven slots and a bench, both editable.
-- [ ] Swap and remove, and a position per slot.
-- [ ] "Suggest lineup" fills from the squad and is not a no-op.
-- [ ] **13 players must remain valid.** OFK Omladinac's 13 is deliberate; the page must not require 25.
+- [x] **"Suggest lineup" is an answer, not a no-op.** `LineupSuggester` — keeper first, then four at the
+      back, four in midfield and two up front, best-rated within each line, and anyone left over on the
+      bench. Draws on `availablePlayers`, not on "every player the club owns", so a player loaned away is
+      never offered.
+- [x] **13 players is valid and is treated as normal.** Eleven out, two on the bench, **no warning** —
+      because nothing has gone wrong. A suggester that demanded a full bench of seven would refuse to
+      suggest anything for the club the owner actually manages.
+- [x] A squad too small to field eleven says so with the count, rather than returning nine players as a
+      completed side.
+- [x] A goalkeeper is always fielded. Eleven outfield players is a completed-looking suggestion for a
+      side that cannot keep a ball in play.
+- [x] Deterministic: the same squad always yields the same eleven, with the name as the tiebreak, so a
+      manager's two changes land on the same players on a second click.
+- [x] The suggestion **saves**: eleven and two go through the ordinary endpoint, verified on the real
+      fixture.
+- [x] 423 on a computed fixture — suggesting a lineup for a match already decided is worse than saying
+      nothing, because it looks like an invitation.
+- [ ] **A per-match lineup cannot be stored at all.** `Lineup` has `team` and `match` and **no fixture**,
+      and `matchIdOf` returns null unless the fixture is already played. So a squad chosen for the next
+      match is silently written as the **club's standing template** and applies to every match — and the
+      API says so in `perMatch: false`, having known it all along. This needs a `MatchFixture` reference
+      on `Lineup` and a re-pointing of the resolution order, and it changes what the engine reads.
+- [ ] Eleven slots and a bench, both editable, **with swap and remove and a position per slot** — the
+      page. The service has ordering and validation; the per-slot **position** does not exist anywhere and
+      is a model change, not a page change.
+- [ ] **Unverified in a browser**, like the other two pages.
 
 ## T-MATCH-6 — 🔴 P0 · the orders page
 

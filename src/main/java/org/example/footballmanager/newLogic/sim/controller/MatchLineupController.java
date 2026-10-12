@@ -11,6 +11,7 @@ import org.example.footballmanager.newLogic.service.MatchLineupService;
 import org.example.footballmanager.newLogic.service.SquadRegistrationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.example.footballmanager.newLogic.service.LineupSuggester;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,6 +48,67 @@ public class MatchLineupController {
     private final SquadRegistrationService squadRegistration;
     private final TeamRepository teams;
     private final org.example.footballmanager.newLogic.service.MatchLockService lockReasons;
+    private final LineupSuggester suggester;
+
+    /**
+     * The best available eleven and the rest of the squad, for one fixture.
+     *
+     * <p>The owner asked for a squad page and a manager twenty minutes before kickoff wants the eleven
+     * filled in, not an empty form. This **suggests**; it does not save. The manager changes what he
+     * wants to change and saves through the ordinary endpoint, so a suggestion he ignored never becomes a
+     * lineup.
+     *
+     * <p>423 on a computed fixture, because a suggestion for a match already decided is worse than no
+     * suggestion: it looks like an invitation.
+     */
+    @GetMapping("/suggest")
+    public ResponseEntity<Map<String, Object>> suggest(
+            @PathVariable Long fixtureId,
+            @AuthenticationPrincipal org.example.commonmanager.model.User user) {
+
+        java.util.Optional<MatchFixture> found = fixtures.findById(fixtureId);
+        if (found.isEmpty()) return ResponseEntity.notFound().build();
+        MatchFixture fixture = found.get();
+
+        Team club = clubOf(user);
+        if (club == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "NO_TEAM",
+                    "message", "Your account does not manage a club."));
+        }
+        if (!playsIn(fixture, club)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "NOT_IN_THIS_FIXTURE",
+                    "message", "Your club is not playing in this fixture."));
+        }
+        if (fixture.isPrepared()) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
+                    .body(Map.of("error", "MATCH_CLOSED",
+                            "message", lockReasons.refusalReason(fixture)));
+        }
+
+        LineupSuggester.Suggestion suggestion = suggester.forTeam(club.getId());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("suggested", suggestion.complete());
+        out.put("starters", picks(suggestion.starters()));
+        out.put("bench", picks(suggestion.bench()));
+        out.put("warnings", suggestion.warnings());
+        out.put("maxBench", MatchLineupService.MAX_BENCH);
+        out.put("startersRequired", MatchLineupService.STARTERS);
+        return ResponseEntity.ok(out);
+    }
+
+    private static List<Map<String, Object>> picks(List<LineupSuggester.Pick> picks) {
+        List<Map<String, Object>> out = new ArrayList<>(picks.size());
+        for (LineupSuggester.Pick pick : picks) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", pick.id());
+            row.put("name", pick.name());
+            row.put("position", pick.position() == null ? null : pick.position().name());
+            row.put("rating", pick.rating());
+            out.add(row);
+        }
+        return out;
+    }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(

@@ -43,6 +43,7 @@ class PreparedFixtureClosesTheSquadPageTest extends BaseTest {
     @Autowired private CompetitionRepository competitions;
     @Autowired private MatchFixtureRepository fixtures;
     @Autowired private MatchRepository matches;
+    @Autowired private org.example.footballmanager.newLogic.repository.PlayerRepository players;
 
     private Team home;
     private MatchFixture fixture;
@@ -141,6 +142,56 @@ class PreparedFixtureClosesTheSquadPageTest extends BaseTest {
                         .contentType("application/json")
                         .content("{\"rules\":[]}"))
                 .andExpect(status().is2xxSuccessful());
+    }
+
+    @Test
+    @DisplayName("the suggestion fills eleven, names the short bench, and warns about nobody")
+    void theSuggestionIsAnAnswerNotAShrug() throws Exception {
+        // OFK Omladinac has thirteen players and that is deliberate, so thirteen must produce a complete
+        // answer: eleven out, two on the bench, and no complaint - nothing has gone wrong.
+        for (int i = 0; i < 13; i++) {
+            addPlayer(i);
+        }
+
+        mockMvc.perform(get("/api/sim/fixtures/{id}/lineup/suggest", fixture.getId())
+                        .header("Authorization", auth.bearerManaging(org.example.commonmanager.model.UserRole.OWNER, home)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suggested").value(true))
+                .andExpect(jsonPath("$.starters.length()").value(11))
+                .andExpect(jsonPath("$.bench.length()").value(2))
+                .andExpect(jsonPath("$.warnings.length()").value(0))
+                .andExpect(jsonPath("$.starters[0].name").isNotEmpty())
+                .andExpect(jsonPath("$.starters[0].position").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("a computed match refuses even a suggestion")
+    void aPreparedFixtureRefusesTheSuggestion() throws Exception {
+        // Suggesting a lineup for a match that has already been decided is worse than saying nothing: it
+        // looks like an invitation.
+        prepare();
+
+        mockMvc.perform(get("/api/sim/fixtures/{id}/lineup/suggest", fixture.getId())
+                        .header("Authorization", auth.bearerManaging(org.example.commonmanager.model.UserRole.OWNER, home)))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.error").value("MATCH_CLOSED"));
+    }
+
+    private void addPlayer(int i) {
+        org.example.footballmanager.newLogic.model.Player player =
+                new org.example.footballmanager.newLogic.model.Player();
+        player.setName("ZZ Squad " + i + " " + java.util.UUID.randomUUID());
+        player.setTeam(home);
+        player.setPosition(i == 0
+                ? org.example.footballmanager.newLogic.model.Position.GK
+                : (i < 5 ? org.example.footballmanager.newLogic.model.Position.DEF
+                        : (i < 9 ? org.example.footballmanager.newLogic.model.Position.MID
+                                : org.example.footballmanager.newLogic.model.Position.ATT)));
+        player.setRating(50 + i);
+        player.setAge(24);
+        player.setForm(6.5);
+        player.setMorale(60.0);
+        players.save(player);
     }
 
     private void prepare() {
