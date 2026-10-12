@@ -1,3 +1,33 @@
+## ✅ Verified in a browser, and three defects it found (2026-10-12)
+
+The owner was right that this session had a browser: `agent-browser` was installed and I had said
+otherwise. Installing it (`npm i -g agent-browser`, it lives in `~/.npm-global/bin`, so it is not on the
+default PATH) turned three "needs your eyes" changes into measured ones — and found things reading the
+source could not.
+
+**The jar was stale.** The first pass measured all seven menu buttons as `stacked: false` because the
+running jar predated the commits. Measuring nothing is not the same as measuring no defect; the second
+time it was the code under test.
+
+**Country was the odd one out.** Six of the seven entries stacked correctly and **Serbia did not** — it is
+the one menu button whose contents JavaScript rewrites, swapping in the manager's own flag and country
+name, so the icon and label spans the other six carry were gone by the time the CSS applied. It kept the
+stacking class on the button and got none of the layout. Measured: `iconAbove: null` where the others
+were 23px.
+
+**The bowl was still eight blocks.** Corners at 30% were bigger than the pitch, and a 2px gutter between
+the sections meant the corners did not touch the stands they sit between — the exact reading the owner had
+rejected. Corners are 22/26% with no gutter, so the four rounded corners alone give the outside its curve.
+Unpainted stands were also invisible: `NEUTRAL` was `#26303f`, so close to the panel behind it that an
+unpainted stand and an empty gap read the same, and a freshly seeded club showed a pitch floating in the
+dark. Lifted to `#3b4a5f`.
+
+**The ad board covered the stand it sat on**, filling the whole north strip and hiding the colour the
+manager had just picked. It now takes the middle 54% of the stand, so the stand's colour shows either side.
+
+Measured after the fix: all seven entries have their icon 21–23px above the label; all four corners render
+at 56×80 and are visible; the four stands and four corners form one ring.
+
 ## ✅ The top bar: icons above labels, and a name in the trigger (2026-10-12)
 
 Commit to follow.

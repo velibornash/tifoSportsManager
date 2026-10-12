@@ -3804,6 +3804,30 @@ body {
     line-height: 1;
 }
 
+/*
+ * The Country entry is the one menu button whose contents are rewritten by JavaScript - it swaps in
+ * the manager's own flag and country name - so the icon/label spans the other six carry are gone by
+ * the time this applies. It keeps the stacking class on the button and gets the stacking here instead,
+ * or it alone would render inline while the other six render as columns.
+ */
+.menu-button--stacked .fm-menu-country-content {
+    flex-direction: column;
+    gap: 4px;
+}
+
+.menu-button--stacked .fm-menu-country-icon {
+    display: block;
+}
+
+.menu-button--stacked .fm-menu-country-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
 .fm-menu-country-icon {
     width: 18px;
     height: 18px;

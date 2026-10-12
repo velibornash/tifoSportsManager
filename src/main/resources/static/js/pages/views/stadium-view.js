@@ -30,7 +30,11 @@ const CORNERS = [
     ['southWest', 'South-west corner'],
     ['southEast', 'South-east corner'],
 ];
-const NEUTRAL = '#26303f';
+// Owner report, 2026-10-12: the unbuilt parts of the ground were invisible. #26303f sits so close to
+// the panel behind it that an unpainted stand and an empty gap read the same, so a freshly seeded club
+// showed a pitch floating in the dark with nothing around it. Lifted enough to read as a stand that has
+// not been painted yet, without pretending to be a colour the manager chose.
+const NEUTRAL = '#3b4a5f';
 
 /** Kept in step with StadiumImageService.DEFAULT_STADIUM_IMAGE on the server. */
 const DEFAULT_STADIUM_IMAGE = '/images/dunjareal.png';

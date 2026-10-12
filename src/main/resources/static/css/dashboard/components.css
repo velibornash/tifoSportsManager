@@ -543,13 +543,13 @@ recent-match:hover .result-badge {
 
 .stadium-plan-pitch{
     display:grid;
-    grid-template-columns:22px 1fr 22px;
-    grid-template-rows:22px 1fr 22px;
+    grid-template-columns:24px 1fr 24px;
+    grid-template-rows:24px 1fr 24px;
     grid-template-areas:
         "north north north"
         "west middle east"
         "south south south";
-    gap:4px;
+    gap:0;
     aspect-ratio:3/4;
     max-height:320px;
     margin:0 auto;
@@ -575,9 +575,12 @@ recent-match:hover .result-badge {
 .stadium-plan-middle{
     grid-area:middle;
     display:grid;
-    grid-template-columns:30% 1fr 30%;
-    grid-template-rows:30% 1fr 30%;
-    gap:3px;
+    grid-template-columns:22% 1fr 22%;
+    grid-template-rows:26% 1fr 26%;
+    /* No gap. The corners only read as "between the stands" if they touch them; a 2px gutter turned the
+       eight sections into eight separate blocks, which is the reading the owner rejected twice. The
+       rounded corners alone give the outside of the assembly its curve. */
+    gap:0;
     min-width:0;
 }
 .stadium-plan-corner{ border-radius:0; }
@@ -621,10 +624,18 @@ recent-match:hover .result-badge {
 .stadium-ad-logo{ height:17px; width:17px; object-fit:contain; flex:0 0 auto; border-radius:3px; }
 .stadium-ad-board span{ overflow:hidden; text-overflow:ellipsis; }
 
-.stadium-ad-board--north{ grid-area:north; }
-.stadium-ad-board--south{ grid-area:south; }
-.stadium-ad-board--west{ grid-area:west; }
-.stadium-ad-board--east{ grid-area:east; }
+/*
+ * The board is sized inside its stand rather than filling it: a board that covers the whole strip hides
+ * the stand's colour, which is the one thing the manager just chose from the pickers below.
+ */
+.stadium-ad-board--north,
+.stadium-ad-board--south{ grid-area:auto / auto; justify-self:center; align-self:stretch; width:54%; }
+.stadium-ad-board--north{ grid-row:1; grid-column:1 / 4; }
+.stadium-ad-board--south{ grid-row:3; grid-column:1 / 4; }
+.stadium-ad-board--west,
+.stadium-ad-board--east{ grid-area:auto / auto; align-self:center; justify-self:stretch; height:46%; }
+.stadium-ad-board--west{ grid-row:2; grid-column:1; }
+.stadium-ad-board--east{ grid-row:2; grid-column:3; }
 
 .stadium-ad-board--west,
 .stadium-ad-board--east{ flex-direction:column; gap:4px; padding:8px 0; }
