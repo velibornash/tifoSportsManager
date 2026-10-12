@@ -150,6 +150,53 @@ It was failing in the suite and was not being read.
 
 ---
 
+## T-FAC-1 — 🟡 P1 · the training facilities do nothing
+
+**Owner question, 2026-10-12**, on the stadium page: *"Training facilities 1/20 ground, 1/20 gym, 1/20
+tactical, 1/20 youth, Weekly upkeep 0 · Facility upkeep — uticu li uopste na cenu/trening?"* — do they
+affect price or training at all?
+
+**Answered by reading the callers, not the screen.** `TrainingFacilityService` has exactly two consumers:
+
+| Consumer | What it uses it for |
+|---|---|
+| `StadiumSettingsController` | shows the levels and sells the upgrades |
+| `WeeklyFinanceService` | charges the weekly upkeep |
+
+Nothing in the training engine reads them. `SquadTrainingService` and the development code take no notice
+of `trainingQuality`, `gymLevel` or `tacticalLevel`. So today a facility level affects **the upgrade price,
+the weekly upkeep and the number on the screen** — and nothing else.
+
+**"Weekly upkeep 0" is correct, not a defect.** Upkeep is `120 × (sum of levels − 1)`, so four facilities at
+level 1 cost nothing. The first upgrade starts the bill.
+
+**The gap is that four numbers a manager pays for do not pay him back.** A manager who spends 2,500 to take
+the gym from 1 to 2 gets a gym that trains nobody better than the gym he already had, and nothing on any
+screen says so.
+
+**Owner decision needed before it is built — it changes the economy and it touches T-MATCH-8:**
+
+- What does a level buy? Attribute growth per week? A training multiplier? Recovery? Faster condition?
+- Is it linear, or does level 15 matter more than level 2?
+- Does the **youth** facility develop juniors, or is that `JuniorDevelopment`'s `gymLevel` already?
+  `JuniorDevelopment` reads the stadium's `gymLevel` today, which means the gym level may already have one
+  effect — if so, it is undocumented and the new work has to extend it rather than duplicate it.
+- Should a bot club's facilities be seeded at a level that matches its reputation? Every club starts at 1,
+  so on a world of 14,976 clubs nobody's facilities matter until someone pays to raise them.
+
+**Exit criteria:**
+
+- [ ] Each of the four levels has a stated, tested effect. A level that changes nothing is not a level, and
+      a facility that cannot be shown to change a number should not be sold.
+- [ ] The effect is visible on the training report, so a manager can see the club got something.
+- [ ] The weekly settlement charges upkeep for the levels actually held, and the stadium page agrees.
+- [ ] Whatever `JuniorDevelopment` already does with `gymLevel` is documented rather than done twice.
+- [ ] Bot clubs are seeded at a plausible level, or the number is shown as "not yet" rather than as 1/20.
+
+**Do not build this next to T-MATCH-8.** Both change what a week of training is worth. One rule, one place.
+
+---
+
 ## T-KIT-1 — 🟢 P2 · the players wear no kit
 
 **Owner request, 2026-10-12**: *"dodaj u board task za vizuelno sredjivanje dresova igraca"*, with
