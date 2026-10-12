@@ -150,6 +150,48 @@ It was failing in the suite and was not being read.
 
 ---
 
+## T-KIT-1 — 🟢 P2 · the players wear no kit
+
+**Owner request, 2026-10-12**: *"dodaj u board task za vizuelno sredjivanje dresova igraca"*, with
+Sokker's own kit gallery as the reference —
+<https://sokker.org/media/show/kits> (Office → Media → Match kits).
+
+**No credentials are recorded here and none should be.** The owner supplied his own login for looking at
+the reference; a board file is committed to the repository, so a password in it is a leaked password in
+the history forever. Anyone who needs the gallery opens it in their own browser.
+
+**What "the players wear no kit" means today.** The squad and the match lineup render a name and a
+position. A kit is not a colour alone: Sokker's gallery shows shirt, shorts and socks per player, the
+club's badge on the shirt, a number, and a keeper's variant of it. There is no `kit` column on `player`,
+no `kit` table, and nothing on `team` either.
+
+**Exit criteria — each one is a checkbox, not a sentence:**
+
+- [ ] A club picks a kit: shirt, shorts and socks as colours, plus its number style. Reachable from the
+      club pages, not only from an admin screen.
+- [ ] A player renders in that kit wherever a shirt is drawn: the squad page, the match lineup, the match
+      report, and the club profile.
+- [ ] A goalkeeper's kit is separate from the outfield one, and the engine picks the right one for the
+      side in possession — the same rule the engine already applies to positions, not a display-only swap.
+- [ ] Two clubs meeting each other are never the same colour. Where the two clash, the away side takes its
+      alternative, and the manager can see which was taken.
+- [ ] The away side wears the mirrored/alternative strip, decided the same way the mirrored tactics are —
+      one rule in one place, not a second copy in the renderer.
+- [ ] A club with no kit chosen renders a readable default, so a world built without touching this still
+      looks like football and not like a table of names.
+- [ ] Tests that fail on the old code. A renderer that draws no shirt cannot be caught by a test that only
+      checks the name is there.
+
+**Decide before building:** whether a kit belongs to the club or to the player, and whether it is data or a
+style sheet. The owner's reference is per-player on Sokker, so the default answer is per-club with a
+per-player number, and the reason for that choice goes in `TECHNICAL_OVERVIEW.md` when it is made.
+
+**Reference material:** `sokker.org/media/show/kits` for the look; the existing colour pickers on the
+stadium page (`/images` assets, the same shape) for how a colour choice is already stored and saved in
+this codebase.
+
+---
+
 ## T-ECON-1 — 🔴 P0 · income did not move when the club did
 
 **Found by the owner, 2026-10-11**, with the number: *"ako su plate mog tima 18 miliona evra nedeljno
