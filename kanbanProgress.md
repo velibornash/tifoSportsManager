@@ -1,3 +1,70 @@
+## ✅ A reset no longer deletes the tactic library (2026-10-12)
+
+Commit `8a8dbb7b`.
+
+The owner asked for a reset that keeps his tactical-editor data and his two accounts. It kept
+`team_tactics_profile` and the legacy `tactics` table, and it truncated **`tactic`** — the table the
+multi-tactic library writes to. His renamed default and the copy he had made minutes earlier would both
+have gone, and the log line would have said the tactics were kept.
+
+The library is snapshotted before the reset and restored after the re-init, keyed on **club name** for
+the reason the profile snapshot is: the rows carry `team_id`, and every club comes back with a new id.
+
+**The snapshot reads the database and not the backup file, on purpose.** `var/tactics-editor-profiles.json`
+is written on editor save and predates the library — it still held one tactic called `4-4-2` while the
+database held `Default 4-4-2` and `Default 4-4-2 copy`. Preferring the file would have undone his rename on
+every reset. The file also carries 35 `ZZ Lock …` entries left by the lock tests.
+
+Restore rules: a club the re-init did not rebuild is skipped rather than matched loosely (the world holds
+five clubs beginning `FK`, and guessing is the owner's call); a tactic the re-init already seeded is
+skipped rather than colliding with the unique constraint on `(team_id, name)`; exactly one default comes
+back, so the editor has something to open.
+
+**Seen change, not just a green test:** reset ran for real. Clubs 14,976 → 2, players 33,630 → 0, fixtures
+5,694 → 0, and afterwards the rebuild returned 14,976 clubs, 1,489 competitions and 10,130 players.
+`Default 4-4-2` came back as the default with its 110,267 characters of rules, `Default 4-4-2 copy` beside
+it, and both accounts intact.
+
+**The 14,570 clubs with no players are not a half-built world.** `SimulatedWorldSeeder` seeds them without
+squads on purpose and `LazySquadGenerator` gives a club one when the owner's club actually plays it.
+
+## ✅ The match label did not say which week (2026-10-12)
+
+Commit `786abe5e`.
+
+The owner reported *"dva razlicita meca na isti dan"* — two different matches on the same day — and a
+day 7 fixture that had not been played yet. Both were one missing word. His week 1 day 3 match and his
+week 3 day 3 match both read `Season 1 · Day 3 · 19:00`; a season is twelve weeks of seven days, so the day
+alone names eighty-four slots and the label was ambiguous for every one. The same omission made his week 1
+day 7 match read as a fixture still to come while the clock sat on week 3.
+
+The label now carries the week, in `MatchDTO` and in the schedule row in `TeamController`, so both surfaces
+read the same. Verified against his own rows: the two matches are now twelve days apart and visibly so.
+
+**The missing scores on the same rows were not a defect.** `SimMatchService` masks a manager's own result
+until he asks for it, so the two day-3 rows were never duplicates and the day 7 row was never a future
+fixture. Nearly "fixed" that too.
+
+## ✅ The Match Setup tab, and the shelf under the club frame (2026-10-12)
+
+Commit `5e818602`.
+
+The lineup, the game plan and the substitution sheet were all mounted under **Preview**, so the tab a
+manager opens to look at a match also let him change it, and the prediction sat underneath three editors.
+They now live on a Match Setup tab, mounted only when that tab is open and only while the match is
+unplayed — after it is played the tab says the setup is part of the record instead of offering controls
+that would be refused.
+
+The tactic shelf moved from the top of the page to below the club frame, under the header, the navigation
+and the Shape/Slots/Rules summary rather than over them. And a tactic whose name already says its shape no
+longer has it printed beside it: the owner's own tactic is called `Default 4-4-2` and the row read
+`Default 4-4-2  4-4-2 · BALANCED`.
+
+**Two checks, and the first one was wrong.** The first guard against the panels creeping back looked only
+inside `showPreview`, and the offending call sat in the top-level routing — the mutation survived a green
+run. It now counts the call sites and requires one to be guarded by the tab. Mutating the shelf back above
+the frame turns the order assertion red.
+
 ## ✅ A prepared match cannot be read through any match endpoint (2026-10-11)
 
 `T-MATCH-1`, the read-path half. Commit to follow.
