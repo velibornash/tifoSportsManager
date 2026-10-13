@@ -1,3 +1,10 @@
+**2026-10-13 update — ratings.** Club Elo was frozen because only two paths recomputed it and the
+clock-driven matchday was neither; it is now an incremental resume (`rating_watermark`) called from
+`LeagueTableReconcileJob`, whose `order()` moved 20 -90 so it cannot run before results are released.
+National ratings ride the same job as a **full** replay on purpose (qualification bonus must not be
+re-applied). Verified in the DB: 270 distinct Elo values, 1,165 clubs off seed, watermark 1871.
+Two guards added: the resume must equal a cold replay, and a second run must be a no-op.
+
 # SESSION_HANDOFF — 2026-10-12 (afternoon)
 
 Supersedes the night handoff. Read this first, then [`kanban.md`](kanban.md) — section **T-MATCH** is the

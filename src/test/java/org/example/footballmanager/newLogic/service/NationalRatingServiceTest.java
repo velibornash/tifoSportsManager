@@ -233,20 +233,38 @@ class NationalRatingServiceTest extends BaseTest {
     }
 
     @Test
-    @DisplayName("the seeded world is still level until something is played")
+    @DisplayName("a world with nothing played is level")
     void theWorldIsLevelUntilSomethingIsPlayed() {
-        // The regression guard for the actual bug report. H2 draws its internationals but does not play
-        // them, so this asserts the honest starting state rather than a moved column: the point is
-        // that this number can never be "48 countries all reading one value with internationals played".
+        // **This test used to assert against a seeded world that does not exist here.** H2 runs this
+        // class with no seeded countries, so `findAll()` was empty, "level" was asserted as one
+        // distinct rating over zero rows, and it failed on arithmetic rather than on behaviour. It has
+        // been red for as long as it has been true.
+        //
+        // It also reused the wrong fixture. `seedInternationalHistory` plays six internationals, so it
+        // can never exercise the branch this guard is about - the one where nothing has been played and
+        // the column must therefore still be flat.
+        //
+        // So it builds the world it is actually about: six countries with senior sides, no matches, and
+        // a replay. Every one must come out on the same start rating, because no result has justified
+        // any of them being anywhere else.
+        countries.save(countryWithSides("ZZ Flat A", "ZFA"));
+        countries.save(countryWithSides("ZZ Flat B", "ZFB"));
+        countries.save(countryWithSides("ZZ Flat C", "ZFC"));
+        countries.save(countryWithSides("ZZ Flat D", "ZFD"));
+        countries.save(countryWithSides("ZZ Flat E", "ZFE"));
+        countries.save(countryWithSides("ZZ Flat F", "ZFF"));
+        countries.flush();
+
         long played = matches.findPlayedNationalScoredInOrder().size();
-        long distinct = countDistinctRatings();
-        if (played == 0) {
-            assertEquals(1L, distinct,
-                    "no internationals are played, so the column is level by definition — if it is not, "
-                            + "something is writing ratings without a result to justify them");
-        } else {
-            assertTrue(distinct > 1, played + " internationals are played but every country reads one rating");
-        }
+        assertEquals(0L, played, "this guard is about a world with nothing played; if it is not empty, "
+                + "the replay below is proving something else entirely");
+
+        ratings.recompute();
+        countries.flush();
+
+        assertEquals(1L, countDistinctRatings(),
+                "no internationals are played, so the column is level by definition — if it is not, "
+                        + "something is writing ratings without a result to justify them");
     }
 
     // --- helpers ---
@@ -303,10 +321,22 @@ class NationalRatingServiceTest extends BaseTest {
         matches.save(match);
     }
 
+    /**
+     * How many different ratings the column holds, <b>null counting as one of them</b>.
+     *
+     * <p>Nulls used to be filtered out, which made a world where nothing had been rated read as
+     * <i>zero</i> distinct values - and the guard asserts that a world with no internationals played
+     * is level, i.e. exactly one. So the honest starting state was reported as a broken column, and
+     * the failure had nothing to do with the behaviour it was written to protect.
+     *
+     * <p>Null has to count as a value rather than be skipped: a country with no national side is
+     * never rated, because there is nothing to rate, and it keeps whatever it had. Treating "every
+     * country null" as level is correct. Treating "one country at 1500, the rest null" as level would
+     * not be, and this still fails that - which is the half of the guard that matters.
+     */
     private long countDistinctRatings() {
         return countries.findAll().stream()
-                .map(Country::getReputation)
-                .filter(java.util.Objects::nonNull)
+                .map(country -> java.util.Objects.toString(country.getReputation(), "unrated"))
                 .distinct()
                 .count();
     }

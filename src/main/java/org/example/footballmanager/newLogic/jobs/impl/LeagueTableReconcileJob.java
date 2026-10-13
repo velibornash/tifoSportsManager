@@ -2,7 +2,9 @@ package org.example.footballmanager.newLogic.jobs.impl;
 
 import org.example.footballmanager.newLogic.jobs.DayJob;
 import org.example.footballmanager.newLogic.jobs.JobContext;
+import org.example.footballmanager.newLogic.service.ClubRatingService;
 import org.example.footballmanager.newLogic.service.LeagueTableReconciliationService;
+import org.example.footballmanager.newLogic.service.NationalRatingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,17 +45,25 @@ public class LeagueTableReconcileJob implements DayJob {
     private final String key;
     private final int day;
     private final LeagueTableReconciliationService tables;
+    private final ClubRatingService clubRatings;
+    private final NationalRatingService nationalRatings;
 
-    public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables) {
-        this(key, day, null, tables);
+    public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables,
+                                   ClubRatingService clubRatings,
+                                   NationalRatingService nationalRatings) {
+        this(key, day, null, tables, clubRatings, nationalRatings);
     }
 
     public LeagueTableReconcileJob(String key, int day, Integer hourOverride,
-                                   LeagueTableReconciliationService tables) {
+                                   LeagueTableReconciliationService tables,
+                                   ClubRatingService clubRatings,
+                                   NationalRatingService nationalRatings) {
         this.key = key;
         this.day = day;
         this.hourOverride = hourOverride;
         this.tables = tables;
+        this.clubRatings = clubRatings;
+        this.nationalRatings = nationalRatings;
     }
 
     @Override
@@ -78,9 +88,12 @@ public class LeagueTableReconcileJob implements DayJob {
 
     @Override
     public int order() {
-        // After the matchday jobs, though those are on the previous day. The order is belt and braces:
-        // if a league day is ever moved onto this one, this must not run first.
-        return 20;
+        // **After every job that can still be writing a result.** This returned 20, which is *before*
+        // `MatchdayPublishJob` at 60 - the comment above it said this job "must not run first" and the
+        // number said the opposite, so on any day the two shared, a matchday's results would be rated
+        // and reconciled before they were released. The two currently sit on different days, which is
+        // the only reason this never showed up.
+        return 90;
     }
 
     @Override
@@ -94,5 +107,23 @@ public class LeagueTableReconcileJob implements DayJob {
                         + "{} played match(es).",
                 key, season, result.tablesRebuilt(), result.competitions(),
                 result.entriesCorrected(), result.matchesRead());
+
+        // The ratings move here, and this is the only reason they ever did. `ClubRatingService` and
+        // `NationalRatingService` are replayed on exactly two paths - the async batch and "advance
+        // week" - and neither is the path the clock uses. A matchday played by the scheduler therefore
+        // left every club on its seed: 844 played matches and not one club off it. A rebuild that is
+        // already reading this week's results is the honest place to fold them into the ladder.
+        ClubRatingService.Result clubs = clubRatings.recomputeIncrementallyDurably();
+        log.info("{}: club Elo resumed - {} match(es) folded in, {} club(s) moved.",
+                key, clubs.matchesReplayed(), clubs.clubsMoved());
+
+        // Full replay, not a resume. National football starts in week 6, so this reads nothing for
+        // most of a season, and its replay ends by applying a tournament qualification bonus - which a
+        // resume would re-apply on every matchday and walk every country steadily upward. The national
+        // replay is a pure function of the match table (48 countries, a few hundred matches), so running
+        // it whole is both cheap and, by construction, safe to repeat.
+        NationalRatingService.Result nations = nationalRatings.recomputeDurably();
+        log.info("{}: national Elo replayed - {} match(es), {} nation(s) rated.",
+                key, nations.matchesReplayed(), nations.countriesRated());
     }
 }

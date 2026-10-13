@@ -3,8 +3,10 @@ package org.example.footballmanager.newLogic.service;
 import org.example.footballmanager.newLogic.model.CompetitionScope;
 import org.example.footballmanager.newLogic.model.CompetitionType;
 import org.example.footballmanager.newLogic.model.MatchValue;
+import org.example.footballmanager.newLogic.model.RatingWatermark;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.RatingWatermarkRepository;
 import org.example.footballmanager.newLogic.repository.ScoredMatch;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.slf4j.Logger;
@@ -68,14 +70,17 @@ public class ClubRatingService {
     private static final Logger log = LoggerFactory.getLogger(ClubRatingService.class);
 
     private final MatchRepository matches;
+    private final RatingWatermarkRepository watermarks;
     private final TeamRepository teams;
     private final TransactionTemplate requiresNew;
 
     public ClubRatingService(MatchRepository matches,
                              TeamRepository teams,
+                             RatingWatermarkRepository watermarks,
                              PlatformTransactionManager transactionManager) {
         this.matches = matches;
         this.teams = teams;
+        this.watermarks = watermarks;
         // A transaction of its own, for recomputeDurably() only. A rating written inside somebody
         // else's transaction is a rating that may never have happened - the boot listener proved that
         // the hard way for the national ratings.
@@ -129,6 +134,101 @@ public class ClubRatingService {
      * <p>Costless to call from both places: the replay is a pure function of the match table, so
      * running it twice is the same as running it once.
      */
+    /**
+     * Resumes the replay instead of restarting it, in its own transaction.
+     *
+     * <p>This is what the matchday calls. The full {@link #recompute()} re-reads every played match in
+     * the world, and a season is ~89,280 of them, so running it after each matchday is quadratic. The
+     * fold is what makes a resume safe: applying match N+1 needs only the ratings after match N, which
+     * are the ratings already stored on the clubs. So the working set starts from what is on the clubs,
+     * the stored delta is left alone for clubs this run does not touch, and only the watermark moves.
+     *
+     * <p>A watermark that is absent or behind a club's true history produces a rating that is merely
+     * short, never wrong in a way that cannot be corrected by a full {@link #recompute()}; that remains
+     * the repair path and is what the two batch call sites use.
+     */
+    public Result recomputeIncrementallyDurably() {
+        RatingWatermark mark = watermarks.findById(RatingWatermark.CLUB)
+                .orElseGet(() -> new RatingWatermark(RatingWatermark.CLUB, null));
+        Long after = mark.getAppliedThroughMatchId();
+        List<ScoredMatch> pending = after == null
+                ? matches.findPlayedClubScoredInOrder()
+                : matches.findPlayedClubScoredAfter(after);
+        if (pending.isEmpty()) {
+            return new Result(0, 0, 0, Double.NaN, Double.NaN);
+        }
+        // A missing watermark means "replay everything", and it must be folded from the seeds rather
+        // than from whatever the clubs currently hold. Starting from stored ratings instead re-applies
+        // history the ratings already include: a club on 1514 after the first fold came out at 1527,
+        // which is a rating invented by the repair rather than by a result. This is not hypothetical
+        // here - a database restored from a dump carries ratings but not the watermark table.
+        boolean fromSeed = after == null;
+        Integer[] result = requiresNew.execute(status -> applyIncrementally(pending, mark, fromSeed));
+        return new Result(result[0], result[1], result[2], Double.NaN, Double.NaN);
+    }
+
+    private Integer[] applyIncrementally(List<ScoredMatch> pending, RatingWatermark mark, boolean fromSeed) {
+        List<Team> clubs = teams.findAllClubsWithDivision();
+        Map<Long, Double> current = new HashMap<>();
+        Map<Long, Double> previous = new HashMap<>();
+        for (Team club : clubs) {
+            // A resume starts from what is stored: the fold only needs the ratings after the last match
+            // it already folded, and those are the ratings on the clubs. Falling back to the seed is
+            // what makes a brand new club - or one whose rating was never written - start from the
+            // ladder rather than from zero, and falling back to its own stored rating keeps an untouched
+            // club's existing delta instead of zeroing it on every matchday.
+            double stored = club.getEloRating() != null ? club.getEloRating() : seedFor(club);
+            double before = club.getEloPreviousRating() != null ? club.getEloPreviousRating() : stored;
+            if (fromSeed) {
+                stored = seedFor(club);
+                before = stored;
+            }
+            current.put(club.getId(), stored);
+            previous.put(club.getId(), before);
+        }
+
+        long highest = 0L;
+        for (ScoredMatch match : pending) {
+            applyToWorkingRatings(match, current, previous);
+            if (match.id() != null) {
+                highest = Math.max(highest, match.id());
+            }
+        }
+
+        int moved = persistIncremental(clubs, current, previous);
+        mark.setAppliedThroughMatchId(highest);
+        watermarks.save(mark);
+        log.info("Club Elo resumed: {} match(es) folded in, {} club(s) moved.", pending.size(), moved);
+        return new Integer[] {pending.size(), clubs.size(), moved};
+    }
+
+    /** Writes only the clubs whose numbers moved, so a matchday is not a 15k-row update. */
+    private int persistIncremental(List<Team> clubs, Map<Long, Double> current,
+                                   Map<Long, Double> previous) {
+        int moved = 0;
+        for (Team club : clubs) {
+            Double rating = current.get(club.getId());
+            Double before = previous.get(club.getId());
+            if (rating == null || before == null) {
+                continue;
+            }
+            double delta = rating - before;
+            if (sameValue(club.getEloRating(), rating)
+                    && sameValue(club.getEloPreviousRating(), before)
+                    && sameValue(club.getEloDelta(), delta)) {
+                continue;
+            }
+            club.setEloRating(round(rating));
+            club.setEloPreviousRating(round(before));
+            club.setEloDelta(round(delta));
+            teams.save(club);
+            if (Math.abs(delta) > 0.5) {
+                moved++;
+            }
+        }
+        return moved;
+    }
+
     public Result recomputeDurably() {
         return requiresNew.execute(status -> recompute());
     }

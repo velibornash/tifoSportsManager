@@ -12,9 +12,12 @@ import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.RatingWatermarkRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -293,6 +296,130 @@ class ClubRatingServiceTest extends BaseTest {
      * <p>Deliberately a fresh country and fresh clubs per case: the cases are compared against each
      * other, so they cannot share a division, a fixture history or a rating.
      */
+    // --- the incremental resume ---
+
+    @Autowired private RatingWatermarkRepository watermarks;
+    @Autowired private jakarta.persistence.EntityManager em;
+
+    /**
+     * Re-read a club as the database now holds it.
+     *
+     * <p>The resume runs in {@code REQUIRES_NEW}, which is deliberate - a rating written inside somebody
+     * else's transaction is a rating that may never have happened. The cost of that is that the outer
+     * persistence context keeps the values it loaded before the call and never sees the committed ones.
+     * Asserting on the handle this test already holds would therefore prove nothing: it would read the
+     * pre-resume numbers and call them a match.
+     */
+    /**
+     * Remove a fixture country and everything hanging off it.
+     *
+     * <p>These two tests cannot be transactional. The resume runs in {@code REQUIRES_NEW} - it has to,
+     * for the same reason the rating never rides another transaction - and that is a separate
+     * connection which cannot see this test's uncommitted match. So the fixture is committed, and
+     * cleaned up here instead of by rollback.
+     */
+    private void wipe(Country country) {
+        List<Team> clubs = teams.findByCountryId(country.getId());
+        List<Long> ids = clubs.stream().map(Team::getId).toList();
+        matches.deleteAll(matches.findPlayedInvolvingAnyOf(ids));
+        teams.deleteAll(clubs);
+        competitions.deleteAll(competitions.findByCountryId(country.getId()));
+        countries.delete(country);
+        watermarks.deleteAll();
+    }
+
+    private double storedRating(Team club) {
+        em.clear();
+        return teams.findById(club.getId()).orElseThrow().getEloRating();
+    }
+
+    /**
+     * The resume must land on the same numbers a cold replay would.
+     *
+     * <p>This is the guard for the matchday hook. The full replay seeds every club and folds in every
+     * played match; the incremental one starts from what is stored and folds in only what is new. Those
+     * two agree only if the fold is genuinely a fold, so this runs the cold replay, wipes the watermark,
+     * resumes over the same history, and demands the identical column.
+     */
+    @Test
+    @DisplayName("a resumed replay lands where a cold replay would")
+    void aResumedReplayAgreesWithAColdOne() {
+        Country country = aCountry("ZZ Resume", "ZQ1");
+        Competition division = aDivision(country, "ZZ Resume Div", 1);
+        Team home = aClub(country, "Resume Home", division);
+        Team away = aClub(country, "Resume Away", division);
+        Competition cup = aCompetition(country, "ZZ Resume Cup", CompetitionType.CUP);
+        played(cup, home, away, 2, 1, 1);
+
+        // Cold: the whole world, every played match, from the seeds.
+        ratings.recompute();
+        // Read back from the database, not off these handles: outside a transaction they are detached
+        // and still carry whatever they held before the replay ran.
+        double coldHome = storedRating(home);
+        double coldAway = storedRating(away);
+        assertTrue(coldHome != 0.0, "the cold replay did not rate the fixture club at all");
+
+        // Forgetting the watermark is what a first run looks like, and it must not double-count: the
+        // same match is replayed over ratings that already include it.
+        watermarks.deleteAll();
+        watermarks.flush();
+        ratings.recomputeIncrementallyDurably();
+
+        assertEquals(round(coldHome), storedRating(home),
+                "the resumed rating is not the cold one - the fold is not resuming from what is stored");
+        assertEquals(round(coldAway), storedRating(away),
+                "the resumed rating is not the cold one - the fold is not resuming from what is stored");
+        wipe(country);
+    }
+
+    /**
+     * The second call after the first must change nothing.
+     *
+     * <p>The watermark is the only thing standing between a matchday and a season of replays, so this is
+     * the assertion that matters for the cost: no new matches, no new work, no movement.
+     */
+    @Test
+    @DisplayName("a resumed replay with nothing new is a no-op")
+    void aResumedReplayWithNothingNewDoesNothing() {
+        Country country = aCountry("ZZ Noop", "ZQ2");
+        Competition division = aDivision(country, "ZZ Noop Div", 1);
+        Team home = aClub(country, "Noop Home", division);
+        Team away = aClub(country, "Noop Away", division);
+        Competition cup = aCompetition(country, "ZZ Noop Cup", CompetitionType.CUP);
+        played(cup, home, away, 1, 0, 1);
+
+        ClubRatingService.Result first = ratings.recomputeIncrementallyDurably();
+        double settled = storedRating(home);
+        assertTrue(settled != 0.0, "the resume left the club unrated");
+
+        ClubRatingService.Result second = ratings.recomputeIncrementallyDurably();
+
+        assertEquals(0, second.matchesReplayed(),
+                "the second resume replayed football again, so the watermark did not hold");
+        assertEquals(0, second.clubsMoved(),
+                "the second resume moved a club, so it is not a no-op");
+        assertEquals(settled, storedRating(home), "a no-op run changed a rating");
+        assertTrue(first.matchesReplayed() > 0,
+                "the first resume replayed nothing, so this test is not exercising the resume at all");
+        wipe(country);
+    }
+
+    private static long round(double value) {
+        return Math.round(value);
+    }
+
+    /** A competition on its own, for a test that brings its own sides. */
+    private Competition aCompetition(Country country, String name, CompetitionType type) {
+        Competition competition = new Competition();
+        competition.setName(name + " Competition");
+        competition.setType(type);
+        competition.setScope(CompetitionScope.NATIONAL);
+        competition.setTeamType(CompetitionTeamType.CLUB);
+        competition.setTier(1);
+        competition.setCountry(country);
+        return competitions.save(competition);
+    }
+
     private CupPlay aCupPlay(Country country, String name, CompetitionType type, CompetitionScope scope) {
         Competition competition = new Competition();
         competition.setName(name + " Competition");

@@ -1,3 +1,45 @@
+## 2026-10-13 — club Elo now moves, and the replay is a resume
+
+**What was wrong.** `ClubRatingService.recomputeDurably()` is called from exactly two paths: the async
+batch (`AsyncSimulationRunner.rateClubs`) and *Advance Week* (`SimulationController`). Neither is the path
+the clock uses. `MatchdayPublishJob.run()` plays the day's fixtures and nothing recomputes the rating
+afterwards. Measured on the restored world: **1,830 matches played, 5 distinct Elo values across 14,976
+clubs, 0 clubs with a non-zero `elo_delta`.** The country club ranking sorted a flat column, and there was
+no delta to show because the feed underneath it had never moved.
+
+**What was done.** Incremental replay, hosted in the job that already rebuilds derived tables:
+
+- `rating_watermark` (new table, `ddl-auto=update` created it) — the highest match id folded in, per pool.
+- `findPlayedClubScoredAfter` / `findPlayedScoredByCompetitionTypeAfter` — the same predicates, cut by id.
+- `ClubRatingService.recomputeIncrementallyDurably()` — folds in only what is new, in `REQUIRES_NEW`.
+- `LeagueTableReconcileJob` calls it, and `order()` moved **20 -> 90**.
+
+**The order number was the second defect.** Its comment said it "must not run first" while returning 20,
+and `MatchdayPublishJob` is 60 — so on any day the two shared, results would have been rated and
+reconciled *before* they were released. They sit on different days today, which is the only reason this
+never showed up.
+
+**National teams: full replay, deliberately, not a resume.** Its replay ends by applying a tournament
+qualification bonus; a resume would re-apply it every matchday and walk all 48 countries steadily upward.
+It is a pure function of the match table over 48 countries, so replaying it whole is cheap and safe to
+repeat. It is hooked in the same place and runs from week 6.
+
+**The test caught a bug in the fix.** `aResumedReplayAgreesWithAColdOne` failed 1514 vs 1527: with the
+watermark absent the resume started from *stored* ratings and re-folded history they already contained —
+a rating invented by the repair rather than by a result. A missing watermark now means a full replay from
+the seeds. That is not hypothetical here: **a database restored from a dump carries ratings but not the
+watermark table**, which is exactly the state this world was in.
+
+**Verified in the database, not just in a log.** After the change: 270 distinct Elo values, 1,165 clubs
+off their seed, watermark at 1871, e.g. `RFK Omladinac Ivanjica 1928` 1460 -> 1435 (-25).
+
+**Not done, still on the list:** cup round 2 (round 1's 54 ties exist; it draws at W2 D2 08:00), the
+Clubs tab visual check, the four UI asks (current round first + highlight, competition-type filters,
+scroll-to-top, the false "Not drawn yet"), and the delta column — deliberately last, because until this
+feed was live it would have rendered zero forever and looked like a working feature.
+
+---
+
 ## ✅ Belgrade times, sortable jobs, and a Back that goes back (2026-12-13)
 
 Commit to follow. Three owner requests in one sitting, all on the admin panel and the navigation.

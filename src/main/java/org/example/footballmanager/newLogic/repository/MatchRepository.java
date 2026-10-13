@@ -200,6 +200,42 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
     List<ScoredMatch> findPlayedClubScoredInOrder();
 
     /**
+     * The club replay, resumed: only matches whose id is past the watermark.
+     *
+     * <p>Same predicate as {@link #findPlayedClubScoredInOrder()} — same competition types, same
+     * exclusion of a match a fixture still holds — plus {@code m.id > :after}. This is what keeps a
+     * matchday from re-reading the season.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
+            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
+            + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
+            + "WHERE m.played = true AND m.id > :after AND m.competition.type IN ("
+            + "org.example.footballmanager.newLogic.model.CompetitionType.LEAGUE, "
+            + "org.example.footballmanager.newLogic.model.CompetitionType.CUP) "
+            + NOT_PREPARED
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<ScoredMatch> findPlayedClubScoredAfter(
+            @Param("after") Long after);
+
+    /**
+     * The national replay, resumed, for one competition type.
+     *
+     * <p>National football starts in week 6, and the owner asked for the same logic to cover it. The
+     * pool is disjoint from the club one by construction — a national side plays in nothing else and a
+     * club never plays in these — so this mirrors {@link #findPlayedScoredByCompetitionTypeInOrder()}
+     * with the same watermark cut.
+     */
+    @Query("SELECT new org.example.footballmanager.newLogic.repository.ScoredMatch("
+            + "m.id, home.id, home.name, away.id, away.name, m.homeGoals, m.awayGoals, c.scope, c.type, c.nationalStage) "
+            + "FROM Match m LEFT JOIN m.homeTeam home LEFT JOIN m.awayTeam away LEFT JOIN m.competition c "
+            + "WHERE m.played = true AND m.id > :after AND m.competition.type = :type "
+            + NOT_PREPARED
+            + "ORDER BY m.matchDate ASC, m.id ASC")
+    List<ScoredMatch> findPlayedScoredByCompetitionTypeAfter(
+            @Param("type") org.example.footballmanager.newLogic.model.CompetitionType type,
+            @Param("after") Long after);
+
+    /**
      * One page of the window's matches, as the cursor for the next page.
      *
      * <p><b>The keyset is {@code (match_date, id)}, not {@code id}.</b> Paging on the id alone cannot use
