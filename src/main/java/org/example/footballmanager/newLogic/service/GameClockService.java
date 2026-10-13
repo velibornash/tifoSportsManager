@@ -305,6 +305,29 @@ public class GameClockService {
         Instant now = clock.gameTimeAt(instant());
         Instant from = clock.getLastSyncedAt() == null ? now : clock.getLastSyncedAt();
 
+        // **A watermark ahead of game time kills every job, permanently and silently.**
+        //
+        // This walk is measured from `lastSyncedAt` to now. When the clock is wound back - which is a
+        // supported admin operation, `POST /api/game-clock/offset` exists precisely to do it - the new
+        // game time falls *behind* the watermark, `delta` goes negative, `steps` clamps to zero and not
+        // one job runs. Nothing reports it: the walk returns an empty summary, `synchronise()` logs
+        // nothing because it only logs when a job ran, and the offset sits unchanged while the entire
+        // scheduled job system is dead.
+        //
+        // Measured on this world: `last_synced_at` 2026-10-27 12:14 against a game time of 08:24. A walk
+        // over 71 hours afterwards ran nothing at all, which is how a league table, a cup draw, the
+        // matchday and both Elo ledgers all went unmoved while the app looked perfectly healthy.
+        //
+        // So the watermark is repaired rather than trusted. It is a resume point, and a resume point
+        // that lies about how far we got must not be believed; treating it as "now" costs at most one
+        // already-elapsed hour and makes the runner self-heal on the next tick instead of staying dead.
+        if (from.isAfter(now)) {
+            log.warn("Clock watermark {} is ahead of game time {}; rewinding it so jobs can run again.",
+                    from, now);
+            from = now;
+            clock.setLastSyncedAt(now);
+        }
+
         long fromIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), from));
         long toIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), now));
         long delta = toIndex - fromIndex;

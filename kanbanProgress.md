@@ -1,3 +1,39 @@
+## 2026-10-13 — P0: a clock watermark ahead of game time killed every scheduled job, silently
+
+**The cause.** `GameClockService.walk()` measures its walk from `clock.lastSyncedAt` to
+`clock.gameTimeAt(instant())`. Nothing anywhere enforces the invariant `lastSyncedAt <= gameTime`. Winding
+the clock back is a *supported* admin operation — `POST /api/game-clock/offset` exists precisely to do it,
+"the only way to wind the world back" — so the broken state is reachable by design, not by accident.
+
+Once reached, `delta` goes negative, `steps = Math.max(0, ...)` clamps to zero, and **not one job runs**.
+Nothing reports it: `synchronise()` only logs when a job actually ran, the walk returns an empty summary,
+and the offset sits unchanged while the entire job system is dead. The app looks perfectly healthy.
+
+**Measured on this world:** `last_synced_at = 2026-10-27 12:14:35` against a game time of `08:24:33`.
+That single row explained, in one cause, everything chased for hours:
+
+- the reconcile job never firing in any session,
+- the week-3 `league-table-reconcile-a` being skipped by a walk that crossed day 4 hour 1,
+- `game.clock.scheduler-enabled` appearing to do nothing,
+- and why both Elo ledgers and the ranking-points ledger were frozen.
+
+Two of my own diagnoses were wrong before this one. `game_clock`'s `current_week` / `current_day` /
+`current_hour` / `current_season` are **vestigial columns from the old two-clock design** (rebuilt out
+2026-10-11); the scheduler never reads them, so "the clock disagrees with itself" was my measurement
+error, not a defect. And `synchronise()` does not advance the clock — it is a catch-up runner, so an
+unchanged offset at a cron boundary is correct and the silence meant only that nothing was due.
+
+**The fix.** A resume point that lies about how far we got must not be believed. `walk()` now detects a
+watermark ahead of game time, warns, and repairs it to `now`, making the runner self-heal on the next tick
+instead of staying dead.
+
+**Verified by deliberately reintroducing the drift** (moved `last_synced_at` 14000s ahead, restarted,
+advanced 4 hours): jobs fired again without any other change, and the reconcile job ran with its new body —
+`Club Elo resumed: 633 match(es) folded in, 1184 club(s) moved`.
+
+Note the dump carries **no `last_synced_at` column at all** (`ddl-auto=update` adds it after restore), so
+the drift was created in-session rather than inherited — but it is one wind-back away for any user.
+
 ## 2026-10-13 — the country page was never broken; the club ranking was fed by a second dead ledger
 
 **The country page renders.** `showMyCountry()` looked dead in agent-browser because I was reading
