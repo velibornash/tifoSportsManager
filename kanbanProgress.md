@@ -1,3 +1,35 @@
+## 2026-10-13 — two duplicate discipline rows were killing matchdays
+
+The clock fix let matchdays run again, and the first one to fail said:
+
+```
+Matchday prepare day 1 for week 3: 0 fixture(s) computed and 2 failed
+Matchday publish  day 1 for week 3: 0 result(s) released and 2 failed
+Caused by: org.hibernate.NonUniqueResultException: Query did not return a unique result: 2 results were returned
+    at ...PlayerDisciplineRepository.findByPlayerIdAndSeasonAndCompetitionIsNull
+```
+
+**Two players each carried two identical club-wide `player_discipline` rows** (`bans_owed = 1` twice,
+players 27797 and 30522). Both call sites asked Spring Data for a single `Optional` row, so the pair
+threw — and because it threw inside `simulate()`, it took out the whole matchday, not one player. Two
+duplicates anywhere on the planet stopped the football, and the error named Hibernate rather than a ban.
+
+**The fix asks the question the caller actually has.** `suspensionFor` wants to know *is a ban owed* — that
+is `countOwedClubWideBans(...) > 0`, a count, which cannot throw on a duplicate. `serve` has to mutate one
+row, so it takes the oldest row that still owes something rather than demanding uniqueness. Duplicates are
+now a degraded state instead of a matchday outage.
+
+**Guard, proven by mutation.** `duplicateClubWideRowsStillSuspend` writes the duplicate and asserts both
+halves. Reverting `suspensionFor` to the `Optional` shape reproduces the production exception exactly —
+`NonUniqueResultException: Query did not return a unique result: 2 results were returned`.
+
+The two duplicate rows were also removed from the data (keeping the lowest id), so there are now 0.
+
+**Also fixed while here:** the new job dependencies created a startup cycle — `GameClockService` owns the
+job runner, which owns every `DayJob`, so a job depending on anything reaching back into the clock cannot
+be constructed, and the whole application failed to start with an error naming `APIController`. The three
+new dependencies are `@Lazy`. Worth knowing because the symptom points nowhere near the cause.
+
 ## 2026-10-13 — the loop is closed: the ranking moves, and it was the watermark all along
 
 The owner's original question — *"check after a played match whether the rankings change"* — now answers

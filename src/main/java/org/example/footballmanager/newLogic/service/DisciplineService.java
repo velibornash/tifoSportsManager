@@ -93,9 +93,10 @@ public class DisciplineService {
         boolean official = isOfficial(competition);
 
         if (official) {
-            Optional<PlayerDiscipline> clubWide = records.findByPlayerIdAndSeasonAndCompetitionIsNull(
-                    playerId, season);
-            if (clubWide.isPresent() && clubWide.get().getBansOwed() > 0) {
+            // A count, not a row. This asks whether a ban is owed; asking for "the row" made a player
+            // with two identical rows throw NonUniqueResultException and take the whole matchday with
+            // them. Two rows and a ban owed is still a ban owed.
+            if (records.countOwedClubWideBans(playerId, season) > 0) {
                 return Optional.of("suspended — sent off in his last official match");
             }
         }
@@ -127,8 +128,12 @@ public class DisciplineService {
         Competition competition = fixture.getCompetition();
 
         if (isOfficial(competition)) {
-            records.findByPlayerIdAndSeasonAndCompetitionIsNull(playerId, season)
+            // One ban is served by decrementing one row. With duplicates present this takes the oldest
+            // row that still owes something, so a second identical row is simply served next time
+            // rather than crashing the matchday.
+            records.findByPlayerIdAndSeasonAndCompetitionIsNullOrderByIdAsc(playerId, season).stream()
                     .filter(record -> record.getBansOwed() > 0)
+                    .findFirst()
                     .ifPresent(record -> {
                         record.setBansOwed(record.getBansOwed() - 1);
                         record.setUpdatedAt(LocalDateTime.now());

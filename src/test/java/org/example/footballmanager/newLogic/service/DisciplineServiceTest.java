@@ -42,6 +42,7 @@ class DisciplineServiceTest {
     @Autowired TeamRepository teams;
     @Autowired CompetitionRepository competitions;
     @Autowired MatchFixtureRepository fixtures;
+    @Autowired org.example.footballmanager.newLogic.repository.PlayerDisciplineRepository twins;
 
     private static final int SEASON = 1;
 
@@ -98,6 +99,46 @@ class DisciplineServiceTest {
     }
 
     // ── the red card ──────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A player with two club-wide rows is suspended, not fatal.
+     *
+     * <p>This reproduces the data that stopped a matchday. Two players in this world each carried two
+     * identical club-wide {@code player_discipline} rows, and because both the read and the serve asked
+     * Spring Data for a single {@code Optional} row, the pair raised {@code NonUniqueResultException}.
+     * Both the prepare and the publish job then failed, two fixtures were skipped, and nothing in the
+     * error named a player or a ban.
+     *
+     * <p>The duplicate is the input, not the assertion: a second row for a player who is genuinely owed
+     * a ban must still read as "suspended", and serving the ban must take exactly one of them.
+     */
+    @Test
+    @DisplayName("two club-wide rows for one player is a suspended player, not a crash")
+    void duplicateClubWideRowsStillSuspend() {
+        MatchFixture next = aLeagueMatch(2);
+        discipline.record(player.getId(), SEASON, league, 0, 1);
+
+        // The duplicate, written the way the world produced it: a second club-wide row, same season.
+        PlayerDiscipline twin = new PlayerDiscipline();
+        twin.setPlayer(player);
+        twin.setSeason(SEASON);
+        twin.setYellowCards(0);
+        twin.setBansOwed(1);
+        twin.setUpdatedAt(java.time.LocalDateTime.now());
+        twins.save(twin);
+
+        assertTrue(discipline.suspensionFor(player.getId(), SEASON, next).isPresent(),
+                "a player owed a ban is suspended even when his club-wide row is duplicated");
+
+        discipline.serve(player.getId(), SEASON, next);
+
+        // Exactly one ban was served, so exactly one row still owes something.
+        long owed = twins.findByPlayerIdAndSeason(player.getId(), SEASON).stream()
+                .filter(r -> r.getCompetition() == null && r.getBansOwed() > 0)
+                .count();
+        assertEquals(1L, owed,
+                "serving one ban must leave exactly one row owing it, whichever row was chosen");
+    }
 
     @Test
     @DisplayName("a red card bans the first next official match")

@@ -48,12 +48,20 @@ public class LeagueTableReconcileJob implements DayJob {
     private final LeagueTableReconciliationService tables;
     private final ClubRatingService clubRatings;
     private final NationalRatingService nationalRatings;
+    /**
+     * Lazy on all three, and that is load-bearing rather than incidental.
+     *
+     * <p>{@code GameClockService} owns the job runner, which owns every {@code DayJob} - this one. So a
+     * job that depends on anything reaching back into the clock closes a cycle the container cannot
+     * resolve, and the whole application fails to start with an error that names a controller rather
+     * than the job. Deferring the lookup breaks it without a lazy proxy on the clock itself.
+     */
     private final RankingPointsRebuildService rankingPoints;
 
     public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables,
-                                   ClubRatingService clubRatings,
-                                   NationalRatingService nationalRatings,
-                                   RankingPointsRebuildService rankingPoints) {
+                                   @org.springframework.context.annotation.Lazy ClubRatingService clubRatings,
+                                   @org.springframework.context.annotation.Lazy NationalRatingService nationalRatings,
+                                   @org.springframework.context.annotation.Lazy RankingPointsRebuildService rankingPoints) {
         this(key, day, null, tables, clubRatings, nationalRatings, rankingPoints);
     }
 
