@@ -149,9 +149,16 @@ function renderActions(profile, isSelf, viewer) {
                 <button type="button" class="fm-action-btn js-message-user" data-user-id="${escapeHtml(profile.id)}">
                     Send a message
                 </button>
-                <button type="button" class="fm-action-btn secondary" onclick="loadPage('dashboard')">
-                    Back to dashboard
-                </button>
+                <!--
+                    Owner request, 2026-10-13: every Back says just "Back" and goes to the previous screen;
+                    the logo is what always returns to the dashboard.
+
+                    This one was the worst of the set - it was hand-written and called loadPage('dashboard')
+                    directly, so it ignored the navigation history entirely and there was no path back
+                    from here at all. It now uses the shared button, which is the same button every other
+                    page uses.
+                -->
+                ${backButtonHtml()}
             </div>
             <p class="fm-subtle" style="margin-top:12px;">
                 Nothing here is private: other managers can see the same page.

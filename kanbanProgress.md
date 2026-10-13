@@ -1,3 +1,40 @@
+## ✅ Belgrade times, sortable jobs, and a Back that goes back (2026-12-13)
+
+Commit to follow. Three owner requests in one sitting, all on the admin panel and the navigation.
+
+**Job times now read Belgrade.** The panel printed the raw ISO string the server sends —
+`2026-10-13T12:56:42.578205Z` — so every stamp was UTC with a trailing `Z`, while the log beside it was
+local, and the owner read the two as contradicting each other. They were the same instant and neither said
+which clock it was on.
+
+**A named zone, not a fixed offset.** Belgrade is UTC+2 in summer and UTC+1 in winter, so hard-coding
+`+02:00` would be wrong for half the year and silently so. `Intl.DateTimeFormat` with `Europe/Belgrade`
+carries the rule, and an unparseable value is passed through rather than replaced with `—`, because losing
+a timestamp is worse than showing an ugly one.
+
+**The jobs table sorts by last run and by next trigger**, and the choice survives a re-render. Two
+details that are the difference between a sort and a decoration:
+
+- **"Next trigger" sorts on `nextInHours`, not on the printed string.** The printed value is
+  `"week 1, day 7 at 20:00"` — a *game* schedule, not a wall clock — so sorting on it alphabetically
+  would have ordered by the word "week".
+- **A job that has never run sorts last in both directions.** Under "oldest first" the never-run jobs
+  would otherwise sit at the top, which reads as "these have waited longest" when they have never run at
+  all.
+
+**Two Back buttons were wrong, in different ways.**
+
+The **My Profile** one was the worst: hand-written, labelled "Back to dashboard", and it called
+`loadPage('dashboard')` **directly** — so it ignored the navigation history entirely and there was no way
+back from that page at all. It now uses the shared `backButtonHtml()` every other page uses.
+
+The **Admin** one already did the right thing and was simply labelled wrong; only the label changed.
+
+The shared mechanism was never broken: `goBackSmart(fallback)` pops `navHistoryStack` when there is
+something to pop and only falls back to the dashboard when there is not. **Verified in a browser**:
+dashboard → First Team → Club Profile → Back landed on **First Team**, not the dashboard. The logo is
+untouched and still always returns to the dashboard, as asked.
+
 ## ✅ The 155-fixture prepare → publish proof, done (2026-12-13)
 
 Commit to follow. **The last thing on T-MATCH-1 that had never been seen.**

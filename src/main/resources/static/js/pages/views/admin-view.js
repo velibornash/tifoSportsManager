@@ -601,6 +601,68 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
      * a permanently broken job looks exactly like a healthy one. Nothing else in the application showed
      * the status at all.
      */
+    /**
+     * Which column the jobs table is sorted by, and which way.
+     *
+     * <p>Owner request, 2026-10-13: *"hocu da lista jobova u admin delu moze da se slozi po vremenu
+     * zadnjeg izvrsenja, vremenu narednog izvrsenja"*. Module-level so the choice survives the panel
+     * being re-rendered, which is what a user expects of a sort.
+     */
+    let jobSort = 'last';
+    let jobSortDir = 'desc';
+
+    const sortArrow = (column, active, dir) =>
+        active !== column ? '' : `<span aria-hidden="true"> ${dir === 'asc' ? '▲' : '▼'}</span>`;
+
+    /** "next" sorts on hours-until-fire; a job with no known next trigger sorts last either way. */
+    function sortJobs(jobs) {
+        const dir = jobSortDir === 'asc' ? 1 : -1;
+        return [...jobs].sort((a, b) => {
+            if (jobSort === 'next') {
+                const left = typeof a.nextInHours === 'number' ? a.nextInHours : Number.MAX_SAFE_INTEGER;
+                const right = typeof b.nextInHours === 'number' ? b.nextInHours : Number.MAX_SAFE_INTEGER;
+                if (left !== right) return (left - right) * dir;
+            } else {
+                // A job that has never run has no timestamp and belongs at the end in both directions -
+                // otherwise "oldest first" would put the never-run jobs at the top, which reads as
+                // "these are the ones that have waited longest" when they have never run at all.
+                const aTime = a.lastRunAt ? new Date(a.lastRunAt).getTime() : null;
+                const bTime = b.lastRunAt ? new Date(b.lastRunAt).getTime() : null;
+                if (aTime === null && bTime === null) return String(a.key).localeCompare(String(b.key));
+                if (aTime === null) return 1;
+                if (bTime === null) return -1;
+                if (aTime !== bTime) return (aTime - bTime) * dir;
+            }
+            return String(a.key).localeCompare(String(b.key));
+        });
+    }
+
+    const ariaDir = () => (jobSortDir === 'asc' ? 'ascending' : 'descending');
+
+    function wireJobSorting(host) {
+        host.querySelectorAll('[data-sort-jobs]').forEach(th => {
+            const apply = () => {
+                const column = th.dataset.sortJobs;
+                // Same column again flips the direction; a new column starts descending, which is what
+                // "sort by last run" means to somebody looking for a job that just failed.
+                if (jobSort === column) {
+                    jobSortDir = jobSortDir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    jobSort = column;
+                    jobSortDir = 'desc';
+                }
+                void showJobs();
+            };
+            th.addEventListener('click', apply);
+            th.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    apply();
+                }
+            });
+        });
+    }
+
     async function showJobs() {
         const host = document.getElementById('fm-jobs');
         if (!host) return;
@@ -624,11 +686,19 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         <thead><tr>
                             <th class="sq-name">Job</th>
                             <th>Trigger</th>
-                            <th>Last run</th>
-                            <th>Next trigger</th>
+                            <th class="fm-sortable${sort === 'last' ? ' is-sorted' : ''}"
+                                data-sort-jobs="last" role="button" tabindex="0"
+                                aria-sort="${sort === 'last' ? ariaDir : 'none'}">
+                                Last run ${sortArrow('last', sort, sortDir)}
+                            </th>
+                            <th class="fm-sortable${sort === 'next' ? ' is-sorted' : ''}"
+                                data-sort-jobs="next" role="button" tabindex="0"
+                                aria-sort="${sort === 'next' ? ariaDir : 'none'}">
+                                Next trigger ${sortArrow('next', sort, sortDir)}
+                            </th>
                             <th>Season</th>
                         </tr></thead>
-                        <tbody>${jobs.map(job => `
+                        <tbody>${sortJobs(jobs).map(job => `
                             <tr${job.lastStatus === 'FAILED' ? ' class="fm-job-row--failed"' : ''}>
                                 <td class="sq-name"><strong>${escapeHtml(job.key)}</strong></td>
                                 <td>${escapeHtml(job.trigger || '')}</td>
@@ -638,7 +708,9 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                             </tr>`).join('')}
                         </tbody>
                     </table>
-                </div>`;
+                </div>
+                <p class="fm-subtle">Times are Belgrade. Press a heading to sort.</p>`;
+            wireJobSorting(host);
         } catch (err) {
             host.innerHTML = '<p class="fm-subtle">Could not read the jobs.</p>';
         }
@@ -676,12 +748,46 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
     }
 
     /** Status badge, timestamp and the failure message - the three things that answer "did it run". */
+    /**
+     * An instant, written in Belgrade time.
+     *
+     * <p>Owner request, 2026-10-13: *"hocu da vremena jobova u admin delu pisu Belgrade time"*.
+     *
+     * <p>The panel was printing the raw ISO string the server sends — `2026-10-13T12:56:42.578205Z` — so
+     * every timestamp was UTC with a trailing Z, while the log file next to it was in local time and the
+     * owner read the two as contradicting each other. They were the same instant and neither said which
+     * clock it was on.
+     *
+     * <p><b>Named zone, not a fixed offset.</b> Belgrade is UTC+2 in summer and UTC+1 in winter, so
+     * hard-coding +02:00 would be wrong for half the year and silently so. An unparseable value is
+     * passed through rather than replaced with "—", because losing a timestamp is worse than showing an
+     * ugly one.
+     */
+    function belgradeTime(iso) {
+        if (!iso) return '';
+        const when = new Date(iso);
+        if (Number.isNaN(when.getTime())) return String(iso);
+        try {
+            return new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Europe/Belgrade',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false,
+            }).format(when) + ' Belgrade';
+        } catch (err) {
+            // A runtime without the zone database still gets a usable local time rather than nothing.
+            return when.toLocaleString();
+        }
+    }
+
     function statusCell(job) {
         if (!job.lastStatus) {
             return '<span class="fm-subtle">never</span>';
         }
         const badge = `<span class="fm-job-status fm-job-status--${escapeHtml(String(job.lastStatus).toLowerCase())}">${escapeHtml(job.lastStatus)}</span>`;
-        const when = job.lastRunAt ? `<div class="fm-subtle">${escapeHtml(job.lastRunAt)}</div>` : '';
+        const when = job.lastRunAt
+            ? `<div class="fm-subtle">${escapeHtml(belgradeTime(job.lastRunAt))}</div>`
+            : '';
         const message = job.lastMessage ? `<div class="fm-job-message">${escapeHtml(job.lastMessage)}</div>` : '';
         return badge + when + message;
     }
@@ -1023,7 +1129,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
 
         mainContent.innerHTML = `
             <div class="page-container">
-                ${backButtonHtml('Back to dashboard', 'dashboard')}
+                ${backButtonHtml()}
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <div>
