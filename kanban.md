@@ -170,6 +170,29 @@ the weekly upkeep and the number on the screen** — and nothing else.
 **"Weekly upkeep 0" is correct, not a defect.** Upkeep is `120 × (sum of levels − 1)`, so four facilities at
 level 1 cost nothing. The first upgrade starts the bill.
 
+### ✅ Corrected 2026-10-13 — all four levels DO act; the earlier claim was wrong
+
+It was reported that `TACTICAL` was a level a manager could buy that changed nothing. **That was wrong**,
+and it came from confusing a dead *method* with a dead *facility*. `Facility.tacticalMultiplier()` has no
+caller — but the **TACTICAL level itself** is read by `Stadium.trainingFactorFor` and trains passing,
+playmaker and technique. Verified by reading every consumer, not by inference:
+
+| Facility | Column | Trains | Consumer |
+|---|---|---|---|
+| `GROUND` | `trainingQuality` | speed, shooting, defending | `TrainingProgressionService:613` |
+| `GYM` | `gymLevel` | stamina, fatigue — plus injury protection | `Stadium.trainingFactorFor` / `injuryProtection` |
+| `TACTICAL` | `tacticalLevel` | passing, playmaker, technique | `Stadium.trainingFactorFor` |
+| `YOUTH` | `youthLevel` | academy quality | `AcademyQuality:78` |
+
+So exit criterion 1 is **already satisfied** — every level has a stated effect, they are disjoint by skill
+group, and all share one curve `0.90 + 0.20 × (level − 1) / 19`. `null` reads as neutral rather than as
+level 1, deliberately, so a club predating the feature is not silently nerfed 10%; a club that has built
+nothing says so with an explicit 1.
+
+What is genuinely dead is the single `tacticalMultiplier()` method, which duplicates an effect the level
+column already provides. It is redundant code, not a missing feature, and should be deleted rather than
+wired — wiring it would apply the tactical level twice.
+
 **The gap is that four numbers a manager pays for do not pay him back.** A manager who spends 2,500 to take
 the gym from 1 to 2 gets a gym that trains nobody better than the gym he already had, and nothing on any
 screen says so.
