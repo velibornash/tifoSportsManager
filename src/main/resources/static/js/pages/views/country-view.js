@@ -1004,7 +1004,11 @@ export function createCountryView(deps) {
             // on every tab because every tab can be reached from any other, and the club list is the
             // heaviest of them - one row per club in the country. Tab switching is a full re-render, so
             // an unconditional tenth read here would be paid on the calendar and both squad tabs too.
-            const clubRanking = tab === 'clubs'
+            // Named `clubRankingPromise`, not `clubRanking`: the destructure below declares that name,
+            // and binding it twice in one scope is a SyntaxError that takes this entire module with it
+            // - which is how the first attempt at this fix cost the owner a blank dashboard and a
+            // `loadPage is not defined`. The promise is awaited as the tenth entry, not assigned here.
+            const clubRankingPromise = tab === 'clubs'
                 ? readJson(`/countries/${encodeURIComponent(countryIso)}/clubs/ranking?limit=100`)
                 : Promise.resolve(null);
 
@@ -1031,7 +1035,7 @@ export function createCountryView(deps) {
                     readJson(`/countries/${encodeURIComponent(countryIso)}/cup`),
                     readJson(`/countries/${encodeURIComponent(countryIso)}/playoffs`),
                     readJson(`/countries/${encodeURIComponent(countryIso)}/qualifying`),
-                    clubRanking
+                    clubRankingPromise
                 ]);
 
             // Only now, with the side's own id known: the warm-up view is per national team.

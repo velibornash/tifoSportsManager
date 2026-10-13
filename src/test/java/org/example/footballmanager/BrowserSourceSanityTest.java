@@ -411,7 +411,10 @@ class BrowserSourceSanityTest {
         int depth = 0;
         for (int i = open; i < source.length(); i++) {
             char c = source.charAt(i);
-            if (c == '\'' || c == '"' || c == '`') {
+            if (c == '/' && i + 1 < source.length() && source.charAt(i + 1) == '/') {
+                int eol = source.indexOf('\n', i);
+                i = eol < 0 ? source.length() : eol;
+            } else if (c == '\'' || c == '"' || c == '`') {
                 i = skipString(source, i);
             } else if (c == '[') {
                 depth++;
@@ -434,6 +437,13 @@ class BrowserSourceSanityTest {
         boolean sawContent = false;
         for (int i = 0; i < body.length(); i++) {
             char c = body.charAt(i);
+            if (c == '/' && i + 1 < body.length() && body.charAt(i + 1) == '/') {
+                // Prose commas are not entry boundaries. `club-view.js` carries a three-line comment
+                // inside its Promise.all, and counting those commas reported seven entries for five.
+                int eol = body.indexOf('\n', i);
+                i = eol < 0 ? body.length() : eol;
+                continue;
+            }
             if (c == '\'' || c == '"' || c == '`') {
                 i = skipString(body, i);
                 sawContent = true;
@@ -448,7 +458,16 @@ class BrowserSourceSanityTest {
                 sawContent = true;
             }
         }
-        return sawContent ? entries + 1 : 0;
+        if (!sawContent) {
+            return 0;
+        }
+        // A trailing comma does not open another entry. `loans.js` ends its list with one and without
+        // this the guard reported a sixth promise that was never written.
+        int last = body.length() - 1;
+        while (last >= 0 && Character.isWhitespace(body.charAt(last))) {
+            last--;
+        }
+        return last >= 0 && body.charAt(last) == ',' ? entries : entries + 1;
     }
 
     /** Index of the quote that closes the string literal opening at {@code open}. */
