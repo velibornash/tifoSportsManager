@@ -50,7 +50,7 @@ public class ActionLogService {
             "SHOT", "SHOT_SAVED", "SHOT_MISSED", "SHOT_BLOCKED", "SHOT_POST",
             "PENALTY_KICK", "PENALTY_MISS", "PENALTY_SAVED",
             "OFF",
-            "FOUL", "CARD",
+            "FOUL",
             "POSSESSION_CHANGE", "CHASE_POSSESSION",
             "VAR_OFFSIDE_CONFIRMED", "VAR_OFFSIDE_OVERTURNED",
             "VAR_GOAL_CONFIRMED", "VAR_GOAL_OVERTURNED",
