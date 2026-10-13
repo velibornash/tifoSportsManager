@@ -639,7 +639,7 @@ and a tactic order is *minute + condition + tactic*. Sokker's 24 conditions were
 
 - [x] Substitution orders: minute, condition, player out, player in. Capped at **20**, and the cap is
       stated in the UI rather than enforced silently. **Done 2026-10-12** — there was no cap at all before.
-- [x] Tactic orders: minute, condition, target tactic. Capped at **10**, same rule. **Done 2026-12** —
+- [x] Tactic orders: minute, condition, target tactic. Capped at **10**, same rule. **Done 2026-12-12** —
       one-shot, last matching order wins, cap stated in the UI and in the refusal.
 - [x] An order that fires switches the engine's tactics **live at that minute**, not from the start.
       Already true: `MatchTacticPlan.inForce` filters on `minuteFrom <= minute`.
