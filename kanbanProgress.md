@@ -1,3 +1,40 @@
+## ✅ T-MATCH-3c — Paste, the cross-club half of Copy/Paste (2026-12-12)
+
+Commit to follow.
+
+The board: *"the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built."*
+**Copy** was built on 2026-10-12 and it **refuses** anything that is not the manager's own — which is the
+right default and is why Paste had to be something else rather than a wider Copy.
+
+**Paste is its own button, on purpose.** A control that silently accepted a stranger's tactic id would let
+a manager import by accident. `TacticLibraryService.paste` copies, does not reference: an edit on the other
+club's pitch must not change the tactic this club is playing, and the test asserts exactly that by renaming
+the pasted copy and checking the original still has its own name.
+
+Pasting **your own** tactic is refused and the message says *"Use Copy to duplicate it"* — otherwise the
+same-name check would fail with a complaint about a duplicate instead of about the right button.
+
+`GET /tactics/pasteable` offers other clubs' **default** tactics, bounded and ordered defaults-first, and
+**never this club's own** — listing those would invite the bigger button for the same job. 14,976 clubs hold
+tactics, so this is deliberately not the whole world.
+
+**Seen end to end in the browser:** offered *"Rival 4-3-3 — NK Omladinac Jagodina United"*, pasted it, and
+the row is in the database with **110,267 characters of rules** and the original on team 208 untouched.
+
+**Two bugs of mine, both invisible to a static check and both caught by using the thing.**
+
+- The picker called **`escapeHtml`** in a module whose helper is **`htmlEscape`** (21 uses). Three
+  ReferenceErrors inside an `async` function with no `try/catch`, so nothing caught them and the panel sat
+  on *"Looking…"* forever. A loader that cannot fail visibly is a loader that will not — the fetch, the
+  status check and the body read are each guarded now, and each says what went wrong.
+- The first live attempt pasted a tactic with **no rules**, because my test fixture's SQL pointed at an id
+  the reset had already renumbered. The feature was fine and the evidence was not; the source was given
+  real rules and the paste was redone.
+
+**The cap and the name clash both refuse with the reason shown**, and `lastRefusal` was added because the
+shelf's message line is a screen away from the button that failed — a refusal with no visible reason reads
+as a button that does not work.
+
 ## ✅ T-MATCH-5, first half — swap, the slot picker, and the positions actually stored (2026-12-12)
 
 Commit to follow. **The structural gap is still open and is the second half.**

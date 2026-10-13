@@ -85,6 +85,14 @@ function renderLibraryShelf(library, selectedId, locked) {
                 </label>
                 <button type="button" id="te-copy-btn" class="big-button"${disabled}>Copy</button>
                 <button type="button" id="te-mirror-btn" class="big-button"${disabled}>Mirror</button>
+                <!--
+                    Paste is the cross-club half of Copy/Paste (T-MATCH-3c), and it is its own button
+                    rather than a wider Copy dropdown on purpose: Copy duplicates one of *your* tactics and
+                    refuses anything else, and a control that silently accepts a stranger's tactic is not
+                    one to widen. Paste is named, and that is what makes reading another club's setup a
+                    decision rather than an accident.
+                -->
+                <button type="button" id="te-paste-btn" class="big-button"${disabled}>Paste from another club</button>
                 <button type="button" id="te-delete-btn" class="big-button"${disabled}>Delete</button>
             </div>
             <p class="fm-subtle" style="margin-top:8px;">
@@ -92,6 +100,21 @@ function renderLibraryShelf(library, selectedId, locked) {
                 tactic you pick, so you can change it without touching the original.
             </p>
             ${library.failed ? '<p class="fm-subtle" style="margin-top:8px;">The tactic list could not be loaded. Editing still works; the shelf is unavailable.</p>' : ''}
+            <div id="te-paste-panel" class="te-paste-panel" hidden>
+                <label class="fm-subtle" style="display:flex; align-items:center; gap:6px;">
+                    Search clubs or tactics
+                    <input id="te-paste-query" class="fm-input" type="search"
+                           placeholder="club or tactic name" maxlength="60">
+                </label>
+                <div id="te-paste-results" class="te-paste-results"></div>
+                <label class="fm-subtle" style="display:flex; align-items:center; gap:6px;">
+                    Name it here
+                    <input id="te-paste-name" class="fm-input" type="text" maxlength="60"
+                           placeholder="the name it takes in your club">
+                </label>
+                <button type="button" id="te-paste-confirm" class="big-button" disabled>Paste it</button>
+                <p id="te-paste-note" class="fm-subtle"></p>
+            </div>
             <p id="te-shelf-message" class="fm-subtle" style="margin-top:8px;"></p>
         </section>`;
 }
@@ -324,6 +347,15 @@ export function createTacticEditorView(deps) {
          * and that text is the whole point of the shelf refusing loudly. Swallowing it leaves a manager
          * clicking a button that appears to do nothing.
          */
+        /**
+         * The last refusal, kept so a panel can show it where the manager is looking.
+         *
+         * <p>The shelf's own line is not enough for Paste: the button is inside a panel that is a screen
+         * away from the shelf message, and a refusal with no visible reason reads as a button that does
+         * not work rather than as "this club already has a tactic called 4-4-2".
+         */
+        let lastRefusal = '';
+
         const postJson = async (url, body) => {
             try {
                 const response = await authFetch(url, {
@@ -331,8 +363,12 @@ export function createTacticEditorView(deps) {
                     headers: { 'Content-Type': 'application/json' },
                     body: body ? JSON.stringify(body) : undefined
                 });
-                if (response && response.ok) return await response.json();
-                say(await reasonOf(response));
+                if (response && response.ok) {
+                    lastRefusal = '';
+                    return await response.json();
+                }
+                lastRefusal = await reasonOf(response);
+                say(lastRefusal);
                 return null;
             } catch (error) {
                 say(String((error && error.message) || error));
@@ -427,6 +463,107 @@ export function createTacticEditorView(deps) {
                         await loadTacticEditor();
                     } else {
                         say(shelfMessage);
+                    }
+                });
+            }
+
+            // ── Paste from another club (T-MATCH-3c) ────────────────────────────────────────────────
+            const pasteBtn = document.getElementById('te-paste-btn');
+            const pastePanel = document.getElementById('te-paste-panel');
+            const pasteQuery = document.getElementById('te-paste-query');
+            const pasteResults = document.getElementById('te-paste-results');
+            const pasteName = document.getElementById('te-paste-name');
+            const pasteConfirm = document.getElementById('te-paste-confirm');
+            const pasteNote = document.getElementById('te-paste-note');
+            let pasteChoice = null;
+
+            if (pasteBtn && pastePanel) {
+                pasteBtn.addEventListener('click', () => {
+                    const open = pastePanel.hidden;
+                    pastePanel.hidden = !open;
+                    if (open) void searchForPaste();
+                });
+            }
+
+            async function searchForPaste() {
+                if (!pasteResults) return;
+                pasteResults.innerHTML = '<p class="fm-subtle">Looking…</p>';
+                const query = (pasteQuery && pasteQuery.value) || '';
+                // **Guarded, because an unhandled rejection here is invisible.**
+                // The first version of this picker had no try/catch and called a helper that does not
+                // exist in this module, so it threw, nothing caught it, and the panel sat on "Looking…"
+                // forever. A loader that cannot fail visibly is a loader that will not.
+                let res;
+                try {
+                    res = await authFetch(
+                        `/teams/${getTeamId()}/tactics/pasteable${query ? `?query=${encodeURIComponent(query)}` : ''}`);
+                } catch (error) {
+                    pasteResults.innerHTML = `<p class="fm-subtle">Could not reach the list:
+                        ${htmlEscape(error?.message || error)}</p>`;
+                    return;
+                }
+                if (!res.ok) {
+                    // response.ok is checked before the body is read, so a refusal reads as a refusal
+                    // rather than as a parse error.
+                    pasteResults.innerHTML = `<p class="fm-subtle">Could not list them (${res.status}).</p>`;
+                    return;
+                }
+                let found;
+                try {
+                    found = await res.json();
+                } catch (error) {
+                    pasteResults.innerHTML = `<p class="fm-subtle">That answer was not a list:
+                        ${htmlEscape(error?.message || error)}</p>`;
+                    return;
+                }
+                pasteChoice = null;
+                if (pasteConfirm) pasteConfirm.disabled = true;
+                if (!found.length) {
+                    pasteResults.innerHTML = '<p class="fm-subtle">Nothing found.</p>';
+                    return;
+                }
+                pasteResults.innerHTML = found.map(t => `
+                    <button type="button" class="te-paste-result" data-paste-id="${t.id}"
+                            data-paste-name="${htmlEscape(t.name)}">
+                        <strong>${htmlEscape(t.name)}</strong>
+                        <span class="fm-subtle">${htmlEscape(t.clubName || 'another club')}
+                            &middot; ${htmlEscape(t.formation || '—')}</span>
+                    </button>`).join('');
+                pasteResults.querySelectorAll('[data-paste-id]').forEach(row => {
+                    row.addEventListener('click', () => {
+                        pasteResults.querySelectorAll('.te-paste-result')
+                            .forEach(r => r.classList.remove('is-chosen'));
+                        row.classList.add('is-chosen');
+                        pasteChoice = Number(row.dataset.pasteId);
+                        // Pre-filled with the source's name, which is what most pastes want and which the
+                        // manager can change before committing.
+                        if (pasteName && !pasteName.value) pasteName.value = row.dataset.pasteName || '';
+                        if (pasteConfirm) pasteConfirm.disabled = false;
+                        if (pasteNote) pasteNote.textContent = '';
+                    });
+                });
+            }
+
+            if (pasteConfirm) {
+                pasteConfirm.addEventListener('click', async () => {
+                    if (!pasteChoice) return;
+                    pasteConfirm.disabled = true;
+                    const saved = await postJson(`/teams/${getTeamId()}/tactics/paste`, {
+                        tacticId: pasteChoice,
+                        name: pasteName ? pasteName.value : '',
+                    });
+                    if (saved) {
+                        preferredTacticId = saved.id;
+                        localStorage.removeItem(DRAFT_KEY);
+                        if (pastePanel) pastePanel.hidden = true;
+                        if (pasteName) pasteName.value = '';
+                        await loadTacticEditor();
+                    } else {
+                        // The refusal names the cap or the duplicate, and it is shown rather than
+                        // swallowed: those are the two reasons a paste fails and neither is the manager's
+                        // fault for trying.
+                        if (pasteNote) pasteNote.textContent = lastRefusal || 'That one was refused.';
+                        pasteConfirm.disabled = false;
                     }
                 });
             }

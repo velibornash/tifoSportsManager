@@ -531,7 +531,9 @@ name, a formation, style, rules and set pieces, `uk_tactic_team_name` keeps name
 - [ ] **The page has not been opened in a browser.** There is no browser automation in this environment
       (no node, no agent-browser), so the API it calls is verified and its rendering and click handlers
       are **not**. That is a real gap and the page should not be trusted until somebody has looked at it.
-- [ ] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs and is not built.
+- [x] **Paste** — the clipboard half of Sokker's Copy/Paste, which is copy between clubs. **Done 2026-12-12.**
+      Own button beside Copy, copies rather than references, and refusing your own tactic by name of the
+      right button.
 - [ ] **Match settings must look like Sokker's**, per the owner: a General / Squad / Orders set of tabs
       over one match, with the tactic picker in General. T-MATCH-9.
 

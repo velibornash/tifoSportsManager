@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -161,6 +162,79 @@ public class TeamTacticsLibraryController {
             return ResponseEntity.badRequest().body(Map.of("error", "TACTIC_REFUSED",
                     "message", String.valueOf(e.getMessage())));
         }
+    }
+
+    /**
+     * The tactics on other clubs that can be pasted into this one (T-MATCH-3c).
+     *
+     * <p>A search rather than the whole world: 14,976 clubs hold tactics and a list of all of them is a
+     * page nobody can use. An empty query returns the clubs' defaults, which is a usable starting point,
+     * and a query narrows on tactic name or club name.
+     *
+     * <p>This club's own tactics are excluded — pasting one of those is Copy, and listing them here would
+     * invite the more powerful button for the same job.
+     */
+    @GetMapping("/pasteable")
+    public ResponseEntity<List<Map<String, Object>>> pasteable(
+            @PathVariable Long teamId,
+            @RequestParam(required = false) String query,
+            @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        String needle = query == null ? "" : query.trim().toLowerCase();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Tactic tactic : library.findForeign(teamId, needle)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", tactic.getId());
+            row.put("name", tactic.getName());
+            row.put("formation", tactic.getFormation());
+            row.put("style", tactic.getStyle());
+            row.put("clubId", tactic.getTeam() == null ? null : tactic.getTeam().getId());
+            row.put("clubName", tactic.getTeam() == null ? null : tactic.getTeam().getName());
+            out.add(row);
+        }
+        return ResponseEntity.ok(out);
+    }
+
+    /** Paste: another club's tactic becomes one of this club's. The deliberate door across clubs. */
+    @PostMapping("/paste")
+    public ResponseEntity<Map<String, Object>> paste(
+            @PathVariable Long teamId,
+            @RequestBody(required = false) Map<String, Object> body,
+            @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        Long sourceId = body == null ? null : longOf(body.get("tacticId"));
+        if (sourceId == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "NO_SUCH_TACTIC",
+                    "message", "Paste needs the id of the tactic you are taking."));
+        }
+        try {
+            return ResponseEntity.ok(TacticSummary.of(
+                    library.paste(teamId, sourceId, body.get("name") == null ? null : str(body.get("name"))),
+                    library, teamId).toMap());
+        } catch (IllegalArgumentException e) {
+            // The service refuses with the reason and the reason is the message: the cap, the duplicate
+            // name, or the "that one is already yours, use Copy" case.
+            return ResponseEntity.badRequest().body(Map.of("error", "TACTIC_REFUSED",
+                    "message", String.valueOf(e.getMessage())));
+        }
+    }
+
+    private static Long longOf(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value instanceof String text) {
+            try {
+                return Long.valueOf(text.trim());
+            } catch (NumberFormatException notANumber) {
+                return null;
+            }
+        }
+        return null;
     }
 
     /** Mirror: the same shape playing the other way, as a new tactic. */

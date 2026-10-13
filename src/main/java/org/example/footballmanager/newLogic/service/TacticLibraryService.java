@@ -161,6 +161,92 @@ public class TacticLibraryService {
     }
 
     /**
+     * Tactics belonging to other clubs, for the Paste picker (T-MATCH-3c).
+     *
+     * <p>Bounded on purpose. There are 14,976 clubs and returning every tactic is a page nobody can use
+     * and a query nobody should run on a request path. Defaults first, then a match on the tactic name or
+     * the club name.
+     *
+     * @param needle lower-cased, may be empty; empty returns each other club's default tactic
+     */
+    @Transactional(readOnly = true)
+    public List<Tactic> findForeign(Long teamId, String needle) {
+        String q = needle == null ? "" : needle.trim().toLowerCase();
+        return foreignCandidates(teamId).stream()
+                .filter(t -> t.getName() != null)
+                .filter(t -> q.isEmpty()
+                        || t.getName().toLowerCase().contains(q)
+                        || (t.getTeam() != null && t.getTeam().getName() != null
+                            && t.getTeam().getName().toLowerCase().contains(q)))
+                // Defaults first, then by name, so the same club's default is not at a different place
+                // each time the list is opened.
+                .sorted(java.util.Comparator
+                        .comparing((Tactic t) -> t.isDefaultTactic() ? 0 : 1)
+                        .thenComparing(Tactic::getName, String.CASE_INSENSITIVE_ORDER))
+                .limit(PASTE_RESULTS)
+                .toList();
+    }
+
+    /** The cap on what the Paste picker returns. Enough to search, not enough to be a data dump. */
+    public static final int PASTE_RESULTS = 60;
+
+    private List<Tactic> foreignCandidates(Long teamId) {
+        // Every other club's default tactic. That is a bounded, indexed-enough set and the useful one to
+        // offer first - a club's default is the shape it actually plays. `tactics.findAll()` would be the
+        // whole world's tactics and this runs on a request path.
+        return tactics.findAll().stream()
+                .filter(Tactic::isDefaultTactic)
+                .filter(t -> t.getTeam() != null && !teamId.equals(t.getTeam().getId()))
+                .toList();
+    }
+
+    /**
+     * Paste: takes another club's tactic into this one (Sokker's Paste, T-MATCH-3c).
+     *
+     * <p><b>Distinct from {@link #copy}, and the distinction is the point.</b> Copy duplicates one of
+     * <em>your</em> tactics and refuses anything else, which is the right default: an endpoint that
+     * silently accepted a stranger's id would let a manager import by accident. Paste is the deliberate
+     * door, named as such, and it is the only way across.
+     *
+     * <p>The tactic is <b>copied, not referenced</b>, exactly as Copy does. Referencing would mean one
+     * edit on the other club's pitch changing the tactic this club is playing, which is not something a
+     * manager would expect from a button called Paste and could not undo.
+     *
+     * <p>Reading another club's tactic is a feature here — it is what Sokker's gallery is for and the
+     * owner asked for it — so it is not gated. It is <em>named</em>, so it is not an accident.
+     *
+     * @param sourceTacticId any club's tactic
+     * @param newName        the name it takes here; a pasted tactic defaults to the source's name
+     * @throws IllegalArgumentException if the source does not exist, or this club is at the cap
+     */
+    @Transactional
+    public Tactic paste(Long teamId, Long sourceTacticId, String newName) {
+        Tactic source = tactics.findById(sourceTacticId).orElseThrow(
+                () -> new IllegalArgumentException(
+                        "Tactic " + sourceTacticId + " does not exist"));
+
+        // Refuse a paste of this club's own tactic: that is Copy, and sending it here would take the
+        // same-name check and fail with a message about a duplicate rather than about the right button.
+        if (source.getTeam() != null && teamId.equals(source.getTeam().getId())) {
+            throw new IllegalArgumentException(
+                    "That tactic is already yours. Use Copy to duplicate it.");
+        }
+
+        String trimmedName = newName == null || newName.isBlank()
+                ? source.getName()
+                : newName.trim();
+        if (trimmedName == null || trimmedName.isBlank()) {
+            throw new IllegalArgumentException("A pasted tactic needs a name");
+        }
+        if (tactics.findByTeamIdAndName(teamId, trimmedName).isPresent()) {
+            throw new IllegalArgumentException("This club already has a tactic called " + trimmedName);
+        }
+
+        return save(teamId, trimmedName, source.getFormation(), source.getStyle(),
+                source.getRulesJson(), source.getSetPiecesJson(), false);
+    }
+
+    /**
      * Mirrors a tactic: the same shape playing the other way.
      *
      * <p>Sokker's Mirror, and it is a real transformation rather than a copy. Cells are

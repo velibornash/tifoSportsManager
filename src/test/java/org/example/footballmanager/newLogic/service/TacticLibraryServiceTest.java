@@ -50,6 +50,109 @@ class TacticLibraryServiceTest {
         club = teams.save(club);
     }
 
+    // ── T-MATCH-3c: Paste, the cross-club half of Copy/Paste ──────────────────────────────────────────
+
+    @Test
+    @DisplayName("Paste brings another club's tactic in, as a copy and not a reference")
+    void pasteTakesAnotherClubsTactic() {
+        Team rival = new Team();
+        rival.setName("Paste Rival " + System.nanoTime());
+        rival = teams.save(rival);
+        Tactic theirs = library.save(rival.getId(), "Rival 4-3-3", "4-3-3", "ATTACKING",
+                rulesFor("CML", "STL"), null, true);
+
+        Tactic pasted = library.paste(club.getId(), theirs.getId(), "Stolen 4-3-3");
+
+        assertEquals("Stolen 4-3-3", pasted.getName());
+        assertEquals("4-3-3", pasted.getFormation());
+        assertEquals("ATTACKING", pasted.getStyle());
+        assertEquals(club.getId(), pasted.getTeam().getId(), "the pasted tactic is not this club's");
+        assertNotEquals(theirs.getId(), pasted.getId(),
+                "paste stored a reference, so an edit on the other club's pitch would change ours");
+
+        // The rules came across, and editing ours does not touch theirs.
+        assertTrue(pasted.getRulesJson().contains("CML"), "the pasted tactic arrived without its rules");
+        pasted.setName("Renamed by me");
+        tactics.save(pasted);
+        assertEquals("Rival 4-3-3", tactics.findById(theirs.getId()).orElseThrow().getName(),
+                "editing the pasted tactic changed the original, so paste is a reference");
+    }
+
+    @Test
+    @DisplayName("Paste takes the source's name when none is given")
+    void pasteKeepsTheSourceName() {
+        Team rival = new Team();
+        rival.setName("Paste Rival2 " + System.nanoTime());
+        rival = teams.save(rival);
+        Tactic theirs = library.save(rival.getId(), "4-1-4-1", "4-1-4-1", "Balanced",
+                rulesFor("CML"), null, true);
+
+        assertEquals("4-1-4-1", library.paste(club.getId(), theirs.getId(), null).getName());
+    }
+
+    @Test
+    @DisplayName("Paste refuses a name this club already uses")
+    void pasteRefusesADuplicateName() {
+        Team rival = new Team();
+        rival.setName("Paste Rival3 " + System.nanoTime());
+        rival = teams.save(rival);
+        Tactic theirs = library.save(rival.getId(), "Their shape", "4-4-2", "Balanced",
+                rulesFor("CML"), null, true);
+        library.save(club.getId(), "My shape", "4-4-2", "Balanced", rulesFor("CML"), null, true);
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.paste(club.getId(), theirs.getId(), "My shape"));
+        assertTrue(refused.getMessage().contains("already has a tactic called"),
+                "the refusal did not name the clash: " + refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("Paste of this club's own tactic points at Copy")
+    void pasteRefusesYourOwnTactic() {
+        Tactic mine = library.save(club.getId(), "Mine", "4-4-2", "Balanced", rulesFor("CML"), null, true);
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.paste(club.getId(), mine.getId(), "Mine again"));
+        assertTrue(refused.getMessage().contains("Use Copy"),
+                "the refusal did not say which button to press instead: " + refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("Paste refuses when this club is at the cap of ten")
+    void pasteRespectsTheCap() {
+        Team rival = new Team();
+        rival.setName("Paste Rival4 " + System.nanoTime());
+        rival = teams.save(rival);
+        Tactic theirs = library.save(rival.getId(), "One more", "4-4-2", "Balanced",
+                rulesFor("CML"), null, true);
+        for (int i = 0; i < TacticLibraryService.MAX_TACTICS_PER_CLUB; i++) {
+            library.save(club.getId(), "Mine " + i, "4-4-2", "Balanced", rulesFor("CML"), null, i == 0);
+        }
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+                () -> library.paste(club.getId(), theirs.getId(), "Eleventh"));
+        assertTrue(refused.getMessage().contains("10"),
+                "the refusal did not say the limit: " + refused.getMessage());
+    }
+
+    @Test
+    @DisplayName("the Paste picker offers other clubs and never this one")
+    void thePickerOffersOtherClubsOnly() {
+        Team rival = new Team();
+        rival.setName("Pickable Rival " + System.nanoTime());
+        rival = teams.save(rival);
+        Tactic theirs = library.save(rival.getId(), "Visible abroad", "4-4-2", "Balanced",
+                rulesFor("CML"), null, true);
+        Tactic mine = library.save(club.getId(), "Private to me", "4-4-2", "Balanced",
+                rulesFor("CML"), null, true);
+
+        var offered = library.findForeign(club.getId(), "");
+        assertTrue(offered.stream().anyMatch(t -> t.getId().equals(theirs.getId())),
+                "the rival's tactic is not offered, so there is nothing to paste");
+        assertFalse(offered.stream().anyMatch(t -> t.getId().equals(mine.getId())),
+                "this club's own tactic is offered, which invites the bigger button for the same job");
+    }
+
     /**
      * A profile's rules, one per slot key.
      *
