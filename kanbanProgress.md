@@ -1,3 +1,22 @@
+## 2026-10-13 — the loop is closed: the ranking moves, and it was the watermark all along
+
+The owner's original question — *"check after a played match whether the rankings change"* — now answers
+**yes, and here is the whole chain working together**:
+
+| | before | after |
+|---|---|---|
+| Club ranking, distinct point values | 1 (all 1500.00) | 10 in the first 10 rows |
+| Clubs marked rated | 0 / 10 | 10 / 10 |
+| Top of the Serbian list | flat, unordered | `GFK Zemun — Superliga Srbije — tier 1 — 1622.50` |
+
+Verified in a browser, on the Clubs tab: **100 rows**, headed by `GFK Zemun | Superliga Srbije | 1 |
+1622.50`, and `scrollY === 0`. The API agrees: `Ranking after the batch (season 1): 1251 club row(s)`.
+
+Three dead ledgers, one cause. The club ranking is not ordered by Elo at all (`points` is the
+ranking-points ledger, and `rated` is merely "has a ledger row"), the Elo replay had two callers and the
+clock-driven matchday was neither, and both sat behind a job runner that a watermark ahead of game time had
+switched off entirely — silently, with the app looking healthy.
+
 ## 2026-10-13 — P0: a clock watermark ahead of game time killed every scheduled job, silently
 
 **The cause.** `GameClockService.walk()` measures its walk from `clock.lastSyncedAt` to
