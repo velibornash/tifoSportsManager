@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.jobs.JobContext;
 import org.example.footballmanager.newLogic.service.ClubRatingService;
 import org.example.footballmanager.newLogic.service.LeagueTableReconciliationService;
 import org.example.footballmanager.newLogic.service.NationalRatingService;
+import org.example.footballmanager.newLogic.service.RankingPointsRebuildService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,23 +48,27 @@ public class LeagueTableReconcileJob implements DayJob {
     private final LeagueTableReconciliationService tables;
     private final ClubRatingService clubRatings;
     private final NationalRatingService nationalRatings;
+    private final RankingPointsRebuildService rankingPoints;
 
     public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables,
                                    ClubRatingService clubRatings,
-                                   NationalRatingService nationalRatings) {
-        this(key, day, null, tables, clubRatings, nationalRatings);
+                                   NationalRatingService nationalRatings,
+                                   RankingPointsRebuildService rankingPoints) {
+        this(key, day, null, tables, clubRatings, nationalRatings, rankingPoints);
     }
 
     public LeagueTableReconcileJob(String key, int day, Integer hourOverride,
                                    LeagueTableReconciliationService tables,
                                    ClubRatingService clubRatings,
-                                   NationalRatingService nationalRatings) {
+                                   NationalRatingService nationalRatings,
+                                   RankingPointsRebuildService rankingPoints) {
         this.key = key;
         this.day = day;
         this.hourOverride = hourOverride;
         this.tables = tables;
         this.clubRatings = clubRatings;
         this.nationalRatings = nationalRatings;
+        this.rankingPoints = rankingPoints;
     }
 
     @Override
@@ -125,5 +130,11 @@ public class LeagueTableReconcileJob implements DayJob {
         NationalRatingService.Result nations = nationalRatings.recomputeDurably();
         log.info("{}: national Elo replayed - {} match(es), {} nation(s) rated.",
                 key, nations.matchesReplayed(), nations.countriesRated());
+
+        // The same miss, second time, and worth naming: the club ranking list is not ordered by Elo at
+        // all. It is ordered by the ranking-points ledger, and that ledger was rebuilt from the same two
+        // batch-only call sites. So a matchday played by the clock moved every club's Elo and left the
+        // list reading the same number for all 310 of them - a moving rating under a frozen ranking.
+        rankingPoints.rebuildAfterBatch(season);
     }
 }

@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.jobs.config;
 import org.example.footballmanager.newLogic.jobs.impl.LeagueTableReconcileJob;
 import org.example.footballmanager.newLogic.service.ClubRatingService;
 import org.example.footballmanager.newLogic.service.NationalRatingService;
+import org.example.footballmanager.newLogic.service.RankingPointsRebuildService;
 import org.example.footballmanager.newLogic.service.LeagueTableReconciliationService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -59,18 +60,20 @@ public class LeagueTableJobsConfig {
     public LeagueTableReconcileJob leagueTableReconcileAfterFirstMatchday(
             LeagueTableReconciliationService tables,
             ClubRatingService clubRatings,
-            NationalRatingService nationalRatings) {
+            NationalRatingService nationalRatings,
+            RankingPointsRebuildService rankingPoints) {
         return new LeagueTableReconcileJob(KEY_AFTER_FIRST_LEAGUE_DAY,
-                DAY_AFTER_FIRST_LEAGUE_MATCHDAY, tables, clubRatings, nationalRatings);
+                DAY_AFTER_FIRST_LEAGUE_MATCHDAY, tables, clubRatings, nationalRatings, rankingPoints);
     }
 
     @Bean
     public LeagueTableReconcileJob leagueTableReconcileAfterSecondMatchday(
             LeagueTableReconciliationService tables,
             ClubRatingService clubRatings,
-            NationalRatingService nationalRatings) {
+            NationalRatingService nationalRatings,
+            RankingPointsRebuildService rankingPoints) {
         return new LeagueTableReconcileJob(KEY_AFTER_SECOND_LEAGUE_DAY,
                 DAY_AFTER_SECOND_LEAGUE_MATCHDAY, HOUR_AFTER_SECOND_LEAGUE_MATCHDAY, tables,
-                clubRatings, nationalRatings);
+                clubRatings, nationalRatings, rankingPoints);
     }
 }

@@ -1,3 +1,27 @@
+## 2026-10-13 — the country page was never broken; the club ranking was fed by a second dead ledger
+
+**The country page renders.** `showMyCountry()` looked dead in agent-browser because I was reading
+`document.body.innerText`, which starts with the top bar, and `location.pathname`, which a SPA never
+changes. `#main-content` held a fully rendered Serbia page the whole time.
+
+**The Clubs tab is verified.** 100 rows of 310, divisions and tiers correct, no "This country has no clubs
+yet". The destructuring fix from `2dfb1720` was correct all along and had simply never been looked at.
+
+**Second instance of the same bug, and the reason the ranking did not move.** The club ranking list is
+**not ordered by Elo**. `points` comes from `RankingPointsEngine.windowedTotal(...)` over the ranking-points
+ledger, and `rated` is `total != null` - so a club with no ledger row reads the 1500 seed and "not yet
+rated". That ledger was rebuilt by `RankingPointsRebuildService.rebuildAfterBatch`, called from the same
+two batch-only sites as the Elo replay. So a clock-driven matchday moved all 310 Serbian clubs' Elo
+(`elo_delta <> 0` for every one) while the list they are ranked by stayed frozen at 1500 for all of them:
+a moving rating under a dead ranking. `rebuildAfterBatch` is now called from the same reconcile job.
+
+**Still unverified, and it is now the blocker for seeing the ranking move:** the reconcile job has not fired
+in any session. It is pinned to day 4 hour 1 and day 7 hour 22, and **`game_clock` is not what the scheduler
+reads.** Setting `current_day = 4, current_hour = 1` directly changed the row and nothing ran; the log shows
+no `JobRunner` activity at all. The columns also disagree with the app's own view of time - the row said
+week 1 while `/simulation/week/advance` reported week 3. This is the same unexplained mismatch noted before
+the ratings work and it is now the thing standing between us and an end-to-end proof.
+
 ## 2026-10-13 — the four UI asks
 
 **1. "Not drawn yet" on cups that plainly were drawn.** `CupSummary.qualified` counts clubs that came out of
