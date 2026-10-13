@@ -129,3 +129,62 @@ psql -h localhost -U postgres -d sokker_db    # postgres / stojke
 
 Clock: `POST /api/game-clock/advance?unit=hours&amount=N` and `.../advance-to-hour?hour=H`, both
 `OWNER`/`DEV`/`ADMIN`. Login is `POST /auth/login` with **username** and password — not `email`.
+
+---
+
+## 2026-10-12 — session close
+
+**Working tree:** clean apart from `var/tactics-editor-profiles.json`, which the app rewrites at runtime —
+it is the owner's tactic backup and is **not** part of any task's changes.
+
+**Where the board actually is.** Eleven commits today, all verified rather than merely green:
+
+| | |
+|---|---|
+| `5e818602` | Match Setup tab; the tactic shelf moved below the club frame |
+| `786abe5e` | the week in the match label — "two different matches on the same day" was one missing word |
+| `8a8dbb7b` | the reset keeps the tactic library, which it was deleting |
+| `ad1a2e22` | formation/style buttons look active, not disabled |
+| `373b3a84` | a sponsor on the stands and on the Finance page |
+| `9b71c25c` | all four stadium corners drawn as one bowl; failed panels report themselves |
+| `c6c7e66a` | three defects only a browser found |
+| `82f611bb` | the game plan open on a match four game-days away — a stopwatch where the game's lock belongs |
+| `9e0b157c` | the calendar beside the kickoff; the club menu on the setup tab |
+| `548f91a0` | T-MATCH-8: only the minutes spent in the training slot count |
+| `2116e3d7` | the simulation write path, closed |
+| `3f7ddea6` | substitution orders capped at twenty; the kickoff backstop narrowed |
+
+**Three things worth remembering, because each cost real time:**
+
+1. **A browser exists.** `agent-browser` — `npm i -g agent-browser`, and it lives in `~/.npm-global/bin`,
+   which is **not** on the default PATH. Three changes this session were declared "needs your eyes" and
+   could have been measured. It also caught two of my own bugs (`calendarSuffix is not defined`, and a club
+   menu rendered into a template that is then replaced) that the suite passed.
+2. **Fixture dates are stamped once and never track the game clock.** This caused *three* separate reports
+   — a "day 7 fixture that has not been played yet", the match label showing two matches on the same day,
+   and the Game plan closing on a match four game-days away. Every one of them was a wall-clock comparison
+   being used where the game's own calendar was needed. If a panel closes on a time comparison, suspect
+   this first.
+3. **A guard can go blind without anything going red in the code.** `SubstitutionPlanIsReachableTest` reads
+   the source for patterns. Match Setup moved a mount into a table and the guard stopped matching — while
+   protecting exactly the defect that killed the fixture sheet. Shape-based guards need updating when the
+   shape changes, or they protect nothing and still look green.
+
+**Open, and why:**
+
+- **T-MATCH-6** needs one owner decision before the rest of the orders page. The tactic-order cap: 3 is
+  T-MATCH-4's three-tactics rule and 10 was a later ruling about *orders*, and raising the constant stops
+  the approved rule holding. Three readings are written out on the board; none is the default. The
+  substitution side is done, capped at 20 and stated in the UI.
+- **T-MATCH-5** — per-slot controls on the squad page, and per-match lineup storage, which is a schema
+  question (`Lineup` keys on `team` + `Match`, not `MatchFixture`).
+- **T-MATCH-3c** Paste across clubs.
+- **T-FAC-1** — the four facility levels affect only price, upkeep and the number on screen. Recorded with
+  the questions that need answering, and one that is not obvious: `JuniorDevelopment` already reads the
+  stadium's `gymLevel`, so the gym may already have one effect to extend rather than duplicate.
+- **The 155-fixture prepare→publish proof** has still never been seen end to end. Prepare and publish were
+  each seen on 15 fixtures.
+
+**Verification habit that paid off:** mutating each fix and watching the test go red. The substitution
+cap and the training filter both have mutations recorded in `kanbanProgress.md`, and twice a test caught a
+change of mine that the suite alone would have passed.
