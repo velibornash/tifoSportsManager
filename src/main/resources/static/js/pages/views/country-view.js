@@ -1014,8 +1014,13 @@ export function createCountryView(deps) {
             // only place it means anything, and every tab can be reached from any other.
             const wantsWarmUp = tab === 'senior' || tab === 'u21';
 
+            // **Ten names, because there are ten promises.** This declared nine while the array below
+            // supplied ten, so `clubRanking` — the whole club-ranking read, paid for on every visit to
+            // this tab — landed in an unnamed slot and was thrown away. `buildClubsTab` was handed
+            // `undefined`, found no `clubs`, and told the owner his country had no clubs while Serbia had
+            // 310 of them. The owner's words: *"ne pokazuje nijedan klub iako ima celu strukturu"*.
             const [countries, leaguesResponse, calendarResponse, seasonResponse, seniorNt, u21Nt, cup, playoffs,
-                qualifying] =
+                qualifying, clubRanking] =
                 await Promise.all([
                     readJson('/countries'),
                     readJson(`/countries/${encodeURIComponent(countryIso)}/leagues`),

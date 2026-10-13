@@ -178,6 +178,12 @@ public class CupFixtureSeeder {
      * but nothing persists a club rating — so squad strength is the only honest ordering available.
      * Ties break on name rather than on iteration order so two boots produce the same draw.
      */
+    /** A cup is for clubs, so the field is built from league clubs only. */
+    private static boolean isLeagueClub(Team team) {
+        Competition competition = team.getCompetition();
+        return competition != null && competition.getType() == CompetitionType.LEAGUE;
+    }
+
     private List<Team> rankedClubs(Competition cup) {
         // **The cup's own country, not the first club the repository happens to return.**
         //
@@ -190,8 +196,24 @@ public class CupFixtureSeeder {
             log.warn("Cup {} has no country; nothing to rank.", cup == null ? "null" : cup.getName());
             return new ArrayList<>();
         }
+        // **A country is not a field of clubs.**
+        //
+        // `findByCountryId` returns every team row carrying that country id, and two of those are not
+        // clubs: `Serbia` and `Serbia U-21`, the senior and under-21 national sides. They sit in the
+        // same country and have no league, which is correct for them and disqualifying here.
+        //
+        // The cost was invisible in every log line it touched. Serbia has 310 league clubs and those two
+        // national teams, so the count was 312; round 1 took 108 and round 2 was handed `312 - 108 =
+        // 204` direct entrants instead of the 202 the code above it documents in plain words, giving
+        // 258 entrants and 129 ties. 129 is odd, so the bracket is destroyed at the first draw — the
+        // owner's own arithmetic (202 + 54 = 256, then 128-64-32-16-8-SF-F) is the correct one and the
+        // seeder's own comment already said so.
+        //
+        // The filter is `type == LEAGUE` rather than "has any competition", because that is the
+        // definition the pyramid uses and it also keeps a misfiled side out.
         List<Team> clubs = teams.findByCountryId(cup.getCountry().getId()).stream()
                 .filter(team -> team.getId() != null && team.getCountry() != null)
+                .filter(CupFixtureSeeder::isLeagueClub)
                 .toList();
         return sortByStrength(new ArrayList<>(clubs), strengthOf(clubs));
     }

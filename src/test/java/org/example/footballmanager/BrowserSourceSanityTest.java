@@ -372,6 +372,108 @@ class BrowserSourceSanityTest {
                 "the corner rows are slivers, so the corners read as inside the stands");
     }
 
+    @Test
+    @DisplayName("every awaited array destructures as many names as it has promises")
+    void awaitedArraysDestructureTheRightNumberOfNames() throws IOException {
+        // Owner report, 2026-10-13: the Country club ranking showed "This country has no clubs yet"
+        // for Serbia, which has 310. The read was issued and paid for on every visit and thrown away:
+        // the destructuring declared nine names while `Promise.all` was given ten promises, so
+        // `clubRanking` fell into an unnamed slot and the renderer was handed `undefined`.
+        //
+        // **Nothing about that is catchable by looking at one file**, and a stray extra promise is
+        // invisible to a parse check. So every `await Promise.all([...])` in the view layer is checked
+        // here: the destructured names and the array entries have to be the same number.
+        int checked = 0;
+        for (Path view : viewsUnder("pages")) {
+            String source = Files.readString(view);
+            Matcher destructure = Pattern.compile(
+                    "const\\s*\\[([^]]*)]\\s*=\\s*\\n?\\s*await Promise\\.all\\(\\[").matcher(source);
+            while (destructure.find()) {
+                int nameCount = countTopLevelEntries(destructure.group(1));
+                int open = destructure.end() - 1;
+                int close = matchingBracket(source, open);
+                if (close < 0) {
+                    continue;
+                }
+                int promiseCount = countTopLevelEntries(source.substring(open + 1, close));
+                checked++;
+                assertEquals(promiseCount, nameCount,
+                        view.getFileName() + ": the destructuring names " + nameCount
+                                + " value(s) but Promise.all is given " + promiseCount
+                                + " promise(s), so the last one is fetched, paid for and thrown away");
+            }
+        }
+        assertTrue(checked > 0, "no awaited Promise.all was found, so this guard is not looking at anything");
+    }
+
+    /** Index of the `]` that closes the `[` at {@code open}, skipping brackets inside expressions. */
+    private int matchingBracket(String source, int open) {
+        int depth = 0;
+        for (int i = open; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '\'' || c == '"' || c == '`') {
+                i = skipString(source, i);
+            } else if (c == '[') {
+                depth++;
+            } else if (c == ']' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * How many comma-separated entries sit at the top level of {@code body}.
+     *
+     * <p>Counting commas naively is wrong: an entry may itself be an array literal, or a call with
+     * several arguments, and both hide commas that are not entry boundaries.
+     */
+    private int countTopLevelEntries(String body) {
+        int depth = 0;
+        int entries = 0;
+        boolean sawContent = false;
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (c == '\'' || c == '"' || c == '`') {
+                i = skipString(body, i);
+                sawContent = true;
+            } else if (c == '(' || c == '[' || c == '{') {
+                depth++;
+                sawContent = true;
+            } else if (c == ')' || c == ']' || c == '}') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                entries++;
+            } else if (!Character.isWhitespace(c)) {
+                sawContent = true;
+            }
+        }
+        return sawContent ? entries + 1 : 0;
+    }
+
+    /** Index of the quote that closes the string literal opening at {@code open}. */
+    private int skipString(String source, int open) {
+        char quote = source.charAt(open);
+        for (int i = open + 1; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c == '\\') {
+                i++;
+            } else if (c == quote) {
+                return i;
+            }
+        }
+        return source.length() - 1;
+    }
+
+    private List<Path> viewsUnder(String dir) throws IOException {
+        Path root = JS_ROOT.resolve(dir);
+        List<Path> out = new ArrayList<>();
+        try (var stream = Files.walk(root)) {
+            stream.filter(p -> p.toString().endsWith(".js")).forEach(out::add);
+        }
+        return out;
+    }
+
     private static List<Path> jsFiles() throws IOException {
         try (Stream<Path> files = Files.walk(JS_ROOT)) {
             return files.filter(p -> p.toString().endsWith(".js")).sorted().toList();
