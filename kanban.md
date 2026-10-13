@@ -277,8 +277,38 @@ The broadcast coefficient is **calibrated, not derived**. One club does not fit 
 that club and an ordinary one, because the wage scale is the outlier, not the income side.
 
 Re-pricing every wage and value is a migration over **31,230 players** and a decision about how much
-money is in this world. **It needs the owner.** Until then the structural fix stands and the magnitudes
-are wrong for that one club.
+money is in this world. **It needs the owner.**
+
+### ✅ Owner decision, 2026-10-13 — option 1, the club is the exception
+
+*"uzmi broj 1 - exception jer ce kad bude prod i moj tim biti kao ostali"* — take option 1, the exception,
+because when the club is sold it should be like the others. The global wage scale is therefore **not**
+re-priced and no migration runs.
+
+Measured before choosing the target, rather than picking one:
+
+| | weekly bill |
+|---|---|
+| OFK Omladinac (13 players) | **18,478,000** |
+| tier-1 median | 435,591 |
+| tier-1 p95 | 484,704 |
+| tier-1 max, excluding Omladinac | **498,148** |
+
+Omladinac was **37× the highest-paid club in its own division** while owning the division's largest
+ground. It is set to **498,148** — the top of the tier's real range, which is where the biggest ground
+belongs. Per player that is 1,421,385 → **38,319**.
+
+`PlayerContractService.renew` reads `Player.earnings` and preserves it, so correcting the 13 players is
+durable rather than cosmetic; the matching `player_contract.weekly_wage` rows were synced in the same
+pass so contract and player cannot disagree again.
+
+**Not yet verified:** the newest ledger rows are still weeks 2 and 3, settled before the change. A week
+settled at the new bill has not been observed yet.
+
+**Next outlier found while checking the result:** `Junior school` settles at **1,109,880 a week** — now
+more than double the wage bill and the club's single largest cost. Probably a YOUTH-facility settlement
+(T-FAC-1's "settlement charges upkeep for the levels actually held"), so it is recorded there rather than
+fixed blind.
 
 ---
 
