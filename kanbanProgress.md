@@ -1,3 +1,64 @@
+## 2026-10-14 — a cup tie won on penalties reported itself as a draw
+
+**Owner, on a Kup Srbije tie his club had won:** *"vidim da sam prosao posle 2-2, po pravilima treba da
+budu penali a nema ih nigde u izvestaju... molim da proveris i da ubacis negde, recimo u goals i pogodjene
+i promasene penale."*
+
+### The engine was never wrong. The report threw it away.
+
+FK Mlava Novi Sad 2-2 OFK Omladinac, settled **6-7 on penalties** — the columns held it, the right club
+went through, and the report said *"drew 2-2"* and showed no penalties anywhere.
+
+`PenaltyShootout.Result` carries a `Kick` per penalty — side, taker, scored or missed — and
+`SimMatchService` kept only `homeScored()` and `awayScored()`. The per-kick list was computed and
+discarded on every shootout the game has ever produced.
+
+### Three changes
+
+1. **The kicks are written** as `PENALTY_SCORED` / `PENALTY_MISSED` events on the match, each with the
+   taker, the side, the running score and the kick's number **across the shootout** — kick 10 is the tenth
+   kick taken, whichever side took it, which is what makes "one kick each" visible instead of two
+   separate five-lists.
+
+   Events rather than a new column, because a shootout kick has **no minute** and inventing a timestamp
+   for it would be a lie on the page whose whole job is the order things happened.
+
+2. **The headline says how the tie was decided.** It now reads
+   *"FK Mlava Novi Sad and OFK Omladinac drew 2-2, settled 6-7 on penalties (OFK Omladinac went through)"*.
+   The score stays the score — the shootout is not written into the goal columns, and must not be — but a
+   tie that was **lost** 5-4 on penalties is not a draw.
+
+3. **The report carries the kicks**, scored **and missed**, one column a side, each with a marker.
+   A miss is half of what a shootout is; a report showing only the conversions would satisfy "add the
+   penalties" and still hide how the tie was won.
+
+### Proven able to fail, both halves
+
+| mutation | failure |
+|---|---|
+| headline stops mentioning penalties | *"the headline does not say the tie was settled from the spot. It reads \"…drew 2-2\", which reports a cup tie the club lost as a draw."* |
+| only `PENALTY_SCORED` is read | *"the home side took five kicks and the report lists 4. A report that lists only the conversions is hiding the misses."* |
+
+`ShootoutEventsAreRecordedTest` covers the write path and `PostMatchDetailByCompetitionTest` the read.
+
+### What cannot be recovered
+
+**Matches played before this change show the corrected headline but no takers**, because the per-kick
+list was thrown away when they were simulated and nothing can put it back. The owner's own match 2524 is
+one of them. From now on every shootout records its kicks.
+
+### Two bugs of mine, both from writing fixtures that asserted the wrong thing
+
+The first test fixture emitted `[{…}{…}]` — no comma between the home and away kicks — and the parse
+failed into a `catch` that returned an empty list, which presented as *"the report has no penalties"*.
+The second declared a 4-3 shootout from kick data that was actually 5-3, and asserted per-side kick
+numbering when the code numbers across the shootout.
+
+**The first one is worth keeping:** the silent `catch` is what turned a bad fixture into a wrong
+conclusion instead of a failure. Diagnosis came from making the catch throw once, not from reading the
+code. That is the same shape as the stale-class 500 this session — a swallowed failure reads exactly like
+a truthful answer.
+
 ## 2026-10-14 — the country page showed "no clubs" for a country with 310 of them
 
 **Owner, reading the Clubs tab:** *"This country has no clubs yet."* on Serbia. Serbia has 310.

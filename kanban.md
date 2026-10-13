@@ -34,6 +34,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | ✅ **Fixed 2026-10-13.** The guard asked "are there *unplayed* ties?" and a played round has none, so every press redrew the field. |
 | **P0-9** | 🔴 | **The national cup had no final, and its last round was three weeks late** | ✅ **Fixed 2026-10-13.** `CUP_WEEKS` had 8 entries where the owner's table has 9. The continental cups were already right; the national cup was the only one disagreeing. |
 | **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to P0-2/3. |
+| **P0-10** | 🟡 | **A cup tie won on penalties reported itself as a draw** | ✅ **Fixed 2026-10-14** — owner found it on a tie his club had won. The engine computed every kick and the report discarded them. |
 | **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
 | **P1-2** | 🟡 | **T-FAC-1 item 3 — settlement and stadium page agree on upkeep** | Not started. `weeklyUpkeep = 120 × (Σ levels − 1)`. |
 | **P1-3** | 🟡 | **T-FAC-1 item 4 — document the `JuniorDevelopment` overlap** | Not started. Documentation only. |
@@ -183,6 +184,44 @@ it wants its own task and its own test rather than being folded into a session a
       two reads.
 - [ ] Every call site supplies a ladder coin, or states plainly why it has none.
 - [ ] The one comparator test proves the whole order, not the first two keys.
+
+---
+
+---
+
+## P0-10 — ✅ P0 · a cup tie won on penalties reported itself as a draw
+
+**Owner, 2026-10-14**, on Kup Srbije, week 3 day 5: *"vidim da sam prosao posle 2-2, po pravilima treba da
+budu penali a nema ih nigde u izvestaju... da proveris i da ubacis negde, recimo u goals i pogodjene i
+promasene penale."*
+
+**The engine was never wrong.** `FK Mlava Novi Sad 2-2 OFK Omladinac` was settled **6-7 on penalties** —
+the columns held it, OFK Omladinac went through. `PenaltyShootout.Result` carries a `Kick` per penalty
+(side, taker, scored or missed) and `SimMatchService` kept only the two totals. **The per-kick list was
+computed and discarded on every shootout the game has ever produced.**
+
+| | before | after |
+|---|---|---|
+| Headline | *"drew 2-2"* | *"drew 2-2, settled 6-7 on penalties (OFK Omladinac went through)"* |
+| Takers | none | every kick, named |
+| Misses | none | shown, with a marker — a miss is half of a shootout |
+
+The score stays the score: the shootout is **not** written into the goal columns, so it does not reach the
+table, the replay or the scoreline. But a tie lost 5-4 on penalties is not a draw.
+
+### Exit criteria
+
+- [x] Every kick is written as an event with its taker, its side, the running score and its number
+      **across the shootout** — kick 10 is the tenth kick taken, whichever side took it, which is what
+      makes "one kick each" visible rather than two separate five-lists.
+- [x] No minute is invented. A shootout kick has no minute and a fabricated timestamp would be a lie on
+      the page whose job is the order things happened.
+- [x] The headline names the shootout score and who went through.
+- [x] The report shows scored **and missed**, one column a side.
+- [x] Both halves proven able to fail — headline without the suffix, and reading only `PENALTY_SCORED`,
+      each turn the test red with the reason.
+- [x] **Matches played before this change show the corrected headline but no takers.** The per-kick list
+      was thrown away when they were simulated and nothing can put it back. From now on it is recorded.
 
 ---
 

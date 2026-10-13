@@ -6329,3 +6329,51 @@ body {
     color: #cfe4ff;
     font-weight: 600;
 }
+
+/* ── Penalty shootout, match report (owner 2026-10-14) ────────────────────────────────────────────────
+ *
+ * A level cup tie is settled from the spot, the engine has always known it, and the report showed
+ * neither the takers nor the misses — so a tie his club had won read as "drew 2-2" and nothing more.
+ *
+ * The marker is the point. A shootout is a sequence, and a miss only means something next to the kick it
+ * happened on: the ones in the middle decided the tie, and the last one killed it. A column of bare
+ * numbers is not that.
+ *
+ * Red for a miss, the same red the red card uses, because it is the same fact about a penalty.
+ */
+.fm-penalty-block {
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fm-penalty-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin-top: 10px;
+}
+
+.fm-penalty-kick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    color: #c9f6d7;
+}
+
+.fm-penalty-kick.is-missed {
+    color: #ff9d95;
+}
+
+.fm-penalty-marker {
+    width: 14px;
+    text-align: center;
+    flex: 0 0 auto;
+}
+
+.fm-penalty-taker {
+    font-size: 0.92em;
+}

@@ -132,6 +132,91 @@ class PostMatchDetailByCompetitionTest extends BaseTest {
         }
     }
 
+    /**
+     * A tie settled on penalties says so, and shows who missed (owner, 2026-10-14).
+     *
+     * <p>The owner's words, on a cup tie his club had won: *"vidim da sam prosao posle 2-2, po pravilima
+     * treba da budu penali a nema ih nigde u izvestaju... da proveris i da ubacis negde, recimo u goals
+     * i pogodjene i promasene penale."*
+     *
+     * <p>The engine was never wrong. {@code PenaltyShootout} runs, the right club goes through, and the
+     * result lands in {@code home_penalty_goals} / {@code away_penalty_goals}. The report threw it away:
+     * the headline said "drew 2-2", and the per-kick list the engine had already produced — side, taker,
+     * scored or missed — was never written anywhere.
+     *
+     * <p>Two halves, and the second is the one that is easy to do badly. Showing only the conversions would
+     * satisfy "add the penalties" and still hide how the tie was won, because a miss is half of a
+     * shootout.
+     */
+    @Test
+    @Transactional
+    @DisplayName("a tie decided on penalties reports the shootout, takers and misses alike")
+    void aShootoutIsReportedRatherThanHidden() {
+        Competition competition = aCompetition(CompetitionType.CUP);
+        Team home = aTeam(competition, "Home");
+        Team away = aTeam(competition, "Away");
+        Match match = aPlayedMatch(home, away, competition, 2, 2);
+
+        // What the engine writes when a level tie goes to the spot.
+        match.setHomePenaltyGoals(4);
+        match.setAwayPenaltyGoals(3);
+        match.setEventJson(shootoutEvents());
+        match = matches.save(match);
+
+        Map<String, Object> report = zox.postMatchReportFor(match.getId());
+        String headline = String.valueOf(report.get("headline"));
+
+        assertTrue(headline.contains("on penalties"),
+                "the headline does not say the tie was settled from the spot. It reads \"" + headline
+                        + "\", which reports a cup tie the club lost as a draw. The score stays the score; "
+                        + "how it was decided is part of it.");
+        assertTrue(headline.contains("4-3"),
+                "the headline does not carry the shootout score: \"" + headline + "\"");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> homePens = (List<Map<String, Object>>) report.get("homePenalties");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> awayPens = (List<Map<String, Object>>) report.get("awayPenalties");
+
+        assertFalse(homePens.isEmpty(), "no home kicks in the report, so this proves nothing");
+        assertFalse(awayPens.isEmpty(), "no away kicks in the report, so this proves nothing");
+
+        // Every kick, not only the ones that went in.
+        assertEquals(5, homePens.size(), "the home side took five kicks and the report lists "
+                + homePens.size() + ". A report that lists only the conversions is hiding the misses.");
+        assertEquals(5, awayPens.size(), "the away side took five kicks and the report lists "
+                + awayPens.size());
+
+        long homeScored = homePens.stream().filter(k -> Boolean.TRUE.equals(k.get("scored"))).count();
+        long awayScored = awayPens.stream().filter(k -> Boolean.TRUE.equals(k.get("scored"))).count();
+        assertEquals(4, homeScored, "the home shootout score in the report does not match its own column");
+        assertEquals(3, awayScored, "the away shootout score in the report does not match its own column");
+
+        // And at least one miss is named, which is the half the owner asked for by name.
+        boolean anyMiss = homePens.stream().anyMatch(k -> Boolean.FALSE.equals(k.get("scored")))
+                || awayPens.stream().anyMatch(k -> Boolean.FALSE.equals(k.get("scored")));
+        assertTrue(anyMiss, "no missed penalty appears in the report, so the misses are still hidden");
+        for (Map<String, Object> kick : homePens) {
+            assertTrue(kick.get("playerName") != null && !String.valueOf(kick.get("playerName")).isBlank(),
+                    "a home kick has no taker named: " + kick);
+        }
+    }
+
+    /** Five kicks a side, in the shape `SimMatchService` writes them. */
+    private String shootoutEvents() {
+        List<String> kicks = new java.util.ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            kicks.add(kick("HOME", "Home Taker " + i, i < 4));
+            kicks.add(kick("AWAY", "Away Taker " + i, i < 3));
+        }
+        return "[" + String.join(",", kicks) + "]";
+    }
+
+    private String kick(String side, String taker, boolean scored) {
+        return "{\"type\":\"" + (scored ? "PENALTY_SCORED" : "PENALTY_MISSED")
+                + "\",\"teamSide\":\"" + side + "\",\"playerName\":\"" + taker + "\"}";
+    }
+
     @SuppressWarnings("unchecked")
     private List<String> performerNames(Map<String, Object> report, String key) {
         Object rows = report.get(key);

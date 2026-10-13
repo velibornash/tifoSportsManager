@@ -40,10 +40,15 @@ import org.example.footballmanager.newLogic.service.SeasonService;
 import org.example.footballmanager.newLogic.service.ZoneLoadRecorder;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.core.type.TypeReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+
+import org.example.footballmanager.newLogic.sim.engine.PenaltyShootout.Kick;
 import java.util.Map;
 import java.util.Set;
 import org.example.footballmanager.newLogic.util.LazySquadGenerator;
@@ -843,8 +848,90 @@ public class SimMatchService {
         }
         match.setHomePenaltyGoals(shootout.homeScored());
         match.setAwayPenaltyGoals(shootout.awayScored());
+        appendShootoutEvents(match, shootout);
         log.info("Cup tie {} finished level and was settled {}-{} on penalties ({}).",
                 match.getId(), shootout.homeScored(), shootout.awayScored(), shootout.winningTeam());
+    }
+
+    /**
+     * Writes every kick of the shootout into the match's own event list.
+     *
+     * <p><b>The engine already knew this and it was thrown away.</b> {@code PenaltyShootout.Result} carries
+     * a {@code Kick} per penalty — the side, the taker, whether it went in — and only the two totals were
+     * kept, in the two columns. So the match was settled, the right club went through, and the report said
+     * the tie "drew 2-2" and showed no penalties anywhere. The owner found it on a tie his club had won:
+     * *"vidim da sam prosao posle 2-2, po pravilima treba da budu penali a nema ih nigde u izvestaju."*
+     *
+     * <p>Events rather than a new column, for two reasons. The report's timeline already renders one row
+     * per event and this is the same kind of fact; and a shootout kick has no minute, so inventing a
+     * timestamp for it would be a lie on a page whose whole job is the order things happened.
+     *
+     * <p>The running score is carried on each kick, because a shootout is only legible as a sequence —
+     * "missed" means nothing without which round and what it left the tie at.
+     */
+    /** Package-private so a test can prove the kicks are written, not just summed. */
+    void appendShootoutEvents(Match match, PenaltyShootout.Result shootout) {
+        List<Kick> kicks = shootout.kicks();
+        if (kicks == null || kicks.isEmpty()) {
+            return;
+        }
+        List<Object> events = eventList(match);
+        if (events == null) {
+            return;
+        }
+        int homeScored = 0;
+        int awayScored = 0;
+        int kickNumber = 0;
+        for (Kick kick : kicks) {
+            kickNumber++;
+            boolean home = "HOME".equals(kick.team());
+            if (kick.scored()) {
+                if (home) {
+                    homeScored++;
+                } else {
+                    awayScored++;
+                }
+            }
+            Map<String, Object> event = new LinkedHashMap<>();
+            event.put("type", kick.scored() ? "PENALTY_SCORED" : "PENALTY_MISSED");
+            event.put("teamSide", home ? "HOME" : "AWAY");
+            event.put("playerName", kick.takerName());
+            event.put("kickNumber", kickNumber);
+            event.put("homeScoreAfter", homeScored);
+            event.put("awayScoreAfter", awayScored);
+            event.put("suddenDeath", kickNumber > PenaltyShootout.KICKS_EACH * 2);
+            event.put("description", (home ? "HOME " : "AWAY ") + kick.takerName() + " "
+                    + (kick.scored() ? "scores" : "misses") + " — penalties " + homeScored + "-" + awayScored);
+            events.add(event);
+        }
+        writeEventList(match, events);
+    }
+
+    /** The match's own event list, or an empty one when it holds nothing readable. */
+    private List<Object> eventList(Match match) {
+        String raw = match.getEventJson();
+        if (raw == null || raw.isBlank()) {
+            return new ArrayList<>();
+        }
+        try {
+            List<Object> parsed = objectMapper.readValue(raw, new TypeReference<List<Object>>() {
+            });
+            return parsed == null ? new ArrayList<>() : new ArrayList<>(parsed);
+        } catch (Exception unreadable) {
+            // A match whose timeline cannot be read must not lose its shootout as well, and must not take
+            // the whole cup tie down because of it. The totals are already in their own columns.
+            log.warn("Could not read the event list of match {} while adding its penalty shootout: {}",
+                    match.getId(), unreadable.getMessage());
+            return null;
+        }
+    }
+
+    private void writeEventList(Match match, List<Object> events) {
+        try {
+            match.setEventJson(objectMapper.writeValueAsString(events));
+        } catch (Exception unwritable) {
+            log.warn("Could not write the event list of match {}: {}", match.getId(), unwritable.getMessage());
+        }
     }
 
     private static boolean isHumanClub(org.example.footballmanager.newLogic.model.Team team) {

@@ -510,6 +510,25 @@ export function createMatchView(deps) {
                 }
             }
 
+            /**
+             * One side's shootout kicks, each with its number and whether it went in.
+             *
+             * <p>The marker is the whole point. A list of numbers reading "6 7 5 6 7" is not a shootout,
+             * and a tick next to a miss is the only thing that makes the sequence legible — which kick was
+             * taken when the tie was still open, and which one killed it.
+             */
+            function penaltyColumn(teamLabel, kicks) {
+                return `
+                    <div>
+                        <h4 style="margin:0 0 8px; color:#dfe6eb;">${teamLabel}</h4>
+                        ${kicks.length ? kicks.map(kick => `
+                            <div class="fm-penalty-kick${kick.scored ? '' : ' is-missed'}">
+                                <span class="fm-penalty-marker">${kick.scored ? '&#9679;' : '&#10008;'}</span>
+                                <span class="fm-penalty-taker">${htmlEscape(String(kick.playerName || 'Unknown'))}</span>
+                            </div>`).join('') : '<div style="color:#9aa0a6;">No kicks recorded.</div>'}
+                    </div>`;
+            }
+
             function renderMatchReport(reportPayload) {
                 const headline = htmlEscape(String(reportPayload?.headline || 'Match Report'));
                 const reportText = htmlEscape(String(reportPayload?.summary || 'No match report available.'));
@@ -518,6 +537,21 @@ export function createMatchView(deps) {
                 const stats = reportPayload?.stats || {};
                 const homeTop = Array.isArray(reportPayload?.homeTopPerformers) ? reportPayload.homeTopPerformers : [];
                 const awayTop = Array.isArray(reportPayload?.awayTopPerformers) ? reportPayload.awayTopPerformers : [];
+                // The shootout: every kick, scored and missed alike, in the order it was taken. The
+                // owner's words: *"po pravilima treba da budu penali a nema ih nigde u izvestaju"*
+                // and *"ubacis negde, recimo u goals i pogodjene i promasene penale"*. A miss is half
+                // of what a shootout is; showing only the conversions would hide how the tie was won.
+                const homePens = Array.isArray(reportPayload?.homePenalties) ? reportPayload.homePenalties : [];
+                const awayPens = Array.isArray(reportPayload?.awayPenalties) ? reportPayload.awayPenalties : [];
+                const penaltyBlock = (homePens.length || awayPens.length) ? `
+                    <div class="fm-penalty-block">
+                        <div class="fm-milestone-kicker">Penalty shootout</div>
+                        <p class="fm-subtle">${htmlEscape(homeTeamName)} ${Number(reportPayload?.homePenaltyGoals ?? 0)} — ${Number(reportPayload?.awayPenaltyGoals ?? 0)} ${htmlEscape(awayTeamName)}</p>
+                        <div class="fm-penalty-columns">
+                            ${penaltyColumn(htmlEscape(homeTeamName), homePens)}
+                            ${penaltyColumn(htmlEscape(awayTeamName), awayPens)}
+                        </div>
+                    </div>` : '';
                 const motmFacts = [];
                 if (Number.isFinite(Number(motm?.rating10))) motmFacts.push(`${Number(motm.rating10).toFixed(1)} rating`);
                 if (Number(motm?.goals) > 0) motmFacts.push(`${Number(motm.goals)} goal${Number(motm.goals) === 1 ? '' : 's'}`);
@@ -550,6 +584,7 @@ export function createMatchView(deps) {
                         <h3 style="text-align:center; margin:0 0 14px; color:#4CAF50;">Match Report</h3>
                         <div class="fm-match-report-headline">${headline}</div>
                         ${motmBlock}
+                        ${penaltyBlock}
                         <div class="fm-match-report-body">${reportText}</div>
                         <div style="margin-top:14px; color:#9aa0a6;">${htmlEscape(String(reportPayload?.turningPoint || ''))}</div>
                         <div style="margin-top:8px; color:#9aa0a6;">${htmlEscape(String(reportPayload?.tacticalVerdict || ''))}</div>

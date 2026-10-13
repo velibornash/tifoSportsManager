@@ -183,11 +183,18 @@ public class ZoxApiController {
         Long awayTeamId = match.getAwayTeam() == null ? null : match.getAwayTeam().getId();
         List<MatchPlayerStats> stats = statsRepository.findByMatchId(matchId);
 
+        // A tie decided from the spot is not a draw, and the headline is the sentence a manager reads
+        // first. It said "drew 2-2" on a tie his club had won 7-6 on penalties, which is the half of the
+        // report the owner noticed: *"vidim da sam prosao posle 2-2, po pravilima treba da budu penali
+        // a nema ih nigde u izvestaju."* The score stays the score — the shootout is not written into the
+        // goal columns, and must not be — but the headline says how it was settled.
+        boolean decidedOnPenalties = match.getHomePenaltyGoals() != null && match.getAwayPenaltyGoals() != null;
         String headline = match.getHomeGoals() > match.getAwayGoals()
             ? homeTeam + " defeated " + awayTeam + " " + match.getHomeGoals() + "-" + match.getAwayGoals()
             : match.getAwayGoals() > match.getHomeGoals()
             ? awayTeam + " defeated " + homeTeam + " " + match.getAwayGoals() + "-" + match.getHomeGoals()
-            : homeTeam + " and " + awayTeam + " drew " + match.getHomeGoals() + "-" + match.getAwayGoals();
+            : homeTeam + " and " + awayTeam + " drew " + match.getHomeGoals() + "-" + match.getAwayGoals()
+              + (decidedOnPenalties ? penaltySuffix(match, homeTeam, awayTeam) : "");
 
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("headline", headline);
@@ -199,8 +206,59 @@ public class ZoxApiController {
         report.put("awayTopPerformers", buildTopPerformers(stats, awayTeamId));
         report.put("turningPoint", findTurningPoint(match, homeTeam, awayTeam));
         report.put("tacticalVerdict", generateTacticalVerdict(match, homeTeam, awayTeam));
+        // The shootout as its own block: who took each kick and whether it went in, which is what "add the
+        // scored and the missed penalties" asked for. Empty for every match that was not level.
+        report.put("homePenalties", penaltyKicks(match, "HOME"));
+        report.put("awayPenalties", penaltyKicks(match, "AWAY"));
+        if (decidedOnPenalties) {
+            report.put("homePenaltyGoals", match.getHomePenaltyGoals());
+            report.put("awayPenaltyGoals", match.getAwayPenaltyGoals());
+        }
 
         return report;
+    }
+
+    /** ", settled 6-7 on penalties (FK Mlava Novi Sad won)" — how the tie was actually decided. */
+    private static String penaltySuffix(Match match, String homeTeam, String awayTeam) {
+        String winner = match.getHomePenaltyGoals() > match.getAwayPenaltyGoals() ? homeTeam : awayTeam;
+        return ", settled " + match.getHomePenaltyGoals() + "-" + match.getAwayPenaltyGoals()
+                + " on penalties (" + winner + " went through)";
+    }
+
+    /**
+     * The shootout kicks of one side, in the order they were taken, scored and missed alike.
+     *
+     * <p>Read from the event list rather than from the two columns: the columns hold the totals and the
+     * totals cannot say who missed. A miss is half of what a shootout is, and a report that only shows
+     * the conversions is a report that hides how the tie was won.
+     */
+    private List<Map<String, Object>> penaltyKicks(Match match, String side) {
+        String raw = match.getEventJson();
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<Map<String, Object>> kicks = new ArrayList<>();
+        try {
+            for (com.fasterxml.jackson.databind.JsonNode node :
+                    objectMapper.readTree(raw)) {
+                String type = node.path("type").asText("");
+                if (!"PENALTY_SCORED".equals(type) && !"PENALTY_MISSED".equals(type)) {
+                    continue;
+                }
+                if (!side.equals(node.path("teamSide").asText())) {
+                    continue;
+                }
+                Map<String, Object> kick = new LinkedHashMap<>();
+                kick.put("playerName", node.path("playerName").asText("Unknown"));
+                kick.put("scored", "PENALTY_SCORED".equals(type));
+                kick.put("number", node.path("kickNumber").asInt(0));
+                kicks.add(kick);
+            }
+        } catch (Exception unreadable) {
+            // A timeline that will not parse leaves the block empty rather than taking the report down.
+            return List.of();
+        }
+        return kicks;
     }
 
     @GetMapping("/match-stats/{matchId}")
