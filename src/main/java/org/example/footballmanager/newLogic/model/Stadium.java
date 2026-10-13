@@ -135,6 +135,23 @@ public class Stadium {
      * <p>Which facility is relevant depends on the work: conditioning is a gym question, tactical
      * technique is a teaching-facilities question, and everything else is the general ground.
      */
+    /**
+     * The facility level this skill trains under, or null when none is recorded.
+     *
+     * <p>Same switch as {@link #trainingFactorFor}, split out so a caller can <i>name</i> the level it
+     * trained under. The report could not answer "what did my gym do?" while all it had was a
+     * multiplier: a manager cannot tell {@code ×1.08} from a rounding artefact, and cannot connect the
+     * number to the level they paid for.
+     */
+    public Integer facilityLevelFor(SkillName skill) {
+        if (skill == null) return null;
+        return switch (skill) {
+            case STAMINA, FATIGUE -> gymLevel;
+            case PASSING, PLAYMAKER, TECHNIQUE -> tacticalLevel;
+            default -> trainingQuality;
+        };
+    }
+
     public double trainingFactorFor(SkillName skill) {
         if (skill == null) return 1.0;
         Integer recorded = switch (skill) {

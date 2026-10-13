@@ -211,7 +211,15 @@ screen says so.
 
 - [ ] Each of the four levels has a stated, tested effect. A level that changes nothing is not a level, and
       a facility that cannot be shown to change a number should not be sold.
-- [ ] The effect is visible on the training report, so a manager can see the club got something.
+- [x] The effect is visible on the training report, so a manager can see the club got something. *(2026-10-13:
+      `Stadium.facilityLevelFor(skill)` names the level a skill trains under, the report row carries
+      `facilityLevel` and `facilityFactor`, and the report table has a **Facility** column. Covered by
+      `StadiumFacilityLevelTest`, which pins that the named level and the factor can never disagree, and
+      that an unrecorded facility reads "No facility recorded" rather than level 1 — a club predating the
+      feature is neutral by design and must not be told it trained somewhere it never bought.)*
+      **Not yet seen in a real report:** every stored report predates the change, and the training job's
+      day-4 window keeps being skipped by coarse clock advances, so the populated column has not been
+      observed end to end.
 - [ ] The weekly settlement charges upkeep for the levels actually held, and the stadium page agrees.
 - [ ] Whatever `JuniorDevelopment` already does with `gymLevel` is documented rather than done twice.
 - [ ] Bot clubs are seeded at a plausible level, or the number is shown as "not yet" rather than as 1/20.

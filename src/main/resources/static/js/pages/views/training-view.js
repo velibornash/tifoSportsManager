@@ -501,7 +501,29 @@ export function createTrainingView(deps) {
         function renderReportCards(report) {
             if (!report) return `<p class="training-empty">Select a week report.</p>`;
             const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-            const reportPlayers = (report.players || [])
+            /**
+         * The facility a player trained under, and what it did for them.
+         *
+         * <p>Shown because "the club got something" has to be visible to be believed: a manager who
+         * pays for a gym and sees no mention of it has no reason to believe level 7 exists. The
+         * multiplier is rounded to two decimals because the curve moves in hundredths - a third
+         * decimal is noise that makes every row look different from the last.
+         *
+         * <p>Null is a real state and is worded as one. A club with no facility recorded is neutral by
+         * design, and calling that "level 1" would tell the manager they trained somewhere they never
+         * bought.
+         */
+        function facilityCell(player) {
+            const level = player?.facilityLevel;
+            const factor = Number(player?.facilityFactor);
+            if (level === null || level === undefined) {
+                return htmlEscape('No facility recorded');
+            }
+            const shown = Number.isFinite(factor) ? ` \u00d7${factor.toFixed(2)}` : '';
+            return `${htmlEscape(`Level ${level}`)}${shown}`;
+        }
+
+        const reportPlayers = (report.players || [])
                 .sort((a, b) => {
                     const aPlayer = playerById.get(a.playerId);
                     const bPlayer = playerById.get(b.playerId);
@@ -553,6 +575,7 @@ export function createTrainingView(deps) {
                         <td class="sq-role">${htmlEscape(p.role || '-')}</td>
                         <td class="sq-focus">${htmlEscape(skillShortLabel(p.directTrainingSkill || '-'))}</td>
                         <td class="sq-mode">${p.advancedTraining ? 'ADV' : 'FORM'}</td>
+                        <td class="sq-facility">${facilityCell(p)}</td>
                         ${skillCells}
                     </tr>`;
             }).join('');
@@ -595,6 +618,7 @@ export function createTrainingView(deps) {
                                         <th>Role</th>
                                         <th>Focus</th>
                                         <th>Mode</th>
+                                        <th>Facility</th>
                                         ${skillHeaderCells()}
                                     </tr>
                                 </thead>

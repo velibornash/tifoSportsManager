@@ -23,5 +23,16 @@ public class PlayerTrainingReportDTO {
     private String directTrainingSkill;
     private boolean advancedTraining;
     private List<SkillDeltaDTO> skills = new ArrayList<>();
+
+    /**
+     * The facility level this player trained under, and the factor it applied.
+     *
+     * <p>Null level with a factor of 1.0 is a real state, not missing data: it is a club that has
+     * recorded no facility yet, which the stadium page says is neutral on purpose. The report shows it
+     * as "no facility recorded" rather than as level 1, so a manager is not told they trained on a
+     * ground they never bought.
+     */
+    private Integer facilityLevel;
+    private Double facilityFactor;
 }
 

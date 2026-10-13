@@ -239,6 +239,13 @@ public class TrainingProgressionService {
             playerRow.setDirectTrainingSkill(skillToKey(directSkill));
             playerRow.setAdvancedTraining(advanced);
             playerRow.setSkills(buildSkillDeltas(before, after));
+
+            // **Name the facility the training actually used.** The factor alone is unreadable - a
+            // manager cannot tell x1.08 from a rounding artefact, and cannot tie it back to the level
+            // they paid for. This is the "the club got something" half of T-FAC-1.
+            Stadium ground = player.getTeam() == null ? null : player.getTeam().getStadium();
+            playerRow.setFacilityLevel(ground == null ? null : ground.facilityLevelFor(directSkill));
+            playerRow.setFacilityFactor(ground == null ? 1.0 : ground.trainingFactorFor(directSkill));
             report.getPlayers().add(playerRow);
         }
 
