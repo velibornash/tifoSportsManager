@@ -14,6 +14,47 @@ still carried open was moved into **T-REST**; new work from the owner's vision a
 Closed work is not on this board. It is in [`kanbanProgress.md`](kanbanProgress.md), one entry per task,
 newest first, each carrying its commit.
 
+---
+
+# 📌 OPEN WORK — the short list, 2026-10-13
+
+Full detail on each task is in its own section further down. **If you are starting a blank session, read
+[`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) first** — it carries the traps that cost hours here, above all
+that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **dead** and the real clock is
+`now() + offset`.
+
+| # | Pri | Task | State |
+|---|---|---|---|
+| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | Not started. Nothing has failed since `f3d0c604`, which is weak evidence, not proof. |
+| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | Only round 1's 54 ties exist. Must reach **128** ties, not 129. |
+| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | **Do not press it.** It added 54 duplicate round-1 ties on every press; all 108 teams were drawn twice. This is why P0-2 is not "just click the button". |
+| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken | Fails on a `player` FK violation. Unrelated to P0-2/3. |
+| **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
+| **P1-2** | 🟡 | **T-FAC-1 item 3 — settlement and stadium page agree on upkeep** | Not started. `weeklyUpkeep = 120 × (Σ levels − 1)`. |
+| **P1-3** | 🟡 | **T-FAC-1 item 4 — document the `JuniorDevelopment` overlap** | Not started. Documentation only. |
+| **P1-4** | 🟡 | **T-FAC-1 item 5 — bot seeding plausibility** | 310 grounds seeded at levels 2–5 of 20; ~14,666 clubs have no stadium row. |
+| **P1-5** | 🟡 | **Delete the dead `tacticalMultiplier()`** | No caller, and duplicates what `tacticalLevel` already does. Wiring it would double-apply. |
+| **P1-6** | 🟡 | **T-U21-1 — a national side drawn short was short for ever** | Not started. |
+| **P2-1** | 🟢 | **T-KIT-1 — the players wear no kit** | Nine unchecked criteria, further down. Biggest user-visible win. |
+
+### Committed but never seen running — do not assume they work
+
+| Change | Commit | Verified? |
+|---|---|---|
+| Cup rounds newest-first + own-tie highlight | `56133fec` | ❌ **never seen running** |
+| Competition-type filter (League/Cup/International) | `56133fec` | ❌ **never seen running** |
+| "Not drawn yet" → `Drawn · 600 ties` | `56133fec` | ✅ browser |
+| Scroll-to-top on every page | `56133fec` | ✅ browser |
+| Training report Facility column | `9a801c0a` | ⚠️ tests only, **no real report seen** |
+
+### Waiting on the owner
+
+- **The delta column** on the club ranking — deferred until the feed was live; it now is, so it is finally
+  worth building.
+- **T-ECON-1 option 2** (global wage re-scale across 31,230 players) — declined in favour of option 1, which
+  is done.
+
+
 ## Recently completed
 
 - **Session handoff: read [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md).** It carries the two-clock trap,

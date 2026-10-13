@@ -1,3 +1,47 @@
+## 2026-10-13 — session close: three dead ledgers, one dead job runner
+
+**The headline.** The owner asked whether the club ranking changes after a played match. It did not. Three
+ledgers were dead, and the cause was not three bugs.
+
+**One cause killed everything.** `GameClockService.walk()` measures itself from `clock.lastSyncedAt` to
+`clock.gameTimeAt(instant())`. Nothing enforced the invariant `lastSyncedAt <= gameTime`, and winding the
+clock back is a *supported* admin operation — `POST /api/game-clock/offset` exists to do it. Once the
+watermark was ahead, `delta` went negative, `steps` clamped to zero, and **no job ran at all**. Nothing
+reported it: the walk returns an empty summary, `synchronise()` only logs when a job ran, and the app looks
+healthy. Measured: `last_synced_at 2026-10-27 12:14:35` against a game time of `08:24:33`. Fixed, and
+verified by reintroducing the drift on purpose (`3b758f45`).
+
+**Two siblings.** `ClubRatingService.recomputeDurably()` and `RankingPointsRebuildService.rebuildAfterBatch()`
+each had exactly two callers — the async batch and *Advance Week* — and the clock-driven matchday was
+neither. Worse, the club ranking is **not ordered by Elo at all**: `points` is the ranking-points ledger and
+`rated` merely means "has a ledger row". So all 310 Serbian clubs sat at `1500.00`, `rated: false`, with a
+perfectly healthy Elo column underneath it (`088704c5`, `d6f07217`).
+
+**After:** 10 distinct point values in the first 10 rows, 10/10 rated, headed by
+`GFK Zemun — Superliga Srbije — tier 1 — 1622.50`, verified in a browser on the Clubs tab.
+
+**Three of my own wrong diagnoses, recorded because they cost hours:**
+
+1. **`game_clock`'s `current_week`/`current_day`/`current_hour`/`current_season` are dead columns** from the
+   old two-clock design. I reported a "clock mismatch" **twice** before checking whether anything read
+   them. Nothing does.
+2. **I called the scheduler broken.** `synchronise()` is a catch-up runner that never advances the clock;
+   an unchanged offset at a cron boundary is correct.
+3. **I reported the country page as dead** because I read `document.body.innerText` (which starts at the
+   top bar) and `location.pathname` (which a SPA never changes). It was rendering the whole time. The Clubs
+   tab has since been verified working — 100 rows of 310.
+
+**Also found along the way.** Two duplicate `player_discipline` rows were failing **whole matchdays** with
+`NonUniqueResultException`, because both call sites asked for a single `Optional` row (`f3d0c604`). The
+country club ranking had been fixed and never looked at, and was working (`2dfb1720`). National teams were
+being drawn into the club cup, making round 2 = 258 entrants / 129 ties (`42fc45c7`).
+
+**Owner decisions taken.** T-ECON-1 option 1 — OFK Omladinac is the exception, bill
+18,478,000 → **498,148**/wk, because when the club is sold it should behave like the others (`0ed5576e`).
+
+**What is still unproven is listed in [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) §5**, not here, so there is
+exactly one place to look.
+
 ## 2026-10-13 — two duplicate discipline rows were killing matchdays
 
 The clock fix let matchdays run again, and the first one to fail said:
