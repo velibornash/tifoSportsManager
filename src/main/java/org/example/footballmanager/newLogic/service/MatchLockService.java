@@ -65,22 +65,36 @@ public class MatchLockService {
      * <p>It names the opponent and the kickoff hour, because "locked" on its own is a word that makes
      * a manager think the game is broken. The hour comes from the calendar rather than being written
      * into the message, so it cannot go stale.
+     *
+     * <p><b>Who is asking decides which club is the opponent</b>, which is why the club is a parameter
+     * rather than something read off the fixture. It used to be derived from the fixture alone, by
+     * comparing the home team's id with the home team's id — a comparison that is true by construction,
+     * so the sentence always named the away side. For a home manager that is right by accident; for an
+     * away manager it read *"Your match against OFK Omladinac is already decided"*, naming the manager's
+     * own club back at him, on the one screen whose whole job is to explain the lock. Found by asking
+     * the live endpoint while a matchday sat prepared: team 1 was drawn away and was told it was the
+     * opponent.
+     *
+     * @param askingTeamId the club being refused; {@code null} or a team in neither side falls back to
+     *                     the away side, which is what the broken version always did
      */
-    public String refusalReason(MatchFixture fixture) {
+    public String refusalReason(MatchFixture fixture, Long askingTeamId) {
         Integer kickoff = fixture.getDayNumber() == null ? null
                 : GameDay.of(fixture.getDayNumber()).kickoffHour();
-        String opponent = fixture.getHomeTeam() != null && fixture.getHomeTeam().getId() != null
-                && fixture.getHomeTeam().getId().equals(homeOrAwayId(fixture))
-                ? String.valueOf(fixture.getAwayTeam().getName())
-                : String.valueOf(fixture.getHomeTeam().getName());
+        String opponent = opponentName(fixture, askingTeamId);
         String when = kickoff == null ? "today" : "at " + kickoff + ":00";
 
         return "Your match against " + opponent + " is already decided, so its tactics, squad and "
                 + "orders are closed. The lock is an hour before kickoff, " + when + ".";
     }
 
-    private Long homeOrAwayId(MatchFixture fixture) {
-        return fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getId();
+    /** The side of the fixture that is not the club being refused. */
+    private String opponentName(MatchFixture fixture, Long askingTeamId) {
+        boolean askingIsHome = askingTeamId != null
+                && fixture.getHomeTeam() != null
+                && askingTeamId.equals(fixture.getHomeTeam().getId());
+        return String.valueOf(askingIsHome ? fixture.getAwayTeam().getName()
+                : fixture.getHomeTeam().getName());
     }
 
     /** The fixtures of a matchday that are computed and still hidden, for the admin view. */

@@ -72,13 +72,25 @@ the clock and it only logs when a job actually ran — silence means "nothing wa
 
 ## 3. Where the world stands right now
 
-- Database restored from `backups/2026-10-11-01-31-52.dump` (14,976 teams, 1,508 competitions, 33,612
-  players). That dump **has no `last_synced_at` column** — `ddl-auto=update` adds it after restore.
-- Clock has been advanced to roughly **season 1, week 5**. It has run under both a broken and a repaired
-  job runner, so **do not trust current figures without a fresh dump.**
-- Safety dump taken this session: `backups/pre-cupfix-20261013-164421.dump`.
+- Database `sokker_db`, 14,976 teams, **3,472 matches**, 5,708 fixtures. Clock stands at
+  **season 1, week 5, day 7, hour 22**.
+- **Week 5 day 7 was played end to end on 2026-10-13** — the 155-fixture matchday P0-1 was waiting on. It is
+  the reference example; `kanbanProgress.md` has the timings and the before/after numbers.
+- **824 fixtures are stranded in the past** (weeks 4-5, days 1/3/5/7). See P0-5. The world is otherwise
+  consistent, but those ties will not be played by anything that exists today.
+- The cup looks drawn: **128 fixtures at week 2 day 5**, which is the target, plus 32 at week 4 day 5.
+- Safety dump taken on 2026-10-13 before the cup work: `backups/pre-cupfix-20261013-164421.dump`.
 - `var/tactics-editor-profiles.json` is a **tracked runtime file that always shows as modified. Never
   stage it** unless the task is about tactics data.
+
+**The app is started from a terminal the agent cannot see, so it has no log file.** Started 22:27 on
+2026-10-13. If a task needs the job log, restart it yourself with output redirected:
+
+```bash
+nohup java -jar target/footballmanager-1.0-SNAPSHOT.jar --app.open-browser=false > /tmp/tifo.log 2>&1 &
+```
+
+`job_run` is the honest record and is enough for most things; the log is only needed to read a stack trace.
 
 ---
 
@@ -88,6 +100,7 @@ Newest first. `git log --oneline` is authoritative.
 
 | Commit | What it fixed |
 |---|---|
+| *(this session)* | **P0-1 closed** — a whole 155-fixture matchday watched end to end. **P0-6** — the lock named the manager's own club back at him; found live, not by a test. |
 | `9a801c0a` | Training report names the facility it trained under (`facilityLevel` / `facilityFactor`, a **Facility** column). **Not yet seen in a real report.** |
 | `6796dc3b` | **Corrected a false claim** — all four facility levels *do* act; only the `tacticalMultiplier()` method is dead. |
 | `0ed5576e` | T-ECON-1 owner decision: OFK Omladinac is the exception. Bill 18,478,000 → **498,148**/wk (top of tier-1; tier-1 max excluding it was 498,148, median 435,591). Contracts synced. **A settled week at the new bill is not yet observed.** |
@@ -117,27 +130,50 @@ Clubs tab with `scrollY === 0`.
 
 ## 5. Remaining work, in the order I would take it
 
+| # | Pri | Task | State |
+|---|---|---|---|
+| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **New, found by P0-1.** `walk()` is forward-only. **Owner decision needed.** |
+| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | ✅ **Done.** 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. |
+| **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed** — found live, not by a test. |
+| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | **Looks drawn** — 128 fixtures at week 2 day 5. Verify, do not assume. |
+| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | **Do not press it.** |
+
 ### P0 — correctness
 
-**P0-1 · Verify one matchday completes clean, end to end.**
-The duplicate-discipline fix (`f3d0c604`) is committed, tested by mutation, and the offending rows are
-deleted — but **no matchday has been watched completing since.** Two jobs failed during the catch-up
-(`matchday-prepare-1`, `matchday-publish-1`, week 3 day 1 hour 23). Nothing new has failed since, which is
-weak evidence. Advance to a matchday, watch `job_run`, confirm zero FAILED.
+**P0-5 · 824 fixtures are stranded in the past.** *(new, 2026-10-13)*
+`walk()` is forward-only — `steps = Math.max(0, Math.min(delta, MAX))` — so an hour it skips is gone for
+ever. Weeks 4 day 5, 4 day 7, 5 day 1 and 5 day 3 have fixtures and **no `job_run` row for their
+matchday at all**. Caused by the watermark repair (`3b758f45`) and a 72-hour offset rewind, both of which
+discard hours silently. **Options (a) write off, (b) publish at once, (c) catch up from the fixture's own
+`match_date`** are set out in `kanban.md`; (c) is the one that fits the design. **Needs the owner.**
 
-**P0-2 · Cup round 2 has never been drawn.**
-Only round 1's 54 ties exist. The draw fires at **week 2 day 2, 08:00** and we are past that, so it needs
-either the repaired draw path or a wind-back. `CUP_WEEKS = {1,2,3,4,5,7,8,11}`; `ENTRY_ROUND_TEAMS = 108`
-and the owner's own rule is in the constant's comment: *ranks 1-202 join the winners in week 2* → 256
-entrants → **128 ties**. Verify 128, not 129.
+**P0-1 · Verify one matchday completes clean, end to end.** ✅ **CLOSED 2026-10-13.**
+Week 5 day 7, 155 fixtures. `matchday-prepare-7` DONE at 15:00 in **121 s**; `matchday-publish-7` DONE at
+16:00 in **5 s**; **zero new `FAILED`**. While prepared, `/matches/3359`, `/detail`, `/preview` and `/report`
+all answered **404** and the club's match list held 13 rows; after the publish, 14 rows containing it. Elo
+replayed at hour 22 in ~9 min and moved **with the result** (home win +17, away defeat −17).
+**Timings on this machine, for the next session: prepare 121 s, publish 5 s, Elo + ranking replay ~9 min.**
+
+**P0-2 · Cup round 2 has never been drawn.** ⚠️ **The board said only 54 ties exist. There are now 128
+fixtures at week 2 day 5** — which is exactly the target (108 winners + ranks 1-202 = 256 entrants = 128
+ties). The draw appears to have run at some point on 2026-10-13 (`cup-draw` shows DONE at week 4 day 2
+hour 8, and 32 further fixtures exist at week 4 day 5). **Verify the count and that the two fixes of the
+last session hold — do not re-draw.**
 
 **P0-3 · The admin "Re-draw the cup" button is not idempotent.**
 `seedIfMissing()` **added 54 duplicate round-1 ties on every press** — all 108 teams ended up drawn twice.
-Its Javadoc claims the opposite. I removed the duplicates by hand. **Do not press that button** until
+Its Javadoc claims the opposite. The duplicates were removed by hand. **Do not press that button** until
 fixed. It is the reason P0-2 is not simply "click the button".
 
 **P0-4 · `/admin/world-reseed?what=national-teams` is broken** — fails on a `player` foreign-key
 violation, unrelated to the above.
+
+**P0-6 · The lock named the wrong club to an away manager.** ✅ **Fixed 2026-10-13.**
+`MatchLockService.refusalReason` compared the home team's id with **itself**, so it always named the away
+side — right by accident for a home manager, wrong for every away one, which reads *"Your match against
+OFK Omladinac…"* to a manager whose club **is** Omladinac. Fixed by passing the club being refused
+(`refusalReason(fixture, askingTeamId)`), six call sites. Found live during P0-1, **not** by a test — the
+test asserted `$.reason` `isNotEmpty()`, which would pass against a message naming `null`.
 
 ### P1
 
@@ -224,13 +260,26 @@ They build and `node --check` passes, which is exactly the bar that let a broken
     `document.getElementById('main-content')` — not `document.body.innerText`, which starts at the top bar.
     I wrongly reported the country page as dead because of this.
 11. **Resetting `current_day`/`current_hour` does nothing** — they are not read (see §2).
+12. **Only `APIController` lives under `/api`.** `MatchController` is `/matches/…`, `TeamController` is
+    `/teams/…`, the sim controllers are `/sim/…`. Hitting `/api/matches/3359` returns a 404 that says
+    **"No static resource"** — which looks exactly like the publication guard working and is not. **Read the
+    404 message before believing a guard**: "No static resource" means the URL was wrong, not that the guard
+    fired. I nearly recorded a false pass because of this.
+13. **`zsh` does not word-split an unquoted parameter.** `PSQL="psql -h localhost …"` then `$PSQL -c "…"`
+    looks right and runs as one giant command name. Use an array or a shell function. This cost ten minutes
+    of a polling loop printing an empty backlog.
+14. **`sum(elo_rating)` is invariant.** It read 17,615,987 before and after a 155-match matchday — that is Elo
+    being zero-sum and working, **not** a stalled replay. Check per-club `elo_rating` against
+    `elo_previous_rating`, and check that the direction agrees with the result.
 
 ---
 
 ## 8. If you only do one thing
 
-Verify **P0-1**, one clean matchday. Everything else this session rests on the claim that the repaired job
-runner actually runs jobs on the clock path, and that has been true in pieces but never watched end to end.
+**P0-5: decide what happens to 824 stranded fixtures.** It is the only thing found this session that is both
+open and needs the owner rather than an agent. It is a small decision — write them off, publish at once, or
+catch up from the fixtures' own kickoff times — and P0-1 is already in the database proving that everything
+downstream of a correctly played matchday works.
 
 Second: close **P1-1** by generating a real training report. It is thirty minutes of clock-walking and it
 converts "built and tested" into "seen".

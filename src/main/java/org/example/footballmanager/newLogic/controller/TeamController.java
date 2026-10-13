@@ -493,7 +493,7 @@ public class TeamController {
         var lock = matchLocks.lockFor(teamId);
         if (lock.isPresent()) {
             return ResponseEntity.status(HttpStatus.LOCKED)
-                    .body(Map.of("reason", matchLocks.refusalReason(lock.get())));
+                    .body(Map.of("reason", matchLocks.refusalReason(lock.get(), teamId)));
         }
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
@@ -592,7 +592,7 @@ public class TeamController {
         var lock = matchLocks.lockFor(teamId);
         if (lock.isPresent()) {
             return ResponseEntity.status(HttpStatus.LOCKED)
-                    .body(Map.of("reason", matchLocks.refusalReason(lock.get())));
+                    .body(Map.of("reason", matchLocks.refusalReason(lock.get(), teamId)));
         }
         TacticsEditorDTO dto = teamTacticsService.saveTacticsEditor(teamId, request);
         return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
@@ -631,7 +631,7 @@ public class TeamController {
                 : org.example.footballmanager.newLogic.model.GameDay.of(fixture.getDayNumber()).kickoffHour();
 
         out.put("locked", true);
-        out.put("reason", matchLocks.refusalReason(fixture));
+        out.put("reason", matchLocks.refusalReason(fixture, teamId));
         out.put("fixtureId", fixture.getId());
         out.put("opponent", opponent == null ? null : opponent.getName());
         out.put("homeOrAway", isHome ? "HOME" : "AWAY");

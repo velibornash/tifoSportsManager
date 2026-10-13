@@ -25,10 +25,12 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 
 | # | Pri | Task | State |
 |---|---|---|---|
-| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | Not started. Nothing has failed since `f3d0c604`, which is weak evidence, not proof. |
-| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | Only round 1's 54 ties exist. Must reach **128** ties, not 129. |
+| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | ✅ **Done 2026-10-13.** Week 5 day 7: 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. Elo and the ranking ledger moved with the result. |
+| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **New — found by P0-1.** `walk()` is forward-only, so an hour it skips is gone. Weeks 4-5, days 1/3/5/7. **Needs an owner decision**, see below. |
+| **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed 2026-10-13** — found live, not by a test. `refusalReason` compared the home team's id with itself, so the sentence always named the away side. |
+| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | Only round 1's 54 ties exist. Must reach **128** ties, not 129. **It now looks drawn** — 128 fixtures exist at week 2 day 5. **Verify, do not assume.** |
 | **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | **Do not press it.** It added 54 duplicate round-1 ties on every press; all 108 teams were drawn twice. This is why P0-2 is not "just click the button". |
-| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken | Fails on a `player` FK violation. Unrelated to P0-2/3. |
+| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to P0-2/3. |
 | **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
 | **P1-2** | 🟡 | **T-FAC-1 item 3 — settlement and stadium page agree on upkeep** | Not started. `weeklyUpkeep = 120 × (Σ levels − 1)`. |
 | **P1-3** | 🟡 | **T-FAC-1 item 4 — document the `JuniorDevelopment` overlap** | Not started. Documentation only. |
@@ -80,6 +82,113 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 - **Home advantage is real** (`ca13cf6f`). The forecaster promised it; the engine had never heard of it.
 - **A 10.0 means an exceptional match** (`126c6418`). "Tackles" was duels lost, the defensive terms were
   unbounded, substitutes played 90 minutes, and there was no team-result term at all.
+- **P0-1 is closed — a whole matchday, watched with a stopwatch** (`2026-10-13`). Week 5 day 7, 155 fixtures:
+  computed at 15:00 in 121 s, released at 16:00 in 5 s, **zero new `FAILED`**. The publication window was
+  checked while it was open — every read path 404, the team's match list at 13 rows, then 14 after the
+  publish. The rating moved *with the result*: Radnički Sport won 2-1 at home and gained 17, Omladinac lost
+  away and dropped 17. It also found two things: the lock naming the wrong club to an away manager
+  (P0-6, fixed) and 824 stranded fixtures (P0-5, open). Full detail in
+  [`kanbanProgress.md`](kanbanProgress.md).
+
+---
+
+## P0-5 — 🔴 P0 · 824 fixtures sit in the past and will never be played
+
+**Found by P0-1, 2026-10-13.** P0-1 passed. This is what was standing next to it.
+
+`GameClockService.walk()` is **forward-only**:
+
+```java
+long steps = Math.max(0, Math.min(delta, MAX_CATCH_UP_HOURS));
+```
+
+A negative delta is deliberately zero, because `job_run` is recorded and not reversible. That is the right
+rule, and it has a consequence nobody wrote down: **an hour the walk does not visit is gone for ever.** There
+is no second pass, and nothing in the codebase asks "what did we miss".
+
+### What is stranded
+
+| Fixture slot | Count | Any `job_run` row for that matchday? |
+|---|---|---|
+| week 3 day 1 | 2 | yes — `FAILED`, the known `player_discipline` pair |
+| week 4 day 5 | 32 | no |
+| **week 4 day 7** | **155** | **no** |
+| **week 5 day 1** | **480** | **no** |
+| week 5 day 3 | 155 | no |
+
+### Two mechanisms did it, and neither reports itself
+
+1. **The watermark repair.** `walk()` treats a `lastSyncedAt` ahead of game time as a resume point that
+   lies, and resets it to *now* (`3b758f45`). Correct as a self-heal — it brought back every scheduled job —
+   and it costs the hours between the old watermark and now. A 72-hour rewind of the offset on the evening
+   of 2026-10-13 did the same thing at a larger scale.
+2. **The 7-day cap.** `MAX_CATCH_UP_HOURS` truncates a long backlog and reports `truncated` and `missedHours`
+   — but only in the response to the one request that hit the cap. It is never written to `job_run` and
+   nothing looks for it afterwards.
+
+So the app is healthy, no job failed, and four matchdays will never be played. Nothing anywhere says so.
+
+**Why this is not a crash to fix on the way past.** Replaying a missed matchday means simulating it, and the
+hour-before-kickoff split exists so a manager's tactics are settled *before* the football is computed. A
+catch-up that computes the football at the moment it noticed it had no plan has already broken that, and it
+is the same class of thing as P0-3's duplicate draws.
+
+### Owner decision needed before it is built
+
+| Option | What it costs |
+|---|---|
+| **(a) Write them off** | Mark the stranded fixtures abandoned and say so on the fixture. No replay risk, and the world stays honest: a tie that was never played is not a tie that lost. |
+| **(b) Compute and publish the missed matchday at once** | Plays them, but decides a match at the moment the system noticed it had no plan. Contradicts the reason T-MATCH-1 exists. |
+| **(c) Catch up from the fixture's own `match_date`** | The fixtures already carry the hour they were meant to kick off. A catch-up pass that walks *fixture* times instead of the watermark can find them — and can refuse any fixture whose kickoff is older than the hour-before-kickoff window, which is (a) applied only to what was missed. |
+
+**(c) is the one that fits the design**, because the source of truth already exists and the hour-before rule
+can be honoured per fixture rather than per clock. But it is a new job and a new rule about what a missed
+kickoff means, so it is a decision and not a fix.
+
+### Exit criteria
+
+- [ ] The stranded fixtures are either played or marked abandoned. No fixture may sit in the past, unplayed
+      and unreported, ever again.
+- [ ] `MAX_CATCH_UP_HOURS` truncation is written to `job_run`, so a capped catch-up is a record rather than a
+      line in a response nobody kept.
+- [ ] A fixture whose kickoff has passed is found by asking the fixtures, not by trusting a watermark.
+- [ ] A test that fails on today's `walk()` when a matchday is stepped over.
+
+---
+
+## P0-6 — ✅ P0 · the lock named the wrong club to an away manager
+
+**Found live during P0-1, 2026-10-13**, and not by any test — which is the finding.
+
+`GET /teams/1/match-lock`, while matchday 7 sat prepared:
+
+```json
+{ "locked": true,
+  "reason": "Your match against OFK Omladinac is already decided, so its tactics, squad and orders are closed...",
+  "opponent": "ŽFK Radnički Sport", "homeOrAway": "AWAY" }
+```
+
+Team 1 **is** OFK Omladinac. `opponent` and `homeOrAway` are right; `reason` names the manager's own club
+back at him, on the one screen whose entire job is to explain the lock.
+
+`MatchLockService.refusalReason` decided home-vs-away by comparing `fixture.getHomeTeam().getId()` against
+`homeOrAwayId(fixture)` — and that helper returned `fixture.getHomeTeam().getId()`. **A tautology**, true by
+construction, so the sentence always named the away side: right by accident for a home manager, wrong for
+every away one.
+
+**Fixed** by giving the method the club being refused — `refusalReason(fixture, askingTeamId)` — and updating
+all six call sites: two in `TeamController`, three in `MatchLineupController`, one in the match-lock read.
+
+**Why it survived a test.** `MatchSetupLockTest` asserted `$.reason` **`isNotEmpty()`** — the
+"a test that cannot fail" shape from AGENTS.md. It would have passed against a message reading
+*"Your match against null is already decided"*. The assertions now name the opponent **and** assert that the
+club being asked about is **not** named, from both sides and on all three endpoints that carry the message.
+
+**Exit criteria**
+
+- [x] Reverting the fix fails the tests — done, two of them, on the away-side assertions.
+- [x] The refusal names the opponent from the home side and from the away side.
+- [x] `MatchSetupLockTest` 7 green; 36 green across the five classes that touch the lock.
 
 ---
 
@@ -528,11 +637,14 @@ What exists now:
       left prepared.
 - [x] Per-fixture commits confirmed against PostgreSQL: 15 fixtures computed and stored while the
       matchday was still running, which is what the per-fixture transaction is for.
-- [ ] **Seen in the database: one whole matchday, 155 fixtures, computed and released end to end.**
-      Both halves have been seen at 15, never together at full size. It takes 10–15 minutes of football
-      per matchday, the game clock is anchored to the wall clock so the window moves while you watch,
-      and a `DONE` row written by a bad run suppresses the slot until it is deleted by hand.
-      **This is the one thing on T-MATCH-1 left, and it wants a human with a stopwatch.**
+- [x] **Seen in the database: one whole matchday, 155 fixtures, computed and released end to end.**
+      **Done 2026-10-13, week 5 day 7.** `matchday-prepare-7` DONE at 15:00 in 121 s — 155 `match` rows with
+      goals, lineups, events, stats and 3 410 `match_player_stats` rows. `matchday-publish-7` DONE at 16:00
+      in 5 s — 155 fixtures flipped to `played`. **Zero new `FAILED`.** The window between the two was
+      checked while it was open: `/matches/3359`, `/detail`, `/preview`, `/report` all **404**, while a
+      played match from week 4 answered **200**; the club's match list went 13 rows → 14 across the publish.
+      Elo and the ranking-points ledger replayed at hour 22 and moved **with the result** (home win +17,
+      away defeat −17). This was the one item T-MATCH-1 was waiting on, and it is closed.
 - [ ] The publish fallback proven live — a fixture the prepare job missed is computed at kickoff and
       published, not lost.
 - [x] National-tournament matchdays get the pair, for **days 2, 4 and 6 only**. Days 1, 3, 5 and 7

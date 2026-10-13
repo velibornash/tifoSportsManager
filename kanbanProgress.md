@@ -1,3 +1,125 @@
+## 2026-10-13 — P0-1 closed: a whole matchday, 155 fixtures, end to end, with a stopwatch
+
+**The claim under test.** Everything the last session rested on was *"the repaired job runner actually runs
+jobs on the clock path"*. That had been true in pieces and never watched. It is now watched, on the owner's
+own database, in the direction the owner cares about: a fixture computed an hour before kickoff, a result
+released at kickoff, and every number downstream moving because of it.
+
+**Target: week 5, day 7.** 155 unplayed fixtures, the full Serbian matchday. The clock was moved into the
+window hour by hour rather than in one jump, because a single 24-hour advance would have walked the
+prepare and the publish inside one request and proved nothing about either.
+
+### What was observed, in order
+
+| Game hour | Job | Result | What it changed |
+|---|---|---|---|
+| 15:00 | `matchday-prepare-7` | **DONE** in 121 s | 155 `match` rows created (3 317 → 3 472), every one with goals, lineups, events, stats, possession, attendance; 3 410 `match_player_stats` rows |
+| 16:00 | `matchday-publish-7` | **DONE** in 5 s | all 155 fixtures `played`, `played_match_id` set |
+| 22:00 | `league-table-reconcile-b` | **DONE** in ~9 min | Elo and the ranking-points ledger replayed |
+
+**Zero new `FAILED` rows.** The only two failures in the table are the week-3 pair from the duplicate
+`player_discipline` rows, fixed in `f3d0c604` and already known.
+
+### The publication window was checked while it was open, not after
+
+The hour between prepare and publish is the whole point of the split, and it is the part that had only ever
+been proven by a test. Live, against the running app:
+
+| Request | Answer |
+|---|---|
+| `GET /matches/3359` — the prepared match | **404** |
+| `GET /matches/3359/detail` | **404** |
+| `GET /matches/3359/preview` | **404** |
+| `GET /matches/3359/report` | **404** |
+| `GET /matches/3090` — a played match from week 4 | **200**, with the score |
+| `GET /teams/1/matches` | 13 rows, **3359 absent** |
+
+After the publish the same list returned **14** rows and contained 3359. So the fixture became visible
+because publication happened, not because the prepare wrote it into a list it should not have been in.
+
+`GET /teams/1/match-lock` answered `locked: true`, `fixtureId: 46`, `kickoffHour: 16`, with the reason
+naming the kickoff hour — and **named the wrong club**. That is the defect below.
+
+### The ratings moved, and in the direction the result says
+
+`sum(elo_rating)` is **invariant** — it was 17 615 987 before the matchday and 17 615 987 after, which is
+what a correct zero-sum Elo looks like and is *not* evidence of a stall. The evidence that the replay ran
+is per club, and it agrees with the football:
+
+| Club | Fixture | Rating |
+|---|---|---|
+| ŽFK Radnički Sport | beat Omladinac **2-1 at home** | 1 514 → **1 531** (+17) |
+| OFK Omladinac | lost 2-1 away | 1 532 → **1 515** (−17) |
+
+`club_season_ranking_points` holds 155 rows with 119 distinct point values for these clubs. The ranking
+feed is fed by that ledger, which is the one that was dead in the previous session.
+
+### 🔴 Found, not fixed: 824 fixtures sit in the past and will never be played
+
+This is the most important thing in this entry, and it is not P0-1's fault — P0-1 passed.
+
+`walk()` is **forward-only**: `steps = Math.max(0, Math.min(delta, MAX_CATCH_UP_HOURS))`. A negative delta
+is deliberately zero, because job runs are recorded and not reversible. So any hour the walk fails to visit
+is gone for good. Four matchdays were skipped:
+
+| Fixture slot | Count | Any `job_run` row for it? |
+|---|---|---|
+| week 3 day 1 (the two that failed) | 2 | yes — `FAILED` |
+| week 4 day 5 | 32 | no |
+| **week 4 day 7** | **155** | **no** |
+| **week 5 day 1** | **480** | **no** |
+| week 5 day 3 | 155 | no |
+
+Two mechanisms did the skipping, and neither reports itself:
+
+1. **The watermark repair rewound the past.** `walk()` treats a watermark ahead of game time as a resume
+   point that lies, and resets it to *now* — `3b758f45`. Correct as a self-heal, and it does cost the hours
+   between the old watermark and now. A 72-hour rewind of the offset at ~22:46 that evening did the same
+   thing at a larger scale.
+2. **The 7-day cap.** `MAX_CATCH_UP_HOURS` truncates a long backlog and says so in the response — but only
+   to the caller of that one request, never into `job_run`.
+
+The app is healthy and 824 fixtures are never going to be played. That is a **hole, not a crash**, and it
+is exactly the shape of thing this board exists to catch. It needs an owner decision before it is built:
+replaying a skipped matchday means re-simulating a matchday, which is what the "computed an hour early"
+split was built to avoid, so the honest options are (a) leave them unplayed and write them off, (b) compute
+and publish the whole missed matchday at once, which breaks the hour-before rule, or (c) catch up from the
+fixture's own `match_date` rather than from a watermark.
+
+### 🐛 Fixed: the lock told the away manager that his own club was the opponent
+
+`GET /teams/1/match-lock`, live, while matchday 7 was prepared:
+
+```json
+{ "locked": true,
+  "reason": "Your match against OFK Omladinac is already decided, so its tactics, squad and orders are closed...",
+  "opponent": "ŽFK Radnički Sport", "homeOrAway": "AWAY" }
+```
+
+Team 1 **is** OFK Omladinac. `opponent` and `homeOrAway` are right; `reason` names the manager's own club
+back at him, on the one screen whose entire job is to explain the lock.
+
+`MatchLockService.refusalReason` decided home-vs-away by comparing `fixture.getHomeTeam().getId()` with
+`homeOrAwayId(fixture)` — and that helper returned `fixture.getHomeTeam().getId()`. **A tautology**, true
+by construction, so the sentence always named the away side: right by accident for a home manager, wrong for
+every away one. Fixed by giving the method the club being refused (`refusalReason(fixture, askingTeamId)`)
+and updating all six call sites — two in `TeamController`, three in `MatchLineupController`, one in the
+match-lock read.
+
+The reason it survived is the reason worth recording: the test asserted `$.reason` **`isNotEmpty()`**. That
+is the "a test that cannot fail" shape from AGENTS.md — it would have passed against a message reading
+*"Your match against " + null + " is already decided"*. The assertions now name the opponent **and** assert
+the club being asked about is **not** named, from both sides and on the three endpoints that carry the
+message. Reverting the fix fails two tests; restored, 7 green, and the 36 tests across the five classes
+that touch the lock are green.
+
+**Positions used, for the next session:** `POST /api/game-clock/advance?unit=hours&amount=N`, one call per
+step, then poll PostgreSQL — `last_synced_at` is the only honest measure of "the walk finished". The
+response's `jobs.ran` is 0 by design (`GameClockService.dispatchSynchronise` returns before the walk
+runs). Matchday endpoints are **not** under `/api`: `MatchController` is `/matches/…` and `TeamController`
+is `/teams/…`, while `APIController` is `/api`. Timings on this machine: prepare 155 fixtures 121 s, publish
+5 s, Elo + ranking replay ~9 min.
+
 ## 2026-10-13 — session close: three dead ledgers, one dead job runner
 
 **The headline.** The owner asked whether the club ranking changes after a played match. It did not. Three

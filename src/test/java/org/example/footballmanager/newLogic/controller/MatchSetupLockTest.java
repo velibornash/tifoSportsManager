@@ -164,15 +164,48 @@ class MatchSetupLockTest extends BaseTest {
                 .andExpect(jsonPath("$.opponent").value(away.getName()))
                 // Day 3 is the 19:00 league slot. The hour comes from the calendar, not from a literal.
                 .andExpect(jsonPath("$.kickoffHour").value(19))
-                .andExpect(jsonPath("$.reason").isNotEmpty());
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.containsString(away.getName())))
+                // And it must not name the club being asked about. This is the half that used to be
+                // `isNotEmpty()` and therefore could not fail: the reason named whichever side the
+                // broken version guessed, which for a home manager is the right answer by accident.
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(home.getName()))));
 
         // The same question from the other side must answer about the same match, not the other one.
+        // An away manager was told his own club was the opponent.
         mockMvc.perform(get("/teams/{id}/match-lock", away.getId())
                         .header("Authorization", auth.bearerManaging(UserRole.OWNER, away)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.locked").value(true))
                 .andExpect(jsonPath("$.homeOrAway").value("AWAY"))
-                .andExpect(jsonPath("$.opponent").value(home.getName()));
+                .andExpect(jsonPath("$.opponent").value(home.getName()))
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.containsString(home.getName())))
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(away.getName()))));
+    }
+
+    @Test
+    @DisplayName("the refusal names the opponent to the away manager, not to himself")
+    void theRefusalNamesTheOpponentFromBothSides() throws Exception {
+        // The refusal reached the away manager through three other endpoints, not only this one, and a
+        // guard proven on one read path is not a guard proven on the page the manager actually presses.
+        prepareTodaysFixture();
+
+        mockMvc.perform(put("/teams/{id}/tactics-editor", away.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, away))
+                        .contentType("application/json")
+                        .content(tacticsPayload()))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.containsString(home.getName())))
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString(away.getName()))));
+
+        mockMvc.perform(put("/teams/{id}/lineup-template", away.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.OWNER, away))
+                        .contentType("application/json")
+                        .content(lineupPayload()))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.reason").value(org.hamcrest.Matchers.containsString(home.getName())));
     }
 
     @Test

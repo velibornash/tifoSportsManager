@@ -83,7 +83,7 @@ public class MatchLineupController {
         if (fixture.isPrepared()) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
                     .body(Map.of("error", "MATCH_CLOSED",
-                            "message", lockReasons.refusalReason(fixture)));
+                            "message", lockReasons.refusalReason(fixture, club.getId())));
         }
 
         LineupSuggester.Suggestion suggestion = suggester.forTeam(club.getId());
@@ -145,7 +145,7 @@ public class MatchLineupController {
         // flag, so the whole fix is here.
         view.put("editable", !fixture.isPlayed() && !fixture.isPrepared());
         if (fixture.isPrepared()) {
-            view.put("lockReason", lockReasons.refusalReason(fixture));
+            view.put("lockReason", lockReasons.refusalReason(fixture, club.getId()));
             view.put("lockedAt", fixture.getPreparedAt());
         }
         view.put("formation", chosen == null ? "4-4-2" : chosen.getFormation());
@@ -208,7 +208,7 @@ public class MatchLineupController {
         if (fixture.isPrepared()) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
                     .body(Map.of("error", "MATCH_CLOSED",
-                            "message", lockReasons.refusalReason(fixture)));
+                            "message", lockReasons.refusalReason(fixture, club.getId())));
         }
 
         try {
