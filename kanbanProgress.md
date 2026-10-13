@@ -1,3 +1,47 @@
+## ✅ The 155-fixture prepare → publish proof, done (2026-12-13)
+
+Commit to follow. **The last thing on T-MATCH-1 that had never been seen.**
+
+Run on week 1 day 7: **155 unplayed league fixtures.** The clock was moved to day 7 hour 15 and the job
+was timed rather than guessed.
+
+| | Result | Time |
+|---|---|---|
+| `matchday-prepare-7` | **155 / 155 prepared**, `DONE` | **~106 s** |
+| `matchday-publish-7` | **155 / 155 published**, `DONE` | **under 15 s** |
+
+The job was caught mid-flight at 11 prepared and polled every 15 s, which is the measurement rather than
+the assumption:
+
+    16s   45 prepared   PENDING
+    31s   66            PENDING
+    46s   88            PENDING
+    61s  108            PENDING
+    76s  128            PENDING
+    91s  149            PENDING
+   106s  155            DONE
+
+**The lock was checked on the fixture the manager is actually in** (id 6, OFK Omladinac v NK Partizan):
+
+- `PUT /api/sim/fixtures/6/lineup` → **423 LOCKED**
+- `GET  /api/sim/fixtures/6/tactic-plan` → `editable: false`
+
+**And the dashboard immediately carried the links**, which was the second thing to verify:
+
+    Season 1 · Week 1 · Day 7 · 16:00 | Superliga Srbije | OFK Omladinac
+      RESULT HIDDEN | NK Partizan 1913 | Watch your match | Show results
+
+Both buttons were present on the first read after publication, not after a refresh or a wait.
+
+**Why this mattered.** The T−1h prepare *is* what closes Match Setup. If it failed on 3 of 155, those
+three fixtures would have stayed editable after kickoff — a hole nobody had ever watched for, because
+prepare and publish had previously only ever been seen on 15 fixtures each, separately.
+
+**Two measurements worth keeping:** prepare is the slow one at ~106 s for a matchday, publish is under 15 s
+for the same 155. The asymmetry is expected — prepare writes a real `match` row and a score for every
+fixture, publish only flips state and copies events — but it is now a fact rather than a guess, and it says
+the prepare window has roughly two minutes of headroom at this world size.
+
 ## 🔴 P0 — the cup played and the cup page showed no results (2026-12-13)
 
 Commit to follow. **Owner report: it is s1w1 day 5, 20:45; the cup should have been played at 18:00, and

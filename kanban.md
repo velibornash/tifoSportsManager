@@ -755,6 +755,21 @@ found by measuring, not by reading:
 
 Everything the previous board carried open. Nothing here is new work; this is the residue.
 
+## T-MATCH-1 — ✅ the 155-fixture proof, seen 2026-12-13
+
+**Done.** Run on week 1 day 7, **155 unplayed league fixtures**, timed rather than assumed:
+
+| | Result | Time |
+|---|---|---|
+| `matchday-prepare-7` | 155 / 155 prepared, `DONE` | ~106 s |
+| `matchday-publish-7` | 155 / 155 published, `DONE` | under 15 s |
+
+The lock was verified on the manager's own fixture (423 LOCKED on a lineup save, `editable: false` on the
+game plan) and the dashboard carried **Watch your match** and **Show results** on the first read after
+publication. Details and the per-15s measurements are in `kanbanProgress.md`.
+
+---
+
 ## T-REST-0 — 🔴 P0-FIXTURE-MATCH · a fixture rendered **another fixture's** lineups and statistics
 
 **Found by the owner, 2026-10-09.** Club → Schedule → the fixture **OFK Omladinac v SK Teleoptik City**
