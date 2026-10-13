@@ -145,6 +145,19 @@ public class AdminController {
         ));
     }
 
+    /**
+     * Sizes every club's training ground to its reputation (T-FAC-1, owner ruling 2026-12-12).
+     *
+     * <p>Idempotent — a club with anything built is left alone — so a manager's spending survives a
+     * second press, and an admin action rather than a boot write.
+     */
+    @PostMapping("/seed-facilities")
+    public ResponseEntity<Map<String, Object>> seedTrainingFacilities() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("seed-facilities")
+        ));
+    }
+
     @PostMapping("/reset-db")
     public ResponseEntity<Map<String, Object>> resetDatabase() {
         return ResponseEntity.accepted().body(toDatabaseJobResponse(

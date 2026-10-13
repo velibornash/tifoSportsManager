@@ -34,6 +34,7 @@ public class AdminDatabaseAsyncService {
     private final org.example.footballmanager.newLogic.service.TacticLibraryService tacticLibraryService;
     private final org.example.footballmanager.newLogic.repository.TacticRepository tacticRepository;
     private final org.example.footballmanager.newLogic.repository.TeamTacticsProfileRepository tacticsProfileRepository;
+    private final org.example.footballmanager.newLogic.service.TrainingFacilityService trainingFacilities;
 
     private final AtomicLong jobSequence = new AtomicLong(0L);
     private final AtomicReference<AdminDatabaseSnapshot> currentSnapshot = new AtomicReference<>(
@@ -136,6 +137,7 @@ public class AdminDatabaseAsyncService {
                 seedClubRatings();
             }
             case "seed-tactics" -> seedDefaultTacticForEveryClub();
+            case "seed-facilities" -> seedTrainingFacilities();
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
     }
@@ -216,6 +218,17 @@ public class AdminDatabaseAsyncService {
      * is skipped, and the (club, name) unique constraint backs that up in the database. Pressing it twice
      * reports zero and duplicates nothing.
      */
+    /**
+     * Gives every club a training ground sized to its reputation (T-FAC-1).
+     *
+     * <p>Owner ruling, 2026-12-12. Idempotent — a club with anything built is left alone — and an admin
+     * action rather than a boot write, like every other world repair here.
+     */
+    private void seedTrainingFacilities() {
+        int seeded = trainingFacilities.seedFacilitiesByReputation();
+        log.info("Training facilities seeded for {} club(s).", seeded);
+    }
+
     private void seedDefaultTacticForEveryClub() {
         var template = tacticsProfileRepository.findAll().stream().findFirst();
         if (template.isEmpty()) {

@@ -1,3 +1,43 @@
+## 🟡 T-FAC-1 — bot clubs seeded by reputation (2026-12-13)
+
+Commit to follow. **The tactical multiplier is still not read by the engine, and this entry says why.**
+
+**The owner's ruling was "seed bot clubs by reputation"** and that is what `seedFacilitiesByReputation`
+does, on the same square-root curve as the benefit so a club twice as well regarded is not twice as
+equipped. Reputation is `Team.reputation`, the 0-100 economy scale, **not** the Elo.
+
+**Idempotent by refusing to touch a ground that has anything on it.** A manager who has spent 18,000 on
+his gym does not get it flattened because someone pressed the button again. Proved by setting three grounds
+to level 9 and re-running: they were still 9 afterwards, and the other 307 were left at their own levels.
+
+**Seen change, not a green test.** `POST /admin/seed-facilities` and:
+
+    level | clubs
+         2 |     7
+         3 |   140
+         4 |   143
+         5 |    20
+
+Better-regarded clubs land higher, which is the whole of the rule.
+
+**The limitation, which is a world problem and not a code one:** **only 310 of 14,976 clubs have a stadium
+row at all.** The seeding reaches those 310 and cannot reach the other 14,666, because a facility lives on a
+ground and there is no ground. Building a stadium for every club is a much larger piece of work — sections,
+capacity, seat quality — and it is not what was asked for. On the current world the manager's club is
+therefore one of 310 with facilities rather than the only one, which is an improvement and not the end
+state.
+
+**Not done: the tactical multiplier in the engine.** It is calculated, tested and correct, and nothing
+reads it. Wiring it means changing how `TacticalIntentEngine` places players every tick, and the only
+honest way to verify that is a full-match run showing the shape held more tightly at a higher level. That
+is not something to attempt without reading the movement engine properly first, and the honest position is
+that it is still to do — not that it is done and untested.
+
+**Two slips of my own, both from replacements with no assertion.** The seeding method was added against an
+anchor that did not exist and **silently did not land** — the compile was clean because nothing referenced
+it yet, and the failure only appeared when the admin service called it. And `stadiumRepository` was
+duplicated against a field the class already had. The reflex from earlier today is to assert every edit.
+
 ## 🔴 P0 — the weekly training job ran and produced no report (2026-12-13)
 
 Commit to follow. **Owner report: he moved the clock from day 4 to day 5, so training MUST have happened,

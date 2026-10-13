@@ -186,6 +186,72 @@ public class TrainingFacilityService {
      */
     public static final double MAX_GAIN = 1.0;
 
+    /**
+     * Gives every club a ground with facilities drawn from its reputation (T-FAC-1, owner ruling).
+     *
+     * <p><b>Owner ruling, 2026-12-12: bot clubs are seeded by reputation.</b> On a fresh world all 14,976
+     * clubs sit at level 1, so the only club in the world with a training ground would be the manager's —
+     * and the ranking tables would say so.
+     *
+     * <p><b>An action, not a boot write.</b> The standing rule is that boot writes nothing, and this is the
+     * same kind of repair as "Seed other nations": idempotent, run from an admin button, safe twice.
+     *
+     * <p><b>Idempotent by not touching a ground that already has anything on it.</b> A manager who has
+     * spent 18,000 on his gym does not get it flattened because someone pressed the button again.
+     *
+     * <p><b>Reputation is the 0-100 economy scale</b> — `Team.reputation` — not the Elo, which lives in
+     * `eloRating` and is a different number on a different scale.
+     *
+     * @return how many clubs were seeded
+     */
+    @Transactional
+    public int seedFacilitiesByReputation() {
+        int seeded = 0;
+        for (Team club : teams.findClubTeamsForOperations()) {
+            if (club == null || club.getId() == null) continue;
+            Stadium ground = club.getStadium();
+            if (ground == null || ground.getId() == null) continue;
+            if (hasAnythingBuilt(ground)) continue;
+            int level = levelForReputation(club);
+            ground.setTrainingQuality(level);
+            ground.setGymLevel(level);
+            ground.setTacticalLevel(level);
+            ground.setYouthLevel(level);
+            stadiums.save(ground);
+            seeded++;
+        }
+        log.info("Seeded training facilities on {} club(s) from their reputation.", seeded);
+        return seeded;
+    }
+
+    /** Whether anything at all is built, so a second run leaves a manager's spending alone. */
+    private static boolean hasAnythingBuilt(Stadium ground) {
+        return levelOf(ground, Facility.GROUND) > 1
+                || levelOf(ground, Facility.GYM) > 1
+                || levelOf(ground, Facility.TACTICAL) > 1
+                || levelOf(ground, Facility.YOUTH) > 1;
+    }
+
+    /**
+     * The facility level a club's reputation earns, 1 to {@link #MAX_LEVEL}.
+     *
+     * <p>The same square root as the benefit, deliberately: a club twice as well regarded is not twice as
+     * well equipped. A straight line would leave the best clubs in the world at the ceiling and the rest
+     * nowhere near it.
+     */
+    private static int levelForReputation(Team club) {
+        // `getReputation()` is a Double - the 0-100 economy scale, not the Elo. Clamped here rather than
+        // trusted, because a world that seeded a club above 100 would otherwise exceed the ceiling.
+        Double raw = club.getReputation();
+        double reputation = raw == null ? 50.0 : Math.max(0.0, Math.min(100.0, raw));
+        double ceiling = Math.sqrt(MAX_LEVEL - 1);
+        if (ceiling <= 0) {
+            return 1;
+        }
+        long scaled = Math.round(1 + Math.sqrt(reputation / 100.0) * ceiling);
+        return (int) Math.max(1L, Math.min((long) MAX_LEVEL, scaled));
+    }
+
     private static int levelOf(Stadium ground, Facility facility) {
         Integer raw = switch (facility) {
             case GROUND -> ground.getTrainingQuality();
