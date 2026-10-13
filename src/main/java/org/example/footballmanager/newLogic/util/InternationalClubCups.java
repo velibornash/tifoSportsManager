@@ -9,6 +9,7 @@ import org.example.footballmanager.newLogic.model.SeasonCompetition;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CompetitionEntryRepository;
 import org.example.footballmanager.newLogic.repository.CompetitionRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.SeasonCompetitionRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.example.footballmanager.newLogic.util.LeagueTableOrder;
@@ -104,23 +105,36 @@ public class InternationalClubCups {
     private final CompetitionEntryRepository entries;
     private final SeasonCompetitionRepository seasonCompetitions;
     private final TeamRepository teams;
+    private final MatchFixtureRepository fixtures;
     private final TransactionTemplate requiresNew;
 
     public InternationalClubCups(CompetitionRepository competitions,
                                  CompetitionEntryRepository entries,
                                  SeasonCompetitionRepository seasonCompetitions,
                                  TeamRepository teams,
+                                 MatchFixtureRepository fixtures,
                                  PlatformTransactionManager transactionManager) {
         this.competitions = competitions;
         this.entries = entries;
         this.seasonCompetitions = seasonCompetitions;
         this.teams = teams;
+        this.fixtures = fixtures;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** One cup's record and its qualified clubs, for the World page and for admin. */
-    public record CupSummary(String name, int tier, Long competitionId, int qualified, List<String> clubNames) {
+    /**
+     * One cup as the World page shows it.
+     *
+     * @param qualified how many clubs <b>qualified</b> out of the finished season's tables - zero in the
+     *                  opening season, because there is no finished season yet, which says nothing about
+     *                  whether the cup has been drawn
+     * @param ties      how many ties the cup actually holds - this, not {@code qualified}, is the honest
+     *                  answer to "has it been drawn?"
+     */
+    public record CupSummary(String name, int tier, Long competitionId, int qualified,
+                             int ties, List<String> clubNames) {
     }
 
     /**
@@ -209,9 +223,10 @@ public class InternationalClubCups {
                     continue;
                 }
                 List<Team> qualified = qualifyFrom(tables, cup);
-                summaries.add(new CupSummary(cup.fullName(), cup.tier(),
-                        findByName(cup.fullName()).map(Competition::getId).orElse(null),
+                Long competitionId = findByName(cup.fullName()).map(Competition::getId).orElse(null);
+                summaries.add(new CupSummary(cup.fullName(), cup.tier(), competitionId,
                         qualified.size(),
+                        competitionId == null ? 0 : (int) fixtures.countByCompetitionId(competitionId),
                         qualified.stream().map(Team::getName).sorted().toList()));
             }
         }

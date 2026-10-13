@@ -144,6 +144,14 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
     const showInsights = allowInsights && hasSnapshotData && (!match?.played || showPlayedInsights);
     const classes = ['fm-fixture'];
 
+    // Tag the row with what kind of match it is, so the competition-type filter can select without a
+    // second round trip. `competitionType` is already on every row from the backend; without the class
+    // the filter would have to re-read the payload to use a field the page already has.
+    const competitionType = normaliseCompetitionType(match?.competitionType);
+    if (competitionType) {
+        classes.push(`fm-fixture--${competitionType}`);
+    }
+
     if (match?.played && match?.id) classes.push('js-load-match', 'is-played');
     if (!match?.played && allowFixtureClick && fixtureId) classes.push('js-load-fixture');
     if (showInsights) classes.push('has-insights');
@@ -242,12 +250,26 @@ export function bindScheduleInteractions(container, handlers = {}) {
     if (!container) return;
 
     // The schedule's own filter, so "upcoming" and "played" are a choice rather than a page each.
+    container.querySelectorAll('[data-competition-filter]').forEach(button => {
+        button.addEventListener('click', () => {
+            container.querySelectorAll('[data-competition-filter]').forEach(b => b.classList.remove('fm-chip--active'));
+            button.classList.add('fm-chip--active');
+            const type = button.dataset.competitionFilter || 'all';
+            container.dataset.competitionFilter = type;
+            const statusChip = container.querySelector('[data-schedule-filter]');
+            const status = statusChip ? statusChip.dataset.scheduleFilter : 'upcoming';
+            container.querySelectorAll('[data-schedule-filter]').forEach(b => b.classList.remove('fm-chip--active'));
+            if (statusChip) statusChip.classList.toggle('fm-chip--active', status === 'upcoming');
+            applyScheduleRowVisibility(container, status, type);
+        });
+    });
+
     container.querySelectorAll('[data-schedule-filter]').forEach(button => {
         button.addEventListener('click', () => {
             const mode = button.dataset.scheduleFilter;
             container.querySelectorAll('[data-schedule-filter]').forEach(b => b.classList.remove('fm-chip--active'));
             button.classList.add('fm-chip--active');
-            applyScheduleFilter(container, mode);
+            applyScheduleFilter(container, mode);   // keeps the chosen competition type
         });
     });
 
@@ -1394,19 +1416,71 @@ function scheduleFilterHtml(fixtureRows) {
         ${button('upcoming', 'Upcoming', upcoming)}
         ${button('played', 'Played', played)}
         ${button('all', 'All', fixtureRows.length)}
+    </div>${competitionTypeFilterHtml(fixtureRows)}`;
+}
+
+/**
+ * League / Cup / International, as a filter beside the played-one rather than instead of it.
+ *
+ * <p>Independent on purpose: "upcoming cup ties" is a question the manager really asks, and folding
+ * the two into one list of chips would make every combination its own button.
+ */
+function competitionTypeFilterHtml(fixtureRows) {
+    const countOf = type => fixtureRows.filter(f => normaliseCompetitionType(f?.competitionType) === type).length;
+    const types = ['league', 'cup', 'international'];
+    if (!types.some(type => countOf(type) > 0)) {
+        return '';
+    }
+    const chip = type =>
+        `<button type="button" class="fm-chip${type === 'all' ? ' fm-chip--active' : ''}"
+             data-competition-filter="${type}">${type === 'all' ? 'All types' : capitalise(type)} ${countOf(type)}</button>`;
+    return `<div class="fm-schedule-filter" data-competition-filter-row>
+        ${chip('all')}${types.map(chip).join('')}
     </div>`;
+}
+
+/** The backend's `competitionType`, as a lowercase slug the filter and the CSS class agree on. */
+function normaliseCompetitionType(raw) {
+    const value = String(raw ?? '').trim().toUpperCase();
+    if (!value) return '';
+    if (value === 'LEAGUE' || value === 'CUP' || value === 'TOURNAMENT') {
+        return value.toLowerCase();
+    }
+    // Anything international falls back to the group rather than becoming an unmatched chip that
+    // silently filters everything away.
+    if (value.includes('INTERNATIONAL')) return 'international';
+    return '';
+}
+
+function capitalise(value) {
+    return String(value).charAt(0).toUpperCase() + String(value).slice(1);
 }
 
 /** Hides the rows the chosen filter excludes, and restores them on the next choice. */
 function applyScheduleFilter(container, mode = 'upcoming') {
-    const rows = [...container.querySelectorAll('[data-schedule-list] > *')];
     const chosen = container.querySelector('[data-schedule-filter]');
     if (chosen) {
         chosen.classList.toggle('fm-chip--active', mode === 'upcoming');
     }
+    applyScheduleRowVisibility(container, mode,
+        container.dataset.competitionFilter || 'all');
+}
+
+/**
+ * Both filters, together, in one pass.
+ *
+ * <p>They used to be a single filter; keeping them as two means the row is hidden when <i>either</i>
+ * excludes it, which is what "upcoming cup ties" has to mean. Reading the chosen competition type off
+ * the container rather than off a module-level variable keeps the two filters from having to know about
+ * each other.
+ */
+function applyScheduleRowVisibility(container, mode = 'upcoming', competition = 'all') {
+    const rows = [...container.querySelectorAll('[data-schedule-list] > *')];
     for (const row of rows) {
         const played = row.classList.contains('is-played');
-        const show = mode === 'all' || (mode === 'played' ? played : !played);
-        row.style.display = show ? '' : 'none';
+        const showByStatus = mode === 'all' || (mode === 'played' ? played : !played);
+        const showByType = competition === 'all'
+            || row.classList.contains(`fm-fixture--${competition}`);
+        row.style.display = showByStatus && showByType ? '' : 'none';
     }
 }

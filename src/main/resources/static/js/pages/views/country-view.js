@@ -410,6 +410,37 @@ export function createCountryView(deps) {
      * same number in different divisions are not equal, and a table that does not say which division a
      * row is in cannot honestly be read.
      */
+    /**
+     * Newest round first.
+     *
+     * <p>The array arrives in week order, so the page opened on the first round of the cup - the one
+     * that finished weeks ago - and the round the manager actually has to act on was at the bottom.
+     * The owner asked for the current round first and the previous ones below, which is descending
+     * week. Copied rather than sorted in place: `cup.rounds` belongs to the payload, and reversing it
+     * would reorder the caller's array as a side effect of drawing it.
+     */
+    function roundsNewestFirst(rounds) {
+        const list = Array.isArray(rounds) ? rounds.slice() : [];
+        return list.sort((a, b) => (Number(b.week) || 0) - (Number(a.week) || 0));
+    }
+
+    /**
+     * Is this side the manager's own club?
+     *
+     * <p>By id, which is the only honest test - two clubs can share a name, and a national side is
+     * called after its country. The id is read from the same `deps.getTeamId()` the club ranking uses
+     * for its own highlight, so there is one answer to "who am I" on this page.
+     */
+    function isOwnClub(tie, side) {
+        const myTeamId = deps.getTeamId?.();
+        if (myTeamId === null || myTeamId === undefined) {
+            return false;
+        }
+        const sideId = side === 'home' ? tie.homeTeamId : tie.awayTeamId;
+        return sideId !== null && sideId !== undefined
+            && Number(sideId) === Number(myTeamId);
+    }
+
     function buildClubsTab(payload) {
         const clubs = Array.isArray(payload?.clubs) ? payload.clubs : [];
         if (!clubs.length) {
@@ -799,7 +830,7 @@ export function createCountryView(deps) {
                         <p class="fm-subtle">${cup.totalFixtures} ties across ${cup.rounds.length} rounds.</p>
                     </div>
                 </div>
-                ${cup.rounds.map(round => `
+                ${roundsNewestFirst(cup.rounds).map(round => `
                     <div class="fm-cup-round">
                         <div class="fm-cup-round-head">
                             <span class="fm-eyebrow">Week ${round.week}</span>
@@ -812,7 +843,7 @@ export function createCountryView(deps) {
                                     data-cup-played="${tie.played ? 'true' : 'false'}"
                                     data-cup-match-id="${tie.matchId ?? ''}"
                                     title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">
-                                    <span>${htmlEscape(tie.home || 'TBC')}</span>
+                                    <span class="fm-cup-tie-side${isOwnClub(tie, 'home') ? ' fm-cup-tie-side--own' : ''}">${htmlEscape(tie.home || 'TBC')}</span>
                                     <!--
                                         Three states, not two. A tie that has not been played shows "v";
                                         one that has shows its score; and one whose result the manager has
@@ -823,7 +854,7 @@ export function createCountryView(deps) {
                                     <span class="fm-cup-tie-sep">${tie.resultHidden
                                         ? 'result hidden'
                                         : tie.played ? (tie.score || 'v') : 'v'}</span>
-                                    <span>${htmlEscape(tie.away || 'TBC')}</span>
+                                    <span class="fm-cup-tie-side${isOwnClub(tie, 'away') ? ' fm-cup-tie-side--own' : ''}">${htmlEscape(tie.away || 'TBC')}</span>
                                 </button>`).join('')}</div>`
                             : '<div class="fm-empty">Not drawn yet.</div>'}
                     </div>`).join('')}

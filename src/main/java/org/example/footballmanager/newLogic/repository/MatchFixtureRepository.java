@@ -183,4 +183,12 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
             @Param("seasonYear") Integer seasonYear,
             @Param("teamId") Long teamId
     );
+
+    /**
+     * How many ties a competition holds, in any round.
+     *
+     * <p>This is what makes "has this cup been drawn?" a question about the cup rather than about a
+     * previous season's league tables. See {@code InternationalClubCups.summarise}.
+     */
+    long countByCompetitionId(Long competitionId);
 }

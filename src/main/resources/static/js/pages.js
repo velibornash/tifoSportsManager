@@ -733,8 +733,33 @@ function buildPageNavState(page, options = {}) {
             // reached the manager as the same two words. The backend already writes a message for the
             // person reading it, and authFetch carries it; show it.
             mainContent.innerHTML = buildErrorState(err, describePage(page));
+        } finally {
+            scrollToTopOfPage();
         }
     }
+
+    /**
+     * Every page opens at its own top.
+     *
+     * <p>Nothing scrolled, so a page inherited the scroll position of the one before it. Leaving a long
+     * country page halfway down and opening World landed you halfway down World - the owner's words:
+     * *"(skrol na top) a ne dole pri dnu kao sasa"*.
+     *
+     * <p>A `try/finally` and not a line at the end of the `try`, so an error card is not the one page
+     * that stays where it was. Instant, because a smooth scroll animates the manager through a page
+     * they have not read yet. `document.scrollingElement` is the element that actually scrolls in every
+     * browser this runs in; `window.scrollTo` alone does not move it everywhere.
+     */
+    function scrollToTopOfPage() {
+        if (window.scrollTo) {
+            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        }
+        const scroller = document.scrollingElement || document.documentElement;
+        if (scroller && scroller.scrollTop !== 0) {
+            scroller.scrollTop = 0;
+        }
+    }
+
     /**
      * What the manager was trying to reach, in words.
      *
@@ -927,11 +952,23 @@ function buildPageNavState(page, options = {}) {
         //
         // "Not drawn yet" is now only ever true when no tier has a single entrant, which is the only
         // state in which it is honest.
+        // **Whether a cup is drawn is a question about the cup, not about the previous season.**
+        //
+        // `qualified` counts clubs that came out of the finished season's tables, and in the opening
+        // season there is no finished season, so it is 0 for all three cups no matter what has actually
+        // been drawn. The World page read that zero as "Not drawn yet" on cups that plainly were drawn -
+        // the Champions Cup had its groups and its 120 ties on screen two clicks away.
+        //
+        // `ties` is the honest signal: it is what the cup itself holds.
+        const drawn = tiers.reduce((total, cup) => total + Number(cup.ties || 0), 0);
         const badge = !known
             ? '<span class="fm-badge">Unavailable</span>'
-            : qualified === 0
+            : drawn === 0 && qualified === 0
                 ? '<span class="fm-badge">Not drawn yet</span>'
-                : qualified === expected
+                : drawn > 0
+                    ? `<span class="fm-badge fm-badge--ok">Drawn${drawn > 1 ? '' : ''} \u00b7 ${drawn} tie${drawn === 1 ? '' : 's'}${
+                        tiersWithClubs > 1 ? ` \u00b7 ${tiersWithClubs} tiers` : ''}</span>`
+                    : qualified === expected
                     ? `<span class="fm-badge fm-badge--ok">${expected} qualified${
                         tiersWithClubs > 1 ? ` · ${tiersWithClubs} tiers` : ''}</span>`
                     : `<span class="fm-badge fm-badge--ok">${qualified} qualified${

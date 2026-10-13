@@ -781,3 +781,18 @@ th.fm-sortable {
 th.fm-sortable:hover { color: var(--fm-accent, #8fd3ff); }
 th.fm-sortable:focus-visible { outline: 2px solid rgba(143, 211, 255, 0.7); outline-offset: 2px; }
 th.fm-sortable.is-sorted { color: #8fd3ff; }
+
+/* The manager's own club in a cup tie. A background as well as a weight, because the owner asked for
+   it to be obvious at a glance down a column of 54 ties, and a bold name alone does not read as a
+   highlight from the bottom of the list. */
+.fm-cup-tie-side--own {
+    background: rgba(56, 189, 248, 0.16);
+    border-radius: 3px;
+    padding: 1px 4px;
+    box-shadow: inset 2px 0 0 rgb(56, 189, 248);
+    font-weight: 600;
+}
+
+[data-competition-filter-row] {
+    margin-top: 6px;
+}

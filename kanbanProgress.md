@@ -1,3 +1,46 @@
+## 2026-10-13 — the four UI asks
+
+**1. "Not drawn yet" on cups that plainly were drawn.** `CupSummary.qualified` counts clubs that came out of
+the *finished season's* tables, and `CountryController` passes `activeSeason > 1 ? activeSeason-1 : 0` — so
+in the opening season it is 0 for all three international club cups no matter what had been drawn. The
+World page read that zero as "Not drawn yet". Whether a cup is drawn is a question about the cup, so
+`CupSummary` now carries `ties` (`MatchFixtureRepository.countByCompetitionId`) and the badge uses that.
+Verified on the running app: Champions Cup reports **120 ties** per tier and the page reads **"Drawn ·
+600 ties"** instead of "Not drawn yet".
+
+The two remaining "Not drawn yet" badges are **correct** and were left alone: World Cup and U-21 World Cup
+are national tournaments, genuinely undrawn until week 6.
+
+**2. Every page opened at the bottom.** Nothing in `pages.js` ever called `scrollTo` — no occurrence in the
+file — so a page inherited the scroll position of the one before it. `loadPage` now ends in a
+`try/finally` calling `scrollToTopOfPage()`, so an error card is not the one page that stays put. Verified:
+`scrollY === 0` after navigation.
+
+**3. Cup rounds, and the manager's own tie.** `cup.rounds` arrives in week order, so the page opened on the
+round that finished weeks ago. Now rendered newest-week-first, from a copy (reversing the caller's array as a
+side effect of drawing it would be wrong). The tie payload now carries `homeTeamId`/`awayTeamId` and the
+highlight matches on **id**, not name — two clubs can share a name and a national side is called after its
+country. It reads the same `deps.getTeamId()` the club ranking uses.
+
+**4. Competition-type filter on Schedule and Results.** League / Cup / International, **independent of** the
+existing Upcoming/Played filter: "upcoming cup ties" is a real question, and merging them into one chip row
+would make every combination its own button. Rows are tagged `fm-fixture--<type>` from the `competitionType`
+the backend already sends, so no second round trip. Row visibility is now one pass over both filters.
+Anything international normalises to `international` rather than becoming an unmatched chip that silently
+filters everything away.
+
+### Not verified, and said so
+
+**Only 1 and 2 were seen in a browser.** The cup ordering/highlight and the type filter build and parse but
+were **not** visually confirmed: `showMyCountry()` does nothing in an agent-browser session, so the country
+page would not load. That is unexplained and may relate to the earlier `loadPage is not defined` incident —
+it is a loose end, not a verified pass.
+
+Still outstanding from earlier: **the Clubs tab has still never been seen listing clubs** (the API returns
+310; the payload bug is fixed; the render is unconfirmed).
+
+---
+
 ## 2026-10-13 — club Elo now moves, and the replay is a resume
 
 **What was wrong.** `ClubRatingService.recomputeDurably()` is called from exactly two paths: the async

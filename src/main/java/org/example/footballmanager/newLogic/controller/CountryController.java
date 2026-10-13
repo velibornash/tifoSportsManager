@@ -516,6 +516,10 @@ public class CountryController {
             tie.put("id", fixture.getId());
             tie.put("home", fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getName());
             tie.put("away", fixture.getAwayTeam() == null ? null : fixture.getAwayTeam().getName());
+            // The ids as well as the names. The page highlights the manager's own tie, and matching on
+            // the name cannot tell two clubs that share one from each other.
+            tie.put("homeTeamId", fixture.getHomeTeam() == null ? null : fixture.getHomeTeam().getId());
+            tie.put("awayTeamId", fixture.getAwayTeam() == null ? null : fixture.getAwayTeam().getId());
             tie.put("played", fixture.isPlayed());
             // The Match row this fixture became, for the ties that have been played. Without it the page
             // has only the fixture id, and every post-match endpoint - lineups, stats, goals, report -
