@@ -191,4 +191,89 @@ class TrainingFacilityServiceTest {
         assertEquals(step1 + step2, toThree, 1e-6);
         assertFalse(toThree <= step1, "reaching level 3 cost less than reaching level 2");
     }
+
+    // ── T-FAC-1: the levels finally do something ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a ground at level 1 trains exactly as it did before T-FAC-1")
+    void levelOneIsUnchanged() {
+        // The compatibility case, and the reason the curve starts at level 1 rather than at zero: a club
+        // that has bought nothing must not suddenly be worse off than it was yesterday.
+        assertEquals(1.0, service.trainingMultiplier(aClubWith(1, 1, 1, 1)), 0.0001);
+        assertEquals(1.0, service.trainingMultiplier(aClubWith(1, 1, 1, 1)), 0.0001);
+    }
+
+    @Test
+    @DisplayName("a better ground trains faster")
+    void aBetterGroundTrainsFaster() {
+        Team level1 = aClubWith(1, 1, 1, 1);
+        Team level10 = aClubWith(10, 1, 1, 1);
+        assertTrue(service.trainingMultiplier(level10) > service.trainingMultiplier(level1),
+                "level 10 trains no faster than level 1, which is the whole defect");
+    }
+
+    @Test
+    @DisplayName("the tactical facility shapes better, on the same curve")
+    void theTacticalFacilityShapesBetter() {
+        Team level1 = aClubWith(1, 1, 1, 1);
+        Team level10 = aClubWith(1, 1, 10, 1);
+        assertTrue(service.tacticalMultiplier(level10) > service.tacticalMultiplier(level1),
+                "the tactical facility does nothing, which is half of what he paid for");
+        // The same curve, so a club cannot buy one and get more out of it than the other.
+        assertEquals(service.trainingMultiplier(aClubWith(12, 1, 1, 1)),
+                service.tacticalMultiplier(aClubWith(1, 1, 12, 1)), 0.0001);
+    }
+
+    @Test
+    @DisplayName("level 18 buys less than level 2 - diminishing returns")
+    void theCurveFlattens() {
+        double at2 = service.trainingMultiplier(aClubWith(2, 1, 1, 1)) - 1.0;
+        double at18 = service.trainingMultiplier(aClubWith(18, 1, 1, 1)) - 1.0;
+        // Eighteen levels of spending bought less than ten times what the first bought: that is the shape
+        // the owner asked for, and what keeps one club's budget from deciding a league.
+        assertTrue(at18 < at2 * 10,
+                "the gain is still near-linear (" + at2 + " at level 2, " + at18 + " at level 18), so "
+                        + "a club that spends can still buy the league");
+        assertTrue(at18 > at2, "but level 18 is still better than level 2");
+    }
+
+    @Test
+    @DisplayName("the top of the curve is a doubling and no more")
+    void theTopIsBounded() {
+        assertEquals(1.0 + TrainingFacilityService.MAX_GAIN,
+                service.trainingMultiplier(aClubWith(20, 1, 1, 1)), 0.0001);
+    }
+
+    @Test
+    @DisplayName("a club with no ground is neutral, not broken")
+    void noGroundIsNeutral() {
+        Team club = new Team();
+        club.setName("ZZ No ground " + System.nanoTime());
+        club = teams.save(club);
+        assertEquals(1.0, service.trainingMultiplier(club), 0.0001);
+        assertEquals(1.0, service.tacticalMultiplier(null), 0.0001);
+    }
+
+    /**
+     * A club whose ground sits at the four given levels: ground, gym, tactical, youth.
+     *
+     * <p>This class is mock-based rather than database-backed, so the team is handed back directly
+     * instead of through {@code teams.save} — an unstubbed mock returns null, and a helper that returns
+     * null fails five tests at once with a stack trace pointing at the wrong line.
+     */
+    private Team aClubWith(int ground, int gym, int tactical, int youth) {
+        Team club = new Team();
+        club.setId(System.nanoTime());
+        club.setName("ZZ Facility " + System.nanoTime());
+        Stadium stadium = new Stadium();
+        stadium.setName("ZZ Ground " + System.nanoTime());
+        stadium.setTrainingQuality(ground);
+        stadium.setGymLevel(gym);
+        stadium.setTacticalLevel(tactical);
+        stadium.setYouthLevel(youth);
+        club.setStadium(stadium);
+        when(teams.findById(club.getId())).thenReturn(Optional.of(club));
+        return club;
+    }
+
 }

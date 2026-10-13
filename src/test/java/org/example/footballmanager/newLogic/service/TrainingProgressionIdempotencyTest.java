@@ -77,10 +77,13 @@ class TrainingProgressionIdempotencyTest {
                 // The third collaborator is the training-position table (T-MATCH-8). A world with no rows
                 // in it trains every player on all his minutes, which is what this test asserts growth
                 // against.
+                // The last collaborator is the club's ground (T-FAC-1). Stubbed to neutral so this test
+                // keeps measuring growth and idempotency and nothing about facilities.
                 new TrainingPercentService(
                         mock(org.example.footballmanager.newLogic.repository.StaffMemberRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository.class),
-                        mock(org.example.footballmanager.newLogic.repository.TrainingAssignmentRepository.class)),
+                        mock(org.example.footballmanager.newLogic.repository.TrainingAssignmentRepository.class),
+                        neutralFacilities()),
                 new TrainingIntensityService(
                         mock(org.example.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository.class),
                         mock(org.example.footballmanager.newLogic.repository.PlayerRepository.class),
@@ -244,4 +247,13 @@ class TrainingProgressionIdempotencyTest {
     void skillEnumLoads() {
         assertEquals(9, SkillName.values().length, "skill enum should be intact");
     }
+
+    /** A facilities service that changes nothing, so this test stays about growth. */
+    private TrainingFacilityService neutralFacilities() {
+        TrainingFacilityService service = mock(TrainingFacilityService.class);
+        when(service.trainingMultiplier(any())).thenReturn(1.0);
+        when(service.tacticalMultiplier(any())).thenReturn(1.0);
+        return service;
+    }
+
 }

@@ -1,3 +1,53 @@
+## 🟡 T-FAC-1, first half — the ground and the tactical room do something (2026-12-13)
+
+Commit to follow. **The tactical multiplier is calculated and tested but not yet read by the engine**, and
+the bot-club seeding is not built. Both are named at the bottom rather than left to be discovered.
+
+**Two of the four levels already worked, which the board did not know.** Asking "what does a level buy?"
+turned up two effects that have been there all along and are undocumented:
+
+| Level | Already did |
+|---|---|
+| **youth** | `AcademyQuality.multiplier` — the quality of the prospects the academy produces |
+| **gym** | `JuniorDevelopment.weeklyWeightChange` — how fast a junior's weight returns to natural |
+| **ground** | **nothing** |
+| **tactical** | **nothing** |
+
+So the answer to the owner's question was narrower than it looked: two numbers a manager pays for were
+live, and two were decoration.
+
+**The owner's decisions, asked and answered:** the ground **trains faster** and the tactical facility
+**shapes better**; a level buys **less than the one before it**; and **bot clubs are seeded by reputation**.
+
+**Diminishing returns, and a test caught my own arithmetic.** The curve is `sqrt(level - 1)` normalised
+against level 20, so the ceiling is exactly `MAX_GAIN`. The first version was `sqrt(steps) * MAX_GAIN`
+un-normalised, which reached **5.36 at level 20** instead of the 2.0 its own javadoc promised — a 436%
+training bonus, which is precisely the "one budget decides the league" outcome the owner ruled out by
+asking for diminishing returns. `theTopIsBounded` found it. **Arithmetic written in a comment is not a
+check**; this is the second time this session a number in a comment was wrong and a test found it.
+
+The training percentage is **capped at 100** rather than scaled past it: a better ground makes the same
+week worth more, and a week cannot be worth more than a week. A club at level 20 with a full week of
+minutes tops out.
+
+**Fails to neutral, not to an exception.** `trainingGroundMultiplier` catches its way back to 1.0 with no
+ground, because this runs for every player of every club in the world and a missing facility must never be
+the reason a training week does not run. A club at level 1 trains exactly as it did before, which is the
+compatibility case and the reason the curve starts at level 1 rather than at zero.
+
+**Mutations:** making the curve linear turns `theCurveFlattens` red with the numbers printed — *"0.0526 at
+level 2, 0.8947 at level 18, so a club that spends can still buy the league"*. Six new tests, 158 training,
+junior, youth and academy tests green.
+
+**Left, and not to be forgotten:**
+
+- **The tactical multiplier is not read by anything yet.** It is calculated, tested and correct, and the
+  engine does not ask for it — so the tactical room, like the ground was, still does nothing in a match.
+  That is a third effect to find and wire, not a fourth decision.
+- **Bot clubs are still at level 1.** The seeding by reputation was ruled on and is not built; on a fresh
+  world all 14,976 clubs have no facilities, so only the manager's club has one and the ranking tables
+  will say so.
+
 ## ✅ T-MATCH-3c — Paste, the cross-club half of Copy/Paste (2026-12-12)
 
 Commit to follow.

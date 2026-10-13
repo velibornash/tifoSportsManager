@@ -1,6 +1,7 @@
 package org.example.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.MatchPlayerStats;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.TrainingAssignment;
@@ -33,6 +34,7 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TrainingPercentService {
 
     private final StaffMemberRepository staff;
@@ -42,6 +44,13 @@ public class TrainingPercentService {
      * and every player then trains on all his minutes, which is what happened before.
      */
     private final TrainingAssignmentRepository trainingAssignments;
+    /**
+     * The club's ground, which trains faster the higher it is built (T-FAC-1, owner ruling).
+     *
+     * <p>Nullable, and null means no effect: a world whose facilities were never seeded trains exactly as
+     * it did before, which is the safe reading of a missing input.
+     */
+    private final TrainingFacilityService facilities;
 
     /** Minutes per player for the week, so a squad costs one query rather than twenty-five. */
     private final Map<String, Map<Long, Integer>> weekCache = new HashMap<>();
@@ -62,7 +71,34 @@ public class TrainingPercentService {
         StaffMember coach = coachForSkill(player, skill);
         Long teamId = player.getTeam() == null ? -1L : player.getTeam().getId();
         int minutes = minutesPlayed(player.getId(), teamId, season, week);
-        return TrainingPercent.percentFor(player, coach, skill, minutes);
+        // **The ground, finally doing something (T-FAC-1).** A manager who spends on the training ground
+        // has bought a better week, and before this his four facility levels changed the price, the
+        // upkeep and the number on the stadium page - and nothing else.
+        //
+        // The percentage is capped at 100 rather than scaled past it: a better ground makes the same week
+        // worth more, and a week cannot be worth more than a week. A club at level 20 with a full week of
+        // minutes tops out, which is the honest ceiling and keeps one facility from being unbounded.
+        double percent = TrainingPercent.percentFor(player, coach, skill, minutes);
+        double multiplier = trainingGroundMultiplier(player);
+        return multiplier <= 1.0 ? percent : Math.min(100.0, percent * multiplier);
+    }
+
+    /**
+     * The club's training multiplier, or 1.0 when there is no ground or no facilities service.
+     *
+     * <p>Fails to neutral rather than to an exception: this runs for every player of every club in the
+     * world, and a missing facility must not be the reason a training week does not run.
+     */
+    private double trainingGroundMultiplier(Player player) {
+        if (facilities == null || player == null || player.getTeam() == null) {
+            return 1.0;
+        }
+        try {
+            return facilities.trainingMultiplier(player.getTeam());
+        } catch (RuntimeException unreadableGround) {
+            log.debug("No ground for {}, training at 1.0", player.getTeam().getName());
+            return 1.0;
+        }
     }
 
     /**

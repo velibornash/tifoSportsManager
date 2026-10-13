@@ -117,6 +117,85 @@ public class TrainingFacilityService {
      *
      * @return what was spent, or empty if nothing changed
      */
+    /**
+     * How much better a club trains at this ground, from the GROUND facility (T-FAC-1).
+     *
+     * <p><b>Owner ruling, 2026-12-12: the ground trains faster, the tactical facility shapes better, and
+     * a level buys less than the one before it.</b> "Ground trains faster" because it is the facility a
+     * manager reads as *the training ground*, and "shapes better" for the tactical room because the effect
+     * belongs where tactics are.
+     *
+     * <p><b>Diminishing returns</b> — the reasoning was the economy, not the maths: linear would let one
+     * club's budget decide a league, since the cost already climbs 1.45× per level. So the benefit climbs
+     * on a falling curve and level 20 is strong without being decisive. The square root is the cheap way to
+     * get that shape, and it is written down rather than tuned, so the curve can be argued about.
+     *
+     * @return a multiplier on training progress; 1.0 at level 1, and never less than 1.0
+     */
+    @Transactional(readOnly = true)
+    public double trainingMultiplier(Team team) {
+        return multiplierFor(team, Facility.GROUND);
+    }
+
+    /**
+     * How well this club's shape works, from the TACTICAL facility (T-FAC-1).
+     *
+     * <p>Same curve and same reasoning as {@link #trainingMultiplier}, on the other half of the owner's
+     * sentence. It is the facility a manager reads as *the tactical room*.
+     *
+     * @return a multiplier on the shape's quality; 1.0 at level 1, and never less than 1.0
+     */
+    @Transactional(readOnly = true)
+    public double tacticalMultiplier(Team team) {
+        return multiplierFor(team, Facility.TACTICAL);
+    }
+
+    /**
+     * The shared curve, so the two facilities cannot drift apart.
+     *
+     * <p>One method rather than two: a training multiplier at {@code sqrt} and a tactical multiplier at
+     * {@code log} would be a bug nobody notices for a season.
+     */
+    private double multiplierFor(Team team, Facility facility) {
+        Stadium ground = team == null ? null : team.getStadium();
+        if (ground == null) {
+            return 1.0;
+        }
+        int level = clamp(levelOf(ground, facility));
+        if (level <= 1) {
+            return 1.0;
+        }
+        // Level 1 is the floor, so the curve starts there rather than at zero: a club with no ground
+        // trains at 1.0, not at 0.0, and a club at level 1 is not worse than a club with no record.
+        //
+        // **Normalised against the top level**, and that was not the first version. An un-normalised
+        // `sqrt(steps) * MAX_GAIN` reached 5.36 at level 20 rather than the 2.0 its own javadoc promised,
+        // because sqrt(19) is 4.36 and not 1. A 436% training bonus is exactly the thing the owner ruled
+        // out when he asked for diminishing returns - it would let one club's budget decide a league. The
+        // test for the ceiling is what found it; the arithmetic in a comment is not a check.
+        double stepsAboveFloor = level - 1;
+        double ceiling = Math.sqrt(MAX_LEVEL - 1);
+        double gain = ceiling <= 0 ? 0 : Math.sqrt(stepsAboveFloor) / ceiling * MAX_GAIN;
+        return 1.0 + gain;
+    }
+
+    /**
+     * The most a facility at level 20 can add. A 100% better training week at the very top, which is a
+     * club that trains every player twice as well as the ground it started with and still not enough on
+     * its own to win a league.
+     */
+    public static final double MAX_GAIN = 1.0;
+
+    private static int levelOf(Stadium ground, Facility facility) {
+        Integer raw = switch (facility) {
+            case GROUND -> ground.getTrainingQuality();
+            case GYM -> ground.getGymLevel();
+            case TACTICAL -> ground.getTacticalLevel();
+            case YOUTH -> ground.getYouthLevel();
+        };
+        return raw == null ? 1 : raw;
+    }
+
     @Transactional
     public java.util.OptionalDouble upgrade(Long teamId, Facility facility) {
         if (teamId == null || facility == null) return java.util.OptionalDouble.empty();
