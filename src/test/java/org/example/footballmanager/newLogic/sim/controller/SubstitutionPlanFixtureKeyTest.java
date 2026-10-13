@@ -157,6 +157,29 @@ void saveReplaces() throws Exception {
                         org.hamcrest.Matchers.containsString("AWAY")));
     }
 
+    /**
+     * Owner report, 2026-10-12.
+     *
+     * <p>The plan was closed on a match four game-days away and the screen said the team was already
+     * picked. Fixture dates are stamped once from the calendar and never move, and the calendar advances
+     * in real time, so a later game day carries an <em>earlier</em> wall-clock time: his was week 1 day 7
+     * stamped at 16:00 on a clock reading 23:11. A wall-clock comparison closed a match the game had not
+     * reached.
+     *
+     * <p>The companion to {@code closesAnHourBeforeKickoff}, and the reason the backstop is narrowed rather
+     * than removed. A kickoff whose stamp has gone past is stale, not imminent.
+     */
+    @Test
+    @DisplayName("a fixture whose stamp has gone past is not treated as imminent")
+    void aStaleStampIsNotAnImminentKickoff() throws Exception {
+        Long fixtureId = aFixture(LocalDateTime.now().minusHours(7)).getId();
+
+        mvc.perform(get("/api/sim/fixtures/" + fixtureId + "/substitution-plan")
+                        .header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.editable").value(true));
+    }
+
     @Test
     @DisplayName("a fixture with no plan reads as an empty, editable plan")
     void noPlanYet() throws Exception {

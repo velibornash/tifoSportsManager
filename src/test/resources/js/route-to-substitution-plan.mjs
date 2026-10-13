@@ -56,8 +56,14 @@ const check = (name, condition, detail) => {
         matchView.includes('id="fm-substitution-plan"'),
         'match-view.js has no #fm-substitution-plan, so there is nowhere to mount the plan');
 
+    // The mount used to be called directly and was matched literally. Match Setup now mounts the three
+    // panels from one table, so the call is `load: (body) => mountSubstitutionPlan(body)` and the thing
+    // that reaches it is mountSetupPanels. Both shapes are accepted — what is being protected is that
+    // the mount is *reached*, not how it is spelled.
     check('the mount is called',
-        /void mountSubstitutionPlan\(\)/.test(matchView),
+        /void mountSubstitutionPlan\(\s*\)/.test(matchView)
+            || (/mountSubstitutionPlan\(body\)/.test(matchView)
+                && /void mountSetupPanels\(\)/.test(matchView)),
         'mountSubstitutionPlan is defined but never called, which is how the fixture sheet died');
 
     check('the mount runs for a fixture as well as a played match',
@@ -80,8 +86,11 @@ const check = (name, condition, detail) => {
         'the substitution, game-plan and lineup mounts share this guard; fixing one and leaving the '
             + 'other two reading a cold value leaves the same defect in two places');
 
+    // The same for this one: the guard still compares the two club ids and still returns without
+    // mounting, but it now says why on the way out, so `) return;` is no longer adjacent to the test.
     check('the panel is offered only to the home club',
-        /Number\(managerTeamId\) !== Number\(homeTeamId\)\) return;/.test(matchView),
+        /Number\(managerTeamId\) !== Number\(homeTeamId\)/.test(matchView)
+            && /when you are away/.test(matchView),
         'the ownership test is missing or compares something other than the two club ids');
 
     check('the ownership test compares ids, never names',

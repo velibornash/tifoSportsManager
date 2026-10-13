@@ -15,6 +15,14 @@
 import { htmlEscape } from './utils.js';
 
 /** The conditions the engine understands. Kept in step with `ConditionalSubstitutionRules.Rule`. */
+/**
+ * The cap, stated on the page.
+ *
+ * <p>Owner ruling, 2026-10-12. The server refuses the twenty-first order; this says so before the manager
+ * writes it, because a cap that is only enforced is a cap that is discovered.
+ */
+export const MAX_ORDERS = 20;
+
 export const CONDITIONS = [
     { value: 'ANYTIME', label: 'At any time' },
     { value: 'LOSING', label: 'If losing' },
@@ -212,9 +220,12 @@ export function createSubstitutionPlanView(deps) {
                         ${played
                             ? 'How each condition went at the final whistle.'
                             : editable
-                                ? 'Decisions close an hour before kickoff.'
+                                ? `Up to ${MAX_ORDERS} orders. Decisions close an hour before kickoff.`
                                 : '<strong>Closed</strong> — the team is already picked.'}</p>
                 </div></div>
+
+                ${editable && rules.length >= MAX_ORDERS ? `<p class="fm-setup-error">This is all
+                    ${MAX_ORDERS} orders a match holds. Remove one before adding another.</p>` : ''}
 
                 ${rules.length === 0
                     ? `<p class="fm-empty">No conditions set. The manager and the engine decide as the

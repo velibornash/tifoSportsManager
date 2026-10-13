@@ -202,6 +202,15 @@ public class SubstitutionPlanController {
         return view;
     }
 
+    /**
+     * How close to kickoff the plan closes, in minutes.
+     *
+     * <p>The owner asked for an hour (T-MATCH-2, 2026-10-11) and it is one hour here. The matchday job
+     * normally does the closing itself by preparing the fixture; this is the backstop for when it has
+     * not run.
+     */
+    static final int LOCK_WINDOW_MINUTES = 60;
+
     private boolean isStillEditable(MatchFixture fixture) {
         // A fixture that has been played is never editable, whatever its clock says.
         //
@@ -223,13 +232,31 @@ public class SubstitutionPlanController {
         if (fixture.isPrepared()) return false;
 
         /*
-         * <b>Owner report, 2026-10-12.</b> The cutoff below was the third condition, and it closed this
-         * panel on a match four game-days away for the same reason the game plan closed: fixture dates are
-         * stamped once from the calendar and never move, so a later game day can carry a wall-clock time
-         * that has already gone by. The hour's lock is the prepared flag, set by the matchday job, and it
-         * is checked above.
+         * The backstop, kept — but narrowed to what it is for.
+         *
+         * <p><b>Owner report, 2026-10-12.</b> This panel was closed on a match four game-days away and
+         * told the manager the team was picked. The cause: fixture dates are stamped once from the
+         * calendar and never move, and the calendar advances in real time, so a later game day carries an
+         * <em>earlier</em> wall-clock time. His was week 1 day 7 stamped at 16:00 on a clock reading 23:11.
+         * A wall-clock comparison therefore closed a match that had not happened.
+         *
+         * <p>Removing the cutoff outright was too blunt and broke a better answer:
+         * {@code SubstitutionPlanFixtureKeyTest.closesAnHourBeforeKickoff} builds a fixture 30 minutes out
+         * without running the scheduler, and expects the plan closed. That backstop is worth keeping — the
+         * matchday job normally sets the prepared flag an hour out, but a job that has not run yet should
+         * not leave the panel open.
+         *
+         * <p>So the backstop now answers the question it was written for — <em>is the kickoff imminent?</em>
+         * — and only in the future. Thirty minutes out closes. Seven hours in the past does not: that is a
+         * stale stamp on a match the game has not reached, and the prepared flag is what closes it, when it
+         * is genuinely decided.
          */
-        return true;
+        if (fixture.getMatchDate() == null) {
+            return true;
+        }
+        java.time.Duration untilKickoff = java.time.Duration.between(
+                java.time.LocalDateTime.now(), fixture.getMatchDate());
+        return untilKickoff.isNegative() || untilKickoff.toMinutes() > LOCK_WINDOW_MINUTES;
 
         /* Kept for the record — this is what answered "is there time left", and it is the wrong question:
         return fixture.getMatchDate() == null || java.time.Duration.between(

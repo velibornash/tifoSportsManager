@@ -48,6 +48,20 @@ public class SubstitutionRuleValidator {
     /** A match runs 90 minutes; a rule past the end can never be reached. */
     static final int MAX_TRIGGER_MINUTE = 90;
 
+    /**
+     * How many orders one side may set for one match.
+     *
+     * <p><b>Owner ruling, 2026-10-12: twenty.</b> There was no cap at all — a manager could write as many
+     * rules as he liked and every one of them was validated on save, which is a request-path cost that
+     * grows with the plan and is paid by the club that made the plan.
+     *
+     * <p>Twenty is also about what the engine can do: five substitutions in three windows is what
+     * {@code ConditionalSubstitutionRules} enforces, so most orders past the first handful can never fire.
+     * The cap is the owner's, not the engine's, and it is stated in the UI rather than enforced quietly —
+     * a manager who writes twenty-one is told he has twenty-one.
+     */
+    public static final int MAX_ORDERS_PER_SIDE = 20;
+
     private final SquadRegistrationService squads;
 
     public SubstitutionRuleValidator(SquadRegistrationService squads) {
@@ -62,6 +76,14 @@ public class SubstitutionRuleValidator {
     public List<Rejection> validate(List<?> rules, MatchFixture fixture) {
         List<Rejection> rejections = new ArrayList<>();
         if (rules == null || rules.isEmpty()) return rejections;
+
+        // The cap is per side, and it is counted before the rules are examined: a manager who has twenty
+        // is told so whether the twenty-first is otherwise perfect or not.
+        if (rules.size() > MAX_ORDERS_PER_SIDE) {
+            rejections.add(new Rejection(MAX_ORDERS_PER_SIDE, null,
+                    "A match may hold " + MAX_ORDERS_PER_SIDE + " orders. There are " + rules.size()
+                            + " here; remove " + (rules.size() - MAX_ORDERS_PER_SIDE) + " before saving."));
+        }
 
         // The squad is fetched once per team, not once per rule: a five-rule plan is one fixture and
         // the same two clubs, and this runs on a request path.
