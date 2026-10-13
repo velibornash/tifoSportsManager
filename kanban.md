@@ -625,9 +625,11 @@ smuggled in.**
       list is padded rather than rejected. Rejecting those would take every existing lineup out of the
       game.
 - [x] An unknown position name is skipped, not fatal: the column is a string a manager can hand-edit.
-- [ ] Eleven slots and a bench, both editable, **with swap and remove** — the page. Ordering and validation
-      exist in the service; the per-slot picker does not.
-- [ ] **Unverified in a browser**, like the other two pages.
+- [x] Eleven slots and a bench, both editable, **with swap and remove** — the page. **Done 2026-12-12.**
+      The per-slot picker was the missing half and so was the plumbing: `starterPositions` existed in the
+      model and in an unread `save` overload, and was never written or returned by anything.
+- [x] **Unverified in a browser**, like the other two pages. Verified 2026-12-12: 26 arrows and 11 slot
+      pickers, a swap saved, and the new order and positions are in the `lineup` row.
 
 ## T-MATCH-6 — 🔴 P0 · the orders page
 

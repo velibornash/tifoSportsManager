@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.newLogic.model.Lineup;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -150,6 +151,12 @@ public class MatchLineupController {
         view.put("formation", chosen == null ? "4-4-2" : chosen.getFormation());
         view.put("starters", idsOf(chosen, true));
         view.put("bench", idsOf(chosen, false));
+        // The slot each starter occupies, index-aligned with `starters`. Sent so the page's per-slot
+        // picker opens on what is actually stored rather than on every man's own position - which is the
+        // fallback, and a lineup whose every slot reads MID is exactly what this column exists to stop.
+        view.put("starterPositions", chosen == null
+                ? List.of()
+                : lineups.starterPositionsOf(chosen).stream().map(Position::name).toList());
         // Whether this XI is saved for THIS fixture or is the club's standing template - so the screen can
         // say which one it is showing rather than leaving the manager to guess.
         view.put("perMatch", chosen != null && chosen.getMatch() != null);
@@ -205,13 +212,30 @@ public class MatchLineupController {
         }
 
         try {
+            // The per-slot positions, which the model has held since it was added and which nothing ever
+            // wrote: `save` had an overload taking them and no caller passed it, so a lineup saved from the
+            // page fell back to each man's own position for every slot. The squad page's slot picker sends
+            // them on every save, and a save without them leaves the positions alone rather than clearing
+            // them - an older client sending starters and bench only must not wipe a manager's setup.
             lineups.save(club.getId(), fixtureId,
                     longList(body.get("starters")), longList(body.get("bench")),
-                    str(body.get("formation")), str(body.get("style")));
+                    str(body.get("formation")), str(body.get("style")),
+                    listOf(body.get("starterPositions")));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "XI_INVALID", "message", e.getMessage()));
         }
         return get(fixtureId, user);
+    }
+
+    /**
+     * A list from the request body, or null when there is not one.
+     *
+     * <p>Null means "the client did not send it", which is different from an empty list and has to stay
+     * distinguishable: an older client sending starters and bench only must not wipe the slot positions.
+     * Anything that is not a list is treated as absent rather than refused, for the same reason.
+     */
+    private List<?> listOf(Object value) {
+        return value instanceof List<?> list ? list : null;
     }
 
     /** Drops this fixture's XI, so the club's template applies again. */

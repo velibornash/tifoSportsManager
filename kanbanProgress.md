@@ -1,3 +1,46 @@
+## ✅ T-MATCH-5, first half — swap, the slot picker, and the positions actually stored (2026-12-12)
+
+Commit to follow. **The structural gap is still open and is the second half.**
+
+**"Ordering and validation exist in the service; the per-slot picker does not"** — the board was right,
+and worse than it looked. Three separate things were missing:
+
+1. **No way to reorder.** Remove was the only control, so moving one man up meant removing everyone below
+   him and re-adding them. Two arrows per row now, with the first and last **disabled rather than hidden**
+   so the column does not reflow as a manager works down it. The bench swaps within the bench — moving the
+   last man on it into the side is a different act with a different meaning, and the two buttons that do
+   that already exist.
+2. **No slot position picker.** `Lineup.starterPositions` had been in the model since T-MATCH-8's
+   predecessor and **nothing ever wrote it from a page**: `MatchLineupService.save` has an overload taking
+   the positions and no caller passed it, so a lineup saved from the screen fell back to every man's own
+   position for every slot — which is exactly how a lineup ends up with eleven midfielders. The controller
+   passes them now, and the GET sends them back so the picker opens on what is stored.
+3. **The positions never came back out.** `starterPositions` was absent from the payload, so the page had
+   nothing to open the picker on.
+
+**A swap moves the position with the man, not with the slot.** That is the subtle one: swapping the ids
+alone leaves XI 4 wearing the position that belonged to XI 5. Verified in the browser — setting XI 2 to
+WNG and moving him up produced `WNG,GK,DEF,DEF,DEF,MID,MID,MID,MID,ATT,ATT` in the database, the WNG
+having travelled with the man rather than staying where it was typed.
+
+**Seen in a browser, which the board listed as unverified.** 26 arrows (13 rows × 2) and 11 slot pickers;
+swapped two men and saved; the row is in `lineup` with the new order and the new positions.
+
+**Two false greens in one sitting, both mine and both the same shape.**
+
+- A check appended to `render-match-lineup.mjs` **after** the summary line, so it never ran and the
+  harness printed **ALL CHECKS PASSED**. It also referenced a variable the file does not have
+  (`lineupView` against a variable called `view`), which would have thrown had it run at all. Both fixed,
+  and the mutation — removing the position-travel from the swap — now turns it red.
+- Two source-reading guards in `MatchLineupScreenTest` went blind for the same reason as the substitution
+  ones: Match Setup mounted the panels from a table, so a literal `void mountLineup()` no longer exists.
+  Both updated to accept the new form while still enforcing the property.
+
+**Still open, and it is the P0 half:** `lineup.match_id` is **null** in that row, which is the whole point
+of the second entry. A lineup chosen for a match is stored as the club's standing template and applies to
+every match. `Lineup` needs a `MatchFixture` reference and the resolution order re-pointed, and it changes
+what the engine reads.
+
 ## ✅ T-MATCH-6 — the tactic orders, done (2026-10-12)
 
 Commits to follow. Closes the board entry opened the session before last.
