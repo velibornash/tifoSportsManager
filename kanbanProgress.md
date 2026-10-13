@@ -1,3 +1,47 @@
+## ✅ T-MATCH-6 — the tactic orders, done (2026-10-12)
+
+Commits to follow. Closes the board entry opened the session before last.
+
+**The owner's ruling settled the open question:** *"Mogu se dodati 3 razlicite TAKTIKE. Za te 3 taktike
+mogu se dodati 10 REDOVA SA INSTRUKCIJAMA kad na koju da se predje tj 10 puta u toku utakmice igrac moze
+preci na drugu taktiku."*
+
+**3 and 10 are now separate numbers on separate things, and that is the whole fix.**
+`MatchTacticAssignmentService.MAX_PER_SIDE` is untouched at **3**; the orders have their own
+`MatchTacticOrder.MAX_ORDERS_PER_SIDE` at **10**, their own table, their own controller and their own panel.
+The board's third option — raise one constant to ten — would have made "how many tactics does a match hold"
+answerable in two places and stopped T-MATCH-4 holding without anything going red.
+
+**Everything the board listed as missing already existed except the caps**, which the log above already
+recorded: the rules exist, `MatchTacticPlan.inForce` filters on `minuteFrom <= minute` so a tactic changes
+live at that minute, and both endpoints are inside the T-MATCH-2 lock.
+
+**Built here:**
+
+- `MatchTacticOrder` — fixture, side, tactic, condition, minute, position. `firedAtMinute` is transient
+  engine state for one match, not a stored fact, because an order's spent-ness is not true after the match.
+- `MatchTacticPlan.Order` + `orderInForce` — one-shot, and **the last matching order wins**. Both were asked
+  and answered; the mutation that turns an order back into a standing rule prints *"ten orders produced 91
+  switches, so the cap and the semantics disagree"*, which is why the question was asked rather than guessed.
+- `MatchTacticsResolver` — orders are asked **before** the plan, so an order overrides the standing
+  instruction and a spent one cannot reassert itself.
+- `MatchTacticOrderController` — the cap is stated in the payload (`$.cap`) and in the refusal, another
+  club's tactic is refused by id rather than accepted, and removing a row renumbers the rest, because
+  "the last one wins" is by position and a gap would leave two orders tied on nothing.
+- `tactic-order-view.js` — the panel, saying *"Up to 10 orders"* and *"an order fires once, and the last
+  matching order wins"* before anything is written.
+
+**Seen change, not just green:** added an order through the browser — minute 62, *trailing by one*, into
+`Default 4-4-2 copy` — and the row is in `match_tactic_order` with `position = 1`.
+
+**The re-render bug was mine and the browser would have caught it.** The first version of the panel stashed
+the club's tactics in a `data-current` attribute it never wrote, so adding an order repainted into an empty
+dropdown. A closure fixed it. Worth remembering because nothing static would ever have complained.
+
+**Two ways this went wrong before it went right**, both from edits whose insertion silently did nothing
+because the replacement carried no assertion. Both were caught by looking at the file rather than by a
+failure. The reflex now is to assert every edit lands.
+
 ## 🟡 T-MATCH-6 — the engine half of the orders (2026-10-12)
 
 Commit to follow. **Engine done, page not.** The owner settled the open question and both halves of the

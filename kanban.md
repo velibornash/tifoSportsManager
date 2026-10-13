@@ -639,33 +639,23 @@ and a tactic order is *minute + condition + tactic*. Sokker's 24 conditions were
 
 - [x] Substitution orders: minute, condition, player out, player in. Capped at **20**, and the cap is
       stated in the UI rather than enforced silently. **Done 2026-10-12** — there was no cap at all before.
-- [ ] Tactic orders: minute, condition, target tactic. Capped at **10**, same rule. **Owner decision
-      needed** — see below.
+- [x] Tactic orders: minute, condition, target tactic. Capped at **10**, same rule. **Done 2026-12** —
+      one-shot, last matching order wins, cap stated in the UI and in the refusal.
 - [x] An order that fires switches the engine's tactics **live at that minute**, not from the start.
       Already true: `MatchTacticPlan.inForce` filters on `minuteFrom <= minute`.
 - [x] Orders are part of the T-MATCH-2 lock. Both endpoints answer 423 once the fixture is prepared.
 
-**🔴 An owner decision, not a defect — the tactic-order cap.**
+**✅ Resolved 2026-10-12.** The owner: *"Mogu se dodati 3 razlicite TAKTIKE. Za te 3 taktike mogu se
+dodati 10 REDOVA SA INSTRUKCIJAMA kad na koju da se predje"* — three tactics in the plan, ten rows that
+switch between them. Two further decisions, asked and answered: an order is **one-shot**, and **the last
+matching order wins**.
 
-`MatchTacticAssignmentService.MAX_PER_SIDE` is **3**, which is the T-MATCH-4 rule the owner approved:
-three tactics per match. The later ruling was **10 tactic orders** per match. Those are two different
-things — three tactics in the plan, ten conditional swaps between them — and the current model cannot
-hold both, because an entry is one tactic at one priority.
+So **3 and 10 are separate numbers on separate things**. `MAX_PER_SIDE` stays at 3 and is untouched;
+`MatchTacticOrder.MAX_ORDERS_PER_SIDE` is 10, with its own table, controller and panel. The third option in
+the original question — raise one constant to ten — would have made "how many tactics does a match hold"
+answerable in two places and stopped the three-tactics rule holding without anything going red.
 
-Three ways to read it, and they build different things:
-
-1. **The cap is 10 for orders, 3 for the plan.** Entries beyond three are swaps, not plan slots. Means new
-   storage, or a distinction on the existing row.
-2. **The cap is 3 and the "10" was about substitutions.** Nothing to build; the log entry is corrected.
-3. **Raise the cap to 10.** One constant changes, and **T-MATCH-4's three-tactics rule stops holding** —
-   the engine picks the lowest-priority entry whose condition and minute match, so a tenth always-applied
-   entry is a plan, not an order.
-
-Option 3 is the cheapest and it breaks a rule the owner signed off on, so it is not the default. **Asked
-before building, per the standing rule.**
-
-**Still to build:** the Orders page itself — one screen for both kinds of order, reachable from Match
-Setup, with the caps and the lock state shown on it.
+---
 
 ## T-MATCH-8 — 🔴 P0 · a player trains in one slot and may play in any (owner, 2026-10-12)
 

@@ -871,11 +871,19 @@ export function createMatchView(deps) {
                 }
             }
 
-            /** The three things a manager sets before kickoff, in the order a manager does them. */
+            /**
+             * The things a manager sets before kickoff, in the order a manager does them.
+             *
+             * <p><b>"Tactic orders" is the fourth and it is not a fourth tactic.</b> The owner settled it
+             * on 2026-10-12: three tactics in the game plan, and up to ten rows saying when to switch
+             * between them. They live on separate panels with separate caps because one constant holding
+             * both is how "three tactics" quietly becomes ten.
+             */
             const PANELS = [
                 { host: 'fm-match-lineup', title: 'The eleven', load: (body) => mountLineup(body) },
                 { host: 'fm-match-tactic-plan', title: 'Game plan', load: (body) => mountTacticPlan(body) },
-                { host: 'fm-substitution-plan', title: 'Substitutions and orders', load: (body) => mountSubstitutionPlan(body) },
+                { host: 'fm-tactic-orders', title: 'Tactic orders', load: (body) => mountTacticOrders(body) },
+                { host: 'fm-substitution-plan', title: 'Substitutions', load: (body) => mountSubstitutionPlan(body) },
             ];
 
             function titleOf(panel) {
@@ -922,6 +930,33 @@ export function createMatchView(deps) {
                     await lineupView.loadPlan(matchId, host);
                 } catch (error) {
                     console.warn('Could not load the team selection:', error);
+                }
+            }
+
+            /**
+             * The tactic orders panel (T-MATCH-6).
+             *
+             * <p>It needs the club's tactics to populate its dropdowns, and the plan already fetched them
+             * for the same request - so they are read back out of the game plan's payload rather than
+             * asking for them a second time.
+             */
+            async function mountTacticOrders(host) {
+                if (!host) return;
+                const managerTeamId = await resolveTeamId();
+                if (!managerTeamId) {
+                    host.innerHTML = '<p class="fm-setup-error">Your club could not be resolved on this page.</p>';
+                    return;
+                }
+                try {
+                    const orderView = deps.createTacticOrderView?.();
+                    if (!orderView) throw new Error('the tactic orders module did not load');
+                    const res = await authFetch(`/teams/${managerTeamId}/tactics`);
+                    if (!res.ok) throw new Error(`your tactics could not be read (${res.status})`);
+                    const body = await res.json();
+                    await orderView.render(host, { fixtureId: matchId, tactics: body || [] });
+                } catch (error) {
+                    host.innerHTML = `<p class="fm-setup-error">Tactic orders could not be shown:
+                        ${htmlEscape(error && error.message ? error.message : String(error))}</p>`;
                 }
             }
 

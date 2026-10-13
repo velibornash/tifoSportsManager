@@ -734,3 +734,18 @@ recent-match:hover .result-badge {
     font-weight: 600;
     color: #9fb3c8;
 }
+
+/* The tactic orders (T-MATCH-6). */
+.fm-tactic-order {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.fm-tactic-order-text { font-size: 0.95em; }
+
+.fm-tactic-order-add {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.fm-tactic-order-add .fm-input[type="number"] { width: 92px; }
+.fm-tactic-order-add .fm-input { flex: 1 1 150px; min-width: 130px; }
