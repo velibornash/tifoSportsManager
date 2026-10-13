@@ -30,12 +30,15 @@ public class TrainingJob implements DayJob {
     private final SeasonService seasons;
     private final SquadTrainingService squadTraining;
     private final SquadEnvironmentService squadEnvironment;
+    private final org.example.footballmanager.newLogic.service.TrainingProgressionService progression;
 
     public TrainingJob(SeasonService seasons, SquadTrainingService squadTraining,
-                       SquadEnvironmentService squadEnvironment) {
+                       SquadEnvironmentService squadEnvironment,
+                       org.example.footballmanager.newLogic.service.TrainingProgressionService progression) {
         this.seasons = seasons;
         this.squadTraining = squadTraining;
         this.squadEnvironment = squadEnvironment;
+        this.progression = progression;
     }
 
     @Override
@@ -65,11 +68,21 @@ public class TrainingJob implements DayJob {
 
     @Override
     public void run(JobContext context) {
+        // **The managed clubs first, and properly** (P0, 2026-10-13).
+        //
+        // `trainEveryClub` is the quiet pass: it grows attributes and writes no report, and it now skips
+        // human clubs so they are not trained twice. The managers' clubs go through
+        // TrainingProgressionService, which is the implementation that writes the week report the Training
+        // Reports page reads.
+        //
+        // Run first, so that if the world's pass throws, the manager's report still exists for the week.
+        int managed = progression.trainManagedClubs(context.seasonYear(), context.weekNumber());
         int trained = squadTraining.trainEveryClub(context.seasonYear(), context.weekNumber());
         int advanced = squadEnvironment.advanceWeek(context.seasonYear(), context.weekNumber());
-        if (trained > 0 || advanced > 0) {
-            log.info("Week {} season {}: training applied to {} players, environment advanced for {} clubs.",
-                    context.weekNumber(), context.seasonYear(), trained, advanced);
+        if (trained > 0 || advanced > 0 || managed > 0) {
+            log.info("Week {} season {}: reports written for {} managed club(s), training applied to "
+                            + "{} players, environment advanced for {} clubs.",
+                    context.weekNumber(), context.seasonYear(), managed, trained, advanced);
         }
     }
 }

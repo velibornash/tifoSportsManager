@@ -72,12 +72,28 @@ public class SquadTrainingService {
     @Transactional
     public int trainEveryClub(int season, int week) {
         List<Team> clubs = teams.findClubTeamsForOperations();
+
+        // **A manager's club is skipped here and trained properly instead.**
+        //
+        // Owner report, 2026-10-13: he moved the clock from day 4 to day 5 and Training Reports was empty.
+        // The job had run — `job_run` held `training`, day 4, hour 10, DONE — because this is the method
+        // the job calls. But **this is the other training implementation.** It grows attributes and writes
+        // nothing, while `TrainingProgressionService.runWeeklyTraining` is the one that writes the week
+        // report, and it was only ever reachable from the manual "run training" endpoint.
+        //
+        // So the weekly job trained every player in the world and produced no report for any of them. Two
+        // implementations, the scheduled one silent, and every test green because each was tested alone.
+        //
+        // Human clubs are therefore skipped here and passed to {@link #trainManagedClubs}, which runs the
+        // full weekly training. Running both would train them twice in a week.
         List<Long> clubIds = clubs.stream()
                 .filter(c -> c != null && c.getId() != null)
+                .filter(c -> !c.isHumanControlled())
                 .map(Team::getId)
                 .toList();
 
         int trained = 0;
+
         for (int from = 0; from < clubIds.size(); from += CLUB_CHUNK) {
             List<Long> chunk = clubIds.subList(from, Math.min(from + CLUB_CHUNK, clubIds.size()));
             for (Long clubId : chunk) {

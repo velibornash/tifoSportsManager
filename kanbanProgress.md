@@ -1,3 +1,52 @@
+## 🔴 P0 — the weekly training job ran and produced no report (2026-12-13)
+
+Commit to follow. **Owner report: he moved the clock from day 4 to day 5, so training MUST have happened,
+and Club → Training Reports was empty.**
+
+**The job had run.** `job_run` held it plainly:
+
+    day_number | job_key   | ran_at_hour | status
+             4 | training |           10 | DONE
+
+So this was never "the job did not fire". It fired, on the right day, at the right hour, and reported
+**DONE** — and `training_week_report` held **zero rows**.
+
+**There are two training implementations and the scheduled job calls the silent one.**
+
+| | grows attributes | writes the week report | called by |
+|---|---|---|---|
+| `SquadTrainingService.trainEveryClub` | yes | **no** | **the weekly job** |
+| `TrainingProgressionService.runWeeklyTraining` | yes | **yes** | only the manual "run training" endpoint |
+
+The job grows every player in the world and records nothing. The one that writes the report was reachable
+only by a manager pressing a button. **Every test was green because each implementation was tested alone**,
+and no test asked the question the owner asked: after a week passes, does the page have anything in it.
+
+**The fix.** `TrainingJob` now runs the managed clubs through `TrainingProgressionService` **first**, and
+`trainEveryClub` skips human clubs so they are not trained twice in a week. The managed pass runs first so
+that if the world's pass throws, the manager's report still exists.
+
+- **Managed clubs only.** A report nobody will ever read is a row written 14,000 times a week for nothing,
+  and `getTeamReportSummaries` only ever asks for one club's.
+- **Not `force`.** The guard inside refuses a second training of the same week, which is exactly what a job
+  retrying after a restart needs; `force` would train every managed club twice and write a second set of
+  growth.
+- **One club failing must not stop the rest**, and must not stop the world's training either.
+
+**A circular dependency appeared and is resolved.** `SeasonService` already depends on
+`SquadTrainingService`, so making that depend on `TrainingProgressionService` — which depends on
+`SeasonService` — closed a loop and the context would not start (25 errors, `Failed to load
+ApplicationContext`). The managed pass therefore lives in `TrainingProgressionService`, where the report is
+written, and the **job** calls it. The edge that closes a cycle is the one that had to move.
+
+**Verified:** 95 training tests green, context starts, no circular dependency.
+
+**Not yet verified by watching it happen, and saying so plainly.** The job fires on **day 4 at 10:00** and
+the clock is on day 5, so it will not re-fire until week 2 day 4. His week 1 report cannot be produced
+retroactively by this fix, because the silent job already ran for that week — which is exactly why the
+page is empty. The Training Setup page's own run button produces it now, and week 2 day 4 produces it on
+its own. The stale done-flag for the week 1 run was removed so nothing blocks the next one.
+
 ## 🟡 T-FAC-1, first half — the ground and the tactical room do something (2026-12-13)
 
 Commit to follow. **The tactical multiplier is calculated and tested but not yet read by the engine**, and

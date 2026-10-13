@@ -121,6 +121,49 @@ public class TrainingProgressionService {
     }
 
     @Transactional
+    /**
+     * Trains every manager's club the full way, so the week report exists.
+     *
+     * <p><b>P0, owner report 2026-10-13:</b> he moved the clock from day 4 to day 5 and Training Reports
+     * was empty. The scheduled job had run — `job_run` held `training`, day 4, hour 10, DONE — because it
+     * calls {@code SquadTrainingService.trainEveryClub}, and **that is the other training implementation**.
+     * It grows attributes and writes nothing. This one writes the report, and it was reachable only from
+     * the manual endpoint. Two implementations, the scheduled one silent, every test green because each
+     * was tested alone.
+     *
+     * <p>Managed clubs only. A report nobody will ever read is a row written 14,000 times a week for
+     * nothing, and {@code getTeamReportSummaries} only ever asks for one club's.
+     *
+     * <p>One club failing must not stop the others, and must not stop the world's training either — the
+     * exception is counted and the pass continues.
+     *
+     * @return how many managed clubs were trained
+     */
+    public int trainManagedClubs(int season, int week) {
+        List<Long> managed = teamRepository.findClubTeamsForOperations().stream()
+                .filter(c -> c != null && c.getId() != null)
+                .filter(org.example.footballmanager.newLogic.model.Team::isHumanControlled)
+                .map(org.example.footballmanager.newLogic.model.Team::getId)
+                .toList();
+        int done = 0;
+        for (Long clubId : managed) {
+            try {
+                // Not `force`. The guard refuses a second training of the same week, which is what a job
+                // retrying after a restart needs; force would train every managed club twice.
+                runWeeklyTraining(clubId);
+                done++;
+            } catch (RuntimeException failed) {
+                log.warn("Weekly training failed for managed club {}: {}", clubId, failed.getMessage());
+            }
+        }
+        if (done > 0) {
+            log.info("Weekly training produced a report for {} managed club(s) in week {} of season {}.",
+                    done, week, season);
+        }
+        return done;
+    }
+
+    @Transactional
     public TrainingWeekReportDTO runWeeklyTraining(Long teamId, boolean force) {
         GameClock clock = seasonService.getOrCreateClock();
         int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
