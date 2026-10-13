@@ -1,3 +1,86 @@
+## 🟡 T-MATCH-6 — the engine half of the orders (2026-10-12)
+
+Commit to follow. **Engine done, page not.** The owner settled the open question and both halves of the
+semantics.
+
+**The ruling:** *"Mogu se dodati 3 razlicite TAKTIKE. Za te 3 taktike mogu se dodati 10 REDOVA SA
+INSTRUKCIJAMA kad na koju da se predje tj 10 puta u toku utakmice igrac moze preci na drugu taktiku."*
+
+That resolves the board's decision exactly as option 1 read it: **three tactics in the plan and ten
+instruction rows that switch between them.** They are not the same thing and the constant is not shared —
+`MatchTacticAssignmentService.MAX_PER_SIDE` stays at **3** and untouched, which is the point. Raising it to
+ten would have stopped T-MATCH-4 holding and nobody would have noticed.
+
+**Two decisions asked and answered, and both of them are now the shape of the code:**
+
+- **One-shot.** An order fires once and is spent. `MatchTacticPlan.Order` carries `firedAtMinute` and
+  `isPending()`, and `ready()` asks both the minute and the condition.
+- **The last matching order wins.** `position` is stored rather than inferred from the id, because the
+  engine takes the highest — and a manager adding a fourth instruction to a list of three almost always
+  means it corrects the one above.
+
+**The mutation is the most persuasive thing here.** Making an order a standing rule again — which is the
+option the owner *rejected* — turns three tests red and prints:
+
+    ten orders produced 91 switches, so the cap and the semantics disagree ==> expected: <10> but was: <91>
+
+That is precisely why the question was asked rather than guessed: ten rows would have been a cap in name
+only, and the cap and the behaviour would have quietly disagreed.
+
+**One order fires per tick.** Three ready at once, one fires (the last), and two are still pending — firing
+all three would apply one and silently drop the others, and the manager would watch an instruction vanish.
+
+**Resolution order is orders first, plan second.** The plan is the standing instruction; the order is the
+manager changing his mind during the match, so it is asked first and the plan is the fallback for the ticks
+it does not touch. A spent order cannot reassert itself — at minute 40, with both orders spent, nothing
+fires and the plan's shape returns.
+
+Conditions are the engine's existing six (`ALWAYS`, `LEADING_BY_ONE`, `LEADING_BY_THREE`, `DRAWING`,
+`TRAILING_BY_ONE`, `TRAILING_BY_THREE`) rather than the four loose words the substitution panel uses, so an
+order and an assignment are asked the same question.
+
+## 🔶 T-MATCH-6, the orders page — the cap done, the page not (2026-10-12)
+
+Commit to follow. **Not finished.**
+
+**What was already there, contrary to the board's "nothing built":** substitution rules with minute,
+condition, player on and player off; and `MatchTacticPlan.inForce` already filters on `minuteFrom <= minute`,
+so **an order that fires switches the engine's tactics live at that minute** — the third exit criterion was
+satisfied before this entry. Both order endpoints are also inside the T-MATCH-2 lock.
+
+**What was genuinely missing:** the caps, and the fact that there were none at all.
+
+- **Substitution orders: no cap whatsoever.** A manager could write as many rules as he liked and every one
+  was validated on save, on the request path. Now **20** (owner ruling), refused before the rules are
+  examined, so a manager with twenty is told so whether the twenty-first is otherwise perfect or not.
+- The cap is **stated on the page** — *"Up to 20 orders"* — and the page says when twenty are already set.
+  A cap that is only enforced is a cap that is discovered.
+- **Tactic orders: still 3, not 10.** `MatchTacticAssignmentService.MAX_PER_SIDE` is 3, which is the
+  T-MATCH-4 "three tactics per match" rule, and 10 was the owner's later ruling on tactic *orders*. These
+  are two different things — three tactics in the plan, ten conditional swaps between them — and raising
+  the constant to 10 would quietly break the rule the owner approved earlier. **Owner decision needed.**
+
+**Two guards had gone blind, and that was the most useful thing to find.** `SubstitutionPlanIsReachableTest`
+was red on three cases, and the harness named one of them precisely:
+
+    FAIL the mount is called — mountSubstitutionPlan is defined but never called, which is how the fixture sheet died
+
+That guard exists **only** to catch a panel mounted on a page no route renders — the defect that killed the
+fixture sheet before. The Match Setup change moved the mount into a `PANELS` table, so the call became
+`load: (body) => mountSubstitutionPlan(body)` and the guard, which matched a literal `void
+mountSubstitutionPlan()`, could no longer see it. The code was fine; **the guard had gone blind**, which is
+the more dangerous of the two. Both shape checks were updated to accept the new form while still enforcing
+the property, and the harness reports **ALL CHECKS PASSED**.
+
+**A first attempt at the cutoff fix was too blunt, and a test said so.**
+`SubstitutionPlanFixtureKeyTest.closesAnHourBeforeKickoff` builds a fixture 30 minutes out without running
+the scheduler and expects the plan closed. Removing the wall-clock comparison outright removed that
+backstop as well as fixing the owner's bug. The backstop is worth keeping — the matchday job normally
+prepares the fixture an hour out, but a job that has not run yet should not leave the panel open — so it is
+**narrowed to what it is for**: is the kickoff imminent, *and in the future*. Thirty minutes out closes.
+Seven hours in the past does not, because that is a stale stamp on a match the game has not reached, and
+the prepared flag closes it when it is genuinely decided. Both cases now have a test.
+
 ## ✅ The simulation write path, closed (2026-10-12)
 
 Commit to follow.

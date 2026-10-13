@@ -21,6 +21,9 @@ public final class MatchTacticsResolver {
 
     private final List<MatchTacticPlan.Entry> homeEntries;
     private final List<MatchTacticPlan.Entry> awayEntries;
+    /** The mid-match switch instructions (T-MATCH-6). Mutable: each holds whether it has been spent. */
+    private final List<MatchTacticPlan.Order> homeOrders;
+    private final List<MatchTacticPlan.Order> awayOrders;
 
     /**
      * One lookup per side, each already bound to that side's club.
@@ -43,8 +46,25 @@ public final class MatchTacticsResolver {
                                 Function<Long, TacticsRules> awayRulesForTactic,
                                 TacticsRules homeDefault,
                                 TacticsRules awayDefault) {
+        this(homeEntries, awayEntries, null, null,
+                homeRulesForTactic, awayRulesForTactic, homeDefault, awayDefault);
+    }
+
+    /** With the mid-match orders of T-MATCH-6 alongside the plan's standing instructions. */
+    public MatchTacticsResolver(List<MatchTacticPlan.Entry> homeEntries,
+                                List<MatchTacticPlan.Entry> awayEntries,
+                                List<MatchTacticPlan.Order> homeOrders,
+                                List<MatchTacticPlan.Order> awayOrders,
+                                Function<Long, TacticsRules> homeRulesForTactic,
+                                Function<Long, TacticsRules> awayRulesForTactic,
+                                TacticsRules homeDefault,
+                                TacticsRules awayDefault) {
         this.homeEntries = homeEntries == null ? List.of() : List.copyOf(homeEntries);
         this.awayEntries = awayEntries == null ? List.of() : List.copyOf(awayEntries);
+        // Copied into a mutable list. The orders are stateful for the match - each carries whether it has
+        // been spent - so an unmodifiable list would throw the first time one fired.
+        this.homeOrders = homeOrders == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(homeOrders);
+        this.awayOrders = awayOrders == null ? new java.util.ArrayList<>() : new java.util.ArrayList<>(awayOrders);
         this.homeRulesForTactic = homeRulesForTactic;
         this.awayRulesForTactic = awayRulesForTactic;
         this.homeDefault = homeDefault;
@@ -60,15 +80,36 @@ public final class MatchTacticsResolver {
      * @param homeScore goals by the home side
      * @param awayScore goals by the away side
      * @param minute    the match minute
-     */
-    public SideTactics resolve(int homeScore, int awayScore, int minute) {
+     */    public SideTactics resolve(int homeScore, int awayScore, int minute) {
         // Read from each side's own point of view: the home side's lead is the away side's deficit, so
         // one set of condition names serves both without either being special.
-        TacticsRules home = pick(MatchTacticPlan.inForce(homeEntries, homeScore - awayScore, minute),
+        // **An order that fires wins over the plan** (T-MATCH-6). The plan is the standing instruction;
+        // the order is the manager changing his mind during the match, and it is the later, deliberate
+        // statement - so it is asked first and the plan is the fallback for the ticks it does not touch.
+        TacticsRules home = pick(forSide(homeEntries, homeOrders, homeScore - awayScore, minute),
                 homeDefault, homeRulesForTactic);
-        TacticsRules away = pick(MatchTacticPlan.inForce(awayEntries, awayScore - homeScore, minute),
+        TacticsRules away = pick(forSide(awayEntries, awayOrders, awayScore - homeScore, minute),
                 awayDefault, awayRulesForTactic);
         return new SideTactics(home, away);
+    }
+
+    /**
+     * The tactic in force for one side: an order that has fired, or the plan's standing instruction.
+     *
+     * <p>An order is asked before the plan and, when it is ready, spends itself inside
+     * {@link MatchTacticPlan#orderInForce}, so the next tick asks again and finds it gone.
+     */
+    private java.util.Optional<MatchTacticPlan.Entry> forSide(List<MatchTacticPlan.Entry> entries,
+                                                               List<MatchTacticPlan.Order> orders,
+                                                               int scoreDifference,
+                                                               int minute) {
+        java.util.Optional<MatchTacticPlan.Order> fired =
+                MatchTacticPlan.orderInForce(orders, scoreDifference, minute);
+        if (fired.isPresent()) {
+            return java.util.Optional.of(MatchTacticPlan.Entry.of(
+                    null, fired.get().tacticId(), 0, TacticMatchCondition.ALWAYS, fired.get().minuteFrom()));
+        }
+        return MatchTacticPlan.inForce(entries, scoreDifference, minute);
     }
 
     private TacticsRules pick(java.util.Optional<MatchTacticPlan.Entry> inForce, TacticsRules fallback,

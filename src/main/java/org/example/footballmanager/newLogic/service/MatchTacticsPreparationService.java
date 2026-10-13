@@ -26,6 +26,7 @@ public class MatchTacticsPreparationService {
 
     private final MatchTacticAssignmentService assignments;
     private final TacticsRulesProvider rulesProvider;
+    private final org.example.footballmanager.newLogic.repository.MatchTacticOrderRepository orders;
 
     /**
      * The resolver for this fixture, or null when nobody planned for it.
@@ -40,7 +41,12 @@ public class MatchTacticsPreparationService {
 
         List<MatchTacticPlan.Entry> home = entriesFor(fixture.getId(), "HOME");
         List<MatchTacticPlan.Entry> away = entriesFor(fixture.getId(), "AWAY");
-        if (home.isEmpty() && away.isEmpty()) {
+        // The mid-match orders (T-MATCH-6). A fixture can carry orders and no plan: a manager who sets
+        // only orders wants his default shape until an order fires, which is a different thing from having
+        // planned nothing and must not be treated as it.
+        List<MatchTacticPlan.Order> homeOrders = ordersFor(fixture.getId(), "HOME");
+        List<MatchTacticPlan.Order> awayOrders = ordersFor(fixture.getId(), "AWAY");
+        if (home.isEmpty() && away.isEmpty() && homeOrders.isEmpty() && awayOrders.isEmpty()) {
             // Nobody planned this fixture. The match keeps the shape it was built with, and the tick loop
             // never asks anything.
             return null;
@@ -49,11 +55,30 @@ public class MatchTacticsPreparationService {
         // Each side's lookup is bound to that side's own club, because a tactic id means nothing without it:
         // club 1's tactic 1 and club 2's tactic 1 are both 1, and the provider checks the pair.
         return new MatchTacticsResolver(
-                home, away,
+                home, away, homeOrders, awayOrders,
                 tacticId -> homeTeamId == null ? null : rulesProvider.forTactic(homeTeamId, tacticId),
                 tacticId -> awayTeamId == null ? null : rulesProvider.forTactic(awayTeamId, tacticId),
                 rulesProvider.forTeam(homeTeamId),
                 rulesProvider.forTeam(awayTeamId));
+    }
+
+    /**
+     * The stored orders for one side, as the engine's own stateful copies.
+     *
+     * <p>Read once, when the match starts, and never again: the engine must not touch the database from
+     * inside a tick, and an order's fired state is per-match anyway.
+     */
+    private List<MatchTacticPlan.Order> ordersFor(Long fixtureId, String team) {
+        if (orders == null || fixtureId == null) {
+            return List.of();
+        }
+        return orders.findByFixtureIdAndTeamOrderByPositionAsc(fixtureId, team).stream()
+                .map(order -> new MatchTacticPlan.Order(
+                        order.getTactic() == null ? null : order.getTactic().getId(),
+                        order.getCondition(),
+                        order.getMinuteFrom(),
+                        order.getPosition()))
+                .toList();
     }
 
     private List<MatchTacticPlan.Entry> entriesFor(Long fixtureId, String team) {

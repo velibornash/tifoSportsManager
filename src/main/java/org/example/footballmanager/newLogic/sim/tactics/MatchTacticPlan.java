@@ -32,6 +32,81 @@ public final class MatchTacticPlan {
      * @param scoreDifference goals scored by this side minus goals by the other, so positive means ahead
      * @param minute         the match minute, 0 at kickoff
      */
+    /**
+     * An instruction to change tactic mid-match, and whether it has been spent (T-MATCH-6).
+     *
+     * <p><b>One-shot, owner ruling.</b> The fired flag is the whole difference between this and an
+     * assignment: an assignment is a standing instruction and is asked the same question every tick, while
+     * an order fires the first time its condition holds and is never asked again. A standing order would
+     * flip the club back and forth as the score moved, and ten rows would produce far more than ten
+     * switches.
+     *
+     * <p>Mutable on purpose: the resolver is created once per match and asked once per tick, so the fired
+     * state has to live somewhere and this is the only place that is per-match.
+     */
+    public static final class Order {
+        private final Long tacticId;
+        private final TacticMatchCondition condition;
+        private final int minuteFrom;
+        private final int position;
+        private Integer firedAtMinute;
+
+        public Order(Long tacticId, TacticMatchCondition condition, int minuteFrom, int position) {
+            if (condition == null) {
+                throw new IllegalArgumentException("A tactic order needs a condition");
+            }
+            this.tacticId = tacticId;
+            this.condition = condition;
+            this.minuteFrom = minuteFrom;
+            this.position = position;
+        }
+
+        public Long tacticId() { return tacticId; }
+        public int minuteFrom() { return minuteFrom; }
+        public int position() { return position; }
+        public boolean isPending() { return firedAtMinute == null; }
+        public Integer firedAtMinute() { return firedAtMinute; }
+
+        /** Spends the order. Called once, by the resolver, at the minute it fires. */
+        void fireAt(int minute) {
+            this.firedAtMinute = minute;
+        }
+
+        /** Whether the order is ready to fire right now, minute and score difference included. */
+        boolean ready(int scoreDifference, int minute) {
+            return isPending() && minuteFrom <= minute && condition.holds(scoreDifference);
+        }
+    }
+
+    /**
+     * The order that fires now, or empty when none is ready.
+     *
+     * <p><b>The last one written wins</b> — owner ruling. Among the orders that are ready, the highest
+     * position is taken, because a manager adding a fourth instruction to a list of three almost always
+     * means it corrects the one above it, and the alternative silently ignores the row they just added.
+     *
+     * <p>Exactly one order fires per call even if several are ready, and it is marked spent: firing two at
+     * once would apply one and silently drop the other, and the manager would see an instruction vanish.
+     *
+     * @param scoreDifference this side's goals minus the other side's, so positive means ahead
+     * @param minute          the match minute, 0 at kickoff
+     */
+    public static Optional<Order> orderInForce(List<Order> orders, int scoreDifference, int minute) {
+        if (orders == null || orders.isEmpty()) {
+            return Optional.empty();
+        }
+        Order winner = null;
+        for (Order order : orders) {
+            if (order.ready(scoreDifference, minute) && (winner == null || order.position > winner.position)) {
+                winner = order;
+            }
+        }
+        if (winner != null) {
+            winner.fireAt(minute);
+        }
+        return Optional.ofNullable(winner);
+    }
+
     public static Optional<Entry> inForce(List<Entry> assignments, int scoreDifference, int minute) {
         if (assignments == null || assignments.isEmpty()) {
             return Optional.empty();
