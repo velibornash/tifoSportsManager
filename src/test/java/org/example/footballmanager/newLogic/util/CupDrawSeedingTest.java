@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -47,6 +48,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * coincidence is a rule nobody can change safely.
  */
 class CupDrawSeedingTest extends BaseTest {
+
+    /** Unique per call: `iso_code` is unique and a repeated suffix fails a test for the wrong reason. */
+    private static final java.util.concurrent.atomic.AtomicLong ISO_SEQUENCE =
+            new java.util.concurrent.atomic.AtomicLong();
 
     @Autowired private CupFixtureSeeder seeder;
     @Autowired private CompetitionRepository competitions;
@@ -241,16 +246,38 @@ class CupDrawSeedingTest extends BaseTest {
                         + "not apply to it");
     }
 
-    /** A domestic cup with {@code clubCount} clubs in it, which is what the draw reads. */
+    /**
+     * A domestic cup with {@code clubCount} clubs in it, which is what the draw reads.
+     *
+     * <p>The clubs go into a <b>league</b>, not into the cup, and that is not a detail. The draw's field is
+     * {@code rankedClubs}, which keeps a team only when the competition it plays in is a LEAGUE — that is
+     * the filter that keeps the national side out of the club cup, and it is the definition the pyramid
+     * uses. This helper used to set {@code club.setCompetition(cup)}, which is a CUP, so every club it
+     * built was rejected by that filter and the draw found an empty country.
+     *
+     * <p>{@link #theDrawTargetsTheNationalCup} had been failing on {@code main} for exactly this reason,
+     * and its own message said so — "round 1 was not drawn, so this test proves nothing" — which is a test
+     * reporting that it measures nothing, in a class where nobody read the run.
+     */
     private Competition aNationalCupWithClubs(int clubCount) {
         Country country = new Country();
-        country.setName("ZZ Cup " + System.nanoTime());
-        country.setIsoCode("CU" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        // A monotonic suffix, not `nanoTime() % 20`: that collides, `iso_code` is unique, and the
+        // collision surfaced as a DataIntegrityViolation in an unrelated test on a slow run.
+        String stamp = Long.toString(ISO_SEQUENCE.incrementAndGet());
+        country.setName("ZZ Cup " + stamp);
+        country.setIsoCode("ZZ" + stamp);
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 
+        Competition league = new Competition();
+        league.setName("ZZ National League " + stamp);
+        league.setType(CompetitionType.LEAGUE);
+        league.setScope(CompetitionScope.NATIONAL);
+        league.setCountry(country);
+        league = competitions.save(league);
+
         Competition cup = new Competition();
-        cup.setName("ZZ National Cup " + System.nanoTime());
+        cup.setName("ZZ National Cup " + stamp);
         cup.setType(CompetitionType.CUP);
         cup.setScope(CompetitionScope.NATIONAL);
         cup.setCountry(country);
@@ -258,13 +285,147 @@ class CupDrawSeedingTest extends BaseTest {
 
         for (int i = 1; i <= clubCount; i++) {
             Team club = new Team();
-            club.setName(String.format("ZZ Cup FC%02d", i));
+            club.setName(String.format("ZZ Cup FC%02d " + stamp, i));
             club.setCountry(country);
-            club.setCompetition(cup);
+            club.setCompetition(league);
             club.setHumanControlled(false);
             club.setReputation(50.0);
             teams.save(club);
         }
         return cup;
+    }
+
+    /**
+     * The admin "Re-draw the cup" button must not draw the cup again.
+     *
+     * <p>Its guard counted <b>unplayed</b> ties, which is a different question from "has this round been
+     * drawn?". The two agree exactly until the round is played, and then they stop: a played round has no
+     * unplayed ties, the guard concludes it was never drawn, and the button deals all 108 teams a second
+     * time. Measured on the owner's database — 54 duplicate round-1 ties on every press, the whole field
+     * entered twice, from a method named {@code seedIfMissing} whose Javadoc claimed the opposite.
+     *
+     * <p>So the sequence that matters is the one nobody tested: draw, <b>play the round</b>, press again.
+     * Pressing twice without playing never failed, because the guard was still holding.
+     */
+    @Test
+    @DisplayName("pressing the button again after the round is played does not draw it twice")
+    void pressingTheButtonAgainAfterTheRoundIsPlayedAddsNothing() {
+        aNationalCupWithClubs(310);
+        int season = seasons.getActiveSeasonYear();
+
+        seeder.seedIfMissing();
+        List<MatchFixture> afterFirstPress = fixturesOfThisCup(season, 1);
+        assertTrue(afterFirstPress.size() > 0, "the first press drew nothing, so this test proves nothing");
+
+        // Play every tie. This is the step that used to disarm the guard.
+        for (MatchFixture fixture : afterFirstPress) {
+            fixture.setPlayed(true);
+            fixtures.save(fixture);
+        }
+        assertTrue(fixturesOfThisCup(season, 1).stream().noneMatch(MatchFixture::isPlayed) == false,
+                "the ties were not marked played, so the guard was never disarmed and this proves nothing");
+
+        seeder.seedIfMissing();
+
+        assertEquals(afterFirstPress.size(), fixturesOfThisCup(season, 1).size(),
+                "the button redrew a round that was already drawn and already played: every club in it has "
+                        + "been entered a second time, against a different opponent");
+    }
+
+    /**
+     * The scheduled draw has the same guard and the same blind spot.
+     *
+     * <p>{@code drawRoundForWeek} asked the unplayed question too. The job runner's done-flag hides that
+     * for a slot that has not been rewound, and hides nothing at all for one that has — and the rewind is
+     * a supported admin operation.
+     */
+    @Test
+    @DisplayName("the scheduled draw does not redeal a round that has been played")
+    void theScheduledDrawDoesNotRedealAPlayedRound() {
+        aNationalCupWithClubs(310);
+        int season = seasons.getActiveSeasonYear();
+
+        assertTrue(seeder.drawRoundForWeek(1) > 0, "round 1 was not drawn, so this test proves nothing");
+        List<MatchFixture> drawn = fixturesOfThisCup(season, 1);
+
+        for (MatchFixture fixture : drawn) {
+            fixture.setPlayed(true);
+            fixtures.save(fixture);
+        }
+
+        assertEquals(0, seeder.drawRoundForWeek(1),
+                "the scheduled draw redealt a round that was already drawn and already played");
+        assertEquals(drawn.size(), fixturesOfThisCup(season, 1).size(),
+                "the round gained ties it should not have been dealt again");
+    }
+
+    /**
+     * The owner's week map, pinned in full.
+     *
+     * <p>Stated by the owner on 2026-10-13 for Kup Srbije in a country of 310 clubs, and it is written out
+     * here in the order he gave it: weeks 1-5, week 6 is the national-team pause, then weeks 7, 8, 9 and 10,
+     * with the final on week 10.
+     *
+     * <p>The constant read {@code {1, 2, 3, 4, 5, 7, 8, 11}} — eight entries, so a 256-team knockout had
+     * <b>no final</b>, and its last round sat three weeks after the quarter-final. The class comment
+     * defended that as a reading of an earlier brief, which is the kind of comment that outlives the brief
+     * it was defending.
+     *
+     * <p>The arithmetic is asserted as well as the calendar, because a map of the right length in the
+     * wrong order still produces a cup that ends on the wrong night.
+     */
+    @Test
+    @DisplayName("the cup runs weeks 1-5 and 7-10, no week 6, and finishes with a final on week 10")
+    void theWeekMapIsTheOwners() {
+        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 7, 8, 9, 10}, CupFixtureSeeder.CUP_WEEKS,
+                "the cup's week map is not the owner's: weeks 1-5 then 7-10, week 6 being the national-team week");
+
+        // Nine rounds, and they must be the nine the bracket needs: 256 entrants after round 2 take eight
+        // halvings to a single champion, plus the entry round in front of them.
+        assertEquals(9, CupFixtureSeeder.CUP_WEEKS.length,
+                "a 310-club cup needs the entry round plus eight halvings from 256, which is nine rounds");
+
+        for (int week : CupFixtureSeeder.CUP_WEEKS) {
+            assertTrue(week != 6, "week 6 is the national-team week and carries no club football");
+            assertTrue(week >= 1 && week <= 12, "week " + week + " is outside a twelve-week season");
+        }
+
+        // The rounds the bracket produces, from the owner's arithmetic, checked against the map.
+        // Round 2 is the one week the field grows rather than halves: the 54 entry-round winners join the
+        // 202 clubs above it.
+        int[] entrantsPerRound = {108, 256, 128, 64, 32, 16, 8, 4, 2};
+        assertEquals(54, entrantsPerRound[0] / 2, "the entry round's 108 clubs must produce 54 winners");
+        assertEquals(202, entrantsPerRound[1] - entrantsPerRound[0] / 2,
+                "round 2 must add the 202 clubs above the entry round to the 54 that came through it");
+        assertEquals(256, entrantsPerRound[1], "round 2's field is the owner's 256");
+
+        // From round 3 on it is a straight halving, and the last round's winner is the champion.
+        for (int round = 2; round < entrantsPerRound.length; round++) {
+            assertEquals(entrantsPerRound[round] * 2, entrantsPerRound[round - 1],
+                    "round " + (round + 1) + " should be half of round " + round
+                            + ", so " + entrantsPerRound[round - 1] + " and not " + entrantsPerRound[round]);
+            assertTrue(entrantsPerRound[round] % 2 == 0,
+                    "round " + (round + 1) + " has " + entrantsPerRound[round] + " entrants, which is odd");
+        }
+        assertEquals(1, entrantsPerRound[entrantsPerRound.length - 1] / 2,
+                "the bracket does not finish on one champion over nine rounds");
+
+        // And the final is the last week on the map, not a week that merely happens to be free.
+        assertEquals(10, CupFixtureSeeder.CUP_WEEKS[CupFixtureSeeder.CUP_WEEKS.length - 1],
+                "the last round is not on the owner's final week");
+    }
+
+    /** The ties of the domestic cup this test just built, for one round. */
+    private List<MatchFixture> fixturesOfThisCup(int season, int round) {
+        Competition cup = competitions.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.CUP)
+                .filter(c -> c.getScope() == CompetitionScope.NATIONAL)
+                .filter(c -> c.getName() != null && c.getName().startsWith("ZZ National Cup"))
+                .reduce((first, second) -> second)
+                .orElseThrow(() -> new AssertionError("the test's own cup is gone, so this proves nothing"));
+        return fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), season)
+                .stream()
+                .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == round)
+                .toList();
     }
 }

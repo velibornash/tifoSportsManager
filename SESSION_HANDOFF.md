@@ -29,10 +29,58 @@ export PATH="$JAVA_HOME/bin:/usr/local/bin:/usr/local/opt/libpq/bin:/Users/velja
 | | |
 |---|---|
 | Build | `mvn -o clean package -DskipTests` — **always check the real exit code.** `grep ERROR` after a piped `mvn` returns grep's status, not maven's. This mistake shipped a broken jar once. |
-| Run | `java -jar target/footballmanager-1.0-SNAPSHOT.jar --app.open-browser=false` — **the flag is mandatory from a shell.** The IDE `main()` keeps the default. |
+| **Run the app** | **`./run-app.sh`** — see below. **Never `mvn spring-boot:run` directly**, and never `java -jar …` as a substitute. |
 | psql | `/Applications/Postgres.app/Contents/Versions/18/bin/psql -h localhost -U postgres -d sokker_db` |
-| Browser | `agent-browser` (on PATH above). Login `velibor@example.com` / `A12345!` |
+| **Browser** | **`agent-browser`** — see below. Login `velibor@example.com` / `A12345!` |
 | API token | `curl -s -X POST localhost:8080/auth/login -H 'Content-Type: application/json' -d '{"username":"velibor@example.com","password":"A12345!"}'` → `.token`. **The field is `username`, not `email`.** |
+
+### Starting the app — `./run-app.sh`, always
+
+```bash
+./run-app.sh                 # foreground, does NOT open a browser
+./run-app.sh --with-browser  # opt in to the browser for one run
+```
+
+**This is the only supported way to start the app from a shell** (owner, 2026-09-29). It runs
+`mvn spring-boot:run` with `--app.open-browser=false` for you and strips its own flag before Maven sees
+it. `BrowserLauncher` opens `http://localhost:8080/login.html` on every startup, which is right when the
+owner runs `main()` from the IDE and wrong for any shell — and **the application cannot tell those two
+cases apart**, so the default stays `true` for the IDE and the shell opts out through this script.
+
+**Do not "fix" this by flipping the default in code.** It was briefly opt-in, and the owner's IDE start
+then did nothing, silently.
+
+An earlier version of this handoff told you to run
+`java -jar target/footballmanager-1.0-SNAPSHOT.jar --app.open-browser=false`. **That is not what the owner
+asked for and it is not what you should do.** It also loses the `--with-browser` opt-in and leaves the app
+running from whatever terminal started it, with no log file to read.
+
+### Browser work — `agent-browser`
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"    # NOT on the default shell PATH — this bites first
+agent-browser open http://localhost:8080/login.html
+```
+
+`agent-browser` is at `/Users/velja/.npm-global/bin/agent-browser`. It is **not on the default PATH**, so
+`agent-browser` alone gives `command not found` until you add it. Login `velibor@example.com` / `A12345!`.
+
+**It is a SPA.** `location.pathname` never changes, so to see what a page rendered read
+`document.getElementById('main-content')` — **not** `document.body.innerText`, which starts at the top bar
+and reads as though the page is empty.
+
+**But the element id is per page.** The in-game SPA pages have `#main-content`; the **Sports Lobby does
+not**, so `getElementById('main-content')` returns `null` there and looks like a dead page when it is
+working. `agent-browser snapshot -i` works on every page and is the safe first move.
+
+```bash
+agent-browser snapshot -i                                        # what is on this page, anywhere
+agent-browser eval "document.getElementById('main-content')?.innerText"   # in-game pages only
+```
+
+**A page that has not been opened in a browser has not been verified.** Four items on this board are
+committed, tested and unverified for exactly that reason. Any exit criterion that says "in the browser" is
+answered with `agent-browser` and a screenshot, or it is not answered.
 
 **Playwright tests in `newLogic/service/` need a running app and will hang a full suite. Never start one
 on the way to something else.**
@@ -83,11 +131,11 @@ the clock and it only logs when a job actually ran — silence means "nothing wa
 - `var/tactics-editor-profiles.json` is a **tracked runtime file that always shows as modified. Never
   stage it** unless the task is about tactics data.
 
-**The app is started from a terminal the agent cannot see, so it has no log file.** Started 22:27 on
-2026-10-13. If a task needs the job log, restart it yourself with output redirected:
+**The app is usually already running, from a terminal the agent cannot see, so it has no log file.** If a
+task needs the job log, restart it through `run-app.sh` with the output redirected:
 
 ```bash
-nohup java -jar target/footballmanager-1.0-SNAPSHOT.jar --app.open-browser=false > /tmp/tifo.log 2>&1 &
+nohup ./run-app.sh > /tmp/tifo.log 2>&1 &
 ```
 
 `job_run` is the honest record and is enough for most things; the log is only needed to read a stack trace.
@@ -140,33 +188,39 @@ Clubs tab with `scrollY === 0`.
 
 ### P0 — correctness
 
+**P0-8 · The national side Serbia U-21 is in Kup Srbije, rounds 1 to 4.** *(found 2026-10-13)*
+It **won three knockout rounds** (4-0, 3-1, 3-2) and is in the unplayed round 4. `42fc45c7` stopped national
+teams being *drawn* into the cup, but that filter only governs future draws and this bracket predates it.
+**`SK Kikinda` is consequently not in the cup at all** — 309 of Serbia's 310 clubs are, it should be 310.
+Options (a) let it play on, (b) void U-21's ties and re-draw from round 1, (c) substitute Kikinda. **(b) is
+the honest one** and is now safe because P0-3 is fixed — but it discards played football, so **needs the
+owner.** Do not get there by pressing "Re-draw the cup": that button redraws round 1 only and is not a
+"reset the tournament" control.
+
 **P0-5 · 824 fixtures are stranded in the past.** *(new, 2026-10-13)*
 `walk()` is forward-only — `steps = Math.max(0, Math.min(delta, MAX))` — so an hour it skips is gone for
-ever. Weeks 4 day 5, 4 day 7, 5 day 1 and 5 day 3 have fixtures and **no `job_run` row for their
-matchday at all**. Caused by the watermark repair (`3b758f45`) and a 72-hour offset rewind, both of which
-discard hours silently. **Options (a) write off, (b) publish at once, (c) catch up from the fixture's own
-`match_date`** are set out in `kanban.md`; (c) is the one that fits the design. **Needs the owner.**
+ever. Weeks 4 day 5, 4 day 7, 5 day 1 and 5 day 3 have fixtures and **no `job_run` row for their matchday at
+all**. Caused by the watermark repair (`3b758f45`) and a 72-hour offset rewind, both of which discard hours
+silently. **Options (a) write off, (b) publish at once, (c) catch up from the fixture's own `match_date`**
+are set out in `kanban.md`; (c) is the one that fits the design. **Needs the owner.**
 
-**P0-1 · Verify one matchday completes clean, end to end.** ✅ **CLOSED 2026-10-13.**
-Week 5 day 7, 155 fixtures. `matchday-prepare-7` DONE at 15:00 in **121 s**; `matchday-publish-7` DONE at
-16:00 in **5 s**; **zero new `FAILED`**. While prepared, `/matches/3359`, `/detail`, `/preview` and `/report`
-all answered **404** and the club's match list held 13 rows; after the publish, 14 rows containing it. Elo
-replayed at hour 22 in ~9 min and moved **with the result** (home win +17, away defeat −17).
-**Timings on this machine, for the next session: prepare 121 s, publish 5 s, Elo + ranking replay ~9 min.**
+**P0-7 · The qualifying race had no tie-break at all.** ✅ **Fixed 2026-10-13.**
+Owner-reported off the screen: a 14-point club ranked above a 16-point club. The Masters race is
+`poolAt(1) + poolAt(2)` — two independently sorted lists concatenated, the union never sorted — so every
+2nd-placed club outranked every 3rd-placed one **whatever their points**. Only Masters was affected;
+Champions (`poolAt(0)`) and Challenge (`poolAt(3)`) are single sorted pools. Verified on all three cups in
+all five tiers and in the browser. **One question left for the owner:** he said *pts, gd, zreb*, and
+`LeagueTableOrder` is *pts, gd, goals scored, team id*. Changing the third key is global, so it is untouched.
 
-**P0-2 · Cup round 2 has never been drawn.** ⚠️ **The board said only 54 ties exist. There are now 128
-fixtures at week 2 day 5** — which is exactly the target (108 winners + ranks 1-202 = 256 entrants = 128
-ties). The draw appears to have run at some point on 2026-10-13 (`cup-draw` shows DONE at week 4 day 2
-hour 8, and 32 further fixtures exist at week 4 day 5). **Verify the count and that the two fixes of the
-last session hold — do not re-draw.**
+**P0-9 · The national cup had no final.** ✅ **Fixed 2026-10-13.**
+`CUP_WEEKS` read `{1,2,3,4,5,7,8,11}` — eight rounds, so no final, and the last round three weeks after the
+quarter-final. The owner's nine weeks are `{1,2,3,4,5,7,8,9,10}`. `InternationalClubCupDraw.CUP_WEEKS` was
+**already** correct, which is the only reason this survived: the national cup had nothing to be compared to.
 
-**P0-3 · The admin "Re-draw the cup" button is not idempotent.**
-`seedIfMissing()` **added 54 duplicate round-1 ties on every press** — all 108 teams ended up drawn twice.
-Its Javadoc claims the opposite. The duplicates were removed by hand. **Do not press that button** until
-fixed. It is the reason P0-2 is not simply "click the button".
-
-**P0-4 · `/admin/world-reseed?what=national-teams` is broken** — fails on a `player` foreign-key
-violation, unrelated to the above.
+**P0-3 · The admin "Re-draw the cup" button was not idempotent.** ✅ **Fixed 2026-10-13.**
+It guarded with *"are there **unplayed** round-1 ties?"* — a played round has none, so the guard concluded it
+had never been drawn and every press entered all 108 teams again. Both that guard and the scheduled one now
+ask *"has this round been drawn?"*. The button is safe to press. It still only redraws **round 1**.
 
 **P0-6 · The lock named the wrong club to an away manager.** ✅ **Fixed 2026-10-13.**
 `MatchLockService.refusalReason` compared the home team's id with **itself**, so it always named the away
@@ -174,6 +228,10 @@ side — right by accident for a home manager, wrong for every away one, which r
 OFK Omladinac…"* to a manager whose club **is** Omladinac. Fixed by passing the club being refused
 (`refusalReason(fixture, askingTeamId)`), six call sites. Found live during P0-1, **not** by a test — the
 test asserted `$.reason` `isNotEmpty()`, which would pass against a message naming `null`.
+
+**P0-2 · "Cup round 2 has never been drawn."** ✅ **Answered — the premise was stale.** Round 2 **is** drawn
+with **128 ties**, which is the owner's arithmetic exactly (54 winners + 202 direct = 256). The real
+remaining defect is P0-8 above.
 
 ### P1
 
@@ -271,6 +329,20 @@ They build and `node --check` passes, which is exactly the bar that let a broken
 14. **`sum(elo_rating)` is invariant.** It read 17,615,987 before and after a 155-match matchday — that is Elo
     being zero-sum and working, **not** a stalled replay. Check per-club `elo_rating` against
     `elo_previous_rating`, and check that the direction agrees with the result.
+15. **🔴 A `kill` that is not confirmed is not a stop.** `kill <pid>` on the running app **did not take**,
+    the old JVM kept port 8080 and kept serving **pre-fix bytecode**, while the new one's log said
+    *"Nothing to compile — all classes are up to date."* Two rounds of "verification" showed the old wrong
+    answer and I nearly recorded a fix that had changed nothing. After any restart:
+
+    ```bash
+    kill -9 <pid>; sleep 3
+    lsof -nP -iTCP:8080 -sTCP:LISTEN        # must be empty BEFORE starting again
+    ./run-app.sh &                          # then wait for it to bind
+    lsof -nP -iTCP:8080 -sTCP:LISTEN -t     # the serving pid must NOT be the old one
+    ps -o pid,lstart -p <newpid>            # and must have started just now
+    ```
+
+    **A second instance failing to bind looks exactly like a working first one.**
 
 ---
 

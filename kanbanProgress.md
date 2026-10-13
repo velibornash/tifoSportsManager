@@ -1,3 +1,122 @@
+## 2026-10-14 — three cup defects, one of them read off the screen by the owner
+
+**All three were found by reading code and data rather than by a test, and all three are P0 because they
+decide who plays in a continental competition.**
+
+### 1. The qualifying race had no tie-break at all (P0-7, fixed)
+
+The owner asked how GFK Nova Pazova 1923 on **14 points** was above GFK Borski Zaječar on **16**. The cause
+was not a tie-break that was slightly wrong:
+
+```java
+masters.addAll(poolAt(tier.getValue(), 1));   // sorted, descending
+masters.addAll(poolAt(tier.getValue(), 2));   // sorted, descending
+// the union of the two was never sorted
+```
+
+Two independently sorted lists, concatenated. **Every 2nd-placed club ranked above every 3rd-placed one,
+whatever their points.** Tier 3 across four divisions came out in the shape of two sorted runs:
+`17, 15, 14, 14 ++ 15, 15, 14, 13`.
+
+Only the Masters race was affected — Champions is `poolAt(0)` and Challenge is `poolAt(3)`, each a single
+sorted pool. Tier 1 was never at risk because it always has exactly one division, measured across all 48
+countries. The worst case in the world is 16 divisions in one tier: a 32-club Masters race.
+
+**Fixed** by sorting the union. Verified against the running app on **all three cups in all five tiers**, and
+in the browser on the screen the owner reported:
+
+```
+before   1 OFK Niš               16  Qualifies      after   1 OFK Niš               16  Qualifies
+         2 GFK Nova Pazova 1923  14  Qualifies              2 GFK Borski Zaječar   16  Qualifies
+         3 GFK Borski Zaječar    16  Candidate              3 GFK Nova Pazova 1923  14  Candidate
+```
+
+`CountryQualifyingRaceOrderTest` builds the shape that breaks — a 2nd-placed club on 12 points against a
+3rd-placed club on 30 — and requires points never to go backwards. Reverting the fix fails it with
+*"12 points is followed by 25"*.
+
+### 🔴 A false "verified" that nearly went on the board
+
+The first two verification rounds **still showed the old order after the fix was compiled**, and the cause
+was not the fix: `kill` on the running app had not taken, so the old JVM kept the port and served
+pre-fix bytecode while the log cheerfully said *"Nothing to compile — all classes are up to date."*
+
+`lsof -nP -iTCP:8080` afterwards showed the same PID I had "stopped". **A kill that is not confirmed is not a
+stop.** The rule here is now: after a restart, check the serving PID and the process start time before
+believing anything the API says.
+
+### 2. The national side Serbia U-21 is in the club cup (P0-8, OPEN — needs the owner)
+
+Found while verifying P0-2. `42fc45c7` stopped national teams being drawn into the club cup, but that filter
+governs **future** draws, and this bracket predates it.
+
+| Round | Tie | Result |
+|---|---|---|
+| 1 | SK Zemun 1928 vs Serbia U-21 | **won 4-0** |
+| 2 | Serbia U-21 vs GFK Dinamo Paraćin 1912 | **won 3-1** |
+| 3 | Serbia U-21 vs ŽFK Sinđelić Zemun | **won 3-2** |
+| 4 | Serbia U-21 vs TSK Tamiš Leskovac | unplayed |
+
+Round 2 is the right size — 128 ties, the owner's arithmetic — but its field is **255 real clubs and one
+national side**, because U-21 won round 1 and took a winner's slot.
+
+**`SK Kikinda` is not in the cup at all.** One of Serbia's 310 clubs, absent from every round of every tie.
+309 of 310 are in; it should be 310. Three options are set out in `kanban.md`; **(b) re-draw from round 1** is
+the honest one and is cheap now that P0-3 is fixed, but it discards football that has been played, so it is
+the owner's call.
+
+### 3. The national cup had no final (P0-9, fixed)
+
+The owner restated the format and the constant did not match it:
+
+```java
+CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 11}     // eight rounds — no final
+```
+
+Nine rounds are needed: weeks 1-5, week 6 is the national-team week, then 7, 8 (quarter-final), 9
+(semi-final), 10 (final). **The final did not exist**, and the last round sat three weeks after the
+quarter-final.
+
+It survived because `InternationalClubCupDraw.CUP_WEEKS` — the continental cups — already read
+`{1, 2, 3, 4, 5, 7, 8, 9, 10}`, exactly the owner's table. The national cup was the only competition in the
+codebase disagreeing, and there was nothing to compare it against until the two were read side by side. The
+class comment had been defending the gap as a deliberate reading of an earlier brief, which is the most
+durable kind of wrong.
+
+### 4. The redraw button (P0-3, fixed)
+
+`seedIfMissing()` guarded with **"are there *unplayed* round-1 ties?"** — which is not the question it needed
+to ask. A played round has no unplayed ties, so the guard concluded it had never been drawn and the next
+press entered all 108 teams a second time. `drawRoundForWeek` asked the same unplayed question on the
+scheduled path.
+
+Both now ask **"has this round been drawn?"** The test presses the button, **plays the round**, and presses
+again — the sequence nobody tested, because before the round is played the old guard was still holding.
+Reverting the fix fails it with *"expected: `<54>` but was: `<108>`"*, which is the duplicate draw reproduced
+exactly.
+
+### Also fixed: a test helper that made a whole class prove nothing
+
+`CupDrawSeedingTest.theDrawTargetsTheNationalCup` **had been failing on `main`**, with its own message saying
+so: *"round 1 of an eight-club national cup was not drawn, so this test proves nothing"*. Its helper put the
+clubs in the **cup** — a CUP competition — while the draw reads clubs by their **league**. Every club it
+built was filtered out and the draw found an empty country. A test reporting that it measures nothing, in a
+class nobody read the run of. Fixed to build a league; the test passes, and two new tests use the helper.
+
+Its `iso_code` was `nanoTime() % 20`, which collides against a unique constraint and surfaced as a
+`DataIntegrityViolation` in an unrelated test. Now a monotonic counter.
+
+### Run and browser instructions, corrected
+
+The handoff had been telling a blank session to run `java -jar … --app.open-browser=false`. **That is not what
+the owner asked for.** `AGENTS.md` and `SESSION_HANDOFF.md` now both say plainly: **`./run-app.sh`** to start,
+never `mvn spring-boot:run` and never `java -jar` as a substitute, and **`agent-browser`** for anything that
+says "in the browser" — with the PATH line it needs, because it is not on the default shell PATH.
+
+Writing it down turned up a claim that was wrong: `document.getElementById('main-content')` **does not exist
+on the Sports Lobby page** — it is per-page — so it returns `null` there and reads as a dead page.
+`snapshot -i` works everywhere and is now the documented first move.
+
 ## 2026-10-13 — P0-1 closed: a whole matchday, 155 fixtures, end to end, with a stopwatch
 
 **The claim under test.** Everything the last session rested on was *"the repaired job runner actually runs

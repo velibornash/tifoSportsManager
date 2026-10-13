@@ -1216,12 +1216,29 @@ public class CountryController {
                 cups.add(cupRace("Challenge Cup", entriesAt(table, 3, 1), 1));
             } else {
                 List<CompetitionEntry> champions = poolAt(tier.getValue(), 0);
+                // **The union has to be sorted, not just its parts.**
+                //
+                // The Masters race is two positions from every division in the tier — 2nd and 3rd — and it
+                // was assembled as `poolAt(1) + poolAt(2)`: two lists, each sorted on its own, concatenated
+                // and never sorted together. Every 2nd-placed club therefore ranked above every 3rd-placed
+                // one **whatever their points**, which is not a tie-break being wrong, it being absent.
+                //
+                // Measured on the owner's database, tier 2 (two divisions):
+                //     1  OFK Niš                 16 pts   qualifies
+                //     2  GFK Nova Pazova 1923    14 pts   qualifies
+                //     3  GFK Borski Zaječar      16 pts   candidate
+                // A club on 16 points was denied a place a club on 14 points took, and the screen showed
+                // both without anything looking wrong. Tier 3 had the same shape: Dinamo 1928 on 14 and
+                // Car Konstantin on 14 sat above Hajduk Bečej on 15 and Kikinda on 15.
+                //
+                // `poolAt` still sorts each part, because a single division's pool is read as a race in
+                // its own right elsewhere; the final sort is what was missing.
                 List<CompetitionEntry> masters = new ArrayList<>();
                 masters.addAll(poolAt(tier.getValue(), 1));
                 masters.addAll(poolAt(tier.getValue(), 2));
                 List<CompetitionEntry> challenge = poolAt(tier.getValue(), 3);
                 cups.add(cupRace("Champions Cup", champions, 1));
-                cups.add(cupRace("Masters Cup", masters, 2));
+                cups.add(cupRace("Masters Cup", LeagueTableOrder.sort(masters), 2));
                 cups.add(cupRace("Challenge Cup", challenge, 1));
             }
             tierData.put("cups", cups);

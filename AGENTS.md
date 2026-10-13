@@ -63,11 +63,36 @@ export PATH="$JAVA_HOME/bin:/usr/local/bin:$PATH"   # the agent shell does not i
 | | |
 |---|---|
 | Build | `mvn clean package -DskipTests` |
-| Run | `./run-app.sh` — **never** `mvn spring-boot:run` directly |
+| Run | **`./run-app.sh`** — never `mvn spring-boot:run` directly, never `java -jar` as a substitute |
+| Browser | **`agent-browser`** (`export PATH="$HOME/.npm-global/bin:$PATH"` first — it is not on the default PATH) |
 | One class | `mvn test -Dtest=RatingEngineTest` |
 | One method | `mvn test -Dtest=RatingEngineTest#theSeedIsTheOwnersScale` |
 | Database | PostgreSQL `sokker_db`, user `postgres`, password `stojke` |
 | Login | `velibor@example.com` / `A12345!` |
+
+### 🔴 Start the app with `./run-app.sh`, and open the browser with `agent-browser`
+
+**Never `mvn spring-boot:run` directly, and never `java -jar …`.** `run-app.sh` runs it with
+`--app.open-browser=false` for you and supports `--with-browser` for a single run. `BrowserLauncher` opens
+`http://localhost:8080/login.html` on every startup; that is correct when the owner runs `main()` from the
+IDE and wrong for any shell start. **The application cannot tell the two apart** — the default stays `true`
+for the IDE and **every shell start goes through `run-app.sh`**. Do not "fix" this by flipping the default
+off; it was briefly opt-in and the owner's IDE start then did nothing, silently.
+
+**Any exit criterion that says "in the browser" is answered with `agent-browser`, or it is not answered.**
+
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"   # agent-browser is NOT on the default PATH
+agent-browser open http://localhost:8080/login.html
+```
+
+**It is a SPA.** `location.pathname` never changes, so to see what a page rendered, read
+`document.getElementById('main-content')` — **not** `document.body.innerText`, which starts at the top bar
+and reads as though the page is empty.
+
+The element id is **per page**, though: the in-game pages have `#main-content`, and the Sports Lobby does
+not. `agent-browser snapshot -i` works on every page and is the safe first move when you do not know
+which page you are on.
 
 ### 🔴 Never start the app from a shell without `--app.open-browser=false`
 

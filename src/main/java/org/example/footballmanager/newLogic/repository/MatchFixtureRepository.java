@@ -126,6 +126,21 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
             Long competitionId, Integer seasonYear, Integer weekNumber, Integer dayNumber);
 
     /**
+     * How many fixtures a competition has in a week, <b>played or not</b>.
+     *
+     * <p>This is the question an idempotency guard has to ask. The {@code ...AndPlayedFalse} variant asks
+     * "are there ties here still to play?", which stops being the right question the moment the round is
+     * played: it falls to zero, the guard concludes the round was never drawn, and the next press of the
+     * admin button draws it again. Every team in the round is drawn a second time against a different
+     * opponent, which is what happened - 54 duplicate round-1 ties, all 108 teams entered twice, per press.
+     *
+     * <p>"Has this been drawn?" is not the same as "is there something left to play?", and only the first
+     * one survives a round being completed.
+     */
+    long countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumber(
+            Long competitionId, Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
+    /**
      * Every fixture on a day, played or not.
      *
      * <p>For the watch screen. Filtering to unplayed made a manager whose match the matchday job had
@@ -156,6 +171,16 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndRoundNumberOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalseOrderByMatchDateAsc(Long competitionId, Integer seasonYear, Integer roundNumber);
     long countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(Long competitionId, Integer seasonYear, Integer roundNumber);
+
+    /**
+     * How many ties a round has, <b>played or not</b>.
+     *
+     * <p>The same defect as {@link #countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumber(Long,
+     * Integer, Integer, Integer)}, on the per-round path: a scheduled draw whose round has since been
+     * played sees zero unplayed ties and draws the round a second time. The job runner's done-flag hides
+     * it for a slot that has not been rewound, and hides nothing at all for one that has.
+     */
+    long countByCompetitionIdAndSeasonYearAndRoundNumber(Long competitionId, Integer seasonYear, Integer roundNumber);
     List<MatchFixture> findByCompetitionIdAndSeasonYearAndRoundNumberAndHomeTeamIdAndAwayTeamIdAndPlayedFalse(
             Long competitionId, Integer seasonYear, Integer roundNumber, Long homeTeamId, Long awayTeamId
     );

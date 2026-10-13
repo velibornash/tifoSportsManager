@@ -25,11 +25,14 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 
 | # | Pri | Task | State |
 |---|---|---|---|
+| **P0-7** | 🔴 | **The qualifying race ranked a 14-point club above a 16-point club** | ✅ **Fixed 2026-10-13** — owner reported it off the screen. Masters Cup in any tier with more than one division. Verified in the browser. |
 | **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | ✅ **Done 2026-10-13.** Week 5 day 7: 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. Elo and the ranking ledger moved with the result. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **New — found by P0-1.** `walk()` is forward-only, so an hour it skips is gone. Weeks 4-5, days 1/3/5/7. **Needs an owner decision**, see below. |
 | **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed 2026-10-13** — found live, not by a test. `refusalReason` compared the home team's id with itself, so the sentence always named the away side. |
-| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | Only round 1's 54 ties exist. Must reach **128** ties, not 129. **It now looks drawn** — 128 fixtures exist at week 2 day 5. **Verify, do not assume.** |
-| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | **Do not press it.** It added 54 duplicate round-1 ties on every press; all 108 teams were drawn twice. This is why P0-2 is not "just click the button". |
+| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | ✅ **Answered 2026-10-13 — it *is* drawn, 128 ties, correct.** The premise was stale. But see P0-8 below: the bracket contains a national side. |
+| **P0-8** | 🔴 | **The national side Serbia U-21 is in Kup Srbije, rounds 1-4** | **Found while verifying P0-2.** It has won three knockout rounds and is in the unplayed round 4. One real club is excluded from the cup because of it. **Needs an owner decision.** |
+| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | ✅ **Fixed 2026-10-13.** The guard asked "are there *unplayed* ties?" and a played round has none, so every press redrew the field. |
+| **P0-9** | 🔴 | **The national cup had no final, and its last round was three weeks late** | ✅ **Fixed 2026-10-13.** `CUP_WEEKS` had 8 entries where the owner's table has 9. The continental cups were already right; the national cup was the only one disagreeing. |
 | **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to P0-2/3. |
 | **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
 | **P1-2** | 🟡 | **T-FAC-1 item 3 — settlement and stadium page agree on upkeep** | Not started. `weeklyUpkeep = 120 × (Σ levels − 1)`. |
@@ -89,6 +92,183 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
   away and dropped 17. It also found two things: the lock naming the wrong club to an away manager
   (P0-6, fixed) and 824 stranded fixtures (P0-5, open). Full detail in
   [`kanbanProgress.md`](kanbanProgress.md).
+
+---
+
+## P0-7 — ✅ P0 · the qualifying race ranked a 14-point club above a 16-point club
+
+**Owner, 2026-10-13**, reading the screen and asking the right question: *"kako je GFK Nova Pazova 1923 sa 14
+poena iznad GFK Borski Zaječar sa 16???"*
+
+This is the one page where the order decides **who goes to a continental competition**, so an order that is
+wrong here is a wrong answer about football, not a cosmetic one.
+
+### What was on the screen
+
+Masters Cup, tier 2 of Serbia, 2 places:
+
+| before | | | |
+|---|---|---|---|
+| 1 | OFK Niš | **16** pts, gd 7 | **Qualifies** |
+| 2 | GFK Nova Pazova 1923 | **14** pts, gd 2 | **Qualifies** |
+| 3 | GFK Borski Zaječar | **16** pts, gd 7 | Candidate |
+| 4 | ŽFK Tamiš Požarevac 1913 | 12 pts, gd 6 | Candidate |
+
+### It was not a tie-break that was wrong. There was no tie-break.
+
+The Masters race is **two positions from every division in the tier** — 2nd and 3rd — and it was assembled as:
+
+```java
+masters.addAll(poolAt(tier.getValue(), 1));   // sorted, descending
+masters.addAll(poolAt(tier.getValue(), 2));   // sorted, descending
+// ...and the union of the two was never sorted.
+```
+
+Two lists, each sorted on its own, concatenated. **Every 2nd-placed club therefore ranked above every
+3rd-placed one, whatever their points.** Not a tie-break being subtly wrong — a tie-break being absent.
+
+Tier 3 proved it exactly. Sixteen entries across four divisions, in the shape of two sorted runs:
+
+```
+17, 15, 14, 14  ++  15, 15, 14, 13
+```
+
+### The other two cups were never affected
+
+| Race | How it is built | |
+|---|---|---|
+| Champions Cup | `poolAt(0)` — **one** sorted pool | already correct |
+| Challenge Cup | `poolAt(3)` — **one** sorted pool | already correct |
+| **Masters Cup** | `poolAt(1) + poolAt(2)` — **two**, concatenated | **was wrong** |
+
+Tier 1 is safe for a separate reason: it always has exactly one division, measured across all 48 countries,
+so `tier.getValue().get(0)` is not a silent truncation. The worst case anywhere in the world is 16 divisions
+in one tier — which is a 32-club Masters race, exactly the case that broke.
+
+### Exit criteria
+
+- [x] The union is sorted once, after it is built.
+- [x] **All three cups, all five tiers, verified against the running app** — points descending everywhere,
+      and goal difference descending within equal points.
+- [x] **Seen in the browser**, on the screen the owner reported. Tier 2 now reads OFK Niš 16 and **GFK
+      Borski Zaječar 16** qualifying, with GFK Nova Pazova 1923 on 14 third and out. A club on 16 points
+      takes the place it was denied.
+- [x] A test that fails on the old code. `CountryQualifyingRaceOrderTest` builds a tier with two divisions
+      where the 2nd-placed club of division A has **12** points and the 3rd-placed club of division B has
+      **30**, and requires that points never go backwards down the race. Reverting the fix fails it:
+      *"12 points is followed by 25 (ZZ B2 2)"*.
+- [x] Tier 1 and the single-pool races pinned too, so the next person to add a race cannot reintroduce this.
+
+### ⚠️ One open question for the owner, deliberately not decided here
+
+The owner specified the tiebreakers as **points, goal difference, then the draw**. `LeagueTableOrder` is
+currently **points → goal difference → goals scored → team id**.
+
+Points and goal difference are settled and are what this fix restored. The third key is a real difference:
+**OFK Niš and GFK Borski Zaječar are level on 16 points and gd 7**, and today goals scored (16 v 13) separates
+them. Under a strict "pts, gd, draw" rule the draw would separate them instead.
+
+Changing it is **not** a page fix — `LeagueTableOrder` is the one comparator for every league table,
+everywhere, so dropping goals scored changes how all 14,880 clubs' tables and playoffs resolve. It is the
+owner's call and is left as it stands until they make it.
+
+---
+
+## P0-8 — 🔴 P0 · the national side Serbia U-21 is in Kup Srbije, rounds 1 to 4
+
+**Found while verifying P0-2, 2026-10-13.** Not a hypothetical: it is in the bracket now, and it has won.
+
+`42fc45c7` stopped national teams being *drawn* into the club cup by filtering the field to
+`competition.type == LEAGUE`. That filter governs **future** draws. This bracket was drawn before it, and
+nothing has redrawn it.
+
+### What is in there
+
+| Round | Serbia U-21's tie | Result |
+|---|---|---|
+| 1 | SK Zemun 1928 vs Serbia U-21 | **won 4-0** |
+| 2 | Serbia U-21 vs GFK Dinamo Paraćin 1912 | **won 3-1** |
+| 3 | Serbia U-21 vs ŽFK Sinđelić Zemun | **won 3-2** |
+| 4 | Serbia U-21 vs TSK Tamiš Leskovac | **unplayed** |
+
+Round 2 is the right size — 128 ties, 256 entrants, the owner's arithmetic — and the round-2 field is **255
+real clubs plus one national side**, because U-21 won round 1 and took a winner's slot.
+
+### The concrete harm
+
+`SK Kikinda` (team 328, Opštinska liga Grupa 9) **is not in the cup at all.** It is one of Serbia's 310
+clubs and it never appears in any round of any tie. It lost its place in the preliminary to a side that does
+not play in a league.
+
+Counted: 309 of 310 Serbian clubs are in the cup. It should be 310.
+
+### Owner decision needed
+
+| Option | What it costs |
+|---|---|
+| **(a) Let U-21 play on to round 4** | Nothing to do. Serbia U-21 wins the cup on merit of beating four real clubs. It is wrong football and it is stable. |
+| **(b) Void every tie U-21 played and re-draw from round 1** | Clean bracket, honest club list. Costs three rounds of results and re-draws the whole cup. |
+| **(c) Substitute Kikinda into U-21's place and void only U-21's ties** | Fixes the club list with the least damage, but leaves an uneven bracket and still needs a tie or two re-drawn. |
+
+**(b) is the honest one** and is cheap now that P0-3 has fixed the redraw button — pressing it cannot
+duplicate the field any more. But it discards football that has been played, so it is the owner's decision
+and not mine to take.
+
+**Do not press "Re-draw the cup" to achieve it by accident.** That button still redraws *round 1* only, and
+even now that it is idempotent it is not a "reset the tournament" control.
+
+### Exit criteria
+
+- [ ] No team whose `competition` is not a LEAGUE appears in any national cup fixture.
+- [ ] Every club in the country that should qualify for the cup is in it — measured, not assumed.
+- [ ] The cup can be re-drawn deliberately, and doing it twice changes nothing.
+
+---
+
+## P0-9 — ✅ P0 · the national cup had no final, and its last round was three weeks late
+
+**Found 2026-10-13**, when the owner restated the format. The constant was not what the format is.
+
+### The owner's table, and what the code had
+
+```java
+CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 11}     // 8 rounds
+```
+
+| Round | Owner's week | Code's week | |
+|---|---|---|---|
+| 1 | 1 | 1 | |
+| 2 | 2 | 2 | |
+| 3 | 3 | 3 | |
+| 4 | 4 | 4 | |
+| 5 | 5 | 5 | |
+| — | **6 is the national-team week** | — | |
+| 6 | 7 | 7 | |
+| 7 | 8 | 8 | quarter-final |
+| 8 | **9** | — | **missing** |
+| 9 | **10** | 11 | semi-final where the code had it, **and no final at all** |
+
+A 256-team knockout after the entry round needs eight halvings and a final. The constant had **eight
+entries**, so **there was no final in the national cup**, and its last round sat three weeks after the
+quarter-final.
+
+### Why it survived
+
+`InternationalClubCupDraw.CUP_WEEKS` — the **continental** cups — already read
+`{1, 2, 3, 4, 5, 7, 8, 9, 10}`. Exactly the owner's table. The national cup was the only competition in the
+codebase disagreeing with the arithmetic, and there was nothing to compare it against until the two were read
+side by side.
+
+The class comment had defended the gap as a deliberate reading of an earlier brief — *"the final on week 11 …
+at the cost of weeks 9 and 10 carrying league football only"*. That comment outlived the brief it was
+defending, which is the most durable kind of wrong.
+
+### Exit criteria
+
+- [x] `CUP_WEEKS` is the owner's nine weeks.
+- [x] A test pins the whole map **and the arithmetic** — nine rounds, 108 then 256 then halving to one
+      champion — because a map of the right length in the wrong order still ends the cup on the wrong night.
+- [x] Reverting the constant fails it: *"array lengths differ, expected: `<9>` but was: `<8>`"*.
 
 ---
 

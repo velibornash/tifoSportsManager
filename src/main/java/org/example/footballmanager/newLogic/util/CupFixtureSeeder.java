@@ -33,22 +33,43 @@ import java.util.Random;
  * <p>{@code Competition} row 32 ("Kup Srbije") has existed since the database was seeded, with
  * {@code teams_per_competition = 64} and no teams in it. It was a label, not a competition.
  *
- * <p><b>Week mapping, and one place the brief does not close.</b> The owner specified cup football on
- * day 5 of weeks 1, 2, 3, 4, 5, 7, 8, 9, 10, 11 with no week 6, and the final on week 11. A
- * 256-team knockout needs exactly 8 rounds. Eight rounds across ten candidate weeks leaves two weeks
- * empty, and the final has to be the last of them. Rounds are placed on weeks 1, 2, 3, 4, 5, 7, 8 and
- * <b>11</b>, which honours "no week 6" and "final on week 11" at the cost of a two-week gap before the
- * final (weeks 9 and 10 carry league football only). The alternative — final on week 9 — contradicts
- * the stated final week, so the gap was taken instead. This is a one-line change in {@link #CUP_WEEKS}
- * if the owner prefers the tighter run-in.
+ * <p><b>The week map, in the owner's words.</b> Kup Srbije for a country of 310 clubs:
+ *
+ * <pre>
+ *   week 1   the bottom 108 (ranks 203-310)   -&gt;  54 ties,  54 winners
+ *   week 2   54 winners + 202 direct entrants -&gt; 128 ties, 128 winners
+ *   week 3                                -&gt;  64 ties
+ *   week 4                                -&gt;  32 ties
+ *   week 5                                -&gt;  16 ties
+ *   week 6                                NT week, no club football
+ *   week 7                                -&gt;   8 ties
+ *   week 8                                -&gt;   4 ties, the quarter-final
+ *   week 9                                -&gt;   2 ties, the semi-final
+ *   week 10                               -&gt;   1 tie,  the final
+ * </pre>
+ *
+ * <p>Nine rounds, no week 6, final on week 10. This was wrong and it was wrong twice over: the constant
+ * read {@code {1, 2, 3, 4, 5, 7, 8, 11}} — eight rounds, so <b>there was no final at all</b> — and it
+ * put the last round three weeks after the quarter-final. Its own comment explained the gap as a
+ * deliberate reading of an earlier, vaguer brief ("the final on week 11" at the cost of weeks 9 and 10
+ * carrying league football only). The owner has since stated the table outright, and it is the table
+ * above.
+ *
+ * <p>{@link InternationalClubCupDraw#CUP_WEEKS} already carried exactly this map. The national cup was
+ * the only competition in the codebase disagreeing with the owner's arithmetic, which is how a wrong
+ * answer survives: there was nothing to compare it against until the two were read side by side.
  */
 @Component
 public class CupFixtureSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(CupFixtureSeeder.class);
 
-    /** Owner, 2026-09-28. Eight rounds, no week 6, final on week 11. See the class comment. */
-    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 11};
+    /**
+     * Owner, restated 2026-10-13. Nine rounds, no week 6, the final on week 10.
+     *
+     * <p>See the class comment for the table this encodes, and for what it used to say.
+     */
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
 
     /** Owner: ranks 203-310 enter in week 1; ranks 1-202 join the winners in week 2. */
     static final int ENTRY_ROUND_TEAMS = 108;
@@ -144,7 +165,14 @@ public class CupFixtureSeeder {
             if (cup.getCountry() == null || cup.getCountry().getId() == null) {
                 continue; // Skip global/continental cups; keep only per-country national cups
             }
-            long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumberAndPlayedFalse(
+            // **"Has round 1 been drawn?" — not "are there unplayed round-1 ties left?".**
+            //
+            // The guard counted `...AndPlayedFalse`, so the answer fell to zero the moment round 1 was
+            // played and the next press of the admin button drew all 108 teams a second time. Measured on
+            // the owner's database: 54 duplicate round-1 ties, every one of the field entered twice, added
+            // on every press, by a method whose Javadoc promised the opposite. Its own name said
+            // "if missing", and to that question a played round is missing.
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumber(
                     cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
             if (existing > 0) {
                 drawn++;
@@ -279,7 +307,11 @@ public class CupFixtureSeeder {
             if (cup.getCountry() == null || cup.getCountry().getId() == null) {
                 continue;
             }
-            long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumberAndPlayedFalse(
+            // The same "has it been drawn?" question, on the per-round path. Counting unplayed ties meant
+            // a round that had been played read as never drawn, so the scheduled draw would deal it again
+            // on any rewind. The job runner's done-flag covers a slot that has not been rewound and covers
+            // nothing at all for one that has.
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumber(
                     cup.getId(), seedSeason(), round);
             if (existing > 0) {
                 continue;
