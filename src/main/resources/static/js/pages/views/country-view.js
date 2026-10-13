@@ -813,7 +813,16 @@ export function createCountryView(deps) {
                                     data-cup-match-id="${tie.matchId ?? ''}"
                                     title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">
                                     <span>${htmlEscape(tie.home || 'TBC')}</span>
-                                    <span class="fm-cup-tie-sep">${tie.played ? tie.score || 'v' : 'v'}</span>
+                                    <!--
+                                        Three states, not two. A tie that has not been played shows "v";
+                                        one that has shows its score; and one whose result the manager has
+                                        not asked to see yet is marked, because it used to fall through to
+                                        the same bare "v" as an unplayed tie and read as "this has not
+                                        happened" rather than "you have not looked".
+                                    -->
+                                    <span class="fm-cup-tie-sep">${tie.resultHidden
+                                        ? 'result hidden'
+                                        : tie.played ? (tie.score || 'v') : 'v'}</span>
                                     <span>${htmlEscape(tie.away || 'TBC')}</span>
                                 </button>`).join('')}</div>`
                             : '<div class="fm-empty">Not drawn yet.</div>'}

@@ -468,9 +468,13 @@ public class CountryController {
      */
     @GetMapping("/{isoCode}/cup")
     public Map<String, Object> getCup(@PathVariable String isoCode,
-                                      @RequestParam(value = "seasonYear", required = false) Integer seasonYear) {
+                                      @RequestParam(value = "seasonYear", required = false) Integer seasonYear,
+                                      @AuthenticationPrincipal org.example.commonmanager.model.User user) {
         int activeSeasonYear = seasonYear != null ? seasonYear : seasonService.getActiveSeasonYear();
         Country country = requireCountry(isoCode);
+        // The viewer's own club, so the reveal rule has something to decide against. Null for a page read
+        // while signed out, in which case every result is shown — the same answer a neutral reader gets.
+        Long viewerClubId = plusFeatures.viewerTeamId(user);
         // **Scoped to NATIONAL (P1-CUPS-5).**
         //
         // This was `c.getCountry() == null || country.getId().equals(c.getCountry().getId())`, and the
@@ -517,6 +521,24 @@ public class CountryController {
             // has only the fixture id, and every post-match endpoint - lineups, stats, goals, report -
             // needs the MATCH id, so a played tie would open with every one of those panels empty.
             tie.put("matchId", fixture.getPlayedMatch() == null ? null : fixture.getPlayedMatch().getId());
+            // **The score, which the page has been asking for and never been given.**
+            //
+            // Owner report, 2026-12-13: he moved the clock to day 5, the cup played, and the cup page
+            // reached from the Country tab showed no results. The page renders `tie.score` and falls
+            // back to a bare "v" when it is absent — and every played tie had it absent, so a finished
+            // cup round read as a list of fixtures with no outcome on them.
+            //
+            // Built through `MatchDTO.from`, which is where the reveal rule already lives, so the viewer's
+            // own unrevealed tie stays masked here exactly as it is everywhere else. Reading the goals
+            // straight off the fixture would have leaked the manager's own result on a country page.
+            Match played = fixture.getPlayedMatch();
+            if (played != null && played.getId() != null) {
+                MatchDTO view = MatchDTO.from(played, viewerClubId);
+                tie.put("resultHidden", view.isResultHidden());
+                if (!view.isResultHidden()) {
+                    tie.put("score", view.getHomeGoals() + " - " + view.getAwayGoals());
+                }
+            }
             bucket.add(tie);
         }
         List<Map<String, Object>> rounds = new ArrayList<>();

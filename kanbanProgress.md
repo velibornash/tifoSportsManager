@@ -1,3 +1,43 @@
+## 🔴 P0 — the cup played and the cup page showed no results (2026-12-13)
+
+Commit to follow. **Owner report: it is s1w1 day 5, 20:45; the cup should have been played at 18:00, and
+going to the cup page from the Country side there were no results.**
+
+**The job was never the problem.** Reading `job_run` and the fixtures first:
+
+    matchday-prepare-5  DONE  hour 17
+    matchday-friendly-5 DONE  hour 18
+    matchday-publish-5  DONE  hour 18
+
+    CUP | played | 54
+
+All 54 cup ties played, all 54 had a `match` row, and all 54 had goals in the database. So the owner's first
+suspicion — that the job did not run — was wrong, and it would have been expensive to fix that instead.
+
+**The defect is one field.** The page renders:
+
+    ${tie.played ? tie.score || 'v' : 'v'}
+
+and the endpoint put `id`, `home`, `away`, `played` and `matchId` on each tie — **and never `score`**. So
+every played tie fell through to the bare `v`, and a finished cup round rendered as a list of fixtures
+with no outcome on them. The page had been asking for a field that did not exist since the tie row was
+written.
+
+**The score is built through `MatchDTO.from`, not read off the fixture.** That is deliberate and is the
+whole of the safety here: the cup endpoint had **no viewer context at all**, so reading `home_goals`
+straight off the played match would have put the manager's own unrevealed result on a country page and
+leaked it around a rule the rest of the game enforces everywhere. The endpoint now resolves
+`plusFeatures.viewerTeamId(user)` and hands it to the DTO, which already owns the reveal decision.
+
+**Three states on the page now, not two.** Unplayed shows `v`, played shows the score, and a tie whose
+result the manager has not asked to see says *result hidden* — because it used to fall through to the same
+bare `v` as an unplayed tie, and read as "this has not happened yet" rather than "you have not looked".
+
+**Seen change:** all 54 ties now carry a score (`SK Leskovac 1945 | 1 - 3 | RFK Budućnost Niš 1919`,
+`GFK Kovin | 0 - 0 | RFK Trstenik Sport`). The manager's club is not in this cup — the one that looks
+like his is ŽFK Omladinac Sremska Mitrovica United, a different club — so nothing is masked on this page
+and that is correct rather than a mask that failed.
+
 ## 🟡 T-FAC-1 — bot clubs seeded by reputation (2026-12-13)
 
 Commit to follow. **The tactical multiplier is still not read by the engine, and this entry says why.**
