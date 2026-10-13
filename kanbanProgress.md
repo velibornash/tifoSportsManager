@@ -1,3 +1,76 @@
+## 2026-10-14 — the country page showed "no clubs" for a country with 310 of them
+
+**Owner, reading the Clubs tab:** *"This country has no clubs yet."* on Serbia. Serbia has 310.
+
+### The endpoint was returning 500 and the page reported it as "no clubs"
+
+```
+GET /countries/SRB/clubs/ranking?limit=100
+500  NoClassDefFoundError: org/example/footballmanager/newLogic/service/RankingPointsEngine
+```
+
+The ranking was not empty. The read **threw**, the frontend treated the failure as an empty list, and a
+broken endpoint reported itself as a world with nothing in it. That is the same shape as the loaders that
+`await response.json()` without checking `response.ok`, and it is worse here: the empty state is a
+confident sentence about the world.
+
+### The cause was a stale class, and the cause of *that* is a trap
+
+The class was **present in the source and in `target/classes`**. The app had started at **00:02:29**; the
+class file was written at **00:12:34**, ten minutes later, by a `mvn test` run.
+
+**`./run-app.sh` runs `spring-boot:run`, which indexes `target/classes` at startup. Classes compiled after
+that are invisible to it.** I had been running `mvn test` under a live app for hours — compiling into the
+directory the running JVM reads, from a *different* process, while the log cheerfully reported *"Nothing to
+compile — all classes are up to date."*
+
+Two rounds of "verification" against the running app showed the old wrong answer and I nearly recorded a fix
+that had changed nothing. It is now trap 15 in the handoff: **after any `mvn` compile, restart the app.**
+`run-app.sh` being mandatory makes this easy to get right and easy to get wrong, because it shares the build
+directory with the tests.
+
+### The table, rebuilt to the house style, with pagination
+
+The owner asked for it twice, and the second time named the reference: *"napravi tu tabelu da bude lepa
+tabela ko i sve ostale u aplikaciji a ne ovo nabacano"* and *"i da ima paginacija da vidim i ostatak
+liste naravno a ne samo prvih 100"*.
+
+| | before | after |
+|---|---|---|
+| Markup | bare `fm-table`, plain headers | `fm-squad fm-world-table` — **the same table as the World page's country list**, with `st-pos`, `sq-name`, `st-rating` |
+| Read | `limit=100` | `limit=500`, the whole country |
+| Reaches | 100 of 310, the other 210 unreachable | **all 310**, 25 to a page |
+| Own club | unmarked | marked by id, never by name — four defects in this codebase came from that join |
+| Unrated | grey text after the number | a `fm-badge` saying "not yet rated" |
+
+The pager is **new** — the app had no pagination component at all — and it is built from `fm-action-btn
+secondary` so it cannot drift from the other controls. Page state lives on the DOM node, not in a module
+variable, because this tab is rebuilt on every tab switch and a module-level page number would survive into
+a different country's club list.
+
+**Verified in the browser**: `1-25 of 310` on page one with `Previous` dimmed, clicking through to
+`301-310 of 310` with `Next` dimmed, and back. OFK Omladinac is highlighted at position 2.
+
+**A bug I introduced and caught by looking at the page**: the first version built the rows and left the
+`<tbody>` empty — the table rendered its headers, its pager and no clubs at all. `node --check` cannot run
+here (no node installed) and the endpoint answered 200, so neither would have caught it. Only loading the
+page did.
+
+### Owner decisions taken, for tomorrow
+
+- **P0-8** — option **(b)**: void Serbia U-21's ties and re-draw Kup Srbije from round 1. The owner's words:
+  *"ovo je testna baza, onemoguci za ubuduce da upadne nt tim i sve ok"* — it is a test database, so the
+  played football is worth nothing; make it impossible for a national side to get in.
+- **The tiebreaker** — *"da, ok je global"*. Points, goal difference, then the draw, everywhere.
+  `LeagueTableOrder` is currently *pts, gd, goals scored, team id*. `RankingTieBreakService.coin(seed,
+  teamId)` already implements the owner's draw rule — a stored per-ladder coin, stable and replayable — so
+  the change is to make the comparator take a coin rather than to invent one.
+
+**The guarantee half of P0-8 is done.** `CupDrawSeedingTest.noNonLeagueClubIsEverDrawnIntoACup` now proves
+that a senior side, a U-21 side **and a club misfiled into a CUP** are all refused by the draw, and
+reverting the `isLeagueClub` filter fails it — *"ZZ Senior … was drawn into ZZ National Cup in 2 tie(s)"*.
+That filter is what `42fc45c7` added; it had **no test**, so nothing failed when it was removed.
+
 ## 2026-10-14 — three cup defects, one of them read off the screen by the owner
 
 **All three were found by reading code and data rather than by a test, and all three are P0 because they

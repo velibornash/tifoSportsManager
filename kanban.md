@@ -159,30 +159,45 @@ in one tier — which is a 32-club Masters race, exactly the case that broke.
       *"12 points is followed by 25 (ZZ B2 2)"*.
 - [x] Tier 1 and the single-pool races pinned too, so the next person to add a race cannot reintroduce this.
 
-### ⚠️ One open question for the owner, deliberately not decided here
+### 🔴 Owner decision taken 2026-10-13 — *pts, gd, zreb*, everywhere
 
-The owner specified the tiebreakers as **points, goal difference, then the draw**. `LeagueTableOrder` is
-currently **points → goal difference → goals scored → team id**.
+*"da, ok je global"* — yes, changing the comparator globally is right.
 
-Points and goal difference are settled and are what this fix restored. The third key is a real difference:
-**OFK Niš and GFK Borski Zaječar are level on 16 points and gd 7**, and today goals scored (16 v 13) separates
-them. Under a strict "pts, gd, draw" rule the draw would separate them instead.
+`LeagueTableOrder` is currently **points → goal difference → goals scored → team id**. The owner wants
+**points → goal difference → the draw**. The difference is real: OFK Niš and GFK Borski Zaječar are level on
+16 points **and** gd 7, and goals scored (16 v 13) separates them today where a draw would instead.
 
-Changing it is **not** a page fix — `LeagueTableOrder` is the one comparator for every league table,
-everywhere, so dropping goals scored changes how all 14,880 clubs' tables and playoffs resolve. It is the
-owner's call and is left as it stands until they make it.
+**The draw already exists and does not need inventing.** `RankingTieBreakService.coin(seed, teamId)` is
+exactly the owner's rule — *"equal totals get distinct positions, never a shared rank and never
+alphabetical… what is left is a draw, and the draw has to be the same every time the ladder is read"* — a
+seed stored once per ladder, replayable, already used by the country and club ranking lists. So the change is
+to **make the comparator take a coin**, not to write a new one.
+
+**Scheduled for the next session.** It touches every league table in the world and both ranking replays, so
+it wants its own task and its own test rather than being folded into a session already late.
+
+### Exit criteria
+
+- [ ] `LeagueTableOrder` is points → goal difference → draw, and the draw is `RankingTieBreakService.coin`.
+- [ ] Two clubs level on points and goal difference get two positions, and the order does not change between
+      two reads.
+- [ ] Every call site supplies a ladder coin, or states plainly why it has none.
+- [ ] The one comparator test proves the whole order, not the first two keys.
 
 ---
 
 ## P0-8 — 🔴 P0 · the national side Serbia U-21 is in Kup Srbije, rounds 1 to 4
 
-**Found while verifying P0-2, 2026-10-13.** Not a hypothetical: it is in the bracket now, and it has won.
+**Owner decision, 2026-10-13: option (b) — void U-21's ties and re-draw from round 1.** *"ovo je testna
+baza, onemoguci za ubuduce da upadne nt tim i sve ok"* — the played football is worth nothing, and a national
+side must never get in again. **Scheduled; not yet done.**
 
-`42fc45c7` stopped national teams being *drawn* into the club cup by filtering the field to
-`competition.type == LEAGUE`. That filter governs **future** draws. This bracket was drawn before it, and
-nothing has redrawn it.
+**The guarantee is already done and proven.** `CupDrawSeedingTest.noNonLeagueClubIsEverDrawnIntoACup`
+refuses a senior side, a U-21 side **and a club misfiled into a CUP**, and reverting the `isLeagueClub`
+filter fails it. That filter is what `42fc45c7` added and it had **no test** — nothing failed when it was
+removed.
 
-### What is in there
+### What is in there today
 
 | Round | Serbia U-21's tie | Result |
 |---|---|---|
@@ -202,25 +217,21 @@ not play in a league.
 
 Counted: 309 of 310 Serbian clubs are in the cup. It should be 310.
 
-### Owner decision needed
+### Owner decision — taken 2026-10-13
 
-| Option | What it costs |
-|---|---|
-| **(a) Let U-21 play on to round 4** | Nothing to do. Serbia U-21 wins the cup on merit of beating four real clubs. It is wrong football and it is stable. |
-| **(b) Void every tie U-21 played and re-draw from round 1** | Clean bracket, honest club list. Costs three rounds of results and re-draws the whole cup. |
-| **(c) Substitute Kikinda into U-21's place and void only U-21's ties** | Fixes the club list with the least damage, but leaves an uneven bracket and still needs a tie or two re-drawn. |
+**(b) — void every tie Serbia U-21 played and re-draw from round 1.** The owner: *"ovo je testna baza, onemoguci
+za ubuduce da upadne nt tim i sve ok."* It is a test database, so the three rounds of played football cost
+nothing, and a clean bracket is worth more than the results in it.
 
-**(b) is the honest one** and is cheap now that P0-3 has fixed the redraw button — pressing it cannot
-duplicate the field any more. But it discards football that has been played, so it is the owner's decision
-and not mine to take.
-
-**Do not press "Re-draw the cup" to achieve it by accident.** That button still redraws *round 1* only, and
-even now that it is idempotent it is not a "reset the tournament" control.
+**Scheduled for the next session, and safe to do now** that P0-3 has made the redraw button idempotent.
+Note what the button actually is: it redraws **round 1 only**, and it is not a "reset the tournament"
+control. Voiding U-21's four ties and pressing it once is the intended sequence.
 
 ### Exit criteria
 
 - [ ] No team whose `competition` is not a LEAGUE appears in any national cup fixture.
-- [ ] Every club in the country that should qualify for the cup is in it — measured, not assumed.
+- [x] **Proven for every future draw** — `noNonLeagueClubIsEverDrawnIntoACup`, mutation-checked.
+- [ ] Every club in the country that should qualify for the cup is in it — **310, not 309.**
 - [ ] The cup can be re-drawn deliberately, and doing it twice changes nothing.
 
 ---

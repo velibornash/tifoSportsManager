@@ -6275,3 +6275,57 @@ body {
 .user-menu-trigger .user-menu-caret {
     flex: 0 0 auto;
 }
+
+/* ── Club ranking pager (country page, owner 2026-10-14) ─────────────────────────────────────────────
+ *
+ * The owner's words: *"i da ima paginacija da vidim i ostatak liste naravno a ne samo prvih 100."*
+ *
+ * The read asks for the whole country and the pager cuts what is on screen, so paging costs no round
+ * trip. Twenty-five rows is chosen against the panel's own height: a hundred rows of a table taller than
+ * the viewport is a list you cannot find anything in, and the point of a ranking is to read it.
+ *
+ * The buttons are `fm-action-btn secondary` rather than a new style, so the pager cannot drift from the
+ * rest of the game's controls the way a bespoke button always eventually does.
+ */
+.fm-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(143, 211, 255, 0.10);
+}
+
+.fm-pager-btn {
+    padding: 7px 16px;
+    border-radius: 10px;
+    font-size: 0.92rem;
+}
+
+.fm-pager-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+.fm-pager-status {
+    min-width: 12ch;
+    text-align: center;
+    color: #c5d0de;
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The manager's own club, marked by id and never by name — two clubs can share a name, and four defects
+ * in this codebase came from matching a team by one. Same left rule the qualifying rows use, because
+ * "this one is yours" is the same kind of fact as "this one is through".
+ */
+.fm-clubs-ranking-table tr.is-own-club {
+    box-shadow: inset 3px 0 0 #4a9eff;
+    background: rgba(74, 158, 255, 0.07);
+}
+
+.fm-clubs-ranking-table tr.is-own-club td {
+    color: #cfe4ff;
+    font-weight: 600;
+}

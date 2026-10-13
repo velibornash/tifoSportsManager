@@ -178,13 +178,32 @@ Clubs tab with `scrollY === 0`.
 
 ## 5. Remaining work, in the order I would take it
 
+### Owner decisions taken 2026-10-13 — both scheduled for the next session
+
+**P0-8 · Re-draw Kup Srbije — the owner chose option (b).**
+*"ovo je testna baza, onemoguci za ubuduce da upadne nt tim i sve ok."* Void Serbia U-21's four ties, then
+press the redraw button **once** — it is idempotent as of P0-3. It redraws **round 1 only**; it is not a
+"reset the tournament" control. The **prevention** half is already done and mutation-proven:
+`noNonLeagueClubIsEverDrawnIntoACup` refuses a senior side, a U-21 side, and a club misfiled into a CUP.
+
+**The tiebreaker — *pts, gd, zreb*, everywhere.** *"da, ok je global."*
+`LeagueTableOrder` is *pts → gd → goals scored → team id* and becomes *pts → gd → draw*. **Do not invent a
+draw**: `RankingTieBreakService.coin(seed, teamId)` is already the owner's rule — a stored per-ladder coin,
+replayable, in use on the country and club ranking lists. Make the comparator take a coin. It touches every
+league table in the world, so give it its own task and its own test.
+
 | # | Pri | Task | State |
 |---|---|---|---|
-| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **New, found by P0-1.** `walk()` is forward-only. **Owner decision needed.** |
-| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | ✅ **Done.** 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. |
-| **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed** — found live, not by a test. |
-| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | **Looks drawn** — 128 fixtures at week 2 day 5. Verify, do not assume. |
-| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | **Do not press it.** |
+| **P0-8** | 🔴 | **Re-draw Kup Srbije, U-21 out** | **Owner chose (b).** Prevention already proven; the re-draw is left to do. |
+| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Needs an owner decision** — (a) write off, (b) publish at once, (c) catch up from `match_date`. |
+| **TIE** | 🔴 | **Tiebreaker becomes pts → gd → draw, globally** | Owner approved. Needs its own task and test. |
+| **P0-7** | 🔴 | **The qualifying race had no tie-break** | ✅ **Fixed** — the union of two sorted pools was never sorted. |
+| **P0-9** | 🔴 | **The national cup had no final** | ✅ **Fixed** — 8 rounds where the owner's table has 9. |
+| **P0-3** | 🔴 | **The redraw button was not idempotent** | ✅ **Fixed** — it asked "any *unplayed* ties?". |
+| **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed** — the home id compared with itself. |
+| **P0-1** | 🔴 | **Verify one matchday end to end** | ✅ **Done** — 155 fixtures, zero new FAILED. |
+| **P0-2** | 🔴 | **"Cup round 2 has never been drawn"** | ✅ **Premise was stale** — it is drawn, 128 ties. |
+| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` | Broken — `player` FK violation. |
 
 ### P0 — correctness
 
@@ -343,6 +362,20 @@ They build and `node --check` passes, which is exactly the bar that let a broken
     ```
 
     **A second instance failing to bind looks exactly like a working first one.**
+16. **🔴 `mvn test` under a live `spring-boot:run` makes new classes invisible.** `run-app.sh` runs
+    `mvn spring-boot:run`, which **indexes `target/classes` at startup**. A class compiled afterwards is on
+    disk and still cannot be loaded — it is not in the index. Measured on 2026-10-13: the app started at
+    **00:02:29**; `RankingPointsEngine.class` was written at **00:12:34** by a `mvn test` run; the endpoint
+    answered `500 NoClassDefFoundError` while the source and `target/classes` both held the class, and the
+    page told the owner *"This country has no clubs yet"* for a country with 310 of them.
+
+    **After any `mvn` compile, restart the app.** The test run and the running app share one build
+    directory, and `run-app.sh` compiling for you is exactly why this is easy to get wrong.
+17. **`agent-browser click` does not take a CSS selector** — it wants an `@ref` from `snapshot -i`. To click
+    something found by query, drive it: `agent-browser eval "document.querySelector('…').click()"`. A
+    `click "[data-…]"` that quietly does nothing looks exactly like a broken handler.
+18. **`node` is not installed**, so `node --check` cannot be used and its "PARSE OK" was never evidence.
+    Load the page.
 
 ---
 

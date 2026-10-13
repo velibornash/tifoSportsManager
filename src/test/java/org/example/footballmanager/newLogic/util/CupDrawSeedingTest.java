@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.UUID;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -413,6 +414,74 @@ class CupDrawSeedingTest extends BaseTest {
         // And the final is the last week on the map, not a week that merely happens to be free.
         assertEquals(10, CupFixtureSeeder.CUP_WEEKS[CupFixtureSeeder.CUP_WEEKS.length - 1],
                 "the last round is not on the owner's final week");
+    }
+
+    /**
+     * A national side can never be drawn into a club cup, and neither can a misfiled one.
+     *
+     * <p>This is the guarantee behind commit {@code 42fc45c7}, and it had **no test**. The filter exists —
+     * {@code CupFixtureSeeder.isLeagueClub} keeps only a team whose competition is a LEAGUE — but nothing
+     * failed when it was removed, which is the same "a green status is not evidence" shape this board keeps
+     * hitting.
+     *
+     * <p>It matters because it already went wrong once. Serbia U-21 was in Kup Srbije rounds 1 to 4 and
+     * <b>won three knockout rounds</b>, and SK Kikinda was not in the cup at all because a national side
+     * took its place in the preliminary. The bracket was drawn before the filter existed and nothing has
+     * redrawn it; this test is what stops the next world from starting the same way.
+     *
+     * <p>Three kinds of team that must never be drawn, and the third is the one a "has a competition" test
+     * would wave through: a team in a <b>CUP</b> is not a league club either.
+     */
+    @Test
+    @DisplayName("no national side and no misfiled club is ever drawn into a national cup")
+    void noNonLeagueClubIsEverDrawnIntoACup() {
+        Competition cup = aNationalCupWithClubs(310);
+        Country country = cup.getCountry();
+        int season = seasons.getActiveSeasonYear();
+
+        // The two shapes a country actually has, and they are not in a league.
+        Team senior = aTeamOutsideAnyLeague("ZZ Senior " + UUID.randomUUID(), country);
+        Team under21 = aTeamOutsideAnyLeague("ZZ U21 " + UUID.randomUUID(), country);
+
+        // And a club filed in a CUP instead of a league, which "has a competition" would accept.
+        Competition otherCup = new Competition();
+        otherCup.setName("ZZ Other Cup " + UUID.randomUUID());
+        otherCup.setType(CompetitionType.CUP);
+        otherCup.setScope(CompetitionScope.NATIONAL);
+        otherCup.setCountry(country);
+        otherCup = competitions.save(otherCup);
+        Team misfiled = new Team();
+        misfiled.setName("ZZ Misfiled " + UUID.randomUUID());
+        misfiled.setCountry(country);
+        misfiled.setCompetition(otherCup);
+        misfiled.setHumanControlled(false);
+        misfiled.setReputation(50.0);
+        misfiled = teams.save(misfiled);
+
+        seeder.seedIfMissing();
+        assertTrue(seeder.drawRoundForWeek(2) >= 0, "round 2 did not run, so this test proves nothing");
+
+        for (Team forbidden : List.of(senior, under21, misfiled)) {
+            List<MatchFixture> ties = fixtures.findAllForTeam(forbidden.getId());
+            assertTrue(ties.isEmpty(), forbidden.getName() + " was drawn into " + cup.getName()
+                    + " in " + ties.size() + " tie(s). A club cup takes league clubs; a national side is not "
+                    + "one, and neither is a club filed in a cup.");
+        }
+
+        // The draw must still have happened, or "nothing was drawn" would satisfy the assertions above.
+        assertTrue(fixturesOfThisCup(season, 1).size() > 0,
+                "the cup drew nothing at all, so this test proves nothing");
+    }
+
+    /** A team with no competition at all, which is exactly how a national side is stored. */
+    private Team aTeamOutsideAnyLeague(String name, Country country) {
+        Team team = new Team();
+        team.setName(name);
+        team.setCountry(country);
+        team.setCompetition(null);
+        team.setHumanControlled(false);
+        team.setReputation(50.0);
+        return teams.save(team);
     }
 
     /** The ties of the domestic cup this test just built, for one round. */

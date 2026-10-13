@@ -441,46 +441,117 @@ export function createCountryView(deps) {
             && Number(sideId) === Number(myTeamId);
     }
 
+    /**
+     * The country's clubs, ranked, paged.
+     *
+     * <p>The table is the same shape as the World page's country list — `fm-squad fm-world-table` with
+     * `st-pos`, `sq-name` and `st-rating` — so a manager moving between the two pages is looking at one
+     * table, not two. It was a bare `fm-table` with plain headers, which read as a leftover.
+     *
+     * <p><b>All the clubs, not the first hundred.</b> The read asks for the whole country (the endpoint
+     * caps at 500) and the pager cuts the rows on screen. Paging over data already in hand costs nothing
+     * and thirteen round trips would have.
+     *
+     * <p>The manager's own club is marked by id, never by name — two clubs can share a name, and the
+     * codebase has been burned four times by that join.
+     */
     function buildClubsTab(payload) {
         const clubs = Array.isArray(payload?.clubs) ? payload.clubs : [];
         if (!clubs.length) {
             return '<section class="fm-panel"><p class="fm-empty">This country has no clubs yet.</p></section>';
         }
+        const total = Number(payload.totalClubs ?? clubs.length);
+        const myTeamId = deps.getTeamId?.();
+        const rows = clubs.map(club => `
+            <tr class="${Number(club.teamId) === Number(myTeamId) ? 'is-own-club' : ''}">
+                <td class="st-pos">${escapeNumber(club.position)}</td>
+                <td class="sq-name"><strong>${htmlEscape(club.name || 'Unknown')}</strong></td>
+                <td>${htmlEscape(club.division || '—')}</td>
+                <td>${club.tier ?? '—'}</td>
+                <td class="st-rating">${typeof club.points === 'number' ? club.points.toFixed(2) : '—'}
+                    ${club.rated ? '' : '<span class="fm-badge fm-badge--warn">not yet rated</span>'}</td>
+            </tr>`);
+
         return `
             <section class="fm-panel fm-clubs-ranking">
                 <div class="fm-panel-head">
                     <div>
                         <h3>Club ranking</h3>
-                        <p class="fm-subtle">${clubs.length} of ${payload.totalClubs ?? clubs.length}</p>
+                        <p class="fm-subtle">${total} club${total === 1 ? '' : 's'}, strongest first</p>
                     </div>
                 </div>
-                <div class="fm-table-scroll">
-                    <table class="fm-table fm-clubs-ranking-table">
+                <div class="fm-squad-wrap">
+                    <table class="fm-squad fm-world-table fm-clubs-ranking-table">
                         <thead>
                             <tr>
-                                <th>#</th>
-                                <th>Club</th>
+                                <th class="st-pos">#</th>
+                                <th class="sq-name">Club</th>
                                 <th>Division</th>
                                 <th>Tier</th>
-                                <th>Points</th>
+                                <th class="st-rating">Rating</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            ${clubs.map(club => `
-                                <tr>
-                                    <td>${escapeNumber(club.position)}</td>
-                                    <td>${htmlEscape(club.name || 'Unknown')}</td>
-                                    <td>${htmlEscape(club.division || '—')}</td>
-                                    <td>${club.tier ?? '—'}</td>
-                                    <td class="fm-clubs-ranking-points">
-                                        ${typeof club.points === 'number' ? club.points.toFixed(2) : '—'}
-                                        ${club.rated ? '' : '<span class="fm-subtle"> (not yet rated)</span>'}
-                                    </td>
-                                </tr>`).join('')}
-                        </tbody>
+                        <tbody data-clubs-body>${rows.join('')}</tbody>
                     </table>
                 </div>
+                <div class="fm-pager" data-clubs-pager hidden>
+                    <button type="button" class="fm-action-btn secondary fm-pager-btn" data-clubs-prev>Previous</button>
+                    <span class="fm-pager-status" data-clubs-status></span>
+                    <button type="button" class="fm-action-btn secondary fm-pager-btn" data-clubs-next>Next</button>
+                </div>
             </section>`;
+    }
+
+    /**
+     * Page the club table in place, twenty-five rows at a time.
+     *
+     * <p>State lives on the DOM node rather than in a module variable, because this tab is rebuilt on every
+     * tab switch and a module-level page number would silently reset — or worse, survive into a different
+     * country's club list.
+     *
+     * @param {HTMLElement} root the tab's container
+     */
+    function wireClubsPager(root) {
+        const body = root.querySelector('[data-clubs-body]');
+        const pager = root.querySelector('[data-clubs-pager]');
+        if (!body || !pager) {
+            return;
+        }
+        const all = Array.from(body.querySelectorAll('tr'));
+        if (all.length === 0) {
+            return;
+        }
+        const perPage = 25;
+        const pages = Math.max(1, Math.ceil(all.length / perPage));
+        // One page needs no pager. A row of one dead button is clutter, not a control.
+        if (pages === 1) {
+            pager.hidden = true;
+            return;
+        }
+        pager.hidden = false;
+
+        const prev = pager.querySelector('[data-clubs-prev]');
+        const next = pager.querySelector('[data-clubs-next]');
+        const status = pager.querySelector('[data-clubs-status]');
+        let page = 1;
+
+        const show = () => {
+            const from = (page - 1) * perPage;
+            all.forEach((row, index) => { row.hidden = index < from || index >= from + perPage; });
+            const first = all.findIndex(row => !row.hidden) + 1;
+            const last = from + Math.min(perPage, all.length - from);
+            status.textContent = `${first}-${last} of ${all.length}`;
+            prev.disabled = page === 1;
+            next.disabled = page === pages;
+        };
+
+        prev.addEventListener('click', () => {
+            if (page > 1) { page -= 1; show(); }
+        });
+        next.addEventListener('click', () => {
+            if (page < pages) { page += 1; show(); }
+        });
+        show();
     }
 
     function escapeNumber(value) {
@@ -1040,7 +1111,11 @@ export function createCountryView(deps) {
             // - which is how the first attempt at this fix cost the owner a blank dashboard and a
             // `loadPage is not defined`. The promise is awaited as the tenth entry, not assigned here.
             const clubRankingPromise = tab === 'clubs'
-                ? readJson(`/countries/${encodeURIComponent(countryIso)}/clubs/ranking?limit=100`)
+                // **The whole country, not the first hundred.** It used to ask for 100 and the tab
+                // rendered "100 of 310" with no way to reach the other 210. The endpoint caps at 500 and
+                // a country is at most a few hundred clubs, so one read is cheaper than the pager's
+                // round trips would be.
+                ? readJson(`/countries/${encodeURIComponent(countryIso)}/clubs/ranking?limit=500`)
                 : Promise.resolve(null);
 
             // **A national warm-up is optional, and the panel says so.** The endpoints have existed since
@@ -1161,6 +1236,11 @@ export function createCountryView(deps) {
 
     function wireCountryPage(root, countryIso, activeTab) {
         wireNationalWarmUp(root, activeTab);
+        // The club list is built by buildClubsTab and paged here rather than inside the builder, so the
+        // builder stays a pure string and the pager is wired once for the page like every other control.
+        if (activeTab === 'clubs') {
+            wireClubsPager(root);
+        }
         root.querySelectorAll('[data-country-route]').forEach(element => {
             element.addEventListener('click', () => {
                 const route = element.dataset.countryRoute;
