@@ -54,6 +54,64 @@ The hint read "Search clubs in the world", which was wrong for a box that search
 
 ---
 
+## 2026-10-14 — Club profile for any club, and the Elo that was already working
+
+**Owner:** *"kad je AI tim odvede me na ligu - to nije dobro, i AI klubovi treba da imaju profile stranu
+gde se vidi koja su liga, rejting poeni ELO, stadion itd"* · *"kad se klikne na Club iz header menija ne
+treba da vodi na first tema nego na Club profile"* · *"Medjunarodnim takmicenjima ... treba da donose
+ELO poene klubovima"*
+
+### Two of these were already true
+
+Worth stating plainly, because it changes what gets built.
+
+**International matches already move club Elo.** `MatchValue.INTERNATIONAL` is **1.35**, against league
+1.00 and domestic cup 0.90. The replay accepts `type IN (LEAGUE, CUP)`; the Champions, Masters and
+Challenge cups are `scope=INTERNATIONAL, type=CUP`; there are **1,986** played international club-cup
+matches and clubs sit at 207 distinct Elo values between 1004 and 1584. The owner said he asked because
+he was unsure, and being unsure was right — he was about to have me build something that worked.
+
+**The endpoint already existed.** `GET /teams/{teamId}/profile` took a teamId and already returned the
+league, tier and stadium. `club-view` **ignored the argument** and always rendered the viewer's own club.
+So a club you had heard of was reachable only by being routed to its league — which is exactly the
+complaint. The fix is that the view honours the club it was asked for.
+
+`teamId` deliberately has no fallback. Falling back to the viewer's own club would render a page that
+looks right and is about somebody else, which is the one thing a profile must never do.
+
+The page was also missing the reason you go to a club page at all, so the endpoint now carries **Elo,
+movement since last time, and world position**. World position counts **clubs only** — a national side
+has no club Elo to place, and including them would shrink every club's number by the number of nations.
+
+Verified: `loadPage('clubProfile', {teamId: 2})` shows *Sremac Berkasovo*; `loadPage('clubProfile')` shows
+*OFK Omladinac*; both carry Elo and world position. The header Club button now opens the latter.
+
+### What genuinely did not exist: Elo for stages
+
+The other half of *"plasman u različite faze"* — a bonus for **reaching** a stage, independent of match
+results. The owner set the ladder himself, **cumulative**, and corrected my reading of it: there is no
+separate "final" stage, only *winner* and *finalist* (lost in the final).
+
+| Stage | Champions | Masters | Challenge |
+|---|---|---|---|
+| Entry (qualified) | +50 | +30 | +20 |
+| Round of 16 | +50 | +30 | +20 |
+| Quarter-final | +75 | +35 | +25 |
+| Semi-final | +150 | +50 | +40 |
+| Finalist | +150 | +60 | +50 |
+| Winner | +200 | +100 | +90 |
+| **A winner's total** | **+675** | **+305** | **+245** |
+| **A losing finalist** | **+475** | **+205** | **+155** |
+
+International club cups only — not domestic cups. Not yet built.
+
+*The value of asking instead of guessing:* I proposed a ladder, and the owner's differed on both the
+numbers and the shape. Semi-final and finalist came out equal at +150 for the Champions, which I would
+never have written. On a scale running 1004–1584 a wrong guess here is a 40% error on every club in the
+world.
+
+---
+
 ## 2026-10-14 — New work from the owner: club pages, a world club list, and Elo for internationals
 
 **Owner:** *"1) GDE se nalazi search? 2) search treba da moze da se trazi club, user ili igrac"*
