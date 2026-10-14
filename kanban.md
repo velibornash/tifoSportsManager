@@ -70,7 +70,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P1-3** | 🟡 | **T-FAC-1 item 4 — document the `JuniorDevelopment` overlap** | Not started. Documentation only. |
 | **P1-4** | 🟡 | **T-FAC-1 item 5 — bot seeding plausibility** | 310 grounds seeded at levels 2–5 of 20; ~14,666 clubs have no stadium row. |
 | **P1-5** | 🟡 | **Delete the dead `tacticalMultiplier()`** | No caller, and duplicates what `tacticalLevel` already does. Wiring it would double-apply. |
-| **P1-6** | 🟡 | **T-U21-1 — a national side drawn short was short for ever** | Not started. |
+| **P1-6** | ✅ | **T-U21-1 — a national side drawn short was short for ever** | Fixed (commit af73cd68): FK on `player_contract` no longer aborts reseed, so short U-21 sides are topped up. |
 | **P2-1** | 🟢 | **T-KIT-1 — the players wear no kit** | Nine unchecked criteria, further down. Biggest user-visible win. |
 
 ### Committed but never seen running — do not assume they work
