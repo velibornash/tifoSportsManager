@@ -316,6 +316,69 @@ public class CountryController {
         return result;
     }
 
+    /**
+     * The world's clubs, ranked, on the same numbers the country page uses (P1-3).
+     *
+     * <p>Same shape as {@link #clubRanking(String, int)}, so the page reuses the same table and
+     * pager. Country is added to each row, because the world page holds many countries.
+     */
+    @GetMapping("/world/clubs/ranking")
+    public Map<String, Object> worldClubRanking(@RequestParam(defaultValue = "500") int limit) {
+        int season = seasonService.getActiveSeasonYear();
+
+        // One read per ledger row for the whole world.
+        Map<Long, Map<Integer, Double>> byTeam = new LinkedHashMap<>();
+        for (org.example.footballmanager.newLogic.model.ClubSeasonRankingPoints row
+                : clubSeasonRankingPointsRepository.findAll()) {
+            byTeam.computeIfAbsent(row.getTeam().getId(), key -> new LinkedHashMap<>())
+                    .put(row.getSeasonYear(), row.total());
+        }
+        Map<Long, Double> totals = new LinkedHashMap<>();
+        for (Map.Entry<Long, Map<Integer, Double>> entry : byTeam.entrySet()) {
+            totals.put(entry.getKey(), org.example.footballmanager.newLogic.service.RankingPointsEngine.windowedTotal(season, entry.getValue()));
+        }
+
+        int safeLimit = limit < 1 ? 100 : Math.min(limit, 2000);
+
+        List<Map<String, Object>> out = new ArrayList<>();
+        long coin = tieBreaks.clubSeed(season, 0L);
+        for (Team club : teamRepository.findClubTeamsForOperations()) {
+            if (club.getId() == null) continue;
+            if (club.getCountry() == null) continue;
+            Double total = totals.get(club.getId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("teamId", club.getId());
+            row.put("name", club.getName());
+            row.put("country", club.getCountry().getIsoCode());
+            row.put("tier", club.getCompetition() == null || club.getCompetition().getTier() == null
+                    ? 1 : club.getCompetition().getTier());
+            row.put("division", club.getCompetition() == null ? null : club.getCompetition().getName());
+            row.put("points", total == null
+                    ? org.example.footballmanager.newLogic.service.RankingPointsEngine.START_POINTS
+                    : round2(total));
+            row.put("rated", total != null);
+            out.add(row);
+        }
+        out.sort(java.util.Comparator.comparingDouble((Map<String, Object> row) -> (Double) row.get("points"))
+                .reversed()
+                .thenComparingLong(row -> (Long) row.get("teamId")));
+        int position = 0;
+        int shown = 0;
+        for (Map<String, Object> row : out) {
+            row.put("position", ++position);
+            if (shown++ < safeLimit) {
+                continue;
+            }
+        }
+        List<Map<String, Object>> page = out.size() > safeLimit ? out.subList(0, safeLimit) : out;
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("seasonYear", season);
+        result.put("totalClubs", out.size());
+        result.put("clubs", page);
+        return result;
+    }
+
     @GetMapping("/ranking")
     public List<Map<String, Object>> ranking(@RequestParam(defaultValue = "senior") String level) {
         boolean youth = "u21".equalsIgnoreCase(String.valueOf(level));

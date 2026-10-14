@@ -1024,12 +1024,14 @@ function buildPageNavState(page, options = {}) {
     async function loadWorldPage() {
         const mainContent = document.getElementById('main-content');
         try {
-            const [res, nationalRes] = await Promise.all([
-                authFetch('/countries/world'), authFetch('/api/national-tournaments')
+            const [res, nationalRes, clubsRes] = await Promise.all([
+                authFetch('/countries/world'), authFetch('/api/national-tournaments'),
+                authFetch('/countries/world/clubs/ranking?limit=500')
             ]);
             if (!res.ok || !nationalRes.ok) throw new Error('World unavailable');
             const world = await res.json();
             const national = await nationalRes.json();
+            const worldClubsPayload = clubsRes && clubsRes.ok ? await clubsRes.json() : null;
             const nationalRows = Array.isArray(national.competitions) ? national.competitions : [];
             const countries = Array.isArray(world.countries) ? world.countries : [];
 
@@ -1147,6 +1149,43 @@ function buildPageNavState(page, options = {}) {
                             </table>
                         </div>
                     </section>
+
+                    <section class="fm-panel fm-clubs-ranking">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>World club ranking</h3>
+                                <p class="fm-subtle">${Number(worldClubsPayload?.totalClubs ?? 0)} club${Number(worldClubsPayload?.totalClubs ?? 0) === 1 ? '' : 's'}, strongest first</p>
+                            </div>
+                        </div>
+                        <div class="fm-squad-wrap">
+                            <table class="fm-squad fm-world-table fm-clubs-ranking-table">
+                                <thead>
+                                    <tr>
+                                        <th class="st-pos">#</th>
+                                        <th class="sq-name">Club</th>
+                                        <th>Country</th>
+                                        <th>Division</th>
+                                        <th>Tier</th>
+                                        <th class="st-rating">Rating</th>
+                                    </tr>
+                                </thead>
+                                <tbody data-clubs-body>${(worldClubsPayload?.clubs ?? []).map(club => `
+                                    <tr class="${Number(club.teamId) === Number(typeof getTeamId === 'function' ? getTeamId() : null) ? 'is-own-club' : ''}" data-club-team-id="${club.teamId}">
+                                        <td class="st-pos">${club.position ?? '—'}</td>
+                                        <td class="sq-name"><strong>${club.teamId ? `<span class="fm-CTeam-link js-world-club" data-club-team-id="${club.teamId}">${escapeHtml(club.name || 'Unknown')}</span>` : escapeHtml(club.name || 'Unknown')}</strong></td>
+                                        <td>${escapeHtml(club.country || '—')}</td>
+                                        <td>${escapeHtml(club.division || '—')}</td>
+                                        <td>${club.tier ?? '—'}</td>
+                                        <td class="st-rating">${typeof club.points === 'number' ? club.points.toFixed(2) : '—'}${club.rated ? '' : ' <span class="fm-badge fm-badge--warn">not yet rated</span>'}</td>
+                                    </tr>`).join('')}</tbody>
+                            </table>
+                        </div>
+                        <div class="fm-pager" data-clubs-pager hidden>
+                            <button type="button" class="fm-action-btn secondary fm-pager-btn" data-clubs-prev>Previous</button>
+                            <span class="fm-pager-status" data-clubs-status></span>
+                            <button type="button" class="fm-action-btn secondary fm-pager-btn" data-clubs-next>Next</button>
+                        </div>
+                    </section>
                 </div>`;
 
             const openCountry = row => {
@@ -1189,6 +1228,45 @@ function buildPageNavState(page, options = {}) {
             // here: a <tr> with role="link" and tabindex does not get Enter or Space for free, and a row
             // that looks clickable but cannot be reached from the keyboard is a worse regression than the
             // button-in-a-name it replaced.
+            // World club ranking pager (25 per page, like country view).
+            const worldClubsBody = mainContent.querySelector('[data-clubs-body]');
+            const worldClubsPager = mainContent.querySelector('[data-clubs-pager]');
+            if (worldClubsBody && worldClubsPager) {
+                const all = Array.from(worldClubsBody.querySelectorAll('tr'));
+                if (all.length > 0) {
+                    const perPage = 25;
+                    const pages = Math.max(1, Math.ceil(all.length / perPage));
+                    if (pages === 1) {
+                        worldClubsPager.hidden = true;
+                    } else {
+                        worldClubsPager.hidden = false;
+                        const prev = worldClubsPager.querySelector('[data-clubs-prev]');
+                        const next = worldClubsPager.querySelector('[data-clubs-next]');
+                        const status = worldClubsPager.querySelector('[data-clubs-status]');
+                        let page = 1;
+                        const show = () => {
+                            const from = (page - 1) * perPage;
+                            all.forEach((row, index) => { row.hidden = index < from || index >= from + perPage; });
+                            const first = all.findIndex(row => !row.hidden) + 1;
+                            const last = from + Math.min(perPage, all.length - from);
+                            status.textContent = `${first}-${last} of ${all.length}`;
+                            prev.disabled = page === 1;
+                            next.disabled = page === pages;
+                        };
+                        prev.addEventListener('click', () => { if (page > 1) { page -= 1; show(); } });
+                        next.addEventListener('click', () => { if (page < pages) { page += 1; show(); } });
+                        show();
+                    }
+                }
+            }
+            mainContent.querySelectorAll('.js-world-club').forEach(node => {
+                node.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const teamId = Number(node.dataset.clubTeamId);
+                    if (teamId) window.loadClubProfile(teamId);
+                });
+            });
+
             mainContent.querySelectorAll('[data-world-country]').forEach(row => {
                 row.addEventListener('click', () => openCountry(row));
                 row.addEventListener('keydown', event => {
