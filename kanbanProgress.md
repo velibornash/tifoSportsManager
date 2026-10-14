@@ -1,3 +1,71 @@
+## 2026-10-14 — P0-13: a claimed friendly was reported as booked when no match existed
+
+`FriendlyOfferService.claim()` ended with:
+
+    offer.setStatus(OfferStatus.FULFILLED);
+    offer.setFilledFixtureId(null);
+
+A claim is a **request**, not a booking. `requestFriendly` returns a `FriendlyRequest` in status
+`PENDING` with `accepted_fixture_id` null, because the advertised club still has to answer — and the
+offer dropped that request and closed itself anyway. The two lines below claimed an ad *"still points at
+the match it produced"*; it never had. Both tables were empty before this, so the path had never run.
+
+Live, before the fix: ad posted for week 6 day 7, claimed by another club → offer `FULFILLED`,
+`filled_fixture_id` **NULL**, request `PENDING`, **0 fixtures**. The board reported success and the slot
+was closed. If the advertiser never answered, the slot was gone for good.
+
+### Three things were wrong, not one
+
+1. **The ad closed on a request.** It now stays `OPEN` and is closed by `FriendlyRequestService.respond`
+   when the request is actually `ACCEPTED` and the fixture exists, stamped with the real fixture id.
+   Leaving it open is safe: `requestFriendly` already refuses when either club has a live request in that
+   slot, which is exactly the pair the ad offers.
+2. **The claim ran the wrong way round.** It created the request with the **advertiser as the asker**, so
+   the club that took the slot had to approve its own claim. The club taking the slot is the requester —
+   it already said yes by claiming — and the club that posted the slot is the one asked. That is also
+   what decides where the ad is closed from, so `closeAdvertisementFor` looks the advertisement up by
+   the *opponent* id.
+3. **`filledFixtureId` was written as `null` explicitly**, not left unset. Gone rather than corrected,
+   because "write null" was the defect.
+
+### Verified on a live database, end to end
+
+| Step | Result |
+|---|---|
+| Advertise week 6 day 7 | offer `OPEN` |
+| Another club claims it | offer **stays `OPEN`**, `filled_fixture_id` NULL, request created claimer→advertiser, **0 fixtures** |
+| Advertiser accepts | request `ACCEPTED`, `accepted_fixture_id` **5709** |
+| Offer now | `FULFILLED`, `filled_fixture_id` **5709** |
+| Fixture 5709 | `Sremac Berkasovo vs OFK Omladinac`, w6 d7, type `FRIENDLY`, unplayed |
+| Board | empty — the ad is off it |
+
+### The test was asserting the bug
+
+`takingAnOfferCreatesARequest` asserted `FULFILLED` straight after a claim, and the board going empty —
+so the suite had been green **because it encoded the defect**. Rewritten to assert the ad stays open with
+no fixture, that a second claim is refused by the live-request guard, and a new
+`fulfillingAnOfferNeedsAnAcceptedRequest` walks claim→accept and checks the ad ends `FULFILLED` pointing
+at a real `FRIENDLY` fixture.
+
+Mutation-proved: reinstating `setStatus(FULFILLED)` + `setFilledFixtureId(null)` turns the suite red
+with `expected: <OPEN> but was: <FULFILLED>` and `the posting points at the match it produced — expected:
+<1> but was: <null>`. With the fix restored, 9 of 9 green.
+
+### P0-14, found on the way: `FriendlySlotRulesTest` is red on clean `HEAD`
+
+10 of 12 fail **without any of this change** — verified by stashing it and re-running. It asserts the
+season table before the reshape: week 5 day 3 is `LEAGUE` round 9 (`FRIENDLY` now, since round 10 moved
+into week 5), and the break offers 2 friendly slots rather than 4. The production table is correct and
+matches the owner's; the test is stale. Logged as P0-14 rather than quietly rewritten, because deciding
+which shape is canonical is the owner's call.
+
+*Two harness errors of my own, recorded because they nearly became findings:* the first claim attempt
+used offer id `1` when the post had been given id `3` after I cleared the table, and an earlier
+"Back button disappears after saving" reproduction ran its assertion **after** a Back had already left
+the page. Both looked like product bugs and were neither.
+
+---
+
 ## 2026-10-14 — Your own name, your own Back button, and three fixes the owner found on one screen
 
 **Owner:** *"Name - u padajucem meniju treba da stoji name a ne mejl.. edit treba da bude u istom redu gde

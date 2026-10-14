@@ -6,12 +6,17 @@ import org.example.footballmanager.BaseTest;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.FriendlyOffer;
+import org.example.footballmanager.newLogic.model.FriendlyRequest;
 import org.example.footballmanager.newLogic.model.GameClock;
+import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.MatchType;
 import org.example.footballmanager.newLogic.model.SeasonCalendar;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.CountryRepository;
 import org.example.footballmanager.newLogic.repository.FriendlyOfferRepository;
+import org.example.footballmanager.newLogic.repository.FriendlyRequestRepository;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,6 +29,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -44,6 +51,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FriendlyOfferServiceTest extends BaseTest {
 
     @Autowired private FriendlyOfferService offers;
+    @Autowired private FriendlyRequestService friendlies;
+    @Autowired private FriendlyRequestRepository requests;
+    @Autowired private MatchFixtureRepository fixtures;
     @Autowired private SeasonService seasons;
     @Autowired private CountryRepository countries;
     @Autowired private TeamRepository teams;
@@ -160,16 +170,60 @@ class FriendlyOfferServiceTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("taking a posting asks the club that posted it, and the slot leaves the board")
+    @DisplayName("taking a posting asks the club that posted it, and only a booking closes the ad")
     void takingAnOfferCreatesARequest() {
         FriendlyOffer offer = offers.post(human.getId(), season(), week(), 1).orElseThrow();
         assertTrue(offers.claim(offer.getId(), otherHuman.getId()).isPresent(),
                 "taking a posting is asking the club that posted it");
 
+        // A claim is a request, not a booking. The posting stays on the board, because the club that
+        // posted it still has to answer and no fixture exists until it does. P0-13: this used to be
+        // closed here with `setFilledFixtureId(null)`, so the board reported a taken slot that had never
+        // produced a match, and if the advertiser never answered the slot was lost for good.
+        assertEquals(FriendlyOffer.OfferStatus.OPEN,
+                offerRepository.findById(offer.getId()).orElseThrow().getStatus(),
+                "a claim is a request; the posting is not fulfilled until the fixture exists");
+        assertNull(offerRepository.findById(offer.getId()).orElseThrow().getFilledFixtureId(),
+                "no fixture has been created yet, so there is nothing to point at");
+        assertFalse(offers.board(season(), week()).isEmpty(),
+                "the posting is still advertised while the request waits for an answer");
+
+        // The protection against two clubs taking the same slot is the live-request guard, not the ad
+        // leaving the board: the first claim already holds the advertiser's slot.
+        Team thirdHuman = club(human.getCountry(), "Third Human", true);
+        assertTrue(offers.claim(offer.getId(), thirdHuman.getId()).isEmpty(),
+                "a slot that already has a live request cannot be claimed again");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("the posting closes, and points at the fixture, only once the answer is accepted")
+    void fulfillingAnOfferNeedsAnAcceptedRequest() {
+        FriendlyOffer offer = offers.post(human.getId(), season(), week(), 1).orElseThrow();
+        offers.claim(offer.getId(), otherHuman.getId()).orElseThrow();
+
+        FriendlyRequest request = requests.findAll().stream()
+                .filter(r -> r.getOpponentTeamId().equals(human.getId())
+                        && r.getRequesterTeamId().equals(otherHuman.getId()))
+                .findFirst().orElseThrow();
+
+        // The club that took the slot asked; the club that posted it answers.
+        assertEquals(FriendlyRequest.FriendlyStatus.PENDING, request.getStatus());
+        FriendlyRequest settled = friendlies.respond(request.getId(), human.getId(), true, null);
+
+        assertEquals(FriendlyRequest.FriendlyStatus.ACCEPTED, settled.getStatus());
+        assertNotNull(settled.getAcceptedFixtureId(), "an accepted request is a real fixture");
+
+        FriendlyOffer settledOffer = offerRepository.findById(offer.getId()).orElseThrow();
+        assertEquals(FriendlyOffer.OfferStatus.FULFILLED, settledOffer.getStatus(),
+                "the posting is fulfilled by the answer that produced the fixture");
+        assertEquals(settled.getAcceptedFixtureId(), settledOffer.getFilledFixtureId(),
+                "the posting points at the match it produced");
         assertTrue(offers.board(season(), week()).isEmpty(),
                 "a fulfilled posting is off the board, so two clubs cannot both take it");
-        assertEquals(FriendlyOffer.OfferStatus.FULFILLED,
-                offerRepository.findById(offer.getId()).orElseThrow().getStatus());
+
+        MatchFixture fixture = fixtures.findById(settled.getAcceptedFixtureId()).orElseThrow();
+        assertEquals(MatchType.FRIENDLY, fixture.getMatchType());
     }
 
     @Test

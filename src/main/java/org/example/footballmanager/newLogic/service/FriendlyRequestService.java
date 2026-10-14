@@ -4,12 +4,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.footballmanager.newLogic.model.FriendlyRequest;
 import org.example.footballmanager.newLogic.model.FriendlyRequest.FriendlyStatus;
+import org.example.footballmanager.newLogic.model.FriendlyOffer;
 import org.example.footballmanager.newLogic.model.GameClock;
 import org.example.footballmanager.newLogic.model.MatchFixture;
 import org.example.footballmanager.newLogic.model.SeasonCalendar;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.GameClockRepository;
 import org.example.footballmanager.newLogic.repository.FriendlyRequestRepository;
+import org.example.footballmanager.newLogic.repository.FriendlyOfferRepository;
 import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
@@ -61,6 +63,14 @@ public class FriendlyRequestService {
     private final TeamRepository teams;
     private final GameClockRepository clocks;
     private final PlayerRepository players;
+
+    /**
+     * Used only to close an advertisement once the request it produced is accepted.
+     *
+     * <p>The repository, not {@code FriendlyOfferService}: that service calls into this one to create a
+     * request, so depending on it here would close a bean cycle.
+     */
+    private final FriendlyOfferRepository offers;
 
     /**
      * The current clock, read from its repository.
@@ -200,7 +210,33 @@ public class FriendlyRequestService {
         request.setStatus(FriendlyStatus.ACCEPTED);
         MatchFixture fixture = createFixture(request);
         request.setAcceptedFixtureId(fixtures.save(fixture).getId());
-        return requests.save(request);
+        FriendlyRequest settled = requests.save(request);
+        // A slot taken from an advertisement is now really booked, so the advertisement closes and
+        // finally points at the match it produced. Until this line the ad stayed OPEN with a null
+        // fixture, which is the state a claim used to leave it in permanently.
+        closeAdvertisementFor(settled);
+        return settled;
+    }
+
+    /**
+     * Closes an open advertisement that led to this request, and stamps it with the fixture.
+     *
+     * <p>Silent when there was no advertisement — a request made by name has none, and that is the
+     * common case. Also silent when the advertisement has already expired or been withdrawn, because a
+     * club that accepted a genuine request should still get its friendly even if it changed its mind
+     * about the ad in between.
+     */
+    private void closeAdvertisementFor(FriendlyRequest request) {
+        // The advertiser is the club that was ASKED, which is the opponent: the club taking the slot
+        // from an advertisement is the requester, because it has already agreed by claiming.
+        offers.findFirstByOfferingTeamIdAndSeasonYearAndWeekNumberAndSlotAndStatus(
+                        request.getOpponentTeamId(), request.getSeason(), request.getWeek(),
+                        request.getSlot(), FriendlyOffer.OfferStatus.OPEN)
+                .ifPresent(offer -> {
+                    offer.setStatus(FriendlyOffer.OfferStatus.FULFILLED);
+                    offer.setFilledFixtureId(request.getAcceptedFixtureId());
+                    offers.save(offer);
+                });
     }
 
     /** The club that asked withdraws. */

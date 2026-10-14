@@ -140,8 +140,12 @@ public class FriendlyOfferService {
         // The request service reads the season from the clock rather than being told, which is right: a
         // posting carries the season it was written for, but a request is a live act and belongs to the
         // season that is running now. `hasPassed` above has already refused an offer from a past season.
+        //
+        // The club TAKING the slot is the requester, not the one advertising it. It had already said yes
+        // by claiming, so it has nothing left to confirm; the club that posted the slot is the one
+        // asked, and that club is the one whose answer decides whether a fixture exists.
         Optional<org.example.footballmanager.newLogic.model.FriendlyRequest> request = requests.requestFriendly(
-                offer.getOfferingTeam().getId(), claimingTeamId,
+                claimingTeamId, offer.getOfferingTeam().getId(),
                 offer.getWeekNumber(), offer.getSlot());
         if (request.isEmpty()) {
             // The two clubs cannot actually play each other in that slot - one of them is busy, or they
@@ -149,9 +153,16 @@ public class FriendlyOfferService {
             return Optional.empty();
         }
 
-        offer.setStatus(OfferStatus.FULFILLED);
-        offer.setFilledFixtureId(null);
-        offers.save(offer);
+        // The ad is NOT closed here. A claim is a request, and a request is not a booking: the
+        // advertised club still has to accept, and until it does there is no fixture to point at.
+        //
+        // It used to be marked FULFILLED here with `setFilledFixtureId(null)`, so the board reported a
+        // booked slot that had never produced a match, and if the club never answered the slot was lost
+        // for good. The advertisement is now closed by FriendlyRequestService.respond when the request
+        // is actually ACCEPTED and the fixture exists.
+        //
+        // Leaving it OPEN is safe against a second claim: requestFriendly above refuses when either club
+        // already has a live request in that slot, which is exactly the pair this advertisement offers.
         return Optional.of(offer);
     }
 

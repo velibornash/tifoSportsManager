@@ -27,4 +27,15 @@ public interface FriendlyOfferRepository extends JpaRepository<FriendlyOffer, Lo
 
     Optional<FriendlyOffer> findByOfferingTeamIdAndSeasonYearAndWeekNumberAndDayNumber(
             Long offeringTeamId, Integer seasonYear, Integer weekNumber, Integer dayNumber);
+
+    /**
+     * The one posting a club still has advertised in a slot, if there is one.
+     *
+     * <p>Only ever asked for by slot, not by day, because the day is derived from the slot. A claim is a
+     * request, and a request is not a booking: the slot is only really taken when the advertised club
+     * accepts, and this is how the advertisement learns that it happened.
+     */
+    Optional<FriendlyOffer> findFirstByOfferingTeamIdAndSeasonYearAndWeekNumberAndSlotAndStatus(
+            Long offeringTeamId, Integer seasonYear, Integer weekNumber, Integer slot,
+            FriendlyOffer.OfferStatus status);
 }
