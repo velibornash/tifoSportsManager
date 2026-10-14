@@ -992,7 +992,9 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             const losses = Number(CTeam.losses || 0);
             const played = wins + draws + losses;
             const gd = Number(CTeam.goalDifference || 0);
-            const teamLabel = CTeam.teamId ? `<span class="fm-CTeam-link">${safe(CTeam.name)}</span>` : safe(CTeam.name);
+            const teamLabel = CTeam.teamId
+                ? `<span class="fm-CTeam-link js-load-CTeam" data-CTeam-id="${CTeam.teamId}" data-team-name="${safe(CTeam.name)}" data-season-year="${selectedSeason ?? ''}">${safe(CTeam.name)}</span>`
+                : safe(CTeam.name);
             return `
                 <tr class="${zoneClass(rank, rows.length)} ${CTeam.teamId ? 'js-load-CTeam' : ''}${isOwnLeagueRow(CTeam) ? ' is-own' : ''}" data-CTeam-id="${CTeam.teamId || ''}" data-CTeam-name="${safe(CTeam.name)}" data-season-year="${selectedSeason ?? ''}">
                     <td class="st-pos">${rank}</td>
