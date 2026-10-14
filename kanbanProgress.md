@@ -1,3 +1,9 @@
+## 2026-10-14 — manual rebuild per owner feedback
+
+- Removed admin, player-stats, logo-corner and all mobile screenshots; mobile view noted as existing rather than pictured.
+- Redid shots 12-17, stadium (full page), U-21 and cup (cup reached via country) in desktop viewport.
+- Rebuilt `index.html` and `TIFO-UI-Football-Manager-Manual.pdf` with page-break and single-page image constraints.
+
 ## 2026-10-14 — TECHNICAL_OVERVIEW refreshed, manual rebuilt, league view fix
 
 - **TECHNICAL_OVERVIEW.md** counts updated (33 controllers, 95 services, 162 model files, 58 repos, 92 sim files, 53 js files, 324 test classes, 2,129 @Test) and sections 5.5/5.6/8.5 plus friendly-invite and known-gap wording aligned with the current source.

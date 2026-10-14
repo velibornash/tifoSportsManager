@@ -115,8 +115,9 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
     for n, t in [("1", "Getting in"), ("2", "How to move around"), ("3", "The dashboard"),
                  ("4", "Your club"), ("5", "Tactics"), ("6", "Training"), ("7", "The academy"),
                  ("8", "League, fixtures and results"), ("9", "Transfers"), ("10", "Finances"),
-                 ("11", "The world"), ("12", "Watching a match"), ("13", "Community"),
-                 ("14", "Admin"), ("15", "What is not built yet")]:
+                  ("11", "The world"), ("12", "Watching a match"), ("13", "Community"),
+                  ("14", "What is not built yet")]:
+
         a(f'<li><a href="#s{n}">{n}. {t}</a></li>')
     a('</ol></div>')
 
@@ -394,18 +395,8 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
       'writing in the forum for a number of days; reading the forum, his private messages and his '
       'club all carry on working, and he is told why and for how long.</p>')
 
-    # ---------------------------------------------------------------- 14
-    a('<h2 id="s14">14. Admin</h2>')
-    a('<p>Owner and admin accounts get a world-repair panel: rebuild missing pieces of the world, '
-      'activate a country, and check the state of the database.</p>')
-    a('<p>The same page carries the applications queue (who has asked to play, and in which country) '
-      'and an accounts panel where a role can be changed or a forum ban applied. A moderator can '
-      'apply a forum ban from a manager\u2019s profile, but does not reach this page.</p>')
-    a(shot("28-admin", "<b>Admin.</b> Operational tools, applications and accounts, visible only to admin accounts."))
-    a(shot("29-user-profile", "<b>Your account.</b> Role, subscription, country and club."))
-
     # ---------------------------------------------------------------- 15
-    a('<h2 id="s15">15. What is not built yet</h2>')
+    a('<h2 id="s14">14. What is not built yet</h2>')
     a('<p>Honesty section. This manual documents the game as it runs today, including the parts that '
       'are stubs or unfinished. None of these is hidden in the interface.</p>')
     a('<table><thead><tr><th>Area</th><th>State</th><th>Note</th></tr></thead><tbody>')
