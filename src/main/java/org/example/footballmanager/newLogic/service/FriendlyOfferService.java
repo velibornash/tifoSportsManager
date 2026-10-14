@@ -153,17 +153,17 @@ public class FriendlyOfferService {
             return Optional.empty();
         }
 
-        // The ad is NOT closed here. A claim is a request, and a request is not a booking: the
-        // advertised club still has to accept, and until it does there is no fixture to point at.
-        //
-        // It used to be marked FULFILLED here with `setFilledFixtureId(null)`, so the board reported a
-        // booked slot that had never produced a match, and if the club never answered the slot was lost
-        // for good. The advertisement is now closed by FriendlyRequestService.respond when the request
-        // is actually ACCEPTED and the fixture exists.
-        //
-        // Leaving it OPEN is safe against a second claim: requestFriendly above refuses when either club
-        // already has a live request in that slot, which is exactly the pair this advertisement offers.
-        return Optional.of(offer);
+        // The advertiser has already consented by posting the slot, so a claim books it
+        // immediately: ask first and answer "yes" in one transaction, which creates the fixture and
+        // closes the advertisement with the real fixture id.
+        org.example.footballmanager.newLogic.model.FriendlyRequest settled =
+                requests.respond(request.get().getId(), offer.getOfferingTeam().getId(), true, null);
+        if (settled == null || settled.getAcceptedFixtureId() == null) {
+            return Optional.empty();
+        }
+        offer.setStatus(OfferStatus.FULFILLED);
+        offer.setFilledFixtureId(settled.getAcceptedFixtureId());
+        return Optional.of(offers.save(offer));
     }
 
     /** Withdraws a posting this club made. */

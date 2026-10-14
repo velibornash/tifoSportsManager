@@ -170,59 +170,45 @@ class FriendlyOfferServiceTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("taking a posting asks the club that posted it, and only a booking closes the ad")
-    void takingAnOfferCreatesARequest() {
+    @DisplayName("taking a posting books it immediately, since the advertiser already consented")
+    void takingAnOfferBooksInstantly() {
         FriendlyOffer offer = offers.post(human.getId(), season(), week(), 1).orElseThrow();
         assertTrue(offers.claim(offer.getId(), otherHuman.getId()).isPresent(),
-                "taking a posting is asking the club that posted it");
+                "taking a posting books the advertised slot");
 
-        // A claim is a request, not a booking. The posting stays on the board, because the club that
-        // posted it still has to answer and no fixture exists until it does. P0-13: this used to be
-        // closed here with `setFilledFixtureId(null)`, so the board reported a taken slot that had never
-        // produced a match, and if the advertiser never answered the slot was lost for good.
-        assertEquals(FriendlyOffer.OfferStatus.OPEN,
-                offerRepository.findById(offer.getId()).orElseThrow().getStatus(),
-                "a claim is a request; the posting is not fulfilled until the fixture exists");
-        assertNull(offerRepository.findById(offer.getId()).orElseThrow().getFilledFixtureId(),
-                "no fixture has been created yet, so there is nothing to point at");
-        assertFalse(offers.board(season(), week()).isEmpty(),
-                "the posting is still advertised while the request waits for an answer");
+        FriendlyOffer settledOffer = offerRepository.findById(offer.getId()).orElseThrow();
+        assertEquals(FriendlyOffer.OfferStatus.FULFILLED, settledOffer.getStatus(),
+                "a booked posting is fulfilled immediately");
+        assertNotNull(settledOffer.getFilledFixtureId(),
+                "the posting points at the match it produced");
+        assertTrue(offers.board(season(), week()).isEmpty(),
+                "a fulfilled posting is off the board");
 
-        // The protection against two clubs taking the same slot is the live-request guard, not the ad
-        // leaving the board: the first claim already holds the advertiser's slot.
         Team thirdHuman = club(human.getCountry(), "Third Human", true);
         assertTrue(offers.claim(offer.getId(), thirdHuman.getId()).isEmpty(),
-                "a slot that already has a live request cannot be claimed again");
+                "a posted slot that is already booked cannot be claimed again");
     }
 
     @Test
     @Transactional
-    @DisplayName("the posting closes, and points at the fixture, only once the answer is accepted")
-    void fulfillingAnOfferNeedsAnAcceptedRequest() {
+    @DisplayName("a posted offer is processed and the board removes it")
+    void takingAnOfferRemovesIt() {
         FriendlyOffer offer = offers.post(human.getId(), season(), week(), 1).orElseThrow();
-        offers.claim(offer.getId(), otherHuman.getId()).orElseThrow();
+        FriendlyOffer settledOffer = offers.claim(offer.getId(), otherHuman.getId()).orElseThrow();
 
         FriendlyRequest request = requests.findAll().stream()
                 .filter(r -> r.getOpponentTeamId().equals(human.getId())
                         && r.getRequesterTeamId().equals(otherHuman.getId()))
                 .findFirst().orElseThrow();
 
-        // The club that took the slot asked; the club that posted it answers.
-        assertEquals(FriendlyRequest.FriendlyStatus.PENDING, request.getStatus());
-        FriendlyRequest settled = friendlies.respond(request.getId(), human.getId(), true, null);
-
-        assertEquals(FriendlyRequest.FriendlyStatus.ACCEPTED, settled.getStatus());
-        assertNotNull(settled.getAcceptedFixtureId(), "an accepted request is a real fixture");
-
-        FriendlyOffer settledOffer = offerRepository.findById(offer.getId()).orElseThrow();
-        assertEquals(FriendlyOffer.OfferStatus.FULFILLED, settledOffer.getStatus(),
-                "the posting is fulfilled by the answer that produced the fixture");
-        assertEquals(settled.getAcceptedFixtureId(), settledOffer.getFilledFixtureId(),
+        assertEquals(FriendlyRequest.FriendlyStatus.ACCEPTED, request.getStatus());
+        assertNotNull(request.getAcceptedFixtureId(), "an accepted request is a real fixture");
+        assertEquals(request.getAcceptedFixtureId(), settledOffer.getFilledFixtureId(),
                 "the posting points at the match it produced");
         assertTrue(offers.board(season(), week()).isEmpty(),
-                "a fulfilled posting is off the board, so two clubs cannot both take it");
+                "a fulfilled posting is off the board");
 
-        MatchFixture fixture = fixtures.findById(settled.getAcceptedFixtureId()).orElseThrow();
+        MatchFixture fixture = fixtures.findById(request.getAcceptedFixtureId()).orElseThrow();
         assertEquals(MatchType.FRIENDLY, fixture.getMatchType());
     }
 
