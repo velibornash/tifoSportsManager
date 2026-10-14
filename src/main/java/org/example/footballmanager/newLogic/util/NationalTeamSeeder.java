@@ -1,5 +1,7 @@
 package org.example.footballmanager.newLogic.util;
 
+import org.example.footballmanager.newLogic.repository.PlayerContractRepository;
+
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.Country;
 import org.example.footballmanager.newLogic.model.Player;
@@ -44,6 +46,8 @@ public class NationalTeamSeeder {
     private final PlayerRepository players;
     private final BotSquadGenerator botSquads;
     private final Random random;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private PlayerContractRepository contractRepository;
 
     /**
      * Marked explicitly: this class has two constructors, and Spring refuses to guess between them.
@@ -339,6 +343,14 @@ public class NationalTeamSeeder {
         if (!generated.isEmpty()) {
             log.info("{}: replacing {} generated players with real ones ({} eligible in the country).",
                     nationalTeam.getName(), generated.size(), eligible.size());
+            // Generated bot players may have a contract row behind them; deleting the player first
+            // violates the player_contract FK (P0-4). Clear the contracts first.
+            if (contractRepository != null) {
+                for (Player bot : generated) {
+                    contractRepository.findByPlayerId(bot.getId())
+                            .ifPresent(contractRepository::delete);
+                }
+            }
             players.deleteAll(generated);
         }
 
