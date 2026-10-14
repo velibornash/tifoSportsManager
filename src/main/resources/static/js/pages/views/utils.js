@@ -627,3 +627,62 @@ export function renderMatchLockBanner(lock) {
 export function isPageLocked(lock) {
     return !!(lock && lock.locked);
 }
+
+/**
+ * A "this is you" card for a long list, with a jump into it.
+ *
+ * <p>One convention, one meaning (owner 2026-10-14; designAnalysis.md §9 rule 3). Marking your row in a
+ * list is not enough when the list is 278 ties long and the round you care about is the third screen
+ * down: you still have to find it. So the mark and the way to it travel together.
+ *
+ * <p>Used by the national cup and the three continental club cups, which is the point — one answer to
+ * "where am I in this" rather than one per competition.
+ *
+ * @param {object} options
+ * @param {Array<{label:string, value:string}>} options.facts one-line summary (round, week, score…)
+ * @param {string} [options.jumpLabel] text on the jump button; omit for no button
+ * @param {string} [options.target] DOM id the jump scrolls to
+ * @param {string} [options.kicker] heading above the club name; "YOUR CLUB" by default
+ * @returns {string} HTML, or '' when there is nothing to say
+ */
+export function ownClubSummaryCard({ facts = [], kicker = 'Your club', jumpLabel = '', target = '', name = '' } = {}) {
+    if (!name && facts.length === 0) return '';
+    const rows = facts
+        .filter(row => row && row.value !== undefined && row.value !== null && row.value !== '')
+        .map(row => `<span class="fm-own-fact"><span class="fm-own-fact-key">${htmlEscape(row.label)}</span> `
+            + `<span class="fm-own-fact-value">${htmlEscape(row.value)}</span></span>`)
+        .join('');
+    const jump = jumpLabel && target
+        ? `<button type="button" class="fm-action-btn secondary fm-own-jump" data-jump-to="${htmlEscape(target)}">${htmlEscape(jumpLabel)}</button>`
+        : '';
+    return `
+        <section class="fm-panel fm-own-summary">
+            <div class="fm-own-summary-head">
+                <span class="fm-milestone-kicker">${htmlEscape(kicker)}</span>
+                ${name ? `<strong class="fm-own-summary-name">${htmlEscape(name)}</strong>` : ''}
+            </div>
+            ${rows ? `<div class="fm-own-summary-facts">${rows}</div>` : ''}
+            ${jump}
+        </section>`;
+}
+
+/**
+ * Scrolls to an element by id and puts the keyboard focus there.
+ *
+ * <p>The id, not the element, because the jump button is rendered before the list it points at and the
+ * list is re-rendered whenever the tab is switched. Focusing as well as scrolling is what makes it
+ * usable from the keyboard; a button that scrolls and drops focus is not a control, it is a decoration.
+ */
+export function wireJumpButtons(root, doc = document) {
+    root.querySelectorAll('[data-jump-to]').forEach(button => {
+        button.addEventListener('click', () => {
+            const target = doc.getElementById(button.dataset.jumpTo);
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (typeof target.focus === 'function') {
+                target.setAttribute('tabindex', target.getAttribute('tabindex') ?? '-1');
+                target.focus({ preventScroll: true });
+            }
+        });
+    });
+}

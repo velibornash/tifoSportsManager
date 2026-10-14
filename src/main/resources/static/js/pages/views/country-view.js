@@ -1,7 +1,7 @@
 // pages/views/country-view.js
 import {
     htmlEscape, buildEmptyState, sortCountryLeagues, buildCountryFlagBadgeHtml,
-    buildLeagueMetaLabel
+    buildLeagueMetaLabel, ownClubSummaryCard, wireJumpButtons
 } from './utils.js';
 
 export function createCountryView(deps) {
@@ -892,7 +892,38 @@ export function createCountryView(deps) {
             return `
                 <section class="fm-panel"><div class="fm-empty">No cup exists for ${htmlEscape(country?.name || 'this country')} yet.</div></section>`;
         }
+        // The manager's own ties, gathered before the rounds render so the card can say what they are and
+        // jump to them. The rounds arrive newest-first, which puts rounds that were never drawn at the
+        // top - so a club in week 4 sat three screens down behind six "Not drawn yet" panels.
+        const myTeamId = deps.getTeamId?.();
+        const myTies = [];
+        (Array.isArray(cup.rounds) ? cup.rounds : []).forEach(round => {
+            (Array.isArray(round.fixtures) ? round.fixtures : []).forEach(tie => {
+                const mine = myTeamId !== null && myTeamId !== undefined
+                    && (Number(tie.homeTeamId) === Number(myTeamId)
+                        || Number(tie.awayTeamId) === Number(myTeamId));
+                if (mine) myTies.push({ tie, round });
+            });
+        });
+        const summary = myTies.length
+            ? ownClubSummaryCard({
+                // The manager's own club name, which is whichever side of the tie carries his id - not
+                // the first name in the tie, which is the opponent's whenever his club is away.
+                name: myTeamId !== null && myTeamId !== undefined
+                    && Number(myTies[0].tie.homeTeamId) === Number(myTeamId)
+                    ? (myTies[0].tie.home || '')
+                    : (myTies[0].tie.away || ''),
+                facts: [
+                    { label: 'Ties in this cup', value: String(myTies.length) },
+                    { label: 'Round', value: 'Week ' + myTies[0].round.week },
+                    { label: 'Last one', value: describeCupTie(myTies[myTies.length - 1].tie) }
+                ],
+                jumpLabel: 'Jump to your ties',
+                target: 'fm-cup-your-ties'
+            })
+            : '';
         return `
+            ${summary}
             <section class="fm-panel">
                 <div class="fm-panel-head">
                     <div>
@@ -901,15 +932,17 @@ export function createCountryView(deps) {
                         <p class="fm-subtle">${cup.totalFixtures} ties across ${cup.rounds.length} rounds.</p>
                     </div>
                 </div>
-                ${roundsNewestFirst(cup.rounds).map(round => `
-                    <div class="fm-cup-round">
+                ${roundsNewestFirst(cup.rounds).map(round => {
+                    const yours = myTies.some(entry => entry.round === round);
+                    return `
+                    <div class="fm-cup-round${yours ? ' fm-cup-round--yours' : ''}"${yours ? ' id="fm-cup-your-ties"' : ''}>
                         <div class="fm-cup-round-head">
-                            <span class="fm-eyebrow">Week ${round.week}</span>
+                            <span class="fm-eyebrow">Week ${round.week}${yours ? ' <span class="fm-badge fm-badge-own">your round</span>' : ''}</span>
                             <span class="fm-cup-round-count">${round.fixtures.length} ties</span>
                         </div>
                         ${round.fixtures.length
                             ? `<div class="fm-cup-ties">${round.fixtures.map(tie => `
-                                <button type="button" class="fm-cup-tie"
+                                <button type="button" class="fm-cup-tie${isOwnCupTie(tie, myTeamId) ? ' is-own' : ''}"
                                     data-cup-fixture="${tie.id}"
                                     data-cup-played="${tie.played ? 'true' : 'false'}"
                                     data-cup-match-id="${tie.matchId ?? ''}"
@@ -928,8 +961,21 @@ export function createCountryView(deps) {
                                     <span class="fm-cup-tie-side${isOwnClub(tie, 'away') ? ' fm-cup-tie-side--own' : ''}">${htmlEscape(tie.away || 'TBC')}</span>
                                 </button>`).join('')}</div>`
                             : '<div class="fm-empty">Not drawn yet.</div>'}
-                    </div>`).join('')}
+                    </div>`; }).join('')}
             </section>`;
+    }
+
+    /** Is this tie one of the manager's? By id, never by name. */
+    function isOwnCupTie(tie, myTeamId) {
+        if (myTeamId === null || myTeamId === undefined) return false;
+        return Number(tie.homeTeamId) === Number(myTeamId)
+            || Number(tie.awayTeamId) === Number(myTeamId);
+    }
+
+    /** "Omladinac 2 - 1 Radnicki" — the one line a summary card wants. */
+    function describeCupTie(tie) {
+        const score = tie.played ? (tie.score || 'played') : 'not yet played';
+        return `${tie.home || 'TBC'} vs ${tie.away || 'TBC'} · ${score}`;
     }
 
     // ------------------------------------------------------- represented country
@@ -1408,6 +1454,7 @@ export function createCountryView(deps) {
         mainContent.querySelectorAll('[data-country-tab]').forEach(button => {
             button.addEventListener('click', () => loadCountryPage({ tab: button.dataset.countryTab }));
         });
+        wireJumpButtons(mainContent);
         // A cup tie opens the SHARED match view, like a league fixture, not a bespoke sheet that could
         // only ever show two squads (owner, 2026-10-07, P0-PREV-1). `fixture: true` is explicit and
         // never inferred: fixture ids and match ids are both small integers over separate tables.

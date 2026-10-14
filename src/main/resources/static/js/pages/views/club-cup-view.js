@@ -18,6 +18,8 @@
 // none of them is a global here. A module that reaches for `window.authFetch` is a module that works on
 // the page where someone remembered to define it and nowhere else.
 
+import { ownClubSummaryCard, wireJumpButtons } from './utils.js';
+
 export const CUPS = [
     { key: 'champions', name: 'Champions Cup' },
     { key: 'masters', name: 'Masters Cup' },
@@ -65,7 +67,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
         const ties = Array.isArray(group.fixtures) ? group.fixtures : [];
 
         return `
-            <section class="fm-panel">
+            <section class="fm-panel" id="fm-cup-group-${escape(group.code)}">
                 <div class="fm-panel-head">
                     <div>
                         <h3>Group ${escape(group.code)}</h3>
@@ -108,7 +110,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                     </thead>
                     <tbody>
                         ${rows.map(row => `
-                            <tr>
+                            <tr${isOwnRow(row) ? ' class="is-own"' : ''}>
                                 <td class="st-pos">${escape(row.position)}</td>
                                 <td class="sq-name">${escape(row.team)}</td>
                                 <td>${escape(row.country || '—')}</td>
@@ -135,6 +137,59 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
      * afterwards. Same screen as a league fixture, with the kind passed explicitly rather than guessed,
      * because fixture ids and match ids are both small integers over separate tables.
      */
+    /**
+     * The "your club" card for a continental cup tier.
+     *
+     * <p>One answer to "where am I in this", shared with the national cup, because the same question was
+     * being answered in two places and getting two different answers — and designAnalysis.md §5 found
+     * three different treatments for that single fact across six screens.
+     *
+     * <p>It appears above the groups, because the groups are the thing you scroll through to find
+     * yourself. The jump lands on the first group the manager's club is in.
+     */
+    function cupOwnSummary(cup, groups, rounds) {
+        const myId = getTeamId?.();
+        if (myId === null || myId === undefined) return '';
+        let homeGroup = null;
+        let homeGroupRow = null;
+        for (const group of groups) {
+            const row = (Array.isArray(group.table) ? group.table : []).find(r => Number(r.teamId) === Number(myId));
+            if (row) { homeGroup = group; homeGroupRow = row; break; }
+        }
+        let myTies = 0;
+        for (const group of groups) {
+            for (const tie of (Array.isArray(group.fixtures) ? group.fixtures : [])) {
+                if (isOwnTie(tie)) myTies += 1;
+            }
+        }
+        for (const round of rounds) {
+            for (const tie of (Array.isArray(round.fixtures) ? round.fixtures : [])) {
+                if (isOwnTie(tie)) myTies += 1;
+            }
+        }
+        if (!homeGroupRow && myTies === 0) return '';
+        const name = homeGroupRow?.team || (myTies > 0 ? String(cup.name) : '');
+        return ownClubSummaryCard({
+            name,
+            facts: [
+                homeGroupRow ? { label: 'Group', value: homeGroup.code } : null,
+                homeGroupRow ? { label: 'Position', value: String(homeGroupRow.position ?? '—') } : null,
+                homeGroupRow ? { label: 'Points', value: String(homeGroupRow.points ?? '—') } : null,
+                { label: 'Ties here', value: String(myTies) }
+            ].filter(Boolean),
+            kicker: 'Your club',
+            jumpLabel: homeGroup ? 'Jump to your group' : '',
+            target: homeGroup ? 'fm-cup-group-' + homeGroup.code : ''
+        });
+    }
+
+    /** Is this tie one of the manager's own? By id, never by name. */
+    function isOwnRow(row) {
+        const myId = getTeamId?.();
+        if (myId === null || myId === undefined || !row?.teamId) return false;
+        return Number(row.teamId) === Number(myId);
+    }
+
     /**
      * Is this tie one of the manager's own?
      *
@@ -283,6 +338,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                         </div>
                     </div>
                     ${tierTabs(cupKey, activeTier, tiers)}
+                    ${cupOwnSummary(cup, groups, rounds)}
                     ${groups.length === 0 && rounds.length === 0
                         ? `<section class="fm-panel"><div class="fm-empty">
                                This tier has not been drawn yet. It is filled in week 1, from the table
@@ -293,6 +349,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                     ${knockoutPanel(rounds)}
                 </div>`;
 
+            wireJumpButtons(mainContent);
             mainContent.querySelectorAll('[data-cup-tier]').forEach(button => {
                 button.addEventListener('click', () => {
                     loadPage('clubCup', { cupKey, tier: Number(button.dataset.cupTier) });
