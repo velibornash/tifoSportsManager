@@ -130,11 +130,13 @@ export function createFriendlyPanel(deps) {
 
                 <div class="fm-friendly-invite-form" data-friendly-form hidden>
                     <div class="fm-friendly-block">
-                        <h4>Invite a club</h4>
-                        <p class="fm-subtle">Choosing a club sends them a request. They may refuse, and it
+                        <h4>Find an opponent</h4>
+                        <p class="fm-subtle">Search managers, clubs and players — the same way you find
+                            somebody to write to. A friendly is between two clubs, so inviting a manager or
+                            a player sends it to the club behind them. The other club may refuse, and it
                             lapses at the end of the week.</p>
-                        <input type="text" class="fm-input" data-friendly-search
-                               placeholder="Search clubs in your country" autocomplete="off">
+                        <input type="text" class="fm-input fm-friendly-search-input" data-friendly-search
+                               placeholder="Search managers, clubs and players" autocomplete="off">
                         <div class="fm-friendly-results" data-friendly-results></div>
                         <button type="button" class="fm-action-btn secondary" data-friendly-cancel-form>Cancel</button>
                     </div>

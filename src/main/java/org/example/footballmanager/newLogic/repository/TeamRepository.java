@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.repository;
 import org.example.footballmanager.newLogic.model.Competition;
 import org.example.footballmanager.newLogic.model.CompetitionTeamType;
 import org.example.footballmanager.newLogic.model.Team;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -179,4 +180,16 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
             where t.country is not null and t.country.isoCode is not null and trim(t.country.isoCode) <> ''
             """)
     List<String> findDistinctIsoCodesOfCountriesWithClubs();
+
+    /**
+     * Clubs whose name contains {@code fragment}, shortest name first.
+     *
+     * <p>Owner, 2026-10-14: the friendly picker searches the whole world rather than one country, so a
+     * name filter is needed that does not drag every club in the pyramid into memory. Ordered by name
+     * length so "Kikinda" comes before "OFK Kikinda 1912", which is what a manager typing a partial name
+     * means, and paged in the query rather than in Java.
+     */
+    @Query("SELECT t FROM Team t WHERE LOWER(t.name) LIKE LOWER(CONCAT('%', :fragment, '%')) "
+            + "ORDER BY LENGTH(t.name), t.name")
+    List<Team> findByNameFragment(@Param("fragment") String fragment, Pageable pageable);
 }

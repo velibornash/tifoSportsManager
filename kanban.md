@@ -27,6 +27,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 |---|---|---|---|
 | **P2-4** | ✅ | **Name row is editable in place, with X and check** | ✅ **Done 2026-10-14.** Was a panel lower down the page. Pencil → field + X + ✓ in the NAME row itself. |
 | **P2-5** | ✅ | **Back on your own profile did nothing** | ✅ **Fixed.** It targeted `userProfile` — the page it was already on. |
+| **P2-6** | ✅ | **Opponent search across users, teams and players in a standard table** | ✅ **Done 2026-10-14.** Was clubs-in-your-country as a button list. Now one table of managers, clubs and players, each row naming the club a friendly goes to. |
 | **P0-12** | 🔴 | **The account menu did not open** | ✅ **Fixed 2026-10-14** — owner reported it. `.top-menu` had `overflow: hidden`, which clipped the dropdown hanging below the bar. |
 | **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | ✅ **Fixed 2026-10-14.** A claim is a request, not a booking. The ad now closes when the answer is accepted, and carries the real fixture id. |
 | **P0-14** | 🟡 | **`FriendlySlotRulesTest` is red against the current season table** | 10 of 12 fail on clean `HEAD` — it asserts the pre-reshuffle table (week 5 day 3 = round 9, 2 friendly slots in the break). Pre-existing, not a regression. |

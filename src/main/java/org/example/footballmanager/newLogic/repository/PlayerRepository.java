@@ -3,6 +3,7 @@ package org.example.footballmanager.newLogic.repository;
 import org.example.footballmanager.newLogic.model.Player;
 import org.example.footballmanager.newLogic.model.Position;
 import org.example.footballmanager.newLogic.model.Team;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -113,4 +114,15 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
      */
     @Query("SELECT p FROM Player p WHERE p.team.id IN :teamIds")
     List<Player> findByTeamIdIn(Collection<Long> teamIds);
+
+    /**
+     * Players whose name contains {@code fragment}, best-known first.
+     *
+     * <p>Owner, 2026-10-14: the friendly picker searches managers, clubs and players together. The world
+     * holds more than 31,000 players, so this is {@code LIMIT}ed inside the query rather than paging in
+     * Java, and it only asks for the player's club — the one column the result needs to be actionable.
+     */
+    @Query("SELECT p FROM Player p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :fragment, '%')) "
+            + "ORDER BY LENGTH(p.name), p.name")
+    List<Player> findByNameFragment(@Param("fragment") String fragment, Pageable pageable);
 }

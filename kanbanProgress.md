@@ -1,3 +1,64 @@
+## 2026-10-14 — Opponent search: managers, clubs and players in one table
+
+**Owner:** *"slicno kao kad pisemo poruku... u standardnoj tabeli, i klik na to sto si nasao vodi na to
+sto si nasao"*
+
+`GET /opponents` returned clubs in your **own country**, filtered by name, as `{id, name}` — a flat list
+the UI rendered as a row of buttons. Three gaps: no managers, no players, no country of your own, and
+nothing you could click your way *into*.
+
+### What it returns now
+
+One list, three kinds of thing, each row saying what it is and **which club a friendly would go to**:
+
+```json
+{ "type": "PLAYER", "id": 4021, "name": "Goy Bajić",
+  "detail": "CZE Premier FC01 · Czechia Premier Division",
+  "teamId": 8813, "teamName": "CZE Premier FC01",
+  "invitable": true, "openFor": "player", "openArg": 4021 }
+```
+
+`teamId` is the point of the whole change. A friendly is between **two clubs**, never between a club and
+a person, so a manager or a player is invited by the club behind them — which is what makes a player row
+actionable rather than merely informative. The UI states this above the box rather than letting a
+manager discover it by pressing the wrong button.
+
+`openFor`/`openArg` is where the row goes. A manager opens his profile, a player opens his page, and a
+club opens **the league it plays in** — there is no page that shows an arbitrary club, because the club
+screen shows the viewer's own club only, and that is already the page's documented behaviour.
+
+### Search is global, and that is a deliberate change
+
+It was one country. It is now the whole world, on the message composer's rule: match anywhere in the
+string, case-insensitive, and **both** the display name and the login for a manager, because a manager
+who never chose a name is found by his login. Searching "Kikinda" returns five clubs from five different
+Serbian divisions. League and country are on every row so a manager can judge the match before sending it.
+
+An **empty box returns nothing**, not the whole world. It is a search, not a browser, and 31,000 players
+is not a list anybody reads.
+
+Three `LIMIT`ed queries rather than a scan, because the world grew ~48× in five days and this code was
+written for one country. Each is ordered by name length, so a partial "Kikinda" puts `SK Kikinda` before
+`OFK Kikinda 1912` — which is what someone typing a partial name means.
+
+### Verified in the browser
+
+Search "Kikinda" → five club rows with league and Invite. Search "Goy" → player rows across four
+nations, each naming the player's club. Inviting `SK Kikinda` from its table row produced an outgoing
+request and the panel showed **Withdraw**, so the invite really was sent. Clicking a club row opened its
+league view. Screenshot taken.
+
+`theSearchNarrowsTheList` and `opponentsAreScopedAndExcludeSelf` had to be given a search term — they
+called the endpoint with no query and relied on the old country list. `nationalTeamsAreNotOffered` now
+asserts an empty result rather than scanning for a name. Added `anEmptyQueryIsNotABrowseList` and
+`rowsSayWhatTheyAreAndWhoTheyInvite`. **19 green** across the four friendly classes.
+
+*One thing deliberately not asserted:* `openFor` is null for a club with no competition, which is correct
+— there is no league to open. The test clubs have no competition, so asserting `openFor == "league"`
+there would have been asserting a fixture rather than a behaviour.
+
+---
+
 ## 2026-10-14 — P0-13: a claimed friendly was reported as booked when no match existed
 
 `FriendlyOfferService.claim()` ended with:

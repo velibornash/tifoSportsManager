@@ -5,6 +5,7 @@ import org.example.footballmanager.newLogic.model.FriendlyRequest;
 import org.example.footballmanager.newLogic.model.SeasonCalendar;
 import org.example.footballmanager.newLogic.service.FriendlyRequestService;
 import org.example.footballmanager.newLogic.service.SeasonService;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,6 +41,8 @@ public class FriendlyController {
     private final FriendlyRequestService friendlies;
     private final SeasonService seasons;
     private final org.example.footballmanager.newLogic.repository.TeamRepository teams;
+    private final org.example.commonmanager.repository.UserRepository users;
+    private final org.example.footballmanager.newLogic.repository.PlayerRepository players;
 
     /**
      * The club's week as the manager needs to see it: what is scheduled, which slots are open, what
@@ -157,30 +160,47 @@ public class FriendlyController {
     }
 
     /**
-     * Clubs this one could ask for a friendly, narrowed to its own country.
+     * Who this club could play a friendly with: managers, clubs and players, together.
      *
-     * <p><b>Why this exists rather than reusing {@code GET /teams}.</b> That endpoint pages at a hard
-     * cap of 200 rows, and the world holds roughly 14,880 clubs. A picker fed from it would offer the
-     * first 200 alphabetically and nothing else, which looks like a working search over an empty world.
+     * <p>Owner, 2026-10-14: *"slicno kao kad pisemo poruku... u standardnoj tabeli, i klik na to sto si
+     * nasao vodi na to sto si nasao"*. So the answer is no longer a flat list of clubs in your own
+     * country — it is one list of things a manager might mean, each row saying what kind of thing it is
+     * and, where there is a club behind it, which club. A manager is found by his name or his login; a
+     * player is found by his name and answers with the club he plays for.
      *
-     * <p>National sides are excluded. They are not opponents a club asks, and they are picked up by the
-     * national-team invitation path instead; mixing them here would put 96 entries in a club's list that
-     * could never be sent to.
+     * <p><b>Every row carries the club it can be invited from</b> ({@code teamId}), because a friendly is
+     * between two clubs and never between a club and a person. That is what makes a player row
+     * actionable rather than merely informative, and it is why the invite button is offered rather than
+     * the row simply opening the player.
      *
-     * @param q an optional name filter; empty returns the first page of the country
+     * <p>Search is across the whole world rather than one country, on the same rule the message composer
+     * uses: match anywhere in the string, case-insensitively. The league and country are returned so the
+     * manager can judge the match before sending it.
+     *
+     * <p>National sides are excluded from the club rows. They are not opponents a club asks, and they
+     * come through the national-team invitation path instead.
      */
     @GetMapping("/{teamId}/opponents")
     public ResponseEntity<List<Map<String, Object>>> opponents(@PathVariable Long teamId,
                                                               @RequestParam(required = false) String q,
                                                               @RequestParam(defaultValue = "60") int limit) {
         org.example.footballmanager.newLogic.model.Team team = teams.findById(teamId).orElse(null);
-        if (team == null || team.getCountry() == null) {
+        if (team == null) {
             return ResponseEntity.ok(List.of());
         }
-        int cap = Math.max(1, Math.min(limit, 200));
+        String fragment = q == null ? "" : q.trim().toLowerCase();
+        int cap = Math.max(1, Math.min(limit, 100));
+        // An empty box has nothing to rank, so it returns nothing rather than the whole world: this is
+        // a search, not a browser, and 31,000 players is not a list anybody reads.
+        if (fragment.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        PageRequest page = PageRequest.of(0, cap);
         List<Map<String, Object>> out = new ArrayList<>();
+
         for (org.example.footballmanager.newLogic.model.Team candidate
-                : teams.findByCountryId(team.getCountry().getId())) {
+                : teams.findByNameFragment(fragment, page)) {
             if (candidate.getId() == null || candidate.getId().equals(teamId)) {
                 continue;
             }
@@ -188,17 +208,66 @@ public class FriendlyController {
                     && candidate.getType() == org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM) {
                 continue;
             }
-            if (q != null && !q.isBlank()
-                    && (candidate.getName() == null
-                        || !candidate.getName().toLowerCase().contains(q.toLowerCase()))) {
-                continue;
-            }
-            out.add(Map.of("id", candidate.getId(), "name", candidate.getName()));
-            if (out.size() >= cap) {
-                break;
-            }
+            out.add(row("TEAM", candidate.getId(), candidate.getName(), describeTeam(candidate),
+                    candidate.getId(), candidate.getName(),
+                    leagueTarget(candidate), candidate.getCompetition() == null
+                            ? null : candidate.getCompetition().getId()));
         }
+
+        for (org.example.commonmanager.model.User manager
+                : users.findByNameFragment(fragment, page)) {
+            org.example.footballmanager.newLogic.model.Team club = manager.getFootballTeam();
+            String label = manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
+                    ? manager.getDisplayName() : manager.getUsername();
+            String detail = club == null ? "No club" : "Runs " + club.getName() + " · " + describeTeam(club);
+            out.add(row("USER", manager.getId(), label, detail,
+                    club == null ? null : club.getId(), club == null ? null : club.getName(),
+                    "user", manager.getId()));
+        }
+
+        for (org.example.footballmanager.newLogic.model.Player player
+                : players.findByNameFragment(fragment, page)) {
+            org.example.footballmanager.newLogic.model.Team club = player.getTeam();
+            String detail = club == null ? "No club" : club.getName() + " · " + describeTeam(club);
+            out.add(row("PLAYER", player.getId(), player.getName(), detail,
+                    club == null ? null : club.getId(), club == null ? null : club.getName(),
+                    "player", player.getId()));
+        }
+
         return ResponseEntity.ok(out);
+    }
+
+    /** A club row opens the competition it plays in, when it plays in one. */
+    private static String leagueTarget(org.example.footballmanager.newLogic.model.Team team) {
+        return team.getCompetition() == null ? null : "league";
+    }
+
+    private static String describeTeam(org.example.footballmanager.newLogic.model.Team team) {
+        StringBuilder sb = new StringBuilder();
+        if (team.getCompetition() != null && team.getCompetition().getName() != null) {
+            sb.append(team.getCompetition().getName());
+        } else if (team.getCountry() != null && team.getCountry().getName() != null) {
+            sb.append(team.getCountry().getName());
+        }
+        return sb.toString();
+    }
+
+    private static Map<String, Object> row(String type, Object id, String name, String detail,
+                                           Long teamId, String teamName, String openFor, Object openArg) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("type", type);
+        out.put("id", id);
+        out.put("name", name);
+        out.put("detail", detail);
+        out.put("teamId", teamId);
+        out.put("teamName", teamName);
+        out.put("invitable", teamId != null);
+        // Where clicking the row goes. There is no page that shows an arbitrary club — the club screen
+        // shows the viewer's own club only — so a club row opens the league table it plays in, which is
+        // where a manager is told to look for it anyway.
+        out.put("openFor", openFor);
+        out.put("openArg", openArg);
+        return out;
     }
 
     /** Withdraws a request this club made. */

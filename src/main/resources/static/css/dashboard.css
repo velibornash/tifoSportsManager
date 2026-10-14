@@ -5704,6 +5704,51 @@ body {
     margin: 12px 0;
 }
 
+/* The opponent finder is a table now — managers, clubs and players in one list, each saying what it is
+   and which club it can be invited from. Owner, 2026-10-14. */
+.fm-friendly-search-input {
+    width: 100%;
+    max-width: 460px;
+}
+
+.fm-friendly-results:has(.fm-friendly-table) {
+    display: block;
+}
+
+.fm-friendly-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.92rem;
+}
+
+.fm-friendly-table th,
+.fm-friendly-table td {
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fm-friendly-table th {
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #99a6bb;
+}
+
+.fm-friendly-table td:first-child {
+    color: #99a6bb;
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.fm-friendly-table tbody tr:hover {
+    background: rgba(143, 211, 255, 0.07);
+}
+
 .fm-friendly-opponent {
     padding: 7px 12px;
     border-radius: 999px;

@@ -242,24 +242,62 @@ export function createClubView(deps) {
                 timer = setTimeout(async () => {
                     const box = panel.querySelector('[data-friendly-results]');
                     if (!box) return;
-                    const opponents = await friendlyPanel.loadOpponents(teamId, search.value.trim());
-                    if (!opponents.length) {
-                        box.innerHTML = '<div class="fm-empty">No club in your country matches that.</div>';
+                    const term = search.value.trim();
+                    if (!term) {
+                        box.innerHTML = '<div class="fm-subtle">Type a manager, a club or a player.</div>';
                         return;
                     }
-                    box.innerHTML = opponents.map(o => `
-                        <button type="button" class="fm-friendly-opponent"
-                                data-friendly-opponent="${o.id}" data-friendly-opponent-name="${htmlEscape(o.name)}">
-                            ${htmlEscape(o.name)}
-                        </button>`).join('');
-                    box.querySelectorAll('[data-friendly-opponent]').forEach(button => {
+                    const rows = await friendlyPanel.loadOpponents(teamId, term);
+                    if (!rows.length) {
+                        box.innerHTML = '<div class="fm-empty">Nobody in the world matches that.</div>';
+                        return;
+                    }
+                    // A standard table: what it is, who it is, and the action. Clicking the row opens
+                    // what was found — the manager's profile, the club, the player — and the invite
+                    // button sends a friendly to the club behind it. A friendly is between two clubs,
+                    // never between a club and a person, so a manager or a player is invited by the
+                    // club they belong to rather than in their own right.
+                    box.innerHTML = `
+                        <table class="fm-table fm-friendly-table">
+                            <thead><tr><th>What</th><th>Who</th><th>Detail</th><th></th></tr></thead>
+                            <tbody>
+                                ${rows.map(r => `
+                                    <tr class="fm-friendly-result" data-open="${htmlEscape(r.openFor || '')}"
+                                        data-open-arg="${htmlEscape(String(r.openArg != null ? r.openArg : ''))}">
+                                        <td>${htmlEscape(r.type)}</td>
+                                        <td><button type="button" class="fm-link-btn js-friendly-open"
+                                                data-open="${htmlEscape(r.openFor || '')}"
+                                                data-open-arg="${htmlEscape(String(r.openArg != null ? r.openArg : ''))}"
+                                                ${r.openFor ? '' : 'disabled'}>${htmlEscape(r.name)}</button></td>
+                                        <td class="fm-subtle">${htmlEscape(r.detail || '')}</td>
+                                        <td>${r.invitable
+                                            ? `<button type="button" class="fm-action-btn primary js-friendly-invite-opponent"
+                                                    data-opponent="${htmlEscape(String(r.teamId))}"
+                                                    data-opponent-name="${htmlEscape(r.teamName || r.name)}">Invite</button>`
+                                            : '<span class="fm-subtle">Not a club</span>'}</td>
+                                    </tr>`).join('')}
+                            </tbody>
+                        </table>`;
+
+                    box.querySelectorAll('.js-friendly-open').forEach(button => {
+                        button.addEventListener('click', () => {
+                            const where = button.dataset.open;
+                            const arg = button.dataset.openArg;
+                            if (!where || !arg) return;
+                            if (where === 'user') window.loadPage('publicUserProfile', { userId: arg });
+                            else if (where === 'player') window.loadPlayer(arg);
+                            else if (where === 'league') window.openLeagueById(arg);
+                        });
+                    });
+
+                    box.querySelectorAll('.js-friendly-invite-opponent').forEach(button => {
                         button.addEventListener('click', async () => {
                             if (chosenSlot == null) {
                                 say('Choose an open slot first.', 'error');
                                 return;
                             }
                             const result = await post(
-                                `/api/season/friendlies/${teamId}/request?opponentId=${button.dataset.friendlyOpponent}`
+                                `/api/season/friendlies/${teamId}/request?opponentId=${button.dataset.opponent}`
                                 + `&week=${week}&slot=${chosenSlot}`);
                             if (!result.ok) {
                                 say(result.text, 'error');

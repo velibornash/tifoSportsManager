@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -76,9 +77,14 @@ class FriendlyOpponentAndRequestRowTest extends BaseTest {
         return teams.save(t);
     }
 
-    private String opponentIds() throws Exception {
-        String body = mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
-                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+    private String opponentIds(String query) throws Exception {
+        org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder call =
+                get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .header("Authorization", auth.bearer(UserRole.OWNER));
+        if (query != null) {
+            call = call.param("q", query);
+        }
+        String body = mockMvc.perform(call)
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         List<?> rows = mapper.readValue(body, List.class);
@@ -93,13 +99,38 @@ class FriendlyOpponentAndRequestRowTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("the opponent list offers the other club and never the club itself")
+    @DisplayName("the search offers the other club, and never the club itself")
     void opponentsAreScopedAndExcludeSelf() throws Exception {
-        String ids = opponentIds();
+        String fragment = opponent.getName().substring(0, Math.min(6, opponent.getName().length()));
+        String ids = opponentIds(fragment);
         assertTrue(ids.contains(String.valueOf(opponent.getId())),
                 "the rival club must be offered: " + ids);
         assertFalse(ids.contains(String.valueOf(club.getId())),
                 "a club must never be offered as its own opponent: " + ids);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("an empty box returns nothing rather than the whole world")
+    void anEmptyQueryIsNotABrowseList() throws Exception {
+        mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0.0));
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("every row says what it is and which club a friendly would be sent to")
+    void rowsSayWhatTheyAreAndWhoTheyInvite() throws Exception {
+        mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .param("q", opponent.getName().substring(0, 6))
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("TEAM"))
+                .andExpect(jsonPath("$[0].invitable").value(true))
+                // A friendly is between two clubs, so the club an invite goes to is named on the row.
+                .andExpect(jsonPath("$[0].teamId").value(opponent.getId()));
     }
 
     @Test
@@ -115,17 +146,13 @@ class FriendlyOpponentAndRequestRowTest extends BaseTest {
         teams.save(national);
 
         String body = mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .param("q", "Some National Team")
                         .header("Authorization", auth.bearer(UserRole.OWNER)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
-        for (Object row : mapper.readValue(body, List.class)) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = (Map<String, Object>) row;
-            String name = String.valueOf(map.get("name"));
-            assertFalse(name.startsWith("Some National Team"),
-                    "a national side was offered as a friendly opponent; they are picked up by the "
-                            + "national-team invitation path, not this one");
-        }
+        assertEquals(0, mapper.readValue(body, List.class).size(),
+                "a national side was offered as a friendly opponent; they are picked up by the "
+                        + "national-team invitation path, not this one");
     }
 
     @Test

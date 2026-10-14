@@ -1,8 +1,10 @@
 package org.example.commonmanager.repository;
 
 import org.example.commonmanager.model.User;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -66,5 +68,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * repairs.
      */
     List<User> findAllByFootballTeamIsNull();
+
+    /**
+     * Accounts whose display name or login contains {@code fragment}.
+     *
+     * <p>Owner, 2026-10-14: the friendly picker searches managers, clubs and players together, on the
+     * same "as you type, matches anywhere in the string" rule the message composer already uses. Both
+     * columns are searched because a manager who never chose a name is found by his login.
+     */
+    @Query("SELECT u FROM CommonUser u WHERE LOWER(u.displayName) LIKE LOWER(CONCAT('%', :fragment, '%')) "
+            + "OR LOWER(u.username) LIKE LOWER(CONCAT('%', :fragment, '%')) "
+            + "ORDER BY LENGTH(COALESCE(u.displayName, u.username)), u.username")
+    List<User> findByNameFragment(@Param("fragment") String fragment, Pageable pageable);
 
 }
