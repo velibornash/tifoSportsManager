@@ -34,6 +34,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | ✅ **Fixed 2026-10-13.** The guard asked "are there *unplayed* ties?" and a played round has none, so every press redrew the field. |
 | **P0-9** | 🔴 | **The national cup had no final, and its last round was three weeks late** | ✅ **Fixed 2026-10-13.** `CUP_WEEKS` had 8 entries where the owner's table has 9. The continental cups were already right; the national cup was the only one disagreeing. |
 | **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to P0-2/3. |
+| **P0-11** | 🔴 | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14** — owner reported it. An undeclared variable threw inside the template and a catch hid it, saying the read had failed. |
 | **P0-10** | 🟡 | **A cup tie won on penalties reported itself as a draw** | ✅ **Fixed 2026-10-14** — owner found it on a tie his club had won. The engine computed every kick and the report discarded them. |
 | **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
 | **P1-2** | 🟡 | **T-FAC-1 item 3 — settlement and stadium page agree on upkeep** | Not started. `weeklyUpkeep = 120 × (Σ levels − 1)`. |
@@ -186,6 +187,58 @@ it wants its own task and its own test rather than being folded into a session a
 - [ ] The one comparator test proves the whole order, not the first two keys.
 
 ---
+
+---
+
+## P0-11 — ✅ P0 · the Jobs table had been written but had never once rendered
+
+**Owner, 2026-10-14:** *"nema liste jobova u tabu jobs na admin strani, zadnji zahtev je bio da moze lista da
+se sortira po poslednjem izvrsenju i po poslednjem izvrsenju."*
+
+The sorting he was asking for **already existed**. The panel had never rendered at all.
+
+### The cause
+
+`showJobs` built its table from a variable called `sort`. The state variable is `jobSort`; `sort` was never
+declared, so the template threw `ReferenceError: sort is not defined`, and the `catch` rendered
+**"Could not read the jobs."**
+
+`/admin/jobs` answers **200 with 44 rows**. The read was never the problem.
+
+| | |
+|---|---|
+| Endpoint | healthy — 200, 44 jobs, by `curl` and by `fetch` inside the page |
+| Sorting | written — `sortJobs`, both columns, direction toggle, arrows, `aria-sort` |
+| Did it ever work | **never** |
+
+Two more faults in the same four lines: `ariaDir` is a function and was interpolated as a value, so
+`aria-sort` would have rendered the function's source text.
+
+### The message now tells the truth
+
+A bad response says so with its status. Anything else says **what actually threw**. "Could not read the
+jobs" answered a question nobody was asking and could not be acted on.
+
+### 🐛 I broke the entire admin page while fixing it
+
+My replacement left a duplicated closing brace — `Illegal return statement`, a syntax error that killed
+the module and made Admin stop navigating. Caught by asking the browser to import the module:
+
+```bash
+agent-browser eval "import('/js/pages/views/admin-view.js').then(()=>'OK').catch(e=>e.message)"
+```
+
+which is the cheapest available check for a JavaScript file here, since **node is not installed** and
+`node --check` cannot run.
+
+### Exit criteria
+
+- [x] The 44 rows render on the Jobs tab.
+- [x] **Last run** sorts both ways, arrow and `aria-sort` follow.
+- [x] **Next trigger** sorts both ways, and the other column's arrow clears.
+- [x] A never-run job stays at the bottom in **both** directions.
+- [x] **Verified on mobile, 390×844** — renders, both sorts, no console errors, table scrolls sideways.
+- [x] The failure message names what failed instead of guessing.
 
 ---
 

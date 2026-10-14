@@ -1,3 +1,64 @@
+## 2026-10-14 — the Jobs table had been written but had never once rendered
+
+**Owner, 2026-10-14:** *"nema liste jobova u tabu jobs na admin strani, zadnji zahtev je bio da moze lista
+da se sortira po poslednjem izvrsenju i po poslednjem izvrsenju."*
+
+The sorting he was asking about already existed. **The panel had never rendered at all.**
+
+### The cause was one undefined identifier, and a catch that hid it
+
+`showJobs` built its table from a variable called `sort`. The state variable is called **`jobSort`** —
+`sort` was never declared, so evaluating the template threw `ReferenceError: sort is not defined`. The
+`catch` rendered **"Could not read the jobs."**
+
+`/admin/jobs` answers **200 with 44 rows**. The read was never the problem; the render was, and the panel
+said the read had failed.
+
+| | |
+|---|---|
+| Is the endpoint broken? | No — 200, 44 jobs, confirmed by `curl` **and** by `fetch` inside the page |
+| Was the sort ever written? | Yes — `sortJobs`, `jobSort`, `jobSortDir`, `wireJobSorting`, both columns, direction toggle, arrows, `aria-sort`. All present and correct |
+| Did it work? | Never. Not once. |
+
+Two more faults sat in the same four lines: `ariaDir` is a **function** and was interpolated as a value,
+so `aria-sort` would have rendered the function's source text even if the rest had worked.
+
+### The message now tells the truth
+
+```
+The jobs table could not be shown.
+The jobs were read but the panel failed to build: <reason>
+```
+
+A bad response still says so with its status. Anything else says **what actually threw**. The old sentence
+could not be acted on; it answered a question nobody was asking, and confidently.
+
+### 🐛 I broke the whole admin page while fixing it
+
+My replacement left a **duplicated closing brace**, which is `Illegal return statement` — a syntax error
+that killed the module. Admin stopped navigating entirely.
+
+It was caught by asking the browser to import the module directly:
+
+```bash
+agent-browser eval "import('/js/pages/views/admin-view.js').then(()=>'OK').catch(e=>e.message)"
+# → "Illegal return statement"
+```
+
+which is the cheapest possible check for a JavaScript file in a project with **no `node` installed** and
+therefore **no `node --check`**. That check belongs in the handoff, and the handoff's own warning that
+*"`node --check` returned PARSE OK on a file the browser refused to execute"* already pointed at it.
+
+### Verified in the browser, desktop and mobile
+
+| | |
+|---|---|
+| Rows | **44**, with the FAILED banner and `Season 1 · week 6 · International · 11:00` |
+| Default sort | last run, descending — `LAST RUN ▼` |
+| Click "Last run" | flips to `▲`, `aria-sort="ascending"`, oldest first, and `season-rollover` (never run) stays at the bottom in **both** directions |
+| Click "Next trigger" | `NEXT TRIGGER ▼`, and the other column's arrow clears — `week-rollover` 156h, `league-table-reconcile-b` 155h, `matchday-friendly-7` 149h |
+| Mobile, 390×844 | renders, 44 rows, both sorts, **no console errors**, table wrapper scrolls horizontally |
+
 ## 2026-10-14 — a cup tie won on penalties reported itself as a draw
 
 **Owner, on a Kup Srbije tie his club had won:** *"vidim da sam prosao posle 2-2, po pravilima treba da

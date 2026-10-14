@@ -194,6 +194,7 @@ league table in the world, so give it its own task and its own test.
 
 | # | Pri | Task | State |
 |---|---|---|---|
+| **P0-11** | 🔴 | **The Jobs table had never rendered** | ✅ **Fixed** — an undeclared `sort` threw inside the template and a catch hid it. |
 | **P0-8** | 🔴 | **Re-draw Kup Srbije, U-21 out** | **Owner chose (b).** Prevention already proven; the re-draw is left to do. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Needs an owner decision** — (a) write off, (b) publish at once, (c) catch up from `match_date`. |
 | **TIE** | 🔴 | **Tiebreaker becomes pts → gd → draw, globally** | Owner approved. Needs its own task and test. |
@@ -375,7 +376,15 @@ They build and `node --check` passes, which is exactly the bar that let a broken
     something found by query, drive it: `agent-browser eval "document.querySelector('…').click()"`. A
     `click "[data-…]"` that quietly does nothing looks exactly like a broken handler.
 18. **`node` is not installed**, so `node --check` cannot be used and its "PARSE OK" was never evidence.
-    Load the page.
+    Load the page. **The cheap syntax check that does work** — it is the only one here:
+
+    ```bash
+    agent-browser eval "import('/js/pages/views/<file>.js').then(()=>'OK').catch(e=>e.message)"
+    ```
+
+    A missing brace is `Illegal return statement`, and it takes down **every page that imports the file**,
+    which presents as "the button does nothing". I broke the whole Admin page this way while fixing the
+    Jobs table.
 
 ---
 

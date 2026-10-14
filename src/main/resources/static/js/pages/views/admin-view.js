@@ -663,7 +663,7 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         });
     }
 
-    async function showJobs() {
+async function showJobs() {
         const host = document.getElementById('fm-jobs');
         if (!host) return;
         try {
@@ -686,15 +686,15 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                         <thead><tr>
                             <th class="sq-name">Job</th>
                             <th>Trigger</th>
-                            <th class="fm-sortable${sort === 'last' ? ' is-sorted' : ''}"
+                            <th class="fm-sortable${jobSort === 'last' ? ' is-sorted' : ''}"
                                 data-sort-jobs="last" role="button" tabindex="0"
-                                aria-sort="${sort === 'last' ? ariaDir : 'none'}">
-                                Last run ${sortArrow('last', sort, sortDir)}
+                                aria-sort="${jobSort === 'last' ? ariaDir() : 'none'}">
+                                Last run ${sortArrow('last', jobSort, jobSortDir)}
                             </th>
-                            <th class="fm-sortable${sort === 'next' ? ' is-sorted' : ''}"
+                            <th class="fm-sortable${jobSort === 'next' ? ' is-sorted' : ''}"
                                 data-sort-jobs="next" role="button" tabindex="0"
-                                aria-sort="${sort === 'next' ? ariaDir : 'none'}">
-                                Next trigger ${sortArrow('next', sort, sortDir)}
+                                aria-sort="${jobSort === 'next' ? ariaDir() : 'none'}">
+                                Next trigger ${sortArrow('next', jobSort, jobSortDir)}
                             </th>
                             <th>Season</th>
                         </tr></thead>
@@ -712,7 +712,26 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
                 <p class="fm-subtle">Times are Belgrade. Press a heading to sort.</p>`;
             wireJobSorting(host);
         } catch (err) {
-            host.innerHTML = '<p class="fm-subtle">Could not read the jobs.</p>';
+            // **The message used to say "Could not read the jobs" for anything that went wrong here,
+            // and that is how a render bug presented as a server fault for a session.**
+            //
+            // The read was fine — `/admin/jobs` answers 200 with 44 rows — and the template threw on a
+            // `sort` that was never declared, because the state variable is called `jobSort`. The catch
+            // discarded the error, so the panel said the read had failed. Two hours later the useful
+            // question ("is the server down?") has no answer on the screen.
+            //
+            // So the reason is shown, and the two cases are told apart: a bad response says so with its
+            // status, and anything else says what actually threw. An owner reading this can act; the
+            // old sentence could not.
+            const status = err && typeof err.status === 'number' ? err.status : null;
+            const reason = err && err.message ? err.message : 'unknown error';
+            host.innerHTML = `<div class="fm-callout fm-callout--warning">
+                <strong>The jobs table could not be shown.</strong>
+                ${status != null
+                    ? `The server answered ${escapeHtml(String(status))} for <code>/admin/jobs</code>.`
+                    : `The jobs were read but the panel failed to build: ${escapeHtml(reason)}`}
+                </div>`;
+            console.error('Admin jobs panel failed:', err);
         }
     }
 
