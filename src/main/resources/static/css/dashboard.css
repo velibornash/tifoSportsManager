@@ -3074,6 +3074,23 @@ button.training-week-item {
     align-items: start;
 }
 
+/*
+ * The two player-page columns overlapped by 88px (owner 2026-10-14; designAnalysis.md P0-2).
+ *
+ * Grid items default to `min-width: auto`, so the left item's min-content width wins over its track.
+ * Measured inside a 1180px container: left column x 166 w 533 (right edge 699), right column x 611
+ * w 735 (left edge 611) — an 88px overlap, and the green pitch was drawn on top of the Attributes
+ * panel so the attribute *names* were unreadable (`Pace` showed as `…cina`, `Technique` as `…nique`).
+ *
+ * `min-width: 0` on the children is what lets a grid track be narrower than its content. It already
+ * existed in this file — but only inside the mobile media query, where the columns are stacked anyway,
+ * so the one place it was needed was the one place it was missing.
+ */
+.fm-player-grid > * {
+    min-width: 0;
+}
+}
+
 .fm-player-grid-left,
 .fm-player-grid-right {
     display: grid;
@@ -4065,6 +4082,20 @@ body {
     background: linear-gradient(135deg, rgba(79, 143, 220, 0.92), rgba(111, 207, 151, 0.86));
     color: #f7fbff;
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+}
+
+/*
+ * The Back button was a 1138px gradient slab (owner 2026-10-14; designAnalysis.md P0-5).
+ *
+ * It is a grid item inside `.fm-panel.fm-club-hero` with no `justify-self`, so it stretched to the
+ * full width of the hero: measured 1138×40 on First Team, Transfers, Finances and Player. Visually a
+ * blue-to-green gradient reading "Back" in the middle, which reads as a broken primary button rather
+ * than a back link — and on mobile it was the first thing on the screen and 40px of useless gradient.
+ *
+ * `justify-self: start` makes it the size of its label. It is a back link; it should look like one.
+ */
+.back-to-dashboard {
+    justify-self: start;
 }
 
 .back-to-dashboard:hover,
