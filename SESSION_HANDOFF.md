@@ -125,7 +125,10 @@ the clock and it only logs when a job actually ran — silence means "nothing wa
 - **Week 5 day 7 was played end to end on 2026-10-13** — the 155-fixture matchday P0-1 was waiting on. It is
   the reference example; `kanbanProgress.md` has the timings and the before/after numbers.
 - **824 fixtures are stranded in the past** (weeks 4-5, days 1/3/5/7). See P0-5. The world is otherwise
-  consistent, but those ties will not be played by anything that exists today.
+  consistent, but those ties will not be played by anything that exists today. **The Club page shows one
+  of them as "Next Match"** — a week 4 tie offered at week 6 — so this is visible without opening the
+  board. **Week 6 has no league fixtures at all** and week 7 day 1 is missing from the schedule; the league
+  fixture generator skips week 6.
 - The cup looks drawn: **128 fixtures at week 2 day 5**, which is the target, plus 32 at week 4 day 5.
 - Safety dump taken on 2026-10-13 before the cup work: `backups/pre-cupfix-20261013-164421.dump`.
 - `var/tactics-editor-profiles.json` is a **tracked runtime file that always shows as modified. Never
@@ -195,6 +198,9 @@ league table in the world, so give it its own task and its own test.
 | # | Pri | Task | State |
 |---|---|---|---|
 | **P0-11** | 🔴 | **The Jobs table had never rendered** | ✅ **Fixed** — an undeclared `sort` threw inside the template and a catch hid it. |
+| **P0-5** | 🔴 | **824 stranded fixtures; week 6 has no league fixtures at all** | **Needs your decision** (a/b/c). The Club page now shows a week-4 tie as "Next Match" at week 6 — that is this item, truthfully reported. |
+| **DESIGN** | ✅ | **`designAnalysis.md` P0-1 / P0-2 / P0-5** | ✅ All fixed and verified. Logo no longer covers the season dropdown; player columns no longer overlap; Back button is 76px. |
+| **DESIGN** | ✅ | **"You are here" convention + "your club" card + name editing + white button** | ✅ All done 2026-10-14. |
 | **P0-8** | 🔴 | **Re-draw Kup Srbije, U-21 out** | **Owner chose (b).** Prevention already proven; the re-draw is left to do. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Needs an owner decision** — (a) write off, (b) publish at once, (c) catch up from `match_date`. |
 | **TIE** | 🔴 | **Tiebreaker becomes pts → gd → draw, globally** | Owner approved. Needs its own task and test. |
@@ -306,10 +312,12 @@ fail on the old code.
 |---|---|
 | "Not drawn yet" → reads `Drawn · 600 ties` | ✅ verified in browser |
 | Scroll to top on every page (`scrollY === 0`) | ✅ verified in browser |
-| Cup rounds newest-first + own-tie highlight | ❌ **never seen running** |
-| Competition-type filter (League/Cup/International) | ❌ **never seen running** |
+| Cup rounds newest-first + own-tie highlight | ✅ **verified 2026-10-14** — and rebuilt on top of it |
+| Competition-type filter (League/Cup/International) | ✅ **verified 2026-10-14** — on the **club Schedule**, not the league one |
 
 They build and `node --check` passes, which is exactly the bar that let a broken file through once.
+
+
 
 ---
 
@@ -379,12 +387,18 @@ They build and `node --check` passes, which is exactly the bar that let a broken
     Load the page. **The cheap syntax check that does work** — it is the only one here:
 
     ```bash
-    agent-browser eval "import('/js/pages/views/<file>.js').then(()=>'OK').catch(e=>e.message)"
+    agent-browser eval "import('/js/pages/views/<file>.js?v=' + Date.now()).then(()=>'OK').catch(e=>e.message)"
     ```
 
     A missing brace is `Illegal return statement`, and it takes down **every page that imports the file**,
     which presents as "the button does nothing". I broke the whole Admin page this way while fixing the
     Jobs table.
+
+    **The `?v=` is not optional.** I checked the same way twice, got `OK` both times, and the file was
+    still broken — the browser served the **cached** module, so the check proved nothing about the file on
+    disk. I broke `pages.js` the same way a second time the same evening, and the plain import check
+    passed again on a stale copy while the app sat dead on the dashboard. A syntax check that can be
+    answered by a cache is not a syntax check.
 
 ---
 

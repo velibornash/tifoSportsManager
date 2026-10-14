@@ -25,15 +25,24 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 
 | # | Pri | Task | State |
 |---|---|---|---|
-| **P0-7** | 🔴 | **The qualifying race ranked a 14-point club above a 16-point club** | ✅ **Fixed 2026-10-13** — owner reported it off the screen. Masters Cup in any tier with more than one division. Verified in the browser. |
-| **P0-1** | 🔴 | **Verify one matchday completes clean, end to end** | ✅ **Done 2026-10-13.** Week 5 day 7: 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. Elo and the ranking ledger moved with the result. |
-| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **New — found by P0-1.** `walk()` is forward-only, so an hour it skips is gone. Weeks 4-5, days 1/3/5/7. **Needs an owner decision**, see below. |
-| **P0-6** | 🔴 | **The lock named the wrong club to an away manager** | ✅ **Fixed 2026-10-13** — found live, not by a test. `refusalReason` compared the home team's id with itself, so the sentence always named the away side. |
-| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | ✅ **Answered 2026-10-13 — it *is* drawn, 128 ties, correct.** The premise was stale. But see P0-8 below: the bracket contains a national side. |
-| **P0-8** | 🔴 | **The national side Serbia U-21 is in Kup Srbije, rounds 1-4** | **Found while verifying P0-2.** It has won three knockout rounds and is in the unplayed round 4. One real club is excluded from the cup because of it. **Needs an owner decision.** |
-| **P0-3** | 🔴 | **The admin "Re-draw the cup" button is not idempotent** | ✅ **Fixed 2026-10-13.** The guard asked "are there *unplayed* ties?" and a played round has none, so every press redrew the field. |
-| **P0-9** | 🔴 | **The national cup had no final, and its last round was three weeks late** | ✅ **Fixed 2026-10-13.** `CUP_WEEKS` had 8 entries where the owner's table has 9. The continental cups were already right; the national cup was the only one disagreeing. |
-| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to P0-2/3. |
+| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Open, needs a decision.** Now visible on the Club page as a "Next Match" in week 4 at week 6. Week 6 has no league fixtures at all. |
+| **P0-11** | ✅ | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14.** An undeclared `sort` threw inside the template; a catch hid it. |
+| **P0-1** | ✅ | **Verify one matchday completes clean, end to end** | ✅ **Done.** 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. |
+| **P0-6** | ✅ | **The lock named the wrong club to an away manager** | ✅ **Fixed.** `refusalReason` compared the home team's id with itself. |
+| **P0-7** | ✅ | **The qualifying race had no tie-break** | ✅ **Fixed.** Union of two sorted pools was never sorted. |
+| **P0-9** | ✅ | **The national cup had no final** | ✅ **Fixed.** 8 rounds where the owner's table has 9. |
+| **P0-3** | ✅ | **The redraw button was not idempotent** | ✅ **Fixed.** It asked "any *unplayed* ties?". |
+| **P0-10** | ✅ | **A tie won on penalties reported itself as a draw** | ✅ **Fixed.** The engine computed every kick and the report discarded them. |
+| **P2** | ✅ | **`designAnalysis.md` P0-1 — the corner logo blocked the season dropdown** | ✅ **Fixed.** `scrollWidth == innerWidth` at every desktop width. |
+| **P2** | ✅ | **`designAnalysis.md` P0-2 — player columns overlapped 88px** | ✅ **Fixed.** Overlap is now −14px. |
+| **P2** | ✅ | **`designAnalysis.md` P0-5 — Back button was a 1138px slab** | ✅ **Fixed.** 76×40. |
+| **P2** | ✅ | **"You are here": one convention, own club / own country marked** | ✅ **Done 2026-10-14** — league table, cup ties, qualifying groups, club ranking. |
+| **P2** | ✅ | **Find your club in the cups — summary card and jump** | ✅ **Done 2026-10-14** on the national cup and all three continental cups. |
+| **P2** | ✅ | **White default button between teams on international matches** | ✅ **Fixed.** It had no CSS rule at all. |
+| **P2** | ✅ | **Edit your name on My profile** | ✅ **Fixed.** The editor existed and the menu did not lead to it. |
+| **P0-2** | 🔴 | **Cup round 2 has never been drawn** | ✅ **Answered — it is drawn, 128 ties.** See P0-8. |
+| **P0-8** | 🔴 | **Serbia U-21 is in Kup Srbije, rounds 1-4** | **Owner chose (b): re-draw from round 1.** Prevention is done and mutation-proven; the re-draw is left to do. |
+| **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to the above. |
 | **P0-11** | 🔴 | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14** — owner reported it. An undeclared variable threw inside the template and a catch hid it, saying the read had failed. |
 | **P0-10** | 🟡 | **A cup tie won on penalties reported itself as a draw** | ✅ **Fixed 2026-10-14** — owner found it on a tie his club had won. The engine computed every kick and the report discarded them. |
 | **P1-1** | 🟡 | **T-FAC-1 item 2 — close the training-report check** | Code and tests **done** (`9a801c0a`, 40 green). **One observation short:** no report generated after the change exists to inspect. |
@@ -48,8 +57,8 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 
 | Change | Commit | Verified? |
 |---|---|---|
-| Cup rounds newest-first + own-tie highlight | `56133fec` | ❌ **never seen running** |
-| Competition-type filter (League/Cup/International) | `56133fec` | ❌ **never seen running** |
+| Cup rounds newest-first + own-tie highlight | `56133fec` | ✅ **verified 2026-10-14** |
+| Competition-type filter (League/Cup/International) | `56133fec` | ✅ **verified 2026-10-14** — club Schedule page |
 | "Not drawn yet" → `Drawn · 600 ties` | `56133fec` | ✅ browser |
 | Scroll-to-top on every page | `56133fec` | ✅ browser |
 | Training report Facility column | `9a801c0a` | ⚠️ tests only, **no real report seen** |
@@ -379,6 +388,31 @@ defending, which is the most durable kind of wrong.
 
 **Found by P0-1, 2026-10-13.** P0-1 passed. This is what was standing next to it.
 
+**Owner, 2026-10-14, found it on the dashboard:** *"znam da smo svasta testirali ali kako je moguce da next
+match pokazuje s1 w4 day 7 a trenutno je s1 w6 d1 12:35? da li to znaci da je neki job promasio?"*
+
+**No job missed week 6.** `matchday-prepare-1` triggers at 19:00 on day 1 and it was 12:35, so *"next
+trigger week 6, day 1 at 19:00, in 7h"* was correct. The "1 failed" on those rows is the known week-3
+duplicate-`player_discipline` failure, fixed in `f3d0c604`.
+
+**What the dashboard is actually reporting is this board item.** The Club page picks the earliest
+**unplayed** league fixture, and for OFK Omladinac that is week 4 day 7 — a match that will never be
+played. The screen is telling the truth about a broken world.
+
+### The club's own fixtures make it concrete
+
+| Week / day | Competition | Played |
+|---|---|---|
+| w4 d5 | Kup Srbije vs SK Požarevac | ❌ |
+| **w4 d7** | **Superliga vs TSK Tamiš Leskovac** | ❌ ← **this is the "Next Match" the dashboard shows** |
+| w5 d1 | Champions Cup vs CHN Premier FC01 | ❌ |
+| w5 d3 | Superliga vs OFK Timok Čačak 1901 | ❌ |
+
+**Week 6 has no league fixtures at all** — only the five national-team days. So when day 1's prepare fires
+at 19:00 there is nothing of his to play, and **week 7 day 1 is missing from the schedule too.** The league
+fixture generation skips week 6 entirely, which is a separate defect from the stranded ones and is not
+recorded anywhere else on this board.
+
 `GameClockService.walk()` is **forward-only**:
 
 ```java
@@ -432,6 +466,10 @@ kickoff means, so it is a decision and not a fix.
 
 - [ ] The stranded fixtures are either played or marked abandoned. No fixture may sit in the past, unplayed
       and unreported, ever again.
+- [ ] **The Club page must not offer a stranded fixture as "Next Match."** It is currently showing a week 4
+      tie at week 6 day 1, which is honest reporting of a broken world and still wrong to a manager.
+- [ ] **Week 6 has no league fixtures at all** and week 7 day 1 is missing from the schedule. The league
+      fixture generator skips week 6 — a separate defect, recorded here because it was found here.
 - [ ] `MAX_CATCH_UP_HOURS` truncation is written to `job_run`, so a capped catch-up is a record rather than a
       line in a response nobody kept.
 - [ ] A fixture whose kickoff has passed is found by asking the fixtures, not by trusting a watermark.

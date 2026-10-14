@@ -1337,7 +1337,6 @@ async function loadUserProfile() {
                 buildEmptyState('Your account could not be loaded. ' + (err && err.message ? err.message : ''));
         }
     }
-    }
 
     /**
      * Opens another manager's public profile.

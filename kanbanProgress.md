@@ -1,3 +1,70 @@
+## 2026-10-14 — "Next Match shows week 4 at week 6", and six fixes from a design review
+
+**Owner:** *"kako je moguce da next matches pokazuje s1 w4 day 7 a trenutno je s1 w6 d1 12:35? da li to
+znaci da je neki job promasio?"*
+
+### No job missed week 6. The dashboard was reporting P0-5 truthfully.
+
+`matchday-prepare-1` triggers at **19:00** on day 1 and it was **12:35**, so *"next trigger week 6, day 1
+at 19:00, in 7h"* was correct, and the *"1 failed"* on that row is the known week-3 duplicate-discipline
+failure fixed in `f3d0c604`.
+
+The Club page picks the earliest **unplayed** league fixture. For OFK Omladinac that is **week 4 day 7** —
+a match P0-5 will never play. The screen is not lying; it is telling the truth about a broken world.
+
+| Week / day | Competition | Played |
+|---|---|---|
+| w4 d5 | Kup Srbije vs SK Požarevac | ❌ |
+| **w4 d7** | **Superliga vs TSK Tamiš Leskovac** | ❌ ← the "Next Match" |
+| w5 d1 | Champions Cup vs CHN Premier FC01 | ❌ |
+| w5 d3 | Superliga vs OFK Timok Čačak 1901 | ❌ |
+
+**And two holes nobody had recorded:** **week 6 has no league fixtures at all** (only the five
+national-team days), so when day 1's prepare fires at 19:00 there is nothing of his to play; **week 7 day 1
+is missing from the schedule too.** The league fixture generator skips week 6.
+
+### Six fixes from `designAnalysis.md`, all verified in the browser
+
+| # | What | Before | After |
+|---|---|---|---|
+| P0-1 | Corner logo covered live UI and **the season dropdown could not be opened** | `fixed` at x1106–1260, `scrollWidth` **1303** in a 1280 viewport | in flow; `scrollWidth == innerWidth` at 1100/1280/1440/1499/1512/1920, zero overlaps, dropdown clickable |
+| P0-2 | Player page columns overlapped **88px**; the pitch covered the attribute names | left ends 699, right starts 611 | **−14px** — a gap. Pace / Technique / Passing readable |
+| P0-5 | Back button was a **1138px** gradient slab | 1138×40 | **76×40** |
+| — | White default button between teams on international matches | `rgb(239,239,239)`, 23×21px, **no CSS rule at all** | themed translucent pill, radius 999px |
+| — | Find your club in the cups | 278 ties, three screens down | **YOUR CLUB** card + jump, national cup and all three club cups |
+| — | Edit your name on My profile | the editor existed and was **unreachable** | typed, saved, header re-rendered |
+
+**The logo threshold is measured, not guessed.** Forcing it visible and reading its right edge: it does not
+fit at 1440 (1485px) and does from 1500 up. A guessed 1400 would have put the logo half off-screen at 1440,
+a worse failure than the overlap it replaced — so the band is 769–1499 and the logo hides there.
+
+**The white button had no rule, not a bad one.** The only `.fm-cup-tie-sep` rule set `color` and
+`font-size` and was scoped to `.fm-page--country` — so the national tournament page, which is not that
+page, received nothing and showed the raw browser default. That is why it appeared on international
+matches and nowhere else.
+
+### "My profile" had two renderers
+
+`renderUserProfile` (account-menu.js) shows the name read-only. `loadPublicUserProfile`
+(user-profile-view.js) has had the input, the Save button and `PATCH /users/me/display-name` since it was
+written. **The menu went to the first one**, so the editor had never been reachable from the button —
+written, tested, and behind a menu that did not lead to it. "My profile" now uses the renderer that works.
+
+The first attempt passed the id but not the `viewer`, which rendered the page as *somebody else's*
+profile with no editor — the same "is this you" branch the whole page turns on.
+
+### Four of my own mistakes, recorded
+
+1. `getTeamId: (...args) => getTeamId(...args)` in `pages.js` — a call to a name that does not exist in
+   that scope. The cup page said *"Could not load this competition. getTeamId is not defined"*: an
+   honest-sounding message about the wrong layer, the same shape as the silent catch earlier this day.
+2. The "your club" card took its name from the first name in the tie, which is the **opponent's** whenever
+   your club is away. It said OFK Trstenik United.
+3. Three browser probes reported a blank page when the app was fine, because I was clicking the element
+   rather than firing its inline `onclick`. The button was correct throughout.
+4. Two CSS attempts at the logo each looked fine and were not: the first left it in flow but off-screen at
+   every width, the second hid it too high. Both were caught by measuring rather than by looking.
+
 ## 2026-10-14 — the Jobs table had been written but had never once rendered
 
 **Owner, 2026-10-14:** *"nema liste jobova u tabu jobs na admin strani, zadnji zahtev je bio da moze lista
