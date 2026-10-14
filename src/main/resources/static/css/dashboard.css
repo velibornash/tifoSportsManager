@@ -6377,3 +6377,74 @@ body {
 .fm-penalty-taker {
     font-size: 0.92em;
 }
+
+/* ── "You are here" — one class, one meaning (owner 2026-10-14; designAnalysis.md §9) ─────────────────────
+ *
+ * The application's recurring complaint is wayfinding: it knows which club is yours and which country is
+ * yours, and it rarely says so on the row you are looking at. Three tables marked it, three did not, and
+ * each had its own rule — which is how "is this mine?" ended up answered in six different places.
+ *
+ * **One class, one meaning, for every table in the game.** `is-own` on the `<tr>`, a left bar and a
+ * tint, so ownership reads at the edge of the row rather than from a chip in the middle of it. The
+ * earlier rules (`.fm-clubs-ranking-table tr.is-own-club`, `.fm-league-table tr.is-highlighted`) are
+ * kept below as aliases so nothing already on screen changes.
+ *
+ * The tint is 0.10 rather than the 0.07 the first version used, because on a dark card 0.07 is legible
+ * only when you already know to look for it.
+ */
+.fm-panel tbody tr.is-own,
+.fm-squad tbody tr.is-own,
+.fm-league-table tbody tr.is-own {
+    box-shadow: inset 7px 0 0 #f2c14e;
+    background: rgba(242, 193, 78, 0.09);
+}
+
+.fm-panel tbody tr.is-own > td,
+.fm-squad tbody tr.is-own > td,
+.fm-league-table tbody tr.is-own > td {
+    color: #cfe4ff;
+    font-weight: 600;
+}
+
+/* The two earlier spellings, kept so nothing that already renders changes underneath us. */
+.fm-clubs-ranking-table tbody tr.is-own-club,
+.fm-league-table tbody tr.is-highlighted {
+    box-shadow: inset 7px 0 0 #f2c14e;
+    background: rgba(242, 193, 78, 0.09);
+}
+
+.fm-clubs-ranking-table tbody tr.is-own-club > td,
+.fm-league-table tbody tr.is-highlighted > td {
+    color: #ffe9ad;
+    font-weight: 700;
+}
+
+/*
+ * A tie row marks the whole row, not the name span. The old rule tinted the button and left the matchday,
+ * the score and the opponent plain, so "which tie is mine" still meant scanning two columns.
+ */
+.fm-cup-tie-row.is-own > td {
+    color: #cfe4ff;
+}
+
+/*
+ * The same mark where a "row" is not a `<tr>`.
+ *
+ * The national qualifying schedule renders a tie as a div, and the cup page renders its bracket the same
+ * way. Without these the convention would hold on tables and quietly not hold two screens above them,
+ * which is how a convention stops being one.
+ */
+.fm-cup-tie.is-own,
+.fm-cup-ties .fm-cup-tie.is-own {
+    box-shadow: inset 7px 0 0 #f2c14e;
+    background: rgba(242, 193, 78, 0.09);
+    border-radius: 3px;
+}
+
+.fm-cup-tie.is-own a,
+.fm-cup-tie.is-own button,
+.fm-cup-ties .fm-cup-tie.is-own a,
+.fm-cup-ties .fm-cup-tie.is-own button {
+    color: #cfe4ff;
+    font-weight: 600;
+}

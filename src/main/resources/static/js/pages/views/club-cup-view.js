@@ -26,7 +26,7 @@ export const CUPS = [
 
 export const TIERS = [1, 2, 3, 4, 5];
 
-export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch }) {
+export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, getTeamId }) {
     /** Read the payload, or say why it could not be read. Never both. */
     async function readJson(url) {
         const response = await authFetch(url);
@@ -135,16 +135,38 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch }
      * afterwards. Same screen as a league fixture, with the kind passed explicitly rather than guessed,
      * because fixture ids and match ids are both small integers over separate tables.
      */
+    /**
+     * Is this tie one of the manager's own?
+     *
+     * <p>By id, never by name. Two clubs can share a name in this game — there are two rows called
+     * GFK Zemun in Serbia's first division alone — and four defects in this codebase came from joining a
+     * team to something by its name. The endpoint already sends `homeTeamId` and `awayTeamId` per tie, so
+     * the id is here and the name comparison would be a choice to make it worse.
+     *
+     * @returns {boolean} true when either side is the manager's club
+     */
+    function isOwnTie(tie) {
+        const myId = getTeamId?.();
+        if (myId === null || myId === undefined) {
+            return false;
+        }
+        return Number(tie.homeTeamId) === Number(myId) || Number(tie.awayTeamId) === Number(myId);
+    }
+
     function tieRow(tie) {
         const score = tie.played
             ? `${escape(tie.homeGoals ?? '')} – ${escape(tie.awayGoals ?? '')}`
             : 'v';
         const label = `${tie.home || 'TBC'} ${score} ${tie.away || 'TBC'}`;
+        const mine = isOwnTie(tie);
+        // The whole row, not the name button: the matchday and the score are part of the answer too, and
+        // a tint on one span in the middle of a five-column row is a thing you have to already be looking
+        // at to see. The `label` goes on the row as a title for the same reason.
         return `
-            <tr class="fm-cup-tie-row">
+            <tr class="fm-cup-tie-row${mine ? ' is-own' : ''}"${mine ? ' title="Your tie"' : ''}>
                 <td>Matchday ${escape(tie.round)}</td>
                 <td>
-                    <button type="button" class="fm-cup-tie js-open-tie"
+                    <button type="button" class="fm-cup-tie js-open-tie${mine ? ' fm-cup-tie-side--own' : ''}"
                             data-tie-fixture="${escape(tie.id)}"
                             data-tie-played="${tie.played ? 'true' : 'false'}"
                             data-tie-match-id="${escape(tie.matchId ?? '')}"
@@ -154,7 +176,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch }
                 </td>
                 <td class="fm-cup-final-score">${score}</td>
                 <td>
-                    <button type="button" class="fm-cup-tie js-open-tie"
+                    <button type="button" class="fm-cup-tie js-open-tie${mine ? ' fm-cup-tie-side--own' : ''}"
                             data-tie-fixture="${escape(tie.id)}"
                             data-tie-played="${tie.played ? 'true' : 'false'}"
                             data-tie-match-id="${escape(tie.matchId ?? '')}"

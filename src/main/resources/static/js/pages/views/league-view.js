@@ -197,7 +197,7 @@ export function createLeagueView(deps) {
     }
 
     function renderTable(table) {
-        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff });
+        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff, getTeamId });
     }
 
     async function loadLeagueMatches(seasonYear = null) {

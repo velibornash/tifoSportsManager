@@ -5,7 +5,7 @@ export const NATIONAL_COMPETITIONS = [
     { level: 'u21', stage: 'WORLD_CUP', label: 'U-21 World Cup' }
 ];
 
-export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch }) {
+export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch, currentCountryIso }) {
     async function readJson(path) {
         const response = await authFetch(path);
         if (!response.ok) throw new Error(`The server answered ${response.status} for ${path}.`);
@@ -47,11 +47,29 @@ export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch 
                     title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">${label}</button>`;
     }
 
+    /**
+     * Is this country the reader's own?
+     *
+     * <p>By ISO code, never by name: a country and its U-21 side share a family of names and two sides
+     * can be spelled the same way. The owner reads national qualifying groups looking for one row, and
+     * the row was not marked at all — not here and not on the country's own page, which is the same fact
+     * asked in two places.
+     *
+     * <p>The viewer is whoever is looking at the competition, which may be any of them, so this is
+     * genuinely "the country this page is about" rather than "a country the manager owns" — a manager
+     * whose country is not in this group simply gets no row marked, which is the honest answer.
+     */
+    function isOwnCountry(iso) {
+        if (!iso || typeof currentCountryIso !== 'function') return false;
+        const mine = String(currentCountryIso() || '').toUpperCase();
+        return mine !== '' && mine === String(iso).toUpperCase();
+    }
+
     function table(rows) {
         if (!rows.length) return '<p class="fm-empty">No standings yet.</p>';
         return `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
             <thead><tr><th>#</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
-            <tbody>${rows.map(row => `<tr>
+            <tbody>${rows.map(row => `<tr${isOwnCountry(row.countryIso) ? ' class="is-own"' : ''}>
                 <td>${escapeHtml(row.position)}</td>
                 <td>${teamLink(row.teamName, row.countryIso)}</td>
                 <td>${escapeHtml(row.played)}</td><td>${escapeHtml(row.goalDifference)}</td>
@@ -68,11 +86,17 @@ export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch 
                 <span>Matchday ${escapeHtml(day.round)}</span>
                 <span>Week ${escapeHtml(group.week ?? '')} · day ${escapeHtml(day.day)}</span>
             </div>
-            ${(day.fixtures || []).map(tie => `<div class="fm-cup-tie">
-                <span>${teamLink(tie.homeName, tie.homeIso)}</span>
-                ${scoreButton(tie)}
-                <span>${teamLink(tie.awayName, tie.awayIso)}</span>
-            </div>`).join('')}
+            ${(day.fixtures || []).map(tie => {
+                // The whole tie marked when either side is the manager's country, for the same reason the
+                // club cup marks the whole row: a tint on the name span leaves the round and the score
+                // plain, so "which of these is mine" is still a two-column scan.
+                const mine = isOwnCountry(tie.homeIso) || isOwnCountry(tie.awayIso);
+                return `<div class="fm-cup-tie${mine ? ' is-own' : ''}">
+                    <span>${teamLink(tie.homeName, tie.homeIso)}</span>
+                    ${scoreButton(tie)}
+                    <span>${teamLink(tie.awayName, tie.awayIso)}</span>
+                </div>`;
+            }).join('')}
         </div>`).join('');
     }
 

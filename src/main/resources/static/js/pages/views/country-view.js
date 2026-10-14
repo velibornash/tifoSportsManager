@@ -1059,7 +1059,7 @@ export function createCountryView(deps) {
         if (!table.length) return '<p class="fm-empty">No standings yet.</p>';
         return `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
                 <thead><tr><th>#</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
-                <tbody>${table.map(row => `<tr${String(row.countryIso || '').toUpperCase() === countryIso ? ' class="is-highlighted"' : ''}>
+                <tbody>${table.map(row => `<tr${String(row.countryIso || '').toUpperCase() === countryIso ? ' class="is-own is-highlighted"' : ''}>
                     <td>${htmlEscape(row.position)}</td>
                     <td>${htmlEscape(row.teamName || 'Unknown team')}</td>
                     <td>${htmlEscape(row.played)}</td><td>${htmlEscape(row.goalDifference)}</td>

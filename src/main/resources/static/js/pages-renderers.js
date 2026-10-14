@@ -887,7 +887,7 @@ export function renderLeagueMatchesView(matches, title = 'League Results', { loa
     };
 }
 
-export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml, formatGoalDiff }) {
+export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml, formatGoalDiff, getTeamId }) {
     const mainContent = document.getElementById('main-content');
     const safe = escapeHtml || htmlEscape;
     const data = Array.isArray(payload) ? { table: payload } : (payload || {});
@@ -966,6 +966,24 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             + `title="${title}">${label}</button>`;
     }
 
+    /**
+     * Is this row the manager's own club?
+     *
+     * <p>The league table is the screen the whole game is about and it did not say which row was you.
+     * The colour bars down its left edge are **promotion and relegation zones** — rank 2-4 colouring —
+     * and they are on TSK Tamiš Leskovac and ŽFK Radnički Sport exactly as they are on OFK Omladinac, so
+     * they read as ownership and are not. The only real signals were a `PLAYER` chip (which means *a
+     * human manages this club*, not *this is you*) and a clickable email address.
+     *
+     * <p>By id, never by name. Two clubs share the name GFK Zemun in this very division, and four
+     * defects in this codebase came from matching a team by its name.
+     */
+    function isOwnLeagueRow(row) {
+        const myId = typeof getTeamId === 'function' ? getTeamId() : null;
+        if (myId === null || myId === undefined || !row?.teamId) return false;
+        return Number(row.teamId) === Number(myId);
+    }
+
     function standingsRowsHtml() {
         return rows.map((CTeam, index) => {
             const rank = Number(CTeam.position || index + 1);
@@ -976,7 +994,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             const gd = Number(CTeam.goalDifference || 0);
             const teamLabel = CTeam.teamId ? `<span class="fm-CTeam-link">${safe(CTeam.name)}</span>` : safe(CTeam.name);
             return `
-                <tr class="${zoneClass(rank, rows.length)} ${CTeam.teamId ? 'js-load-CTeam' : ''}" data-CTeam-id="${CTeam.teamId || ''}" data-CTeam-name="${safe(CTeam.name)}" data-season-year="${selectedSeason ?? ''}">
+                <tr class="${zoneClass(rank, rows.length)} ${CTeam.teamId ? 'js-load-CTeam' : ''}${isOwnLeagueRow(CTeam) ? ' is-own' : ''}" data-CTeam-id="${CTeam.teamId || ''}" data-CTeam-name="${safe(CTeam.name)}" data-season-year="${selectedSeason ?? ''}">
                     <td class="st-pos">${rank}</td>
                     <td class="st-club"><div class="fm-club-cell">${teamLabel}${ownershipBadgeHtml(CTeam.humanControlled)}${managerLinkHtml(CTeam)}</div></td>
                     <td>${played}</td>

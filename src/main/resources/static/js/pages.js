@@ -502,6 +502,9 @@ function buildPageNavState(page, options = {}) {
         authFetch,
         escapeHtml,
         loadPage: (...args) => loadPage(...args),
+        // The manager's own club id, so a tie row can be marked as theirs. By id, never by name: two
+        // clubs can share a name and four defects in this codebase came from joining on one.
+        getTeamId: () => currentUserTeamId,
         // The shared match view, so a Champions / Masters / Challenge Cup tie opens the same screen a
         // league fixture does - prediction before, lineups, stats, goals and a report after (P0-PREV-2).
         loadMatch: (...args) => loadMatch(...args)
@@ -509,6 +512,9 @@ function buildPageNavState(page, options = {}) {
     const nationalTournamentView = createNationalTournamentView({
         authFetch,
         escapeHtml,
+        // The manager's own country, so the row that is theirs in a qualifying group is marked. By ISO
+        // code and never by name - a country and its U-21 side share a family of names.
+        currentCountryIso: () => currentUserCountryIsoCode,
         // The shared match view, so a senior international opens the same screen a league fixture does -
         // prediction before, lineups, stats, goals and a report after (P0-PREV-3).
         loadMatch: (...args) => loadMatch(...args)
@@ -1216,7 +1222,7 @@ function buildPageNavState(page, options = {}) {
     }
 
     function renderTable(table) {
-        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff });
+        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff, getTeamId: () => currentUserTeamId });
     }
 
     /**
