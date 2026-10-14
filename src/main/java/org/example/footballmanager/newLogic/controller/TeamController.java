@@ -205,6 +205,16 @@ public class TeamController {
                 : "/images/default-team.png";
         profile.put("logo", logo);
 
+        // Owner, 2026-10-14: a club profile that does not say how strong the club is, is a name and a
+        // badge. Elo, league points and world position are what a reader actually came for, and they
+        // were missing only because nobody had asked for this page for a club they do not run.
+        profile.put("elo", team.getEloRating());
+        profile.put("eloPrevious", team.getEloPreviousRating());
+        profile.put("eloDelta", team.getEloDelta());
+        Long worldPosition = teamRepository.findWorldPositionByElo(team.getId());
+        profile.put("worldPosition", worldPosition);
+        profile.put("humanControlled", Boolean.TRUE.equals(team.isHumanControlled()));
+
         return ResponseEntity.ok(profile);
     }
 

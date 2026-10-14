@@ -192,4 +192,19 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     @Query("SELECT t FROM Team t WHERE LOWER(t.name) LIKE LOWER(CONCAT('%', :fragment, '%')) "
             + "ORDER BY LENGTH(t.name), t.name")
     List<Team> findByNameFragment(@Param("fragment") String fragment, Pageable pageable);
+
+    /**
+     * A club's position in the world by Elo, strongest first, counting only clubs.
+     *
+     * <p>Owner, 2026-10-14: a club profile has to say where the club stands, and "position" only means
+     * something against something. Counted over clubs rather than over every team, because a national
+     * side has no club Elo to place and including them would make every club's number smaller by the
+     * number of nations. Ties share a position, the way a league table shows them.
+     */
+    @Query("SELECT COUNT(c) + 1 FROM Team c "
+            + "WHERE c.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB "
+            + "AND c.eloRating IS NOT NULL "
+            + "AND (c.eloRating > (SELECT t.eloRating FROM Team t WHERE t.id = :teamId) "
+            + "  OR (c.eloRating = (SELECT t.eloRating FROM Team t WHERE t.id = :teamId) AND c.id < :teamId))")
+    Long findWorldPositionByElo(@Param("teamId") Long teamId);
 }

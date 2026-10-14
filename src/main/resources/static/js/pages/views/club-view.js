@@ -8,8 +8,37 @@ export function createClubView(deps) {
     const friendlyPanel = createFriendlyPanel({ authFetch });
     const friendlyBoard = createFriendlyBoard({ authFetch });
 
-    async function loadClubProfile() {
-        const teamId = getTeamId();
+    /**
+     * How strong the club is: Elo, where that puts it in the world, and its movement since last time.
+     *
+     * <p>Owner, 2026-10-14 — asked for on the club page, and the reason an AI club needed a page of
+     * its own: without these it was a name, a badge and a budget, which answers none of the questions
+     * you have about a side you have heard of.
+     */
+    function strengthTiles(profile) {
+        const elo = typeof profile.elo === 'number' ? Math.round(profile.elo) : null;
+        const delta = typeof profile.eloDelta === 'number' ? profile.eloDelta : null;
+        const position = profile.worldPosition != null ? Number(profile.worldPosition) : null;
+        if (elo == null && position == null) return '';
+        return `
+            <div>
+                <strong>${elo != null ? elo : '—'}${delta != null && Number.isFinite(delta)
+                    ? ` <span class="fm-club-elo-delta ${delta >= 0 ? 'is-up' : 'is-down'}">${
+                        delta >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(delta))}</span>` : ''}</strong>
+                <span>Elo rating</span>
+            </div>
+            <div>
+                <strong>${position != null ? `#${position}` : '—'}</strong>
+                <span>In the world</span>
+            </div>`;
+    }
+
+    async function loadClubProfile(teamIdOverride) {
+        // Owner, 2026-10-14: "kad je AI tim odvede me na ligu - to nije dobro, i AI klubovi treba da
+        // imaju profile stranu". This view used to ignore which club it was asked about and always
+        // showed the viewer's own, so there was no way to look at anybody else. The endpoint already
+        // took a teamId; only the view refused to.
+        const teamId = teamIdOverride || getTeamId();
         const [response, milestones, friendlyWeek, board, mine] = await Promise.all([
             authFetch(`/teams/${teamId}/profile`),
             (async () => {
@@ -60,6 +89,7 @@ export function createClubView(deps) {
                     <div><strong>${htmlEscape(profile.stadium || 'N/A')}</strong><span>Home stadium</span></div>
                     <div><strong>${htmlEscape(profile.reputation || 'N/A')}</strong><span>Reputation</span></div>
                     <div><strong>${htmlEscape(formatBudget(profile.budget))}</strong><span>Budget</span></div>
+                    ${strengthTiles(profile)}
                 </div>
             </section>
             <div class="fm-grid-top fm-grid-top--club-profile">

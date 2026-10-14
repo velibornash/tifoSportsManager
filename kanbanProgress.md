@@ -1,4 +1,60 @@
-## 2026-10-14 — "Search clubs, managers or players", and where the search actually is
+## 2026-10-14 — Global search page, and one player listed once per national squad
+
+**Owner:** *"Search mora biti globalan tool (izmedju ostalog gde ti vidis Club-Friendlies?) ... ja bih
+samo stavio dugme sa lupica ikonicom posle dugmeta notification u headeru, kad se klikne otvori se search
+stranica u kojoj mogu da se pretrazuju useri, klubovi ili igraci"* — and then, on the result:
+*"par ispravkica za search: Borislav Negovanović je svej jedan te isti igrač ... isključi NT iz pretrage ...
+hintov text 'Enter search term' ... inače search radi odlično"*
+
+### It is a page, not a panel
+
+Magnifying glass between the bell and ADMIN, opening its own screen: one box, **All / Clubs / Managers /
+Players**, results in a table, clicking a row opens what was found. It has its own endpoint,
+`SearchController`, and that is the point — the friendly picker answers a *different* question (*which
+club may I ask for a friendly*) and answers it by excluding national sides, which a search must not
+inherit.
+
+An empty box returns nothing rather than the whole world: 14,880 clubs and 33,580 players is not a list,
+and it is the only answer that cannot be wrong by being truncated.
+
+### One player, three rows
+
+Searching "Bori" returned **Borislav Negovanović three times** — OFK Omladinac, Serbia, Serbia U-21 — and
+Boris Gospojević twice. They are one person each.
+
+The schema already knew. National squads are **copies** (`NationalTeamService.addToSquad`) so that a
+call-up does not remove a player from his club, and every copy carries `source_player_id` back to the
+real row. `Player` even documents it. So there was nothing to add and no migration:
+
+```
+id=10139  Borislav Negovanović  team=Serbia        type=NATIONAL_TEAM  source=2402
+id=10156  Borislav Negovanović  team=Serbia U-21   type=NATIONAL_TEAM  source=2402
+id=2402   Borislav Negovanović  team=OFK Omladinac type=CLUB           source=NULL
+```
+
+`AND p.sourcePlayerId IS NULL` in the query removes the copies and keeps the person. **It is fixed in
+the repository, not the controller**, because the friendly picker had the same duplication and would
+otherwise have kept it.
+
+De-duplicating must not hide that he is an international, so the squads are named on the row that
+survives — one query for the whole page, not one per row, because this endpoint gets typed into:
+
+```
+PLAYER | Boris Gospojević      | Sremac Berkasovo · Opštinska liga Šid · also Serbia
+PLAYER | Borislav Negovanović  | OFK Omladinac · Superliga Srbije · also Serbia, Serbia U-21
+```
+
+The information is moved onto one row, not dropped.
+
+Mutation-proved: deleting the `sourcePlayerId IS NULL` clause turns the new test red with
+`expected: <1> but was: <3>`. Five tests, all green; 21 across the search and friendly classes.
+
+The hint read "Search clubs in the world", which was wrong for a box that searches people. It is now
+**"Enter search term"**.
+
+---
+
+## 2026-10-14 — New work from the owner: club pages, a world club list, and Elo for internationals
 
 **Owner:** *"1) GDE se nalazi search? 2) search treba da moze da se trazi club, user ili igrac"*
 

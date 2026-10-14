@@ -35,6 +35,7 @@ import { createCountryView } from './pages/views/country-view.js';
 import { createClubCupView } from './pages/views/club-cup-view.js';
 import { createNationalTournamentView, NATIONAL_COMPETITIONS } from './pages/views/national-tournament-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
+import { createSearchView } from './pages/views/search-view.js';
 import { createClubView } from './pages/views/club-view.js';
 import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
 import { createStadiumView } from './pages/views/stadium-view.js';
@@ -524,6 +525,8 @@ function buildPageNavState(page, options = {}) {
         // prediction before, lineups, stats, goals and a report after (P0-PREV-3).
         loadMatch: (...args) => loadMatch(...args)
     });
+    const searchView = createSearchView({ authFetch });
+
     const statsView = createStatsView({
         authFetch, getTeamId: () => currentUserTeamId,
         ensureCurrentLeagueId,
@@ -611,6 +614,24 @@ function buildPageNavState(page, options = {}) {
 
                 case "profile":
                     await loadClubProfile();
+                    break;
+
+                // Somebody else's club. Owner, 2026-10-14: "AI klubови треба да имају profile страну".
+                // `teamId` is required and has no fallback: falling back to the viewer's own club would
+                // show a page that looks right and is about somebody else, which is the one thing a
+                // profile must never do.
+                case "clubProfile":
+                    if (options.teamId == null) {
+                        await loadClubProfile();
+                    } else {
+                        await loadClubProfile(options.teamId);
+                    }
+                    break;
+
+                // Global search. Not the friendly picker: this finds anything in the world, and it is
+                // reached from the magnifying glass in the top bar rather than from inside a panel.
+                case "search":
+                    searchView.loadSearch('');
                     break;
 
                 // MATCHES
@@ -861,9 +882,15 @@ function buildPageNavState(page, options = {}) {
         return medicalView.loadMedicalCenter();
     }
 
-    async function loadClubProfile() {
-        await settleTeamId();
-        return clubView.loadClubProfile();
+    async function loadClubProfile(teamId) {
+        // A teamId means somebody else's club. Settling the viewer's own team id is only needed when
+        // no club was named, and doing it anyway would have been harmless before and is a wasted
+        // request now — the club asked for is the club shown.
+        if (teamId == null) {
+            await settleTeamId();
+            return clubView.loadClubProfile();
+        }
+        return clubView.loadClubProfile(teamId);
     }
 
     async function loadUpcomingMatches() {

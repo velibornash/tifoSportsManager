@@ -5697,6 +5697,51 @@ body {
     flex-shrink: 0;
 }
 
+/* Global search page. Owner, 2026-10-14 — the magnifying glass in the top bar. */
+.fm-search-input {
+    width: 100%;
+    max-width: 560px;
+    font-size: 1.05rem;
+    padding: 10px 14px;
+}
+
+.fm-search-results {
+    margin-top: 14px;
+}
+
+.fm-search-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+}
+
+.fm-search-table th,
+.fm-search-table td {
+    padding: 9px 10px;
+    text-align: left;
+    vertical-align: middle;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fm-search-table th {
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #99a6bb;
+}
+
+.fm-search-table td:first-child {
+    color: #99a6bb;
+    font-size: 0.74rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.fm-search-table tbody tr:hover {
+    background: rgba(143, 211, 255, 0.07);
+}
+
 /* What to search for in the friendly picker: all, clubs, managers, players. Owner, 2026-10-14. */
 .fm-segmented {
     display: inline-flex;
@@ -6775,4 +6820,20 @@ body {
 .fm-badge-own {
     background: rgba(242, 193, 78, 0.18);
     color: #ffe9ad;
+}
+
+/* Elo movement on a club profile. Owner, 2026-10-14. */
+.fm-club-elo-delta {
+    font-size: 0.62em;
+    font-weight: 700;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.fm-club-elo-delta.is-up {
+    color: #6ee7a0;
+}
+
+.fm-club-elo-delta.is-down {
+    color: #ff9d9d;
 }
