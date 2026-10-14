@@ -1763,8 +1763,58 @@
     white-space: nowrap;
 }
 
+/*
+ * The "v" between two teams on an international fixture (owner 2026-10-14: *"na svim international
+ * mecevima timovi imaju nesto kao belo dugme oko svog naziva - to skloni, ruzno je"*).
+ *
+ * It is a `<button>`, and nothing cancelled the browser's default: measured `background-color:
+ * rgb(239,239,239)` at 23×21px, a near-white slab sitting on a dark card. It read as a broken widget
+ * next to every team name.
+ *
+ * The old rule below only set `color` and `font-size`, and only under `.fm-page--country` — so the
+ * national tournament page, which is not that page, got no rule at all and showed the raw default.
+ * The button appearance is cancelled here **unscoped**, because a default button background has no
+ * business surviving anywhere in this design, and the country-page selector is kept only for the
+ * ellipsis behaviour above.
+ */
+.fm-cup-tie-sep,
+button.fm-cup-tie-sep {
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(143, 211, 255, 0.10);
+    border: 1px solid rgba(143, 211, 255, 0.18);
+    border-radius: 999px;
+    color: #cfe0f5;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 9px;
+    min-width: 26px;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fm-cup-tie-sep:hover {
+    background: rgba(143, 211, 255, 0.2);
+    border-color: rgba(143, 211, 255, 0.34);
+}
+
+.fm-cup-tie-sep:focus-visible {
+    outline: 2px solid rgba(143, 211, 255, 0.7);
+    outline-offset: 2px;
+}
+
+/* Played ties show a score rather than a "v", and it should read a little stronger. */
+.fm-cup-tie-sep:has(strong),
+.fm-cup-tie-sep.is-score {
+    color: #eef4ff;
+    font-weight: 700;
+    background: rgba(143, 211, 255, 0.16);
+}
+
 .fm-page--country .fm-cup-tie-sep {
-    color: var(--fm-subtle, #93a1bd);
     font-size: 11px;
     flex-shrink: 0;
 }
