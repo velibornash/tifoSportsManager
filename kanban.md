@@ -36,7 +36,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P1-8** | 🟡 | **No club in the league table is clickable** | Owner report 2026-10-14. Same on the country club ranking. |
 | **P1-1** | ✅ | **Clicking an AI club lands on a league, not on the club** | ✅ **Done 2026-10-14.** Any club has its own profile: league, tier, Elo, world position, stadium, squad. |
 | **P1-2** | ✅ | **Header "Club" button opens First Team, not Club Profile** | ✅ **Done 2026-10-14.** Now opens Club Profile, with Elo and ranking position on it. |
-| **P1-3** | 🟡 | **World page has no club list** | Owner report 2026-10-14. The country level has one; the world level should too. |
+| **P1-3** | ✅ | **World page has no club list** | Done 2026-10-14 (commit d90dd7dd): `/countries/world/clubs/ranking`, top 500, paged, club profile navigation. |
 | **P1-4** | 🔴 | **Qualifying for and advancing through international stages awards no Elo** | **Code done, NOT observed.** Ladder is the owner's and unit-tested; the bonus has not yet been seen to change a club's Elo. Match Elo already worked at 1.35. |
 | **P0-13** | 🔴 | **Manager profile: clicking club shows obsolete "your own club" popup** | Owner report 2026-10-14. The club name should link to the club's profile page. |
 | **P0-14** | 🔴 | **Manager profile: League and Country are not clickable** | Owner report 2026-10-14. They should link to the league view and country page. |
@@ -45,7 +45,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P0-17** | ✅ | **League table: clubs are not clickable** | Owner report 2026-10-14. Clicking a club should open its profile. | Made the club-name span a direct js-load-CTeam target (commit 88e4970c). |
 | **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | ✅ **Fixed 2026-10-14.** A claim is a request, not a booking. The ad now closes when the answer is accepted, and carries the real fixture id. |
 | **P0-14** | 🟡 | **`FriendlySlotRulesTest` is red against the current season table** | 10 of 12 fail on clean `HEAD` — it asserts the pre-reshuffle table (week 5 day 3 = round 9, 2 friendly slots in the break). Pre-existing, not a regression. |
-| **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Open, needs a decision.** Now visible on the Club page as a "Next Match" in week 4 at week 6. Week 6 has no league fixtures at all. |
+| **P0-5** | ✅ | **824 fixtures sit in the past and will never be played** | Deferred pending DB reset (owner 2026-10-14). |
 | **P0-11** | ✅ | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14.** An undeclared `sort` threw inside the template; a catch hid it. |
 | **P0-1** | ✅ | **Verify one matchday completes clean, end to end** | ✅ **Done.** 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. |
 | **P0-6** | ✅ | **The lock named the wrong club to an away manager** | ✅ **Fixed.** `refusalReason` compared the home team's id with itself. |
@@ -61,7 +61,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P2** | ✅ | **White default button between teams on international matches** | ✅ **Fixed.** It had no CSS rule at all. |
 | **P2** | ✅ | **Edit your name on My profile** | ✅ **Fixed.** The editor existed and the menu did not lead to it. |
 | **P0-2** | 🔴 | **Cup round 2 has never been drawn** | ✅ **Answered — it is drawn, 128 ties.** See P0-8. |
-| **P0-8** | 🔴 | **Serbia U-21 is in Kup Srbije, rounds 1-4** | **Owner chose (b): re-draw from round 1.** Prevention is done and mutation-proven; the re-draw is left to do. |
+| **P0-8** | ✅ | **Serbia U-21 is in Kup Srbije, rounds 1-4** | Prevention committed and mutation-proven; re-draw deferred to DB reset (owner 2026-10-14). |
 | **P0-4** | 🔴 | `/admin/world-reseed?what=national-teams` is broken** | Fails on a `player` FK violation. Unrelated to the above. |
 | **P0-11** | 🔴 | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14** — owner reported it. An undeclared variable threw inside the template and a catch hid it, saying the read had failed. |
 | **P0-10** | 🟡 | **A cup tie won on penalties reported itself as a draw** | ✅ **Fixed 2026-10-14** — owner found it on a tie his club had won. The engine computed every kick and the report discarded them. |
