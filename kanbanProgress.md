@@ -1,3 +1,56 @@
+## 2026-10-14 — Your own name, your own Back button, and three fixes the owner found on one screen
+
+**Owner:** *"Name - u padajucem meniju treba da stoji name a ne mejl.. edit treba da bude u istom redu gde
+je name sa x i check simbolima za save i cancel... kada kliknem save Back dugme ne radi"*
+
+### The email in the top bar was a stale module, not live code
+
+Worth stating plainly, because it changes the fix. `paintAccountMenu` already read `user.displayName`
+first and only fell back to the login's local part — and `/auth/me` returns `"displayName": "Velja"`, so
+the code was already right. The corner was being painted by an **older cached `account-menu.js`**, which
+fell back to the whole `username`. A fresh app start showed `Velja` and the bug was gone.
+
+That is the same stale-cache trap as P0-12 below, and it is why the owner asked for a fresh app per case.
+No code change was warranted here; inventing one would have been theatre.
+
+### The Back button pointed at the page it was already on
+
+`user-profile-view.js:63` read:
+
+    ${backButtonHtml('Back', isSelf ? 'userProfile' : 'dashboard')}
+
+`goBackSmart` pops the nav stack, and only uses that fallback when the stack is empty. Reached from the
+top-bar dropdown the stack **is** empty, so `loadPage('userProfile')` re-rendered the identical page.
+Reproduced exactly as reported: fresh load → user menu → My profile → Back, and the page did not change.
+
+It was never really about saving. The save re-renders the profile in place, which is when the owner
+pressed Back and noticed it was dead. Fixed to `dashboard`, which is correct in both directions: the
+stack still wins when there is one, and an empty stack now goes somewhere real.
+
+*One false positive worth recording:* the first reproduction showed the Back button and the input
+**gone** after saving, which looked like a worse bug. It was my harness — that check ran after an
+earlier Back had already left the profile, so the query found nothing and reported absence. The button
+is never removed by a save.
+
+### The name is now edited in the row that shows it
+
+Owner asked for the edit in the same row as the name, with X and a check. It was its own panel further
+down the page, so saving meant scrolling away from the value and back to see whether it had taken.
+
+The NAME row in Details now carries a pencil; pressing it swaps the value for the field plus **×** to
+cancel and **✓** to save, all on one line. The separate panel is gone. Cancel restores the field from
+the last value the server accepted, so abandoning an edit cannot leave unsaved text in the box.
+
+Also fixed while in there: after saving, the **top bar kept the old name** until the next page load,
+because nothing repainted the account corner. `loadUserTeamId()` already re-reads `/auth/me` and repaints
+it — it just was not reachable. Exposed as `window.loadUserTeamId` and called after a successful save.
+
+Verified on a fresh app (PID 30568, then 30874): corner reads `Velja`; pencil opens the editor in place
+and focuses the field; typed junk then × leaves the row on `Velja`; ✓ saves, the row and the corner both
+read `Velja`; Back then returns to the dashboard. Screenshot taken of the open editor.
+
+---
+
 ## 2026-10-14 — The account menu would not open, and a claimed friendly ad that creates nothing
 
 **Owner:** *"klik na usera gore desno kod sata sada NE otvara padajuci meni niti daje gresku"*

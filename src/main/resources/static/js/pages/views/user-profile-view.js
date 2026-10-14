@@ -60,7 +60,7 @@ export async function loadPublicUserProfile(userId, viewer) {
     main.innerHTML = `
         <div class="fm-page fm-page--club">
             <section class="fm-panel fm-club-hero">
-                ${backButtonHtml('Back', isSelf ? 'userProfile' : 'dashboard')}
+                ${backButtonHtml('Back', 'dashboard')}
                 <div class="fm-club-hero-main">
                     <div>
                         <div class="fm-eyebrow">${isSelf ? 'Your account' : 'Manager'}</div>
@@ -91,8 +91,9 @@ export async function loadPublicUserProfile(userId, viewer) {
  * somebody has to decide about later.
  */
 function renderDetails(profile, isSelf) {
+    const displayName = profile.displayName || 'Manager';
     const rows = [
-        ['Name', escapeHtml(profile.displayName || 'Manager')],
+        ['Name', isSelf ? nameCellHtml(displayName) : escapeHtml(displayName)],
         ['Role', escapeHtml(PRETTY_ROLE[profile.role] || profile.role || 'Manager')],
         ['Club', profile.clubId
             ? `<button type="button" class="fm-link-btn js-open-club" data-club-id="${escapeHtml(profile.clubId)}">${escapeHtml(profile.clubName || 'Open club')}</button>`
@@ -118,28 +119,41 @@ function renderDetails(profile, isSelf) {
                         <span>${escapeHtml(label)}</span><strong>${value}</strong>
                     </div>`).join('')}
             </div>
+            ${isSelf ? '<div class="user-name-status fm-subtle" id="display-name-status" role="status"></div>' : ''}
         </section>`;
 }
 
+/**
+ * The Name row on your own profile, editable in place.
+ *
+ * <p>Owner, 2026-10-14: the editor was its own panel further down the page, so saving your name
+ * meant scrolling away from the row that shows it and then scrolling back to check it. The edit now
+ * happens in the row itself — pencil to open, then the field with X to cancel and a check to save,
+ * all on the same line.
+ */
+function nameCellHtml(displayName) {
+    return `
+        <span class="user-name-view js-name-view">
+            <span class="js-name-value">${escapeHtml(displayName)}</span>
+            <button type="button" class="fm-icon-btn js-name-edit" title="Edit your name"
+                    aria-label="Edit your name">&#9998;</button>
+        </span>
+        <span class="user-name-edit js-name-edit-cell" hidden>
+            <input type="text" id="display-name-input" class="js-name-input" maxlength="40"
+                   value="${escapeHtml(displayName)}" placeholder="Your name"
+                   aria-label="Your name" />
+            <button type="button" class="fm-icon-btn js-name-cancel" title="Cancel"
+                    aria-label="Cancel">&#215;</button>
+            <button type="button" class="fm-icon-btn fm-icon-btn--ok js-save-name" title="Save"
+                    aria-label="Save">&#10003;</button>
+        </span>`;
+}
+
 function renderActions(profile, isSelf, viewer) {
+    // The name editor lives in the Name row now (see nameCellHtml), so your own profile has nothing
+    // left to say down here. Only someone else's profile still has actions to offer.
     if (isSelf) {
-        return `
-            <section class="fm-panel">
-                <div class="fm-panel-head">Your name</div>
-                <p class="fm-subtle">Your name is what other managers see beside your posts and messages.
-                    It is not your login address.</p>
-                <div class="community-compose-form">
-                    <div class="community-compose-textarea">
-                        <input type="text" id="display-name-input" maxlength="40"
-                               value="${escapeHtml(profile.displayName || '')}"
-                               placeholder="Your name" />
-                    </div>
-                    <div class="community-compose-actions">
-                        <button type="button" class="fm-action-btn js-save-name">Save name</button>
-                    </div>
-                    <div class="community-compose-toolbar fm-subtle" id="display-name-status"></div>
-                </div>
-            </section>`;
+        return '';
     }
 
     return `
@@ -233,6 +247,24 @@ function bind(profile, isSelf, viewer) {
     });
 
     if (isSelf) {
+        const view = main.querySelector('.js-name-view');
+        const editCell = main.querySelector('.js-name-edit-cell');
+        const input = main.querySelector('.js-name-input');
+        const value = main.querySelector('.js-name-value');
+        const showEditing = (editing) => {
+            if (view) view.hidden = editing;
+            if (editCell) editCell.hidden = !editing;
+            if (editing && input) {
+                input.value = value ? value.textContent.trim() : '';
+                input.focus();
+                input.select();
+            }
+        };
+
+        main.querySelector('.js-name-edit')?.addEventListener('click', () => showEditing(true));
+        // Cancel puts the field back to what the server last accepted, so abandoning an edit can never
+        // leave a typed-but-unsaved name sitting in the field.
+        main.querySelector('.js-name-cancel')?.addEventListener('click', () => showEditing(false));
         main.querySelectorAll('.js-save-name').forEach(button => {
             button.addEventListener('click', () => saveDisplayName(button, profile));
         });
@@ -282,6 +314,11 @@ async function saveDisplayName(button, profile) {
             return;
         }
         await loadPublicUserProfile(profile.id, { ...(profile), id: profile.id, displayName: body.displayName });
+        // The top bar carries the name too, and it is the first place anyone looks. Repainting it here
+        // stops the page saying "Saved ... Velja" while the corner still says the previous name.
+        if (typeof window.loadUserTeamId === 'function') {
+            await window.loadUserTeamId();
+        }
         const after = document.getElementById('display-name-status');
         if (after) after.textContent = `Saved. You are now shown as "${body.displayName}".`;
     } catch (err) {

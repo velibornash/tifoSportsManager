@@ -1400,6 +1400,10 @@ async function loadUserProfile() {
     // the /auth/me response it already has instead of either duplicating the fetch or leaving the
     // top bar stuck on "Signed in".
     window.paintAccountMenu = paintAccountMenu;
+    // Re-reads /auth/me and repaints the account corner. Exposed so that anything which changes the
+    // name a manager goes by can refresh the top bar without waiting for a full page load — the top
+    // bar is the first place the old name is looked at. Owner, 2026-10-14.
+    window.loadUserTeamId = loadUserTeamId;
     initAccountMenu();
     // Signing out from anywhere must also close the account panel, or the next person at this
     // machine opens it and still sees the previous user's name in it.
