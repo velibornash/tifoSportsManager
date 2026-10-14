@@ -144,7 +144,7 @@ export function createFriendlyPanel(deps) {
                             <button type="button" class="fm-segment" data-friendly-type-value="PLAYER">Players</button>
                         </div>
                         <input type="text" class="fm-input fm-friendly-search-input" data-friendly-search
-                               placeholder="Search clubs in the world" autocomplete="off">
+                               placeholder="Enter search term" autocomplete="off">
                         <div class="fm-friendly-results" data-friendly-results></div>
                         <button type="button" class="fm-action-btn secondary" data-friendly-cancel-form>Cancel</button>
                     </div>

@@ -116,13 +116,34 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     List<Player> findByTeamIdIn(Collection<Long> teamIds);
 
     /**
-     * Players whose name contains {@code fragment}, best-known first.
+     * Players whose name contains {@code fragment}, best-known first, <b>excluding national-squad
+     * copies</b>.
      *
-     * <p>Owner, 2026-10-14: the friendly picker searches managers, clubs and players together. The world
-     * holds more than 31,000 players, so this is {@code LIMIT}ed inside the query rather than paging in
-     * Java, and it only asks for the player's club — the one column the result needs to be actionable.
+     * <p>Owner, 2026-10-14: a search for "Borislav" returned him three times — once for his club and
+     * once for each national side he was called up to. They are one person. National squads are copies
+     * ({@code NationalTeamService.addToSquad}) so a call-up does not remove him from his club, and the
+     * copy carries {@code sourcePlayerId} pointing back at the real row. Filtering on that is the whole
+     * fix: no new column, and it stays correct as squads are rebuilt.
+     *
+     * <p>{@code LIMIT}ed inside the query because the world holds more than 33,000 players, and ordered
+     * by name length so a partial name puts "SK Kikinda" before "OFK Kikinda 1912".
      */
     @Query("SELECT p FROM Player p WHERE LOWER(p.name) LIKE LOWER(CONCAT('%', :fragment, '%')) "
+            + "AND p.sourcePlayerId IS NULL "
             + "ORDER BY LENGTH(p.name), p.name")
     List<Player> findByNameFragment(@Param("fragment") String fragment, Pageable pageable);
+
+    /**
+     * The national sides a set of real players have been called up to.
+     *
+     * <p>The inverse of the copy above: given the surviving club rows, which national squads would this
+     * search also have matched had it not filtered them out. Shown on the result so a manager looking
+     * for a player can still see he is an international — the information is not lost by de-duplicating,
+     * it is moved from a second row into the one that remains.
+     */
+    @Query("SELECT p.sourcePlayerId, nt.name FROM Player p JOIN Team nt ON nt.id = p.team.id "
+            + "WHERE p.sourcePlayerId IN :sourceIds "
+            + "AND nt.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM "
+            + "ORDER BY nt.name")
+    List<Object[]> findNationalSquadsForSources(@Param("sourceIds") Collection<Long> sourceIds);
 }
