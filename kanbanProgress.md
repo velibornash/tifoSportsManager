@@ -1,3 +1,9 @@
+## 2026-10-14 — TECHNICAL_OVERVIEW refreshed, manual rebuilt, league view fix
+
+- **TECHNICAL_OVERVIEW.md** counts updated (33 controllers, 95 services, 162 model files, 58 repos, 92 sim files, 53 js files, 324 test classes, 2,129 @Test) and sections 5.5/5.6/8.5 plus friendly-invite and known-gap wording aligned with the current source.
+- **League view fix** — `league-view.js` `renderTable` referenced closure variables that did not exist at its declaration scope; changed it to call `renderTableView` with the payload already built at the call site. League table now renders.
+- **Manual rebuilt** — fresh desktop (31) and mobile (31) screenshots, conversion, CSS page-break rules (`break-before: page`, `break-inside: avoid`, 240 mm image cap), and a scrolled visual movement editor capture. Rebuilt `index.html` and `TIFO-UI-Football-Manager-Manual.pdf`.
+
 ## 2026-10-14 — Global search page, and one player listed once per national squad
 
 **Owner:** *"Search mora biti globalan tool (izmedju ostalog gde ti vidis Club-Friendlies?) ... ja bih

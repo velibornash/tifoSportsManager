@@ -94,7 +94,8 @@ li{margin-bottom:6px}
 hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
 .small{font-size:13.5px;color:#6b7896}
 @media print{body{background:#fff}.page{box-shadow:none;max-width:none;padding:0}
-  h2{page-break-after:avoid}figure,table,.box{page-break-inside:avoid}}
+  h2{page-break-before:always;page-break-after:avoid}figure,table,.box{page-break-inside:avoid}
+  figure img.shot{max-height:240mm;width:100%;object-fit:contain;display:block}}
 </style></head><body><div class="page">""")
 
     # ---------------------------------------------------------------- cover
@@ -103,7 +104,7 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
     a('<h1>UI Football Manager &mdash; Manual</h1>')
     a('<p class="sub">A club-management game with a real spatial match engine behind it.</p>')
     a('<div class="meta">')
-    a('<p><b>Status:</b> as-is documentation, taken from the running game on 1 October 2026.<br>')
+    a('<p><b>Status:</b> as-is documentation, taken from the running game on 14 October 2026.<br>')
     a('<b>World in these screenshots:</b> 48 countries &middot; 310 clubs in Serbia &middot; '
       'Superliga Srbije, Season 2, Week 12 &middot; manager account <code>Velja</code> (Owner).<br>')
     a('<b>Screenshots:</b> desktop 1440&times;900, plus phone 390&times;844 where it matters.</p>')
@@ -195,8 +196,12 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
            "corners</b> is labelled on the pitch \u2014 attacking rows (ATK+, ATK), midfield (MID+, "
            "MID), defensive (DEF+, DEF) and the four corners. The <b>11 slot circles</b> are the "
            "players; drag any of them into a new zone and that becomes their position <i>for this "
-           "ball state only</i>. The white marker shows the focused slot."))
+            "ball state only</i>. The white marker shows the focused slot."))
+    a(shot("10-tactics-editor-lower",
+           "<b>Scrolled view of the same editor.</b> The Visual movement editor heading and the zones below "
+           "it, so the pitch side of the page is visible rather than cropped out."))
     a('<h3>How it works</h3>')
+
     a('<ul>')
     a('<li><b>Ball state.</b> 42 reachable zones plus 4 corner states. Pick one and every outfielder '
       'gets a position for it.</li>')
@@ -396,8 +401,7 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
     a('<p>The same page carries the applications queue (who has asked to play, and in which country) '
       'and an accounts panel where a role can be changed or a forum ban applied. A moderator can '
       'apply a forum ban from a manager\u2019s profile, but does not reach this page.</p>')
-    a(shot("28-admin", "<b>Admin.</b> Operational tools, applications and accounts, visible only to '
-                       'admin accounts."))
+    a(shot("28-admin", "<b>Admin.</b> Operational tools, applications and accounts, visible only to admin accounts."))
     a(shot("29-user-profile", "<b>Your account.</b> Role, subscription, country and club."))
 
     # ---------------------------------------------------------------- 15

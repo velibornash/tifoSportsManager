@@ -1,6 +1,6 @@
 # TECHNICAL_OVERVIEW.md — the football UI as it exists
 
-**Written 2026-10-06 against the source, revised 2026-10-07 against `f8c492d`.** Scope is the graphical
+**Written 2026-10-06 against the source, revised 2026-10-14 against the current tree.** Scope is the graphical
 football manager: the lobby path
 `home.html` → `dashboard.html`, its vanilla JavaScript frontend, and the `footballmanager.newLogic`
 backend that serves it. The text football mode, basketball and American football are mentioned only
@@ -75,14 +75,14 @@ contracts.
 
 | Area | Count |
 |---|---:|
-| Football controllers | 30 |
-| Football services | 88 |
-| Football model files | 147 |
-| Football repositories | 51 |
-| Match simulation Java files | 85 |
-| Static JavaScript files under `static/js` | 47 |
-| Test classes in `src/test/java` (files named `*Test.java`) | 224 |
-| `@Test` annotations | 1,510 |
+| Football controllers | 33 |
+| Football services | 95 |
+| Football model files | 162 |
+| Football repositories | 58 |
+| Match simulation Java files | 92 |
+| Static JavaScript files under `static/js` | 53 |
+| Test classes in `src/test/java` (files named `*Test.java`) | 324 |
+| `@Test` annotations | 2,129 |
 
 The static tree holds 86 `.js` files in total, the rest belonging to the text-football, basketball and
 American-football modes and to the frozen demo viewer. The count above counts files under `static/js`,
@@ -321,6 +321,32 @@ to a named target when the stack is empty. Two changes in this revision:
   missing target now becomes `dashboard`.
 
 The country page carries its own `data-nav-back="dashboard"` button in the header of each of its pages.
+
+### 5.5 Global search and opponent search
+
+Since the October 2026 revisions there are two search surfaces, and they ask different
+questions:
+
+- **Global search** — the magnifying-glass button next to the notification bell opens
+  `search-view.js`. One box; filter chips **All / Clubs / Managers / Players** re-run the
+  query server-side rather than filtering 60-row result sets in the browser. An empty box
+  returns nothing (14,880 clubs and 33,580 players is not a list). National-squad copies are
+  excluded with `sourcePlayerId IS NULL`, so one person shows once with his club named and the
+  squads he plays for listed on the row (`PlayerRepository.findByNameOrLogin` plus one
+  `findNewestPerThread`-shaped batch query for the "also Serbia, Serbia U-21" line).
+  `SearchController` is the backing endpoint.
+- **Opponent search** — the friendly flow's picker, now the same table shape but global
+  rather than one-country, returning managers, clubs and players as one list with `teamId`,
+  `teamName` and `openFor`/`openArg` so every row knows which club a friendly would be sent
+  to. `FriendlyController.opponents` backs it.
+
+### 5.6 Club profile for any club
+
+`club-view.js` now honours a `teamId` argument instead of always rendering the viewer's own
+club (`teamId` has no silently substituted fallback). `GET /teams/{teamId}/profile` carries
+league, tier, stadium and the Elo-related fields added for this: `eloRating`,
+`eloPreviousRating` (movement since last time) and `worldPosition`. World position counts
+clubs only. The top-bar Club button opens the viewer's own profile.
 
 ## 6. What the manager can do
 
@@ -672,11 +698,16 @@ GET /club-cups/{key}?tier=N
 ```
 
 The World page links into `club-cup-view.js`, which renders each tier's groups, results and bracket. The
-three World rows report complete 48, 96 and 48 fields once a finished season exists. Small fields of 2–7 entrants now use a knockout
-path; two entrants play a direct final and odd fields carry a bye. The repair action durably creates
-missing international rows before filling static simulated-country tables, and the
-draw-night job repeats that durable repair boundary before drawing. The domestic cup draw is separately country-scoped
-and no longer selects one primary cup globally.
+three World rows report complete 48, 96 and 48 fields once a finished season exists. Small fields of 2–7
+entrants now use a knockout path; two entrants play a direct final and odd fields carry a bye. The repair
+action durably creates missing international rows before filling static simulated-country tables, and the
+draw-night job repeats that durable repair boundary before drawing. The domestic cup draw is separately
+country-scoped and no longer selects one primary cup globally.
+
+The club Elo replay now also awards **international stage-depth bonuses**, read out of the draw rather than
+stored as separate adjustments, so replaying a matchday or migrating a database dump cannot double-award
+them: the Champions/Masters/Challenge progression ladder is `InternationalStageBonus`, applied in
+`ClubRatingService.applyStageBonuses` on both replay paths.
 
 The repair boundary was verified against PostgreSQL on 2026-10-06: all 15 competition rows existed, all
 three tier-1 cup endpoints returned HTTP 200, and the World payload exposed competition IDs for every tier.
@@ -1093,8 +1124,8 @@ These are current source/board findings, not historical audit claims.
 - Country pages show only the relevant international qualifying candidates by tier: direct tier-1 places,
   then the pooled winners, 2nd/3rd places and 4th places for tiers 2–5. The races are derived from
   reconciled league standings on page load instead of maintaining a second persisted table.
-- Friendly requests have backend support and dashboard ticker visibility, but inviting, national-team
-  acceptance and the free-slot board are unfinished.
+- Friendly invitations and the free-slot board are wired through `FriendlyRequestService` / `FriendlyOfferService`
+  and rendered on the club profile; what remains is national-side acceptance and some negotiation edge cases.
 - `Re-draw national competitions` deletes every unplayed qualifying and tournament fixture for the active
   season. That is what it does, and it refuses once a qualifying tie has been played (§8.6), but the admin
   button's confirmation text says "Existing fixtures are left alone" and does not mention the refusal.
@@ -1113,7 +1144,8 @@ These are current source/board findings, not historical audit claims.
   intended screens.
 - The new forum/private-message UI has not yet been verified by a real browser click-through; endpoint
   and rendered-module checks were recorded instead.
-- The friendly invite action is not rendered even though the request service exists.
+- Friendly invites are rendered on the club profile page; remaining national-side acceptance and flow
+  verification are tracked on the board.
 - Two classes are styled but never applied. `fm-qualifying-table tr.is-current-club` has a blue rule in
   the stylesheet and nothing in `country-view.js` emits it, so the manager's own club is not marked in the
   qualifying tables. `is-highlighted`, used by the represented-country group tables to mark the country
