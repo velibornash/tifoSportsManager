@@ -3951,7 +3951,8 @@ body {
 .top-menu {
     flex-wrap: nowrap;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: clip;
+    overflow-y: visible;
 }
 
 .corner-logo,

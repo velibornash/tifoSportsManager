@@ -1,3 +1,87 @@
+## 2026-10-14 — The account menu would not open, and a claimed friendly ad that creates nothing
+
+**Owner:** *"klik na usera gore desno kod sata sada NE otvara padajuci meni niti daje gresku"*
+
+### P0-12 — the dropdown opened, and was clipped away
+
+No error, because there was none to throw. The handler ran, the `hidden` attribute flipped, and the panel
+measured at `[813, 83, 268, 225]` — but `elementFromPoint` at its centre returned a `SECTION.fm-panel`,
+the page content painted on top of it. Not a z-index fight: `.top-menu` is `position: sticky; z-index: 10`,
+so the panel's own `z-index: 260` was scoped inside the bar's stacking context and could never climb out of
+it.
+
+It was **clipping**. Commit `27245033` (the logo fix) added
+
+    .top-menu { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+
+to stop the corner logo overflowing the bar. The account panel is positioned at `top: 73px` — *below* the
+bar's own box — so `overflow: hidden` clipped the whole dropdown. The trigger and the handler were never
+at fault, which is why nothing errored.
+
+`overflow-x: clip; overflow-y: visible` keeps the horizontal clipping the logo fix needed and lets the
+dropdown escape vertically. `clip` does not turn the box into a scroll container, so the other axis is
+free to stay `visible`; `hidden` cannot do this, because one non-`visible` axis forces the other to `auto`.
+
+Verified in the browser, not by reading the diff: `elementFromPoint` inside the panel returns the panel,
+and the screenshot shows the menu over the content. Opens, outside-click closes, Escape closes,
+`aria-expanded` returns to `"false"`, and `scrollWidth <= clientWidth` still holds — the logo fix is intact.
+
+**The trap, hit twice here.** The running app is `spring-boot:run` on `-cp target/classes`, so a static-file
+edit is not served until it is copied into `target/classes`; and the browser then caches the stylesheet on
+top of that. `curl` of `/css/dashboard.css` kept returning the old rule while the file on disk was already
+correct, and the first verification run measured `overflowX: hidden` against an already-fixed stylesheet.
+A measurement taken before both are cleared will report the bug still present.
+
+### P0-13 — a claimed friendly ad is FULFILLED with no fixture
+
+Found while answering the owner's friendly question, not while looking for it.
+
+The direct-invite lane and the ad/claim lane already exist and work: `friendly_request` for named
+invitations, `friendly_offer` for the free-slot board, `FriendlyRequestService` and `FriendlyOfferService`
+behind them, wired into the Club page (open slots with "Invite for friendly", "Post my slot", "Available
+from other clubs"). `SeasonCalendar.build()` already encodes every rule the owner listed — weeks 6 and 12
+are all-friendly, the week-11 playoff slot is `FRIENDLY_IF_NOT_IN_PLAYOFF`, and day 1 and day 5 are
+friendly-capable in every other week. **The slot table does not need to change.**
+
+Two real gaps remain.
+
+**`filled_fixture_id` is written as `null`, always.** `FriendlyOfferService.claim()`:
+
+    offer.setStatus(OfferStatus.FULFILLED);
+    offer.setFilledFixtureId(null);
+
+`claim()` creates a `FriendlyRequest` and has it in hand — but `requestFriendly()` returns it with status
+`PENDING` and `accepted_fixture_id` null, because the advertiser still has to accept. The offer drops the
+request and closes itself regardless. The comment two lines below claims a taken ad *"still points at the
+match it produced"*; it never has.
+
+Proven against the live database rather than by reading: posted an ad for week 6 slot 1, claimed it with
+team 2.
+
+| | |
+|---|---|
+| `friendly_offer` | id 1, status **FULFILLED** |
+| `filled_fixture_id` | **NULL** |
+| `friendly_request` | id 1, status **PENDING**, `accepted_fixture_id` NULL |
+| `match_fixture`, week 6 day 1 | **0 rows** |
+
+The board reports success, the slot is closed, and nothing was ever scheduled — and if the advertiser never
+accepts, the slot is gone for good. The offer should stay `OPEN` until the request is `ACCEPTED`, and take
+`filled_fixture_id` from the request at that point. Not started.
+
+**Opponent search is clubs-only and country-only.** `FriendlyController.opponents` walks
+`teams.findByCountryId(...)`, drops national teams and filters on name, returning `{id, name}` and nothing
+else. The owner asked for users *and* teams *and* players, in a standard clickable table, using the pattern
+the message composer already uses (`messages-view.js:328` — client-side filtering over the full account
+list). Not started.
+
+**Recorded so neither is re-investigated:** the club profile page is the route that hosts friendlies
+(`loadPage('profile')`), and `/api/season/friendlies/1/week` returns all four week-6 slots labelled
+*"Midseason, no league — national-team qualifiers"*. Both tables were empty beforehand, and the two test
+rows were deleted afterwards.
+
+---
+
 ## 2026-10-14 — "Next Match shows week 4 at week 6", and six fixes from a design review
 
 **Owner:** *"kako je moguce da next matches pokazuje s1 w4 day 7 a trenutno je s1 w6 d1 12:35? da li to

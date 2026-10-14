@@ -25,6 +25,8 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 
 | # | Pri | Task | State |
 |---|---|---|---|
+| **P0-12** | 🔴 | **The account menu did not open** | ✅ **Fixed 2026-10-14** — owner reported it. `.top-menu` had `overflow: hidden`, which clipped the dropdown hanging below the bar. |
+| **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | **Open.** `claim()` writes `filled_fixture_id = null` and closes the ad on a request that is still PENDING. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Open, needs a decision.** Now visible on the Club page as a "Next Match" in week 4 at week 6. Week 6 has no league fixtures at all. |
 | **P0-11** | ✅ | **The Jobs table had been written but had never once rendered** | ✅ **Fixed 2026-10-14.** An undeclared `sort` threw inside the template; a catch hid it. |
 | **P0-1** | ✅ | **Verify one matchday completes clean, end to end** | ✅ **Done.** 155 fixtures computed at 15:00, released at 16:00, zero new FAILED. |
