@@ -1,3 +1,7 @@
+## 2026-10-14 — manual detail shots
+
+- Training report screenshot changed to one opened report, academy and finances got scrolled detail crops, manual/PDF rebuilt.
+
 ## 2026-10-14 — manual rebuild per owner feedback
 
 - Removed admin, player-stats, logo-corner and all mobile screenshots; mobile view noted as existing rather than pictured.

@@ -255,7 +255,9 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
     a('<p>Juniors arrive once a season. You scout, develop, and decide when to promote them into the '
       'senior squad.</p>')
     a(shot("14-academy", "<b>Youth Academy.</b> The intake, current prospects and their development "
-                         "state. Ten places at a time."))
+                              "state. Ten places at a time."))
+    a(shot("14-academy-lower", "<b>Scrolled view of the academy.</b> The prospects and development state further down the page."))
+
     a('<h3>Talent is hidden, on purpose</h3>')
     a('<p>You are shown a <b>range</b> for a junior&rsquo;s talent, not a number, and the range '
       'narrows as you scout them and as they approach promotion. Current ability is public; the '
@@ -311,7 +313,9 @@ hr{border:0;border-top:1px solid #e6ebf5;margin:40px 0}
     a('<p>Money is the constraint that makes a football manager a manager. Every club runs a weekly '
       'ledger; yours shows you yours.</p>')
     a(shot("17-finances", "<b>Club Finances.</b> Weekly income and outgoings, the ledger, and the "
-                          "history. Empty at the start of a season, then it fills line by line."))
+                           "history. Empty at the start of a season, then it fills line by line."))
+    a(shot("17-finances-lower", "<b>Scrolled view of the finances page.</b> The ledger and history further down the page."))
+
     a('<h3>What is in the ledger</h3>')
     a('<table><thead><tr><th>Money in</th><th>Money out</th></tr></thead><tbody>')
     a('<tr><td>Gate receipts</td><td>Player wages</td></tr>')
