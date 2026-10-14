@@ -38,9 +38,10 @@ export function createFriendlyPanel(deps) {
         return response.json();
     }
 
-    async function loadOpponents(teamId, q) {
+    async function loadOpponents(teamId, q, type) {
         const params = new URLSearchParams();
         if (q) params.set('q', q);
+        if (type) params.set('type', type);
         params.set('limit', '60');
         const response = await authFetch(
             `/api/season/friendlies/${teamId}/opponents?${params.toString()}`);
@@ -135,8 +136,15 @@ export function createFriendlyPanel(deps) {
                             somebody to write to. A friendly is between two clubs, so inviting a manager or
                             a player sends it to the club behind them. The other club may refuse, and it
                             lapses at the end of the week.</p>
+                        <div class="fm-segmented" data-friendly-type role="group"
+                             aria-label="What to search for">
+                            <button type="button" class="fm-segment is-on" data-friendly-type-value="ALL">All</button>
+                            <button type="button" class="fm-segment" data-friendly-type-value="TEAM">Clubs</button>
+                            <button type="button" class="fm-segment" data-friendly-type-value="USER">Managers</button>
+                            <button type="button" class="fm-segment" data-friendly-type-value="PLAYER">Players</button>
+                        </div>
                         <input type="text" class="fm-input fm-friendly-search-input" data-friendly-search
-                               placeholder="Search managers, clubs and players" autocomplete="off">
+                               placeholder="Search clubs in the world" autocomplete="off">
                         <div class="fm-friendly-results" data-friendly-results></div>
                         <button type="button" class="fm-action-btn secondary" data-friendly-cancel-form>Cancel</button>
                     </div>

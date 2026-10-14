@@ -1,3 +1,43 @@
+## 2026-10-14 — "Search clubs, managers or players", and where the search actually is
+
+**Owner:** *"1) GDE se nalazi search? 2) search treba da moze da se trazi club, user ili igrac"*
+
+### Where it is — and why that was a fair question
+
+Club page → the **FRIENDLIES** panel → press **"Invite for friendly"** on one of the open slots → the
+finder appears. It is not on its own page and it is not in the top bar. A manager has to pick a slot
+before he can look for anybody, because a friendly has to land in a slot; but nothing on the screen says
+the box is behind a button, so "where is the search" was the expected reaction rather than a silly one.
+
+### Narrowing by kind
+
+`?type=TEAM|USER|PLAYER` on the same endpoint. Absent or unrecognised means all three, so an older
+caller keeps the behaviour it had.
+
+One mixed list is the right answer to *"search like the message composer"* and the wrong answer to
+*"find the club"* — a manager looking for a side does not want the eleven people who play for it, and a
+manager looking for a person does not want the club either. The buttons are **All / Clubs / Managers /
+Players**, and they re-run the search at once: changing what you are looking for is a decision, not a
+half-typed word, so waiting for another keystroke would be the wrong feel.
+
+The filters are asked of the **server**, not applied to the rows afterwards. Client-side filtering would
+have meant the server returns 60 of everything and the filter silently hides matches beyond that cut —
+a manager would be told a manager does not exist because his name sorted 61st. The empty-state message
+names the kind being searched (*"Nothing matches 'Kikinda' in players"*) so it is clear what was asked.
+
+Verified live: `Goy` returns players under All and under Players, nothing under Teams or Managers;
+`Kikinda` returns five clubs under All and Teams, nothing under the other two. In the browser the four
+buttons render with the active one lit, and switching Clubs → Players without touching the keyboard
+updated the table. `theSearchCanBeNarrowedByKind` added — 20 green.
+
+*First version of that test was ambiguous and I rewrote it rather than bending the code:* it searched
+`Rival`, which matched both the fixture club and a club the test created, and then asserted row `[0]`
+was a particular one. Order is by name length then name, so `[0]` was whichever the database felt like.
+It now searches a fragment that matches exactly one thing and asserts counts, not positions — a test
+that asserts an ordering it does not control is a test that will fail for the wrong reason.
+
+---
+
 ## 2026-10-14 — Opponent search: managers, clubs and players in one table
 
 **Owner:** *"slicno kao kad pisemo poruku... u standardnoj tabeli, i klik na to sto si nasao vodi na to

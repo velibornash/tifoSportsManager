@@ -183,7 +183,8 @@ public class FriendlyController {
     @GetMapping("/{teamId}/opponents")
     public ResponseEntity<List<Map<String, Object>>> opponents(@PathVariable Long teamId,
                                                               @RequestParam(required = false) String q,
-                                                              @RequestParam(defaultValue = "60") int limit) {
+                                                              @RequestParam(defaultValue = "60") int limit,
+                                                              @RequestParam(required = false) String type) {
         org.example.footballmanager.newLogic.model.Team team = teams.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.ok(List.of());
@@ -196,42 +197,61 @@ public class FriendlyController {
             return ResponseEntity.ok(List.of());
         }
 
+        // Owner, 2026-10-14: *"search treba da moze da se trazi club, user ili igrac"*. One list of three
+        // kinds of thing is the right answer to "search like the message composer", but not to "find the
+        // club" — a manager looking for a side does not want the eleven people who play for it, and a
+        // manager looking for a person does not want the club either. Absent or unrecognised means all
+        // three, so an old caller keeps the behaviour it had.
+        boolean all = type == null || type.isBlank() || "ALL".equalsIgnoreCase(type.trim());
+        boolean wantTeam = all || "TEAM".equalsIgnoreCase(type.trim());
+        boolean wantUser = all || "USER".equalsIgnoreCase(type.trim());
+        boolean wantPlayer = all || "PLAYER".equalsIgnoreCase(type.trim());
+
         PageRequest page = PageRequest.of(0, cap);
         List<Map<String, Object>> out = new ArrayList<>();
 
-        for (org.example.footballmanager.newLogic.model.Team candidate
-                : teams.findByNameFragment(fragment, page)) {
-            if (candidate.getId() == null || candidate.getId().equals(teamId)) {
-                continue;
+        if (wantTeam) {
+            for (org.example.footballmanager.newLogic.model.Team candidate
+                    : teams.findByNameFragment(fragment, page)) {
+                if (candidate.getId() == null || candidate.getId().equals(teamId)) {
+                    continue;
+                }
+                if (candidate.getType() != null
+                        && candidate.getType()
+                        == org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM) {
+                    continue;
+                }
+                out.add(row("TEAM", candidate.getId(), candidate.getName(), describeTeam(candidate),
+                        candidate.getId(), candidate.getName(),
+                        leagueTarget(candidate), candidate.getCompetition() == null
+                                ? null : candidate.getCompetition().getId()));
             }
-            if (candidate.getType() != null
-                    && candidate.getType() == org.example.footballmanager.newLogic.model.CompetitionTeamType.NATIONAL_TEAM) {
-                continue;
-            }
-            out.add(row("TEAM", candidate.getId(), candidate.getName(), describeTeam(candidate),
-                    candidate.getId(), candidate.getName(),
-                    leagueTarget(candidate), candidate.getCompetition() == null
-                            ? null : candidate.getCompetition().getId()));
         }
 
-        for (org.example.commonmanager.model.User manager
-                : users.findByNameFragment(fragment, page)) {
-            org.example.footballmanager.newLogic.model.Team club = manager.getFootballTeam();
-            String label = manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
-                    ? manager.getDisplayName() : manager.getUsername();
-            String detail = club == null ? "No club" : "Runs " + club.getName() + " · " + describeTeam(club);
-            out.add(row("USER", manager.getId(), label, detail,
-                    club == null ? null : club.getId(), club == null ? null : club.getName(),
-                    "user", manager.getId()));
+        if (wantUser) {
+            for (org.example.commonmanager.model.User manager
+                    : users.findByNameFragment(fragment, page)) {
+                org.example.footballmanager.newLogic.model.Team club = manager.getFootballTeam();
+                String label = manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
+                        ? manager.getDisplayName() : manager.getUsername();
+                String detail = club == null ? "No club"
+                        : "Runs " + club.getName() + " · " + describeTeam(club);
+                out.add(row("USER", manager.getId(), label, detail,
+                        club == null ? null : club.getId(), club == null ? null : club.getName(),
+                        "user", manager.getId()));
+            }
         }
 
-        for (org.example.footballmanager.newLogic.model.Player player
-                : players.findByNameFragment(fragment, page)) {
-            org.example.footballmanager.newLogic.model.Team club = player.getTeam();
-            String detail = club == null ? "No club" : club.getName() + " · " + describeTeam(club);
-            out.add(row("PLAYER", player.getId(), player.getName(), detail,
-                    club == null ? null : club.getId(), club == null ? null : club.getName(),
-                    "player", player.getId()));
+        if (wantPlayer) {
+            for (org.example.footballmanager.newLogic.model.Player player
+                    : players.findByNameFragment(fragment, page)) {
+                org.example.footballmanager.newLogic.model.Team club = player.getTeam();
+                String detail = club == null ? "No club"
+                        : club.getName() + " · " + describeTeam(club);
+                out.add(row("PLAYER", player.getId(), player.getName(), detail,
+                        club == null ? null : club.getId(), club == null ? null : club.getName(),
+                        "player", player.getId()));
+            }
         }
 
         return ResponseEntity.ok(out);

@@ -236,34 +236,37 @@ export function createClubView(deps) {
         const search = panel.querySelector('[data-friendly-search]');
         if (search) {
             let timer = null;
-            search.addEventListener('input', () => {
-                // Debounced: this is a per-keystroke query and the answer is a list, not a warning.
-                clearTimeout(timer);
-                timer = setTimeout(async () => {
-                    const box = panel.querySelector('[data-friendly-results]');
-                    if (!box) return;
-                    const term = search.value.trim();
-                    if (!term) {
-                        box.innerHTML = '<div class="fm-subtle">Type a manager, a club or a player.</div>';
-                        return;
-                    }
-                    const rows = await friendlyPanel.loadOpponents(teamId, term);
-                    if (!rows.length) {
-                        box.innerHTML = '<div class="fm-empty">Nobody in the world matches that.</div>';
-                        return;
-                    }
-                    // A standard table: what it is, who it is, and the action. Clicking the row opens
-                    // what was found — the manager's profile, the club, the player — and the invite
-                    // button sends a friendly to the club behind it. A friendly is between two clubs,
-                    // never between a club and a person, so a manager or a player is invited by the
-                    // club they belong to rather than in their own right.
-                    box.innerHTML = `
+            // Owner, 2026-10-14: "search treba da moze da se trazi club, user ili igrac". One mixed
+            // list answers "search like the message composer", but not "find the club" — a manager
+            // looking for a side does not want the eleven people who play for it. The buttons narrow
+            // what is asked for; they never narrow the rows afterwards, so a name that happens to match
+            // all three is never hidden from you by a filter you did not choose.
+            let kind = 'ALL';
+            const runSearch = async () => {
+                const box = panel.querySelector('[data-friendly-results]');
+                if (!box) return;
+                const term = search.value.trim();
+                if (!term) {
+                    box.innerHTML = '<div class="fm-subtle">Type a club, a manager or a player.</div>';
+                    return;
+                }
+                const rows = await friendlyPanel.loadOpponents(teamId, term, kind);
+                if (!rows.length) {
+                    box.innerHTML = `<div class="fm-empty">Nothing matches "${term.replace(/[<>&]/g, '')}"
+                        ${kind === 'ALL' ? '' : ' in ' + ({ TEAM: 'clubs', USER: 'managers', PLAYER: 'players' }[kind] || '')}.</div>`;
+                    return;
+                }
+                // A standard table: what it is, who it is, and the action. Clicking the row opens
+                // what was found — the manager's profile, the league, the player — and the invite
+                // button sends a friendly to the club behind it. A friendly is between two clubs,
+                // never between a club and a person, so a manager or a player is invited by the
+                // club they belong to rather than in their own right.
+                box.innerHTML = `
                         <table class="fm-table fm-friendly-table">
                             <thead><tr><th>What</th><th>Who</th><th>Detail</th><th></th></tr></thead>
                             <tbody>
                                 ${rows.map(r => `
-                                    <tr class="fm-friendly-result" data-open="${htmlEscape(r.openFor || '')}"
-                                        data-open-arg="${htmlEscape(String(r.openArg != null ? r.openArg : ''))}">
+                                    <tr class="fm-friendly-result">
                                         <td>${htmlEscape(r.type)}</td>
                                         <td><button type="button" class="fm-link-btn js-friendly-open"
                                                 data-open="${htmlEscape(r.openFor || '')}"
@@ -279,34 +282,52 @@ export function createClubView(deps) {
                             </tbody>
                         </table>`;
 
-                    box.querySelectorAll('.js-friendly-open').forEach(button => {
-                        button.addEventListener('click', () => {
-                            const where = button.dataset.open;
-                            const arg = button.dataset.openArg;
-                            if (!where || !arg) return;
-                            if (where === 'user') window.loadPage('publicUserProfile', { userId: arg });
-                            else if (where === 'player') window.loadPlayer(arg);
-                            else if (where === 'league') window.openLeagueById(arg);
-                        });
+                box.querySelectorAll('.js-friendly-open').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const where = button.dataset.open;
+                        const arg = button.dataset.openArg;
+                        if (!where || !arg) return;
+                        if (where === 'user') window.loadPage('publicUserProfile', { userId: arg });
+                        else if (where === 'player') window.loadPlayer(arg);
+                        else if (where === 'league') window.openLeagueById(arg);
                     });
+                });
 
-                    box.querySelectorAll('.js-friendly-invite-opponent').forEach(button => {
-                        button.addEventListener('click', async () => {
-                            if (chosenSlot == null) {
-                                say('Choose an open slot first.', 'error');
-                                return;
-                            }
-                            const result = await post(
-                                `/api/season/friendlies/${teamId}/request?opponentId=${button.dataset.opponent}`
-                                + `&week=${week}&slot=${chosenSlot}`);
-                            if (!result.ok) {
-                                say(result.text, 'error');
-                                return;
-                            }
-                            await reload();
-                        });
+                box.querySelectorAll('.js-friendly-invite-opponent').forEach(button => {
+                    button.addEventListener('click', async () => {
+                        if (chosenSlot == null) {
+                            say('Choose an open slot first.', 'error');
+                            return;
+                        }
+                        const result = await post(
+                            `/api/season/friendlies/${teamId}/request?opponentId=${button.dataset.opponent}`
+                            + `&week=${week}&slot=${chosenSlot}`);
+                        if (!result.ok) {
+                            say(result.text, 'error');
+                            return;
+                        }
+                        await reload();
                     });
-                }, 250);
+                });
+            };
+
+            panel.querySelectorAll('[data-friendly-type-value]').forEach(segment => {
+                segment.addEventListener('click', () => {
+                    kind = segment.dataset.friendlyTypeValue;
+                    panel.querySelectorAll('[data-friendly-type-value]').forEach(other => {
+                        other.classList.toggle('is-on', other === segment);
+                    });
+                    // Re-run immediately rather than waiting for another keystroke: changing what you are
+                    // looking for is a decision, not a half-typed word.
+                    clearTimeout(timer);
+                    runSearch();
+                });
+            });
+
+            search.addEventListener('input', () => {
+                // Debounced: this is a per-keystroke query and the answer is a list, not a warning.
+                clearTimeout(timer);
+                timer = setTimeout(runSearch, 250);
             });
         }
 

@@ -170,6 +170,36 @@ class FriendlyOpponentAndRequestRowTest extends BaseTest {
 
     @Test
     @Transactional
+    @DisplayName("the search can be narrowed to clubs, managers or players")
+    void theSearchCanBeNarrowedByKind() throws Exception {
+        // A name that matches nothing else in the world, so "All" is exactly one club and each filter is
+        // exactly zero. Owner, 2026-10-14: "search treba da moze da se trazi club, user ili igrac".
+        Team findable = club("Zebrafold Athletic");
+        mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .param("q", "Zebrafold")
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1.0))
+                .andExpect(jsonPath("$[0].type").value("TEAM"))
+                .andExpect(jsonPath("$[0].id").value(findable.getId()));
+
+        // Narrowed to managers, the club must not come back — otherwise the filter does nothing and a
+        // manager looking for a person still gets the eleven people who play for the side.
+        mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .param("q", "Zebrafold").param("type", "USER")
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0.0));
+
+        mockMvc.perform(get("/api/season/friendlies/{teamId}/opponents", club.getId())
+                        .param("q", "Zebrafold").param("type", "TEAM")
+                        .header("Authorization", auth.bearer(UserRole.OWNER)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1.0));
+    }
+
+    @Test
+    @Transactional
     @DisplayName("a request row carries the other club's name, not an id")
     void requestRowsCarryAName() throws Exception {
         FriendlyRequest request = new FriendlyRequest();
