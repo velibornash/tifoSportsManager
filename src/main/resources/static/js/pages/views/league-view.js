@@ -197,7 +197,22 @@ export function createLeagueView(deps) {
     }
 
     function renderTable(table) {
-        renderTableView(table, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff, getTeamId });
+        renderTableView({
+            leagueId,
+            leagueName,
+            backTarget,
+            fixtureBackTarget: 'leagueTable',
+            matchCaller: 'leagueTable',
+            table,
+            fixtures: visibleRounds,
+            topScorers: mappedScorers,
+            topAssists: mappedAssists,
+            milestones,
+            seasonSummary,
+            seasons,
+            selectedSeason,
+            selectedSeasonNumber
+        }, { loadLeagueTeam, loadLeagueTeamPlayer, loadLeagueTable, loadMatch, loadFixture, escapeHtml: htmlEscape, formatGoalDiff, getTeamId });
     }
 
     async function loadLeagueMatches(seasonYear = null) {

@@ -70,6 +70,7 @@ export function createSearchView(deps) {
                 if (!where || !arg) return;
                 if (where === 'user') window.loadPage('publicUserProfile', { userId: arg });
                 else if (where === 'player') window.loadPlayer(arg);
+                else if (where === 'club') window.loadPage('clubProfile', { teamId: parseInt(arg, 10) });
                 else if (where === 'league') window.openLeagueById(arg);
             });
         });

@@ -69,8 +69,9 @@ export async function loadPublicUserProfile(userId, viewer) {
                 </div>
                 <div class="fm-medical-stat-grid team-summary-grid">
                     <div><strong>${escapeHtml(role)}</strong><span>Role</span></div>
-                    <div><strong>${escapeHtml(profile.clubName || '—')}</strong><span>Club</span></div>
-                    <div><strong>${escapeHtml(profile.leagueName || '—')}</strong><span>League</span></div>
+                    <div><strong><button type="button" class="fm-link-btn js-profile-club" data-club-id="${escapeHtml(profile.clubId)}">${escapeHtml(profile.clubName || '—')}</button></strong><span>Club</span></div>
+                    <div><strong><button type="button" class="fm-link-btn js-profile-league" data-league-id="${escapeHtml(profile.leagueId)}">${escapeHtml(profile.leagueName || '—')}</button></strong><span>League</span></div>
+                    <div><strong><button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || '—')}</button></strong><span>Country</span></div>
                     <div><strong>${profile.plusSubscriber ? 'PLUS' : '—'}</strong><span>Subscription</span></div>
                 </div>
             </section>
@@ -96,10 +97,14 @@ function renderDetails(profile, isSelf) {
         ['Name', isSelf ? nameCellHtml(displayName) : escapeHtml(displayName)],
         ['Role', escapeHtml(PRETTY_ROLE[profile.role] || profile.role || 'Manager')],
         ['Club', profile.clubId
-            ? `<button type="button" class="fm-link-btn js-open-club" data-club-id="${escapeHtml(profile.clubId)}">${escapeHtml(profile.clubName || 'Open club')}</button>`
+            ? `<button type="button" class="fm-link-btn js-profile-club" data-club-id="${escapeHtml(profile.clubId)}">${escapeHtml(profile.clubName || 'Open club')}</button>`
             : 'AI-run or no club'],
-        ['League', escapeHtml(profile.leagueName || '—')],
-        ['Country', escapeHtml(profile.countryCode || '—')],
+        ['League', profile.leagueId
+            ? `<button type="button" class="fm-link-btn js-profile-league" data-league-id="${escapeHtml(profile.leagueId)}">${escapeHtml(profile.leagueName || '—')}</button>`
+            : escapeHtml(profile.leagueName || '—')],
+        ['Country', profile.countryCode
+            ? `<button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || '—')}</button>`
+            : escapeHtml(profile.countryCode || '—')],
     ];
 
     // A manager who never chose a name is shown an email address, because that is his username and
@@ -230,19 +235,27 @@ function bind(profile, isSelf, viewer) {
     const main = document.getElementById('main-content');
     if (!main) return;
 
-    main.querySelectorAll('.js-open-club').forEach(button => {
+    main.querySelectorAll('.js-profile-club').forEach(button => {
         button.addEventListener('click', () => {
             const clubId = button.dataset.clubId;
             if (!clubId) return;
-            // The club profile page resolves the viewer's own club, not this one, so opening a
-            // rival's club here would show the wrong club's details. Saying so is better than
-            // navigating somewhere that looks right and is not.
-            if (viewer && viewer.footballTeamId && Number(viewer.footballTeamId) === Number(clubId)) {
-                window.loadPage('profile');
-                return;
-            }
-            window.alert('The club profile page shows your own club. Open a league table and '
-                + 'click the club there to see how it is doing.');
+            window.loadPage('clubProfile', { teamId: parseInt(clubId, 10) });
+        });
+    });
+
+    main.querySelectorAll('.js-profile-league').forEach(button => {
+        button.addEventListener('click', () => {
+            const leagueId = button.dataset.leagueId;
+            if (!leagueId) return;
+            window.openLeagueById(leagueId);
+        });
+    });
+
+    main.querySelectorAll('.js-profile-country').forEach(button => {
+        button.addEventListener('click', () => {
+            const countryCode = button.dataset.countryCode;
+            if (!countryCode) return;
+            window.loadPage('country', { countryCode: countryCode });
         });
     });
 

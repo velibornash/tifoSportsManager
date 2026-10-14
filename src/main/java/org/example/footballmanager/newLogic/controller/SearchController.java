@@ -155,11 +155,8 @@ public class SearchController {
         row.put("detail", detail);
         row.put("teamId", team.getId());
         row.put("teamName", team.getName());
-        // There is no page that shows an arbitrary club - the club screen shows the viewer's own club
-        // only - so a club opens the competition it plays in, which is where a manager is told to look
-        // for it anyway.
-        row.put("openFor", team.getCompetition() == null ? null : "league");
-        row.put("openArg", team.getCompetition() == null ? null : team.getCompetition().getId());
+        row.put("openFor", "club");
+        row.put("openArg", team.getId());
         return row;
     }
 

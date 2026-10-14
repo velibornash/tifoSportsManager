@@ -30,11 +30,19 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P2-6** | ✅ | **Opponent search across users, teams and players in a standard table** | ✅ **Done 2026-10-14.** Was clubs-in-your-country as a button list. Now one table of managers, clubs and players, each row naming the club a friendly goes to. |
 | **P2-7** | ✅ | **Global search page, not a friendly-only picker** | ✅ **Done 2026-10-14.** Magnifying glass after the bell; managers, clubs and players; All/Clubs/Managers/Players. |
 | **P2-8** | ✅ | **One player listed once per national squad** | ✅ **Done 2026-10-14.** Squad rows are copies carrying `source_player_id`; the real row survives and names the squads. |
+| **P1-5** | 🔴 | **A club found in search leads to its league, not to the club** | Owner report 2026-10-14. My own regression — clubs were routed to the league when no club page existed for them. |
+| **P1-6** | 🔴 | **On a manager's profile, Club opens an obsolete alert; League and Country are not links** | Owner report 2026-10-14. All three must lead where they name. |
+| **P1-7** | 🟡 | **League view title says "League view", not the league's name** | Owner report 2026-10-14. A page with no name in its own heading. |
+| **P1-8** | 🟡 | **No club in the league table is clickable** | Owner report 2026-10-14. Same on the country club ranking. |
 | **P1-1** | ✅ | **Clicking an AI club lands on a league, not on the club** | ✅ **Done 2026-10-14.** Any club has its own profile: league, tier, Elo, world position, stadium, squad. |
 | **P1-2** | ✅ | **Header "Club" button opens First Team, not Club Profile** | ✅ **Done 2026-10-14.** Now opens Club Profile, with Elo and ranking position on it. |
 | **P1-3** | 🟡 | **World page has no club list** | Owner report 2026-10-14. The country level has one; the world level should too. |
 | **P1-4** | 🔴 | **Qualifying for and advancing through international stages awards no Elo** | **Code done, NOT observed.** Ladder is the owner's and unit-tested; the bonus has not yet been seen to change a club's Elo. Match Elo already worked at 1.35. |
-| **P0-12** | 🔴 | **The account menu did not open** | ✅ **Fixed 2026-10-14** — owner reported it. `.top-menu` had `overflow: hidden`, which clipped the dropdown hanging below the bar. |
+| **P0-13** | 🔴 | **Manager profile: clicking club shows obsolete "your own club" popup** | Owner report 2026-10-14. The club name should link to the club's profile page. |
+| **P0-14** | 🔴 | **Manager profile: League and Country are not clickable** | Owner report 2026-10-14. They should link to the league view and country page. |
+| **P0-15** | 🔴 | **Search: club result goes to league, not to club profile** | My regression — clubs were routed to league when no club page existed. Now they have pages. |
+| **P0-16** | 🔴 | **League view: title says "League view", not the league name** | Owner report 2026-10-14. Should show "Opštinska liga Šid · Season 1". |
+| **P0-17** | 🔴 | **League table: clubs are not clickable** | Owner report 2026-10-14. Clicking a club should open its profile. |
 | **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | ✅ **Fixed 2026-10-14.** A claim is a request, not a booking. The ad now closes when the answer is accepted, and carries the real fixture id. |
 | **P0-14** | 🟡 | **`FriendlySlotRulesTest` is red against the current season table** | 10 of 12 fail on clean `HEAD` — it asserts the pre-reshuffle table (week 5 day 3 = round 9, 2 friendly slots in the break). Pre-existing, not a regression. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Open, needs a decision.** Now visible on the Club page as a "Next Match" in week 4 at week 6. Week 6 has no league fixtures at all. |
