@@ -488,7 +488,7 @@ export function createCountryView(deps) {
                                 <th class="sq-name">Club</th>
                                 <th>Division</th>
                                 <th>Tier</th>
-                                <th class="st-rating">Rating</th>
+                                <th class="st-rating">Points</th>
                             </tr>
                         </thead>
                         <tbody data-clubs-body>${rows.join('')}</tbody>

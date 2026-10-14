@@ -1166,7 +1166,7 @@ function buildPageNavState(page, options = {}) {
                                         <th>Country</th>
                                         <th>Division</th>
                                         <th>Tier</th>
-                                        <th class="st-rating">Rating</th>
+                                        <th class="st-rating">Points</th>
                                     </tr>
                                 </thead>
                                 <tbody data-clubs-body>${(worldClubsPayload?.clubs ?? []).map(club => `
