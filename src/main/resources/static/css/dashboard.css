@@ -3865,6 +3865,78 @@ body {
     color: #eef9f0;
 }
 
+/* ── Corner logo: back to the flow (owner 2026-10-14; designAnalysis.md P0-1) ─────────────────────────
+ *
+ * The logo was `position: fixed` in the top-right with no space reserved for it, so it floated over live
+ * UI at every desktop width. Measured at 1280×900 — the standard laptop — it sat directly on top of the
+ * season dropdown and the live clock (logo x 1106–1260, y 12–170; the clock's right edge reached 1303),
+ * and the whole application scrolled sideways (`scrollWidth` 1303 in a 1280 viewport). At 1920 it landed
+ * in empty space, which is why it survived. That is a functional break, not a cosmetic one.
+ *
+ * It is now a normal flex child of `.top-menu`, last in the row, so it takes its own space and can never
+ * sit on top of anything. `margin-left: auto` pushes it to the right edge. It is declared here, in the
+ * sheet the dashboard actually loads, so it does not depend on which other sheets happen to be present or
+ * cached.
+ */
+.desktop-only.logo-corner {
+    position: static;
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    padding: 0 4px;
+    flex: 0 0 auto;
+}
+
+.desktop-only.logo-corner .corner-logo {
+    width: 56px;
+    height: 56px;
+}
+
+/*
+ * The row of menu buttons is fixed-width and the user menu is 190px, so there is a band of desktop
+ * widths with no room for the logo *without* something else being cut. Measured in the browser by
+ * forcing it visible and reading its right edge: it does not fit at 1440 (right edge 1485) and does
+ * from 1500 up (1485, 1540, 1580, 1680 across 1500/1560/1600/1700). So the band is 769-1499.
+ *
+ * The logo is decoration and the buttons are not, so below 1500 it goes and the row is whole. The
+ * threshold is measured rather than guessed — 1440 is a common laptop width and a guessed 1400 would
+ * have put the logo half off-screen there, which is worse than the overlap it replaced.
+ */
+@media (min-width: 769px) and (max-width: 1499px) {
+    .desktop-only.logo-corner {
+        display: none;
+    }
+}
+
+/* The clock sits to the left of the logo. It must be allowed to shrink and must not force the row
+   wider than the viewport — the original bug was the opposite (the fixed logo pushed scrollWidth to
+   1303 in a 1280 window). `flex: 0 1 auto` lets it compress; the date/phase lines ellipsis instead of
+   forcing horizontal scroll. The min-width keeps it readable at ordinary desktop widths. */
+.top-menu .live-clock,
+.top-menu #live-clock {
+    flex: 0 1 auto;
+    min-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.top-menu .live-clock strong,
+.top-menu .live-clock small,
+.top-menu #live-clock strong,
+.top-menu #live-clock small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.top-menu {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .corner-logo,
 .mobile-logo-wrapper .corner-logo {
     border-color: rgba(143, 211, 255, 0.4);
