@@ -206,6 +206,7 @@ public class ClubRatingService {
     private int persistIncremental(List<Team> clubs, Map<Long, Double> current,
                                    Map<Long, Double> previous) {
         int moved = 0;
+        applyStageBonuses(clubs, current);
         for (Team club : clubs) {
             Double rating = current.get(club.getId());
             Double before = previous.get(club.getId());
@@ -305,11 +306,53 @@ public class ClubRatingService {
         return match.type() == CompetitionType.LEAGUE ? MatchValue.LEAGUE : MatchValue.CUP;
     }
 
+    /**
+     * Adds Elo for how deep each club went in an international cup (owner, 2026-10-14).
+     *
+     * <p>Read out of the draw on every replay and added to the working rating, never stored as a
+     * separate adjustment. That is what makes it impossible to award twice: a club's bonus is a
+     * function of the rounds it appears in, and a replay recomputes that function rather than adding
+     * to last week's answer.
+     *
+     * <p>Both replay paths call this — the full one and the resumed one — because a bonus applied on
+     * only one of them would show up the next time the other ran.
+     */
+    private void applyStageBonuses(List<Team> clubs, Map<Long, Double> current) {
+        Map<Long, Integer> bonusByClub = new HashMap<>();
+        for (Object[] row : matches.findInternationalStageProgress()) {
+            if (row[0] == null || row[1] == null || row[2] == null) {
+                continue;
+            }
+            org.example.footballmanager.newLogic.model.InternationalStageBonus ladder =
+                    org.example.footballmanager.newLogic.model.InternationalStageBonus
+                            .forCup(String.valueOf(row[1]));
+            if (ladder == null) {
+                continue;
+            }
+            int deepest = ((Number) row[2]).intValue();
+            boolean won = row[3] != null && ((Number) row[3]).intValue() == 1;
+            Long teamId = (Long) row[0];
+            bonusByClub.merge(teamId, ladder.bonusFor(deepest, won), Integer::sum);
+        }
+        for (Team club : clubs) {
+            Integer bonus = bonusByClub.get(club.getId());
+            Double rating = current.get(club.getId());
+            if (bonus == null || rating == null || bonus == 0) {
+                continue;
+            }
+            current.put(club.getId(), rating + bonus);
+        }
+        if (!bonusByClub.isEmpty()) {
+            log.info("Club Elo: international stage bonus added to {} club(s).", bonusByClub.size());
+        }
+    }
+
     private Result persist(List<Team> clubs, Map<Long, Double> current, Map<Long, Double> previous,
                            int replayed) {
         double highest = Double.NEGATIVE_INFINITY;
         double lowest = Double.POSITIVE_INFINITY;
         int moved = 0;
+        applyStageBonuses(clubs, current);
 
         for (Team club : clubs) {
             double rating = current.get(club.getId());

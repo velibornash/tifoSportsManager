@@ -281,4 +281,28 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
 
     @Query("SELECT m FROM Match m LEFT JOIN FETCH m.homeTeam LEFT JOIN FETCH m.awayTeam WHERE m.competition.id = :competitionId AND m.seasonYear = :seasonYear AND m.roundNumber = :roundNumber AND (m.homeTeam.id = :teamId OR m.awayTeam.id = :teamId) AND m.started = true AND m.played = false")
     List<Match> findPreparedMatchesForTeamInRound(@Param("competitionId") Long competitionId, @Param("seasonYear") Integer seasonYear, @Param("roundNumber") Integer roundNumber, @Param("teamId") Long teamId);
+
+    /**
+     * How deep each club went in each international cup: {@code teamId, competitionName, deepestRound,
+     * wonThatRound}.
+     *
+     * <p>Owner, 2026-10-14 — the stage bonus is read out of the draw rather than written down when it
+     * happens, and that is the whole reason it cannot be double-counted.
+     * {@code ClubRatingService} replays the rating from the match table rather than incrementing it, so a
+     * re-run cannot rate a match twice; a stage bonus read as "this club is in round N" has the same
+     * property for free. Nothing is accumulated anywhere, so there is nothing to accumulate wrongly.
+     *
+     * <p>{@code wonThatRound} is only meaningful when the deepest round has been played, so the caller
+     * gets a final that has not happened as a non-win rather than as a guess.
+     */
+    @Query("SELECT t.id, c.name, MAX(m.roundNumber), "
+            + "MAX(CASE WHEN m.played = true AND ("
+            + "  (m.homeTeam.id = t.id AND m.homeGoals > m.awayGoals) "
+            + "  OR (m.awayTeam.id = t.id AND m.awayGoals > m.homeGoals)) THEN 1 ELSE 0 END) "
+            + "FROM Match m JOIN m.competition c "
+            + "JOIN Team t ON t.id = m.homeTeam.id OR t.id = m.awayTeam.id "
+            + "WHERE c.scope = org.example.footballmanager.newLogic.model.CompetitionScope.INTERNATIONAL "
+            + "AND m.roundNumber IS NOT NULL "
+            + "GROUP BY t.id, c.name")
+    List<Object[]> findInternationalStageProgress();
 }

@@ -33,7 +33,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P1-1** | ✅ | **Clicking an AI club lands on a league, not on the club** | ✅ **Done 2026-10-14.** Any club has its own profile: league, tier, Elo, world position, stadium, squad. |
 | **P1-2** | ✅ | **Header "Club" button opens First Team, not Club Profile** | ✅ **Done 2026-10-14.** Now opens Club Profile, with Elo and ranking position on it. |
 | **P1-3** | 🟡 | **World page has no club list** | Owner report 2026-10-14. The country level has one; the world level should too. |
-| **P1-4** | 🔴 | **Qualifying for and advancing through international stages awards no Elo** | **Spec agreed, not built.** Match Elo already works at 1.35. Owner set a cumulative per-stage ladder for the three international cups. |
+| **P1-4** | 🔴 | **Qualifying for and advancing through international stages awards no Elo** | **Code done, NOT observed.** Ladder is the owner's and unit-tested; the bonus has not yet been seen to change a club's Elo. Match Elo already worked at 1.35. |
 | **P0-12** | 🔴 | **The account menu did not open** | ✅ **Fixed 2026-10-14** — owner reported it. `.top-menu` had `overflow: hidden`, which clipped the dropdown hanging below the bar. |
 | **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | ✅ **Fixed 2026-10-14.** A claim is a request, not a booking. The ad now closes when the answer is accepted, and carries the real fixture id. |
 | **P0-14** | 🟡 | **`FriendlySlotRulesTest` is red against the current season table** | 10 of 12 fail on clean `HEAD` — it asserts the pre-reshuffle table (week 5 day 3 = round 9, 2 friendly slots in the break). Pre-existing, not a regression. |
