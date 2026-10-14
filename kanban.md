@@ -42,7 +42,7 @@ that `game_clock`'s `current_week`/`current_day`/`current_hour` columns are **de
 | **P0-14** | 🔴 | **Manager profile: League and Country are not clickable** | Owner report 2026-10-14. They should link to the league view and country page. |
 | **P0-15** | 🔴 | **Search: club result goes to league, not to club profile** | My regression — clubs were routed to league when no club page existed. Now they have pages. |
 | **P0-16** | 🔴 | **League view: title says "League view", not the league name** | Owner report 2026-10-14. Should show "Opštinska liga Šid · Season 1". |
-| **P0-17** | 🔴 | **League table: clubs are not clickable** | Owner report 2026-10-14. Clicking a club should open its profile. |
+| **P0-17** | ✅ | **League table: clubs are not clickable** | Owner report 2026-10-14. Clicking a club should open its profile. | Made the club-name span a direct js-load-CTeam target (commit 88e4970c). |
 | **P0-13** | 🔴 | **A claimed friendly ad says FULFILLED but no fixture exists** | ✅ **Fixed 2026-10-14.** A claim is a request, not a booking. The ad now closes when the answer is accepted, and carries the real fixture id. |
 | **P0-14** | 🟡 | **`FriendlySlotRulesTest` is red against the current season table** | 10 of 12 fail on clean `HEAD` — it asserts the pre-reshuffle table (week 5 day 3 = round 9, 2 friendly slots in the break). Pre-existing, not a regression. |
 | **P0-5** | 🔴 | **824 fixtures sit in the past and will never be played** | **Open, needs a decision.** Now visible on the Club page as a "Next Match" in week 4 at week 6. Week 6 has no league fixtures at all. |
