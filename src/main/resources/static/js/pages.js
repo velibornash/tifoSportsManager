@@ -39,8 +39,13 @@ import { createClubView } from './pages/views/club-view.js';
 import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
 import { createStadiumView } from './pages/views/stadium-view.js';
 import { createAdminView } from './pages/views/admin-view.js';
+// `renderUserProfile` is deliberately NOT imported. It was the second renderer for the profile page,
+// showing the name read-only while the page that can edit it was unreachable from the menu. "My
+// profile" now uses `loadPublicUserProfile`, which is the one that has the editor. It is still exported
+// from account-menu.js for callers outside this module, but nothing here uses it, and an unused import
+// is a dead end that reads as a live path.
 import {
-    logout, paintAccountMenu, toggleUserMenu, closeUserMenu, initAccountMenu, renderUserProfile
+    logout, paintAccountMenu, toggleUserMenu, closeUserMenu, initAccountMenu
 } from './ui/account-menu.js';
     let currentUserTeamId = null;
     let currentUserTeamName = '';
@@ -1317,16 +1322,21 @@ function buildPageNavState(page, options = {}) {
      * <p>Re-fetched rather than read from a module variable, because a page you are looking at should
      * never be showing a stale copy of who you are, and the request is one small call.
      */
-    async function loadUserProfile() {
+async function loadUserProfile() {
         await ensureUserTeamId();
         try {
             const res = await authFetch('/auth/me');
             if (!res.ok) throw new Error('could not load the account');
-            renderUserProfile(await res.json(), htmlEscape, formatBudget);
+            const me = await res.json();
+            // "My profile" and a public profile are now one renderer. `viewer` is the signed-in manager,
+            // and it is what decides the "is this you?" branch — without it the page renders as somebody
+            // else's profile and the name editor is hidden.
+            await loadPublicUserProfile(me.id, me);
         } catch (err) {
             document.getElementById('main-content').innerHTML =
                 buildEmptyState('Your account could not be loaded. ' + (err && err.message ? err.message : ''));
         }
+    }
     }
 
     /**
