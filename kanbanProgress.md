@@ -100,9 +100,8 @@ separate "final" stage, only *winner* and *finalist* (lost in the final).
 | Semi-final | +150 | +50 | +40 |
 | Finalist | +150 | +60 | +50 |
 | Winner | +200 | +100 | +90 |
-| **A winner's total** | **+675** | **+305** | **+245** |
+| **A winner's total** | **+525** | **+245** | **+195** |
 | **A losing finalist** | **+475** | **+205** | **+155** |
-
 International club cups only — not domestic cups. Not yet built.
 
 *The value of asking instead of guessing:* I proposed a ladder, and the owner's differed on both the
