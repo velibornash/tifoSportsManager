@@ -92,7 +92,7 @@ function renderLibraryShelf(library, selectedId, locked) {
                     one to widen. Paste is named, and that is what makes reading another club's setup a
                     decision rather than an accident.
                 -->
-                <button type="button" id="te-paste-btn" class="big-button"${disabled}>Paste from another club</button>
+
                 <button type="button" id="te-delete-btn" class="big-button"${disabled}>Delete</button>
             </div>
             <p class="fm-subtle" style="margin-top:8px;">
@@ -100,21 +100,6 @@ function renderLibraryShelf(library, selectedId, locked) {
                 tactic you pick, so you can change it without touching the original.
             </p>
             ${library.failed ? '<p class="fm-subtle" style="margin-top:8px;">The tactic list could not be loaded. Editing still works; the shelf is unavailable.</p>' : ''}
-            <div id="te-paste-panel" class="te-paste-panel" hidden>
-                <label class="fm-subtle" style="display:flex; align-items:center; gap:6px;">
-                    Search clubs or tactics
-                    <input id="te-paste-query" class="fm-input" type="search"
-                           placeholder="club or tactic name" maxlength="60">
-                </label>
-                <div id="te-paste-results" class="te-paste-results"></div>
-                <label class="fm-subtle" style="display:flex; align-items:center; gap:6px;">
-                    Name it here
-                    <input id="te-paste-name" class="fm-input" type="text" maxlength="60"
-                           placeholder="the name it takes in your club">
-                </label>
-                <button type="button" id="te-paste-confirm" class="big-button" disabled>Paste it</button>
-                <p id="te-paste-note" class="fm-subtle"></p>
-            </div>
             <p id="te-shelf-message" class="fm-subtle" style="margin-top:8px;"></p>
         </section>`;
 }
@@ -641,7 +626,9 @@ export function createTacticEditorView(deps) {
                         };
                         const saved = await postJson(`/teams/${getTeamId()}/tactics`, payload);
                         if (!saved) throw new Error(shelfMessage || 'The tactic was not saved.');
-                        localStorage.removeItem(DRAFT_KEY); localStorage.setItem(FORMATION_KEY, state.formation);
+                        // Keep the local draft so the page reloads what the manager actually arranged,
+                        // instead of resetting to the server profile. Draft is cleared on switching tactic.
+                        localStorage.setItem(FORMATION_KEY, state.formation);
                         saveBtn.textContent = 'Saved'; await loadTacticEditor();
                     } catch (error) { console.error('Failed to save tactic editor', error); saveBtn.disabled = false; saveBtn.textContent = 'Save failed'; setTimeout(() => { saveBtn.textContent = 'Save Tactic Editor'; }, 1400); }
                 });
@@ -697,11 +684,6 @@ export function createTacticEditorView(deps) {
                                 </div>
                                 <span class="fm-panel-action">${htmlEscape(cellLabel(state.activeBallState))}</span>
                             </div>
-                            <div class="te-info-strip">
-                                <div class="te-info-pill"><strong>Ball state</strong><span>${htmlEscape(cellLabel(state.activeBallState))}</span></div>
-                                <div class="te-info-pill"><strong>Focused slot</strong><span>${htmlEscape(state.focusedSlot || '—')}</span></div>
-                                <div class="te-info-pill"><strong>Focused target</strong><span>${htmlEscape(cellLabel(focusedTarget))}</span></div>
-                            </div>
                             <div class="te-pitch-stage">
                                 ${buildCornerZonesHtml()}
                                 <div class="te-pitch-board">
@@ -732,21 +714,8 @@ export function createTacticEditorView(deps) {
                                 </div>
                                 <span class="fm-panel-action">${draftLoaded ? 'Local draft loaded' : 'Server profile'}</span>
                             </div>
-                            <div class="te-note-box">
-                                <strong>Focused slot:</strong> ${htmlEscape(focusedMeta?.slotKey || '—')}<br>
-                                <strong>Line / role:</strong> ${htmlEscape(focusedMeta?.line || '—')} / ${htmlEscape(focusedMeta?.role || '—')}<br>
-                                <strong>Anchor:</strong> ${htmlEscape(focusedMeta?.anchorCellKey || '—')}<br>
-                                <strong>Current target:</strong> ${htmlEscape(cellLabel(focusedTarget))}
-                            </div>
-                            <div class="training-actions te-actions-stack">
-                                <button type="button" id="te-clear-active" class="fm-action-btn secondary">Clear focused slot in this ball state</button>
-                                <button type="button" id="te-clear-slot" class="fm-action-btn secondary">Clear all rules for focused slot</button>
-                            </div>
-                            <div class="te-side-divider"></div>
-                            ${renderSetPieceSelects()}
                             <div class="training-actions te-actions-stack">
                                 <button type="button" id="te-save-btn" class="big-button">Save Tactic Editor</button>
-                                <button type="button" id="te-discard-draft" class="fm-action-btn secondary">Discard local draft</button>
                             </div>
                         </section>
                     </div>
