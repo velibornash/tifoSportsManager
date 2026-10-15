@@ -1101,7 +1101,7 @@ function buildPageNavState(page, options = {}) {
                         Admin &rarr; World integrity will rebuild the missing ones.
                     </div>` : ''}
 
-                    <section class="fm-panel">
+                    <section data-world-panel="competitions" class="fm-panel" hidden>
                         <div class="fm-panel-head">
                             <h3>International competitions</h3>
                         </div>
@@ -1220,7 +1220,7 @@ function buildPageNavState(page, options = {}) {
                                                teamId)
                 : '';
             const freeSlotSection = freeSlotHtml
-                ? `<section class="fm-panel fm-friendly-board-wrap">${freeSlotHtml}</section>`
+                ? `<section data-world-panel="friendlies" class="fm-panel fm-friendly-board-wrap" hidden>${freeSlotHtml}</section>`
                 : '';
             // Put it after clubs panel by appending to mainContent after render.
 
