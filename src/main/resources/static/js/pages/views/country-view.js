@@ -465,7 +465,7 @@ export function createCountryView(deps) {
         const rows = clubs.map(club => `
             <tr class="${Number(club.teamId) === Number(myTeamId) ? 'is-own-club' : ''}">
                 <td class="st-pos">${escapeNumber(club.position)}</td>
-                <td class="sq-name"><strong>${htmlEscape(club.name || 'Unknown')}</strong></td>
+                <td class="sq-name"><strong>${club.teamId ? `<span class="fm-CTeam-link" onclick="window.loadClubProfile(${Number(club.teamId)})">${htmlEscape(club.name || 'Unknown')}</span>` : htmlEscape(club.name || 'Unknown')}</strong></td>
                 <td>${htmlEscape(club.division || '—')}</td>
                 <td>${club.tier ?? '—'}</td>
                 <td class="st-rating">${typeof club.points === 'number' ? club.points.toFixed(2) : '—'}
@@ -488,7 +488,7 @@ export function createCountryView(deps) {
                                 <th class="sq-name">Club</th>
                                 <th>Division</th>
                                 <th>Tier</th>
-                                <th class="st-rating">Points</th>
+                                <th class="st-rating">Rating</th>
                             </tr>
                         </thead>
                         <tbody data-clubs-body>${rows.join('')}</tbody>
