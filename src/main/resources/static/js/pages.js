@@ -1138,9 +1138,11 @@ function buildPageNavState(page, options = {}) {
                             planned week.</p>
                     </section>
 
-                    <div class="fm-player-tabs" role="tablist" aria-label="World rankings">
+                    <div class="fm-player-tabs" role="tablist" aria-label="World sections">
                         <button type="button" class="fm-player-tab is-active" data-world-tab="countries">Countries</button>
                         <button type="button" class="fm-player-tab" data-world-tab="clubs">Clubs</button>
+                        <button type="button" class="fm-player-tab" data-world-tab="competitions">Competitions</button>
+                        <button type="button" class="fm-player-tab" data-world-tab="friendlies">Friendlies</button>
                     </div>
 
                     <section data-world-panel="countries" class="fm-panel">
