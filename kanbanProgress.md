@@ -1,3 +1,9 @@
+## 2026-10-15 — Tactic editor cleaned up and save fixed
+
+- Removed the paste-club/search-and-paste controls and the focused-slot, server-profile and set-piece panel from the editor.
+- Save now keeps the local draft, so the tactical arrangement shown does not reset to the club default.
+- Frontend package rebuilt and app restarted after the change.
+
 ## 2026-10-15 — Database reset, full seed, reseed and training report
 
 - Reset, initialized and seeded all 48 countries; 14,880 clubs, 48 national sides.
