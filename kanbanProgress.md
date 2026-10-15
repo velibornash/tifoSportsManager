@@ -1,3 +1,13 @@
+## 2026-10-14 — World country and club ranking separated; free-slot board and search invites
+
+- World page now has dedicated Countries and Clubs tabs; the club tab lists clubs by Elo, matching the
+  single rating system.
+- Free-slot friendly board added to the World page (reuse of `FriendlyOfferService` + `friendly-board.js`).
+- Search results now show an "Invite to friendly" action that discovers a free slot and sends the
+  request directly.
+- Club offers book immediately because the advertiser has already consented; friendlies already feed the
+  schedule and match lists through the season fixture lookup.
+
 ## 2026-10-14 — manual detail shots
 
 - Training report screenshot changed to one opened report, academy and finances got scrolled detail crops, manual/PDF rebuilt.
