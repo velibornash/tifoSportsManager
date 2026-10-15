@@ -1,3 +1,11 @@
+## 2026-10-15 — Database reset, full seed, reseed and training report
+
+- Reset, initialized and seeded all 48 countries; 14,880 clubs, 48 national sides.
+- Removed an N+1 player lookup inside `NationalTeamSeeder.squadsFor`; reseed now finishes in seconds, scored 96 sides and produced national squads.
+- Verified Serbia U-21 now has 25 real players and no past-fixture backlog remains.
+- Ran weekly training for the owner club; report returned fully populated.
+- Free slot board, World tabs and search inviting continue to load end-to-end with agent-browser.
+
 ## 2026-10-14 — World country and club ranking separated; free-slot board and search invites
 
 - World page now has dedicated Countries and Clubs tabs; the club tab lists clubs by Elo, matching the
