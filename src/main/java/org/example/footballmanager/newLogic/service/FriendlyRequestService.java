@@ -533,4 +533,51 @@ public class FriendlyRequestService {
         }
         return open;
     }
+
+
+    /**
+     * The first future slot both clubs are free in, when a direct invitation is preferred over the board.
+     *
+     * <p>Used by the search entry point: a manager finds a club and offers a friendly without browsing
+     * the board. The answer names a week and a slot; a refusal with no free slot leaves the invitation
+     * unsendable rather than guessing.
+     */
+    public Optional<org.example.footballmanager.newLogic.model.SeasonCalendar.WeekSlot> firstFreeSlot(
+            Long teamId, Long opponentId) {
+        GameClock clock = currentClock();
+        if (teamId == null || opponentId == null || clock == null || clock.getCurrentSeason() == null) {
+            return Optional.empty();
+        }
+        int season = clock.getCurrentSeason();
+        int currentWeek = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        int currentDay = clock.getCurrentDay() == null ? 1 : clock.getCurrentDay();
+        for (int week = currentWeek; week <= org.example.footballmanager.newLogic.model.SeasonCalendar.WEEKS_PER_SEASON; week++) {
+            for (int slot = 1; slot <= org.example.footballmanager.newLogic.model.SeasonCalendar.SLOTS_PER_WEEK; slot++) {
+                org.example.footballmanager.newLogic.model.SeasonCalendar.WeekSlot weekSlot =
+                        org.example.footballmanager.newLogic.model.SeasonCalendar.slot(week, slot);
+                if (weekSlot == null || !weekSlot.friendlyCapable()) {
+                    continue;
+                }
+                int day = weekSlot.day();
+                if (week == currentWeek && currentDay > day) {
+                    continue;
+                }
+                if (season != clock.getCurrentSeason()) {
+                    continue;
+                }
+                org.example.footballmanager.newLogic.service.FriendlyRequestService.WeekSnapshot snap =
+                        new WeekSnapshot(season, week);
+                if (snap.hasFixture(teamId) || snap.hasFixture(opponentId)) {
+                    continue;
+                }
+                if (snap.liveIn(teamId, slot) || snap.liveIn(opponentId, slot)) {
+                    continue;
+                }
+                // playoff round occupancy is already covered by hasFixture above; the slot test is enough
+                return Optional.of(weekSlot);
+            }
+        }
+        return Optional.empty();
+    }
+
 }

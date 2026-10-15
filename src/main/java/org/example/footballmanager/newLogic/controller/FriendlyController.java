@@ -146,6 +146,20 @@ public class FriendlyController {
         return ResponseEntity.ok(created.get());
     }
 
+    @GetMapping("/{teamId}/free-slot")
+    public ResponseEntity<?> freeSlot(@PathVariable Long teamId,
+                                       @RequestParam Long opponentId) {
+        return friendlies.firstFreeSlot(teamId, opponentId)
+                .map(slot -> {
+                    Map<String, Object> body = new java.util.LinkedHashMap<>();
+                    body.put("week", slot.week());
+                    body.put("slot", slot.slot());
+                    body.put("day", slot.day());
+                    return ResponseEntity.ok(body);
+                })
+                .orElseGet(() -> ResponseEntity.status(409).body(Map.of("error", "No free slot for either club")));
+    }
+
     /** Accepts or refuses a request addressed to this club. */
     @PostMapping("/{teamId}/requests/{requestId}")
     public ResponseEntity<?> respond(@PathVariable Long teamId,
