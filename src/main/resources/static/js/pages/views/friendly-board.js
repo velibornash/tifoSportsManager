@@ -103,5 +103,67 @@ export function createFriendlyBoard(deps) {
             </section>`;
     }
 
-    return { loadBoard, loadMine, buildHtml };
+    function wire(root, teamId) {
+        const boardEl = root.querySelector('[data-friendly-board]');
+        if (!boardEl || !teamId) return;
+
+        const season = boardEl.dataset.season;
+        const week = boardEl.dataset.week;
+
+        const say = (text, kind) => {
+            const box = boardEl.querySelector('[data-offer-message]');
+            if (!box) return;
+            box.hidden = false;
+            box.className = `fm-friendly-message ${kind === 'error' ? 'is-error' : 'is-ok'}`;
+            box.textContent = text;
+        };
+
+        const post = async (path) => {
+            const response = await authFetch(path, { method: 'POST' });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                return { ok: false, text: payload.detail || payload.error || `That could not be done (status ${response.status}).` };
+            }
+            return { ok: true };
+        };
+
+        const reload = async () => {
+            const freshBoard = await loadBoard(season, week);
+            const freshMine = await loadMine(teamId, season, week);
+            const holder = document.createElement('div');
+            holder.innerHTML = buildHtml(freshBoard, freshMine, teamId);
+            const replacement = holder.firstElementChild;
+            if (replacement) {
+                boardEl.replaceWith(replacement);
+                wire(document.getElementById('main-content'), teamId);
+            }
+        };
+
+        const showForm = boardEl.querySelector('[data-offer-post]');
+        const closeForm = boardEl.querySelector('[data-offer-cancel]');
+        const form = boardEl.querySelector('[data-offer-form]');
+        if (showForm) showForm.addEventListener('click', () => { if (form) form.hidden = !form.hidden; });
+        if (closeForm) closeForm.addEventListener('click', () => { if (form) form.hidden = true; });
+
+        const confirm = boardEl.querySelector('[data-offer-post-confirm]');
+        if (confirm) {
+            confirm.addEventListener('click', async () => {
+                const select = boardEl.querySelector('[data-offer-slot]');
+                const slot = select ? select.value : '1';
+                const result = await post(`/api/season/friendly-offers?teamId=${teamId}&week=${week}&slot=${slot}`);
+                if (!result.ok) { say(result.text, 'error'); return; }
+                await reload();
+            });
+        }
+
+        boardEl.querySelectorAll('[data-offer-claim]').forEach(button => {
+            button.addEventListener('click', async () => {
+                const result = await post(`/api/season/friendly-offers/${button.dataset.offerClaim}/claim?teamId=${teamId}`);
+                if (!result.ok) { say(result.text, 'error'); return; }
+                await reload();
+            });
+        });
+    }
+
+    return { loadBoard, loadMine, buildHtml, wire };
 }

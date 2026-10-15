@@ -1026,14 +1026,19 @@ function buildPageNavState(page, options = {}) {
     async function loadWorldPage() {
         const mainContent = document.getElementById('main-content');
         try {
-            const [res, nationalRes, clubsRes] = await Promise.all([
+            const teamId = typeof currentUserTeamId !== 'undefined' ? currentUserTeamId : null;
+            const [res, nationalRes, clubsRes, boardRes, mineRes] = await Promise.all([
                 authFetch('/countries/world'), authFetch('/api/national-tournaments'),
-                authFetch('/countries/world/clubs/ranking?limit=500')
+                authFetch('/countries/world/clubs/ranking?limit=500'),
+                worldFriendlyBoard.loadBoard(),
+                teamId ? worldFriendlyBoard.loadMine(teamId) : Promise.resolve(null)
             ]);
             if (!res.ok || !nationalRes.ok) throw new Error('World unavailable');
             const world = await res.json();
             const national = await nationalRes.json();
             const worldClubsPayload = clubsRes && clubsRes.ok ? await clubsRes.json() : null;
+            const worldFriendlyBoardData = boardRes && !boardRes.failed ? boardRes : null;
+            const worldFriendlyMineData = mineRes && !mineRes.failed ? mineRes : null;
             const nationalRows = Array.isArray(national.competitions) ? national.competitions : [];
             const countries = Array.isArray(world.countries) ? world.countries : [];
 
@@ -1208,6 +1213,18 @@ function buildPageNavState(page, options = {}) {
                 button.addEventListener('click', () => setWorldTab(button.dataset.worldTab));
             });
             setWorldTab('countries');
+
+            // free-slot board
+            const freeSlotSection = freeSlotHtml
+                ? `<section class="fm-panel fm-friendly-board-wrap">${freeSlotHtml}</section>`
+                : '';
+            // Put it after clubs panel by appending to mainContent after render.
+
+            if (freeSlotSection) {
+                const host = mainContent.querySelector('.fm-page--world') || mainContent;
+                host.insertAdjacentHTML('beforeend', freeSlotSection);
+                worldFriendlyBoard.wire(mainContent, teamId);
+            }
 
             const openCountry = row => {
                 const iso = String(row.dataset.worldCountry || '').toUpperCase();
