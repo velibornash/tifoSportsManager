@@ -13,7 +13,9 @@ import { htmlEscape } from './utils.js';
  * ask for a friendly. A search over the world is something you stay on and keep typing into.
  */
 export function createSearchView(deps) {
-    const { authFetch } = deps;
+    const { authFetch, getTeamId } = deps;
+    const myTeamId = () => (typeof getTeamId === 'function' ? getTeamId() : null);
+
 
     let timer = null;
     let kind = 'ALL';
@@ -56,7 +58,10 @@ export function createSearchView(deps) {
                             <td><button type="button" class="fm-link-btn js-open"
                                     data-open="${htmlEscape(r.openFor || '')}"
                                     data-open-arg="${htmlEscape(String(r.openArg != null ? r.openArg : ''))}"
-                                    ${r.openFor ? '' : 'disabled'}>${htmlEscape(r.name)}</button></td>
+                                    ${r.openFor ? '' : 'disabled'}>${htmlEscape(r.name)}</button>
+                                    ${r.teamId && r.teamId !== myTeamId()
+                                      ? `<button type="button" class="fm-action-btn primary js-invite" data-team="${htmlEscape(String(r.teamId))}">Invite to friendly</button>` : ''}
+                            </td>
                             <td class="fm-subtle">${htmlEscape(r.detail || '')}</td>
                         </tr>`).join('')}
                 </tbody>
@@ -73,6 +78,29 @@ export function createSearchView(deps) {
                 else if (where === 'club') window.loadPage('clubProfile', { teamId: parseInt(arg, 10) });
                 else if (where === 'league') window.openLeagueById(arg);
             });
+        box.querySelectorAll('.js-invite').forEach(button => {
+            button.addEventListener('click', async () => {
+                const opponentId = Number(button.dataset.team);
+                const me = myTeamId();
+                if (!me || !opponentId) return;
+                button.disabled = true;
+                const slotResponse = await authFetch(`/api/season/friendlies/${me}/free-slot?opponentId=${opponentId}`);
+                const slot = slotResponse.ok ? await slotResponse.json() : null;
+                if (!slot || !slot.week || !slot.slot) {
+                    button.disabled = false;
+                    window.alert('No shared free slot exists this season.');
+                    return;
+                }
+                const create = await authFetch(`/api/season/friendlies/${me}/request?opponentId=${opponentId}&week=${slot.week}&slot=${slot.slot}`, { method: 'POST' });
+                if (!create.ok) {
+                    button.disabled = false;
+                    const payload = await create.json().catch(() => ({}));
+                    window.alert(payload.detail || payload.error || 'The request could not be sent.');
+                    return;
+                }
+                button.textContent = 'Invited';
+            });
+        });
         });
     }
 

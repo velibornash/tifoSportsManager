@@ -526,7 +526,7 @@ function buildPageNavState(page, options = {}) {
         // prediction before, lineups, stats, goals and a report after (P0-PREV-3).
         loadMatch: (...args) => loadMatch(...args)
     });
-    const searchView = createSearchView({ authFetch });
+    const searchView = createSearchView({ authFetch, getTeamId: () => currentUserTeamId });
     const worldFriendlyBoard = createFriendlyBoard({ authFetch });
 
     const statsView = createStatsView({
