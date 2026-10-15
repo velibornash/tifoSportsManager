@@ -36,6 +36,7 @@ import { createClubCupView } from './pages/views/club-cup-view.js';
 import { createNationalTournamentView, NATIONAL_COMPETITIONS } from './pages/views/national-tournament-view.js';
 import { createStatsView } from './pages/views/stats-view.js';
 import { createSearchView } from './pages/views/search-view.js';
+import { createFriendlyBoard } from './pages/views/friendly-board.js';
 import { createClubView } from './pages/views/club-view.js';
 import { loadPublicUserProfile } from './pages/views/user-profile-view.js';
 import { createStadiumView } from './pages/views/stadium-view.js';
@@ -526,6 +527,7 @@ function buildPageNavState(page, options = {}) {
         loadMatch: (...args) => loadMatch(...args)
     });
     const searchView = createSearchView({ authFetch });
+    const worldFriendlyBoard = createFriendlyBoard({ authFetch });
 
     const statsView = createStatsView({
         authFetch, getTeamId: () => currentUserTeamId,
@@ -1131,7 +1133,12 @@ function buildPageNavState(page, options = {}) {
                             planned week.</p>
                     </section>
 
-                    <section class="fm-panel">
+                    <div class="fm-player-tabs" role="tablist" aria-label="World rankings">
+                        <button type="button" class="fm-player-tab is-active" data-world-tab="countries">Countries</button>
+                        <button type="button" class="fm-player-tab" data-world-tab="clubs">Clubs</button>
+                    </div>
+
+                    <section data-world-panel="countries" class="fm-panel">
                         <div class="fm-panel-head">
                             <h3>Countries</h3>
                         </div>
@@ -1150,7 +1157,7 @@ function buildPageNavState(page, options = {}) {
                         </div>
                     </section>
 
-                    <section class="fm-panel fm-clubs-ranking">
+                    <section data-world-panel="clubs" class="fm-panel fm-clubs-ranking" hidden>
                         <div class="fm-panel-head">
                             <div>
                                 <h3>World club ranking</h3>
@@ -1166,7 +1173,7 @@ function buildPageNavState(page, options = {}) {
                                         <th>Country</th>
                                         <th>Division</th>
                                         <th>Tier</th>
-                                        <th class="st-rating">Points</th>
+                                        <th class="st-rating">Rating</th>
                                     </tr>
                                 </thead>
                                 <tbody data-clubs-body>${(worldClubsPayload?.clubs ?? []).map(club => `
@@ -1187,6 +1194,20 @@ function buildPageNavState(page, options = {}) {
                         </div>
                     </section>
                 </div>`;
+
+            // World ranking tabs: county vs clubs (owner, 2026-10-14).
+            const setWorldTab = (tab) => {
+                mainContent.querySelectorAll('[data-world-tab]').forEach(button => {
+                    button.classList.toggle('is-active', button.dataset.worldTab === tab);
+                });
+                mainContent.querySelectorAll('[data-world-panel]').forEach(panel => {
+                    panel.hidden = panel.dataset.worldPanel !== tab;
+                });
+            };
+            mainContent.querySelectorAll('[data-world-tab]').forEach(button => {
+                button.addEventListener('click', () => setWorldTab(button.dataset.worldTab));
+            });
+            setWorldTab('countries');
 
             const openCountry = row => {
                 const iso = String(row.dataset.worldCountry || '').toUpperCase();
