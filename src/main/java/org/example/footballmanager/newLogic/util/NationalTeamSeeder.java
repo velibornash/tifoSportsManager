@@ -276,8 +276,21 @@ public class NationalTeamSeeder {
         // this country's clubs by query and memoises them: the senior side and the U21 side are drawn
         // from the same clubs, and forty-eight countries are drawn in one pass, so a per-country scan
         // of every club in the world is a scan of the world forty-eight times over.
-        for (Team club : clubsIn(country)) {
-            for (Player p : players.findByTeamId(club.getId())) {
+        // One query per country instead of one per club: the squad draw asks about every real player
+        // in one country, and issuing players.findByTeamId(...) inside the club loop turned the reseed
+        // into tens of thousands of sequential round trips. `findByTeamIdIn` returns the same rows
+        // without the N+1 (2026-10-15).
+        List<Team> clubs = clubsIn(country);
+        List<Long> clubIds = clubs.stream()
+                .map(Team::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        java.util.Map<Long, java.util.List<Player>> playersByClub =
+                players.findByTeamIdIn(clubIds).stream()
+                        .collect(java.util.stream.Collectors.groupingBy(p -> p.getTeam() == null ? null : p.getTeam().getId()));
+        for (Team club : clubs) {
+            java.util.List<Player> clubPlayers = playersByClub.getOrDefault(club.getId(), java.util.Collections.emptyList());
+            for (Player p : clubPlayers) {
                 // U-21 squad: only players aged 21 or younger. The pool already filters by team;
                 // this keeps a 29-year-old real player from being copied into the U-21 side (owner
                 // report: Serbia U-21 had 29-year-olds in the squad).
