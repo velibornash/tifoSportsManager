@@ -1214,7 +1214,11 @@ function buildPageNavState(page, options = {}) {
             });
             setWorldTab('countries');
 
-            // free-slot board
+            const freeSlotHtml = worldFriendlyBoard && typeof worldFriendlyBoard.buildHtml === 'function'
+                ? worldFriendlyBoard.buildHtml(worldFriendlyBoardData == null ? { failed: true, status: 0 } : worldFriendlyBoardData,
+                                               worldFriendlyMineData == null ? { failed: true, status: 0 } : worldFriendlyMineData,
+                                               teamId)
+                : '';
             const freeSlotSection = freeSlotHtml
                 ? `<section class="fm-panel fm-friendly-board-wrap">${freeSlotHtml}</section>`
                 : '';
