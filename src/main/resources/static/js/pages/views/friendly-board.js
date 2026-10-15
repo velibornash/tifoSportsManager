@@ -79,8 +79,8 @@ export function createFriendlyBoard(deps) {
                         <h4>Advertise a slot</h4>
                         <p class="fm-subtle">Pick the slot. It will be published until that day ends.</p>
                         <select class="fm-input" data-offer-slot>
-                            <option value="1">Day 1</option>
-                            <option value="3">Day 5</option>
+                            <option value="1">${board.season} · ${board.week} · Day 1 · 20:45</option>
+                            <option value="3">${board.season} · ${board.week} · Day 5 · 18:00</option>
                         </select>
                         <button type="button" class="fm-action-btn primary" data-offer-post-confirm>Advertise</button>
                         <button type="button" class="fm-action-btn secondary" data-offer-cancel>Cancel</button>
