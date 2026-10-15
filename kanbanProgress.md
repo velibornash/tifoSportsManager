@@ -1,3 +1,9 @@
+## 2026-10-15 — Break-week offers and season-1 club cups
+
+- International club cup redraw now accepts season 1 and draws Tier 1 through Tier 5 for active season 1; `/club-cups` shows back button and tier fixtures.
+- World free-slot board now shows week 6, where clubs may post and accept slots without a league fixture.
+- Removed weekday names (Thursday/Sunday) from friendly labels; labels now use Day x and season/week/day/slot context.
+
 ## 2026-10-15 — Tactic editor cleaned up and save fixed
 
 - Removed the paste-club/search-and-paste controls and the focused-slot, server-profile and set-piece panel from the editor.
