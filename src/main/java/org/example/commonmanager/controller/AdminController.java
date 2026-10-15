@@ -232,7 +232,7 @@ public class AdminController {
         int season = drawnInto != null ? drawnInto : active + 1;
         int qualifying = qualifyingFrom != null ? qualifyingFrom : season - 1;
 
-        if (qualifying >= season) {
+        if (qualifying > season) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "A cup cannot be drawn for season " + season + " off season " + qualifying
                             + "'s tables, because season " + qualifying + " is not finished yet.",

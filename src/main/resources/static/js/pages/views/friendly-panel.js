@@ -16,13 +16,13 @@
 
 import { htmlEscape } from './utils.js';
 
-const DAY_NAMES = { 1: 'Thursday', 7: 'Sunday' };
+
 
 export function createFriendlyPanel(deps) {
     const { authFetch } = deps;
 
     function dayLabel(day) {
-        return DAY_NAMES[day] || `Day ${day}`;
+        return `Day ${day}`;
     }
 
     async function loadFriendlyWeek(teamId, week, season) {

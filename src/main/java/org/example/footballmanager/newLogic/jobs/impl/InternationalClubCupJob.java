@@ -215,7 +215,7 @@ public class InternationalClubCupJob implements DayJob {
             // season's tables keeps the rule itself intact - same comparator, same positions, same
             // rules - and only changes which season it is asked about.
             boolean fromFirstSeason = false;
-            if (entrants.isEmpty() && qualifying < targetSeason) {
+            if (entrants.isEmpty() && qualifying <= targetSeason) {
                 entrants = cups.qualifiedForFirstSeason(cup, targetSeason);
                 fromFirstSeason = !entrants.isEmpty();
             }

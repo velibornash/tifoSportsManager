@@ -1030,8 +1030,10 @@ function buildPageNavState(page, options = {}) {
             const [res, nationalRes, clubsRes, boardRes, mineRes] = await Promise.all([
                 authFetch('/countries/world'), authFetch('/api/national-tournaments'),
                 authFetch('/countries/world/clubs/ranking?limit=500'),
-                worldFriendlyBoard.loadBoard(),
-                teamId ? worldFriendlyBoard.loadMine(teamId) : Promise.resolve(null)
+                // Week 6 is the break week: no club matches, so clubs can actually advertise
+                // and take a slot without being blocked by a league fixture.
+                worldFriendlyBoard.loadBoard(null, 6),
+                teamId ? worldFriendlyBoard.loadMine(teamId, null, 6) : Promise.resolve(null)
             ]);
             if (!res.ok || !nationalRes.ok) throw new Error('World unavailable');
             const world = await res.json();
