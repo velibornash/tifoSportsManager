@@ -1,3 +1,9 @@
+## 2026-10-16 - Mobile bottom nav and clock fixed with JS detection
+
+- Added a user-agent / touch based mobile flag and applied it to bottom nav and clock.
+- Ensures proper layout even when media queries are not triggered.
+- Updated MD.
+
 ## 2026-10-16 - Touch-safe fixes for mobile bottom nav and clock
 
 - Added touch-pointer media (`hover: none and pointer: coarse`) so the bottom nav stays horizontal
