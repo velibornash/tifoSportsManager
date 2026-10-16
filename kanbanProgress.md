@@ -1,3 +1,36 @@
+## 2026-10-16 - Match Setup: the eleven is the tactics board now
+
+The owner: "the eleven and the bench as they are is **not good** — the eleven and the bench should look
+like tactics setup, Starting XI + Selection Dock, literally the same." And: remove **Formation**, **Save
+team**, **Back to default eleven** and the "the order you pick is the order they play in" paragraph.
+**Game plan stays.**
+
+**One component, not two.** `pages/views/lineup-board.js` now owns the pitch, the bench grid, the
+available pool, the drag and drop and the mobile dropdowns. `formations-view.js` went from 454 lines to
+167 and calls it; `match-lineup-view.js` calls the same one. "Literally the same" is only true while
+there is one implementation — two pitches drift apart the first time either is touched.
+
+**Why there is no save button.** Removing "Save team" removes the only thing that writes the eleven, so
+the owner's decision was that the board saves itself, 600 ms after the last change. Errors print above
+the board instead of being swallowed, and an incomplete eleven says how many are still to pick rather
+than saving a broken team.
+
+**The fixture's players and the club's players are two shapes.** `/api/sim/fixtures/{id}/lineup` gives a
+name, a `role` ("CENTRE_BACK"), injured and suspended — no `position`, no `overall`. The board needs
+`position` to know who may fill a slot and `overall` to print on the chip. The club's squad is read once
+and joined on, with the fixture's injury and suspension always winning over the club's record.
+
+**Seen in the browser, not assumed.** Match Setup on fixture 5440 (v GER Premier FC01): 11 pitch slots,
+11 filled, 7 bench slots, the Selection Dock beside the pitch, chips reading "Aleksandar Simić / ATT,
+OVR 68". Formation, Save team, Back to default eleven and the old paragraph are gone; Game plan is still
+mounted. A drag from the bench onto a midfield slot wrote through to the database — starters
+`…2412, 2404…`, bench `[2405, 2413]` — and the fixture was put back afterwards. Tactics Setup after the
+refactor: same pitch, 11/11, save button intact, and a swap saved through the page's own button.
+
+Worth knowing: `node --check` **passed** on a file the browser refused to parse. It has to be
+`node --input-type=module --check` — a broken template literal inside an ES module is not a syntax
+error to the CommonJS parser.
+
 ## 2026-10-16 - Matches opens the Schedule; no Results entry in the Club menu
 
 - The Club menu's **Matches** entry opens the Schedule page directly. The Matches submenu (Back,
