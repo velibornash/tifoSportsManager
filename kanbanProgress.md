@@ -1,3 +1,9 @@
+## 2026-10-16 - Inline club summary without duplicated actions
+
+- Removed the repeated club action toolbar from club pages.
+- Added one inline Club overview summary line: position, points, W-D-L and goal difference.
+- Kept league stats data updated on that line, with a safe fallback when no league exists.
+
 ## 2026-10-16 - Collapsed repeated action rows and inline club summary
 
 - Club action rows now stay collapsed by default to avoid duplicate navigation.
