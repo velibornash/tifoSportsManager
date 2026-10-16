@@ -31,7 +31,7 @@ browser**; `kanbanProgress.md` carries what was measured and what each one actua
 | **NAV-5** | 🟡 | **Club submenu from the bottom nav had no Back** | ✅ **Fixed and seen.** Every group now opens with Back, Club included. |
 | **NAV-6** | 🟡 | **Schedule and Results sat directly in the Club menu** | ✅ **Fixed and seen.** Matches → Back, Schedule, Results; the Club menu keeps one Matches entry. |
 | **NAV-7** | 🟡 | **The tactics-setup page titled itself "Tactic Editor"** | ✅ **Fixed and seen.** Tactics Setup on the setup page; the editor keeps its own name. |
-| **NAV-8** | 🔴 | **Transfers took about ten seconds to open** | ✅ **Fixed, measured.** `GET /transfers` **11.70 s → 0.61 s**; the page opens in **0.65 s** with 89 rows. Two N+1 queries removed; same database, same server, same request. Guarded by `TransferScoutReadCountTest`. |
+| **NAV-8** | 🔴 | **Transfers took about ten seconds to open** | ✅ **Fixed, measured.** `GET /transfers` **11.70 s → 0.61 s**; the page opens in **0.65 s** (0.82 s on a repeat run) with 89 rows. Two N+1 queries removed; same database, same server, same request. Guarded by `TransferScoutReadCountTest`. |
 
 ---
 

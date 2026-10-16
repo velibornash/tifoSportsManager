@@ -5,7 +5,7 @@
 | | Before | After |
 |---|---|---|
 | `GET /transfers?teamId=1` | 11.70 s / 11.62 s | 0.61 s / 0.66 s / 0.61 s |
-| Transfers page, nav click to 89 rendered rows | — | **0.65 s** |
+| Transfers page, nav click to 89 rendered rows | — | **0.65 s / 0.82 s** |
 
 **What was wrong.** `TransferService.scoutedUnlisted` asked the database two questions it already knew
 the answer to:
