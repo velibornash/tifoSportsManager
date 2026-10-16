@@ -183,6 +183,7 @@ function updateLiveClock() {
 
     document.querySelectorAll('.live-clock-time-mobile').forEach(el => { el.textContent = timeStr; });
     document.querySelectorAll('.live-clock-date-mobile').forEach(el => { el.textContent = seasonWeek; });
+    document.querySelectorAll('.bottom-clock-date').forEach(el => { el.textContent = seasonWeek; });
 }
 
 syncGameClock();

@@ -486,7 +486,7 @@
     bottom: 0;
     z-index: 1300;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr) !important;
     gap: 4px;
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     background: rgba(8, 12, 20, 0.94);
@@ -619,7 +619,7 @@
 /* JS-detected mobile shell. */
 html.is-mobile-nav .mobile-bottom-nav {
     display: grid !important;
-    grid-template-columns: repeat(5, 1fr) !important;
+    grid-template-columns: repeat(6, 1fr) !important;
 }
 html.is-mobile-nav .live-clock-mobile,
 html.is-mobile-nav .live-clock-mobile-header {
