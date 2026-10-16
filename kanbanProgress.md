@@ -1,17 +1,22 @@
-## 2026-10-16 - First Team squad: sortable; Club milestones and Medical Center removed
+## 2026-10-16 - Back fixed, Country shows its name, main menu tidied up
 
-Owner: "prvi tim u Club - first team, o uba view da lista/tabela igraca bude sortabilna po apps, gls, ast,
-av rat.. izbaciti club ,ilestones i medical center iz first team styranice za oba view-a."
+Owner: "back dugme u nav baru iz podmen ija npr club - tactics ne vraca na prethodni nego na home, gtreba da
+vraca na prethodni. Country u nav bar-u treba pored zastavice da pise IME ZEMLJE a ne 'Country'."
 
-- Club milestones panel and Medical Center side panel are gone from the enhanced First Team view.
-- `loadFirstTeam()` no longer fetches `/teams/{id}/milestones` or `/teams/{id}/medical`, so two round trips
-  are saved per page open.
-- `buildSquadTableHtml` learned `sortable`; the `Apps / Gls / Ast / Av Rat` headers now carry
-  `data-sort`, every row emits `data-apps`, `data-goals`, `data-assists`, `data-rating`, and
-  `bindSortableSquadTable` reorders the rows locally off a click.
-- Verified in the browser: sorting by any of the four headers reorders all 13 rows; milestones and the
-  medical panel are absent.
+* `desktopNavBack()` no longer invents a destination when the menu stack is empty: it just returns. That is
+  what "goes to home" actually was earlier, because an empty stack was being answered as if it were the
+  root menu. The menu the manager came from is now the menu Back returns to. Verified in the browser:
+  Club to Squad to Back returns to the Club menu; Back once more returns to nothing instead of jumping
+  to the root menu.
+* The desktop navigation bar's Country entry now reads "🇷🇸 Serbia" (the manager's country, from
+  `/auth/me`) with the flag as its icon, rather than the word "Country". Exposed on `window.fmCountryName`.
+* Verified in the browser: the label and flag render, and the filter on the international tab finds the
+  Champions Cup. Console stays empty.
 
+And separately, in this same pass, the First Team listing's 'Apps / Gls / Ast / Av Rat' columns became
+sortable client-side and the rest of the enlistment of milestones + medical panels came off.
+
+## 2026-10-16 - Mobile header locked; nav-bar text made bigger with transparent background
 ## 2026-10-16 - Mobile header locked; nav-bar text made bigger with transparent background
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore", "sat na kom
