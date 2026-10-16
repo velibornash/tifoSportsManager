@@ -27,6 +27,29 @@ the new one is the lowest 60 player ids in the country, and it is **stable acros
 calling the endpoint twice and comparing row for row. Without the sort the new query would also have
 reshuffled the market on every call, which is worse than either.
 
+**The guard.** `TransferScoutReadCountTest`, six tests over mocked repositories, no Spring context.
+Every assertion was checked by putting the old code back:
+
+| What I broke on purpose | What the guard said |
+|---|---|
+| per-club squad reads, and asking the database about the whole world | `asked for 39 individual club squads` — expected 0 |
+| per-player "is he on the market?" reads | the exact-count assertion fails |
+| the ISO-code question replaced by a Java-side filter | `expected one question of the database for this country's clubs, got 0` |
+| the `sorted(by id)` removed from the cut | `two identical calls returned different scout rows` |
+
+The last one needed the mock to answer the way Postgres does: a query with no `ORDER BY` may return
+rows in any order, so the bulk squad read returns them reversed on alternate calls. With a mock that
+answered in a fixed order the stability guard would have passed against code with no ordering at all —
+a green test measuring nothing.
+
+`TransferCompletionTest` is red in this area, on the pre-NAV-8 code as well: three errors, pre-existing.
+
+**Also left alone:** a leftover `stash@{0}` from an earlier session
+(`WIP on main: 61a172a Test the table rebuild, and prove the test can fail`) holds 58 insertions and
+18 deletions in `CSMatchSimulator.java` — a Counter-Strike teletext score fix that jumps backwards
+because penalties were generated after open play. It is uncommitted work belonging to another task and
+was **not** touched here. It is still in the stash.
+
 ## 2026-10-16 - NAV-7: the setup page is Tactics Setup, not Tactic Editor
 
 - Two different pages shared one heading. The club tactics setup page is now "Tactics Setup"; the drag-
