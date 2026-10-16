@@ -562,7 +562,7 @@
 @media (max-width: 768px) {
     .top-menu > .live-clock.mobile-only,
     .live-clock-mobile {
-        display: inline-flex !important;
+        display:block !important;
         flex-direction: column !important;
         align-items: center !important;
         gap: 0 !important;
@@ -579,7 +579,7 @@
 @media (max-width: 768px) {
     .top-menu > .live-clock-mobile,
     .live-clock-mobile {
-        display: inline-flex !important;
+        display:block !important;
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
@@ -601,9 +601,33 @@
     .top-menu > .live-clock-mobile,
     .live-clock-mobile,
     .live-clock-mobile-header {
-        display: inline-flex !important;
+        display:block !important;
         flex-direction: column !important;
         align-items: center !important;
         gap: 0 !important;
     }
+}
+
+/* Clock is two stacked physical lines on phones. */
+@media (max-width:768px) {
+ .live-clock-mobile, .live-clock-mobile-header { display:block !important; }
+ .live-clock-time-mobile, .live-clock-date-mobile { display:block !important; width:100%; text-align:center; }
+ .mobile-bottom-nav { display:grid !important; grid-template-columns:repeat(5, 1fr) !important; }
+}
+
+
+/* JS-detected mobile shell. */
+body.is-mobile-nav .mobile-bottom-nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+}
+body.is-mobile-nav .live-clock-mobile,
+body.is-mobile-nav .live-clock-mobile-header {
+    display: block !important;
+}
+body.is-mobile-nav .live-clock-time-mobile,
+body.is-mobile-nav .live-clock-date-mobile {
+    display: block !important;
+    width: 100%;
+    text-align: center;
 }
