@@ -1,3 +1,7 @@
+## 2026-10-16 - Back walks one menu up, verified; Country label + First Team ready
+
+Reviewed and verified against the browser (Club to Squad to Back to Club menu; Back again to root;
+trim<rfl:parameter name=" moraju da ne iscrtava homy<rfl:parameter name="<rfl:parameter name=").
 ## 2026-10-16 - Back fixed, Country shows its name, main menu tidied up
 
 Owner: "back dugme u nav baru iz podmen ija npr club - tactics ne vraca na prethodni nego na home, gtreba da

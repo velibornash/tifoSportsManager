@@ -1829,7 +1829,7 @@ async function loadUserProfile() {
         }
         // Only set to null if parent is main; the root menu is the only menu shown without a Back
         // button, and only on the dashboard. For a page underneath that root bar shows main (no Back).
-        desktopNavOverrideGroup = parent === 'main' ? null : parent;
+        desktopNavOverrideGroup = parent;
         renderDesktopBottomNav(currentPageId);
     }
 
