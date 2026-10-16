@@ -458,28 +458,35 @@ function closeDropdown() {
  * <p>Rendered on open rather than on every poll: a closed dropdown nobody can see does not need its
  * markup rebuilt 120 times an hour.
  */
+export async function toggleNotificationDropdown() {
+    const bell = document.getElementById('notification-bell');
+    const dropdown = document.getElementById('notification-dropdown');
+    if (!bell || !dropdown) return;
+    const willOpen = dropdown.hidden;
+    dropdown.hidden = !willOpen;
+    bell.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen) {
+        try {
+            const response = await authFetch(`/notifications?size=${DROPDOWN_PAGE}`);
+            if (response.ok) {
+                const payload = await response.json();
+                dropdown.innerHTML = buildDropdownHtml(payload);
+                bindDropdown(dropdown);
+            }
+        } catch {
+            dropdown.innerHTML = '<div class="notification-empty">Could not load notifications.</div>';
+        }
+    }
+}
+
 export function wireNotificationBell() {
     const bell = document.getElementById('notification-bell');
     const dropdown = document.getElementById('notification-dropdown');
     if (!bell || !dropdown) return;
 
-    bell.addEventListener('click', async (event) => {
+    bell.addEventListener('click', (event) => {
         event.stopPropagation();
-        const willOpen = dropdown.hidden;
-        dropdown.hidden = !willOpen;
-        bell.setAttribute('aria-expanded', String(willOpen));
-        if (willOpen) {
-            try {
-                const response = await authFetch(`/notifications?size=${DROPDOWN_PAGE}`);
-                if (response.ok) {
-                    const payload = await response.json();
-                    dropdown.innerHTML = buildDropdownHtml(payload);
-                    bindDropdown(dropdown);
-                }
-            } catch {
-                dropdown.innerHTML = '<div class="notification-empty">Could not load notifications.</div>';
-            }
-        }
+        void toggleNotificationDropdown();
     });
 
     document.addEventListener('click', (event) => {
@@ -497,3 +504,5 @@ export function wireNotificationBell() {
         }
     });
 }
+
+window.toggleNotificationDropdown = toggleNotificationDropdown;

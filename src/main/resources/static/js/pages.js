@@ -1708,14 +1708,23 @@ async function loadUserProfile() {
             { label: 'World', page: 'world' },
             { label: 'Community', page: 'forum' },
             { label: 'Search', page: 'search' },
-            { label: 'Notifications', onclick: 'window.openNotificationPanel()' },
+            { label: 'Notifications', onclick: 'window.openNotificationPanel(event)' },
             { label: 'Admin', page: 'admin', adminOnly: true },
             { label: 'User Settings', page: 'settings' },
         ];
     }
 
 
-    function openNotificationPanel() {
+    function openNotificationPanel(event) {
+        // The dropdown closes itself on any document click outside the bell, so a nav entry that opens
+        // it has to stop the very click that opened it or the panel opens and shuts in the same tick.
+        if (event && typeof event.stopPropagation === 'function') {
+            event.stopPropagation();
+        }
+        if (typeof window.toggleNotificationDropdown === 'function') {
+            void window.toggleNotificationDropdown();
+            return;
+        }
         document.querySelector('#notification-bell')?.click();
     }
 
@@ -1778,7 +1787,7 @@ async function loadUserProfile() {
                             ? `window.location.href = "${item.isExternal}"`
                             : (item.page
                                 ? `window.desktopNavGo('${item.page}'${optionsLiteral})`
-                                : (item.onclick ? item.onclick : ''))));
+                                : (item.onclick ? `event.preventDefault(); event.stopPropagation(); ${item.onclick}(event)` : ''))));
                 const icon = item.icon || icons[item.label] || '•';
                 return `<button type="button" onclick="${onclick}">
                     <span class="desktop-nav-icon">${icon}</span>

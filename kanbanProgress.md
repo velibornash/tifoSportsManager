@@ -1,3 +1,13 @@
+## 2026-10-16 - NAV-1: bottom-nav Notifications opens the dropdown
+
+- `toggleNotificationDropdown()` is now an exported function that both the header bell and the nav entry
+  call, instead of the nav entry firing a synthetic click at the bell.
+- The real cause was the close handler, not the open: the dropdown closes on any document click
+  outside the bell, so the nav entry's own click opened it and closed it again in the same tick.
+  Nav actions now stop propagation.
+- Seen in the browser: nav entry opens it (`hidden: false`), bell toggles it, a click on the page
+  closes it. "Nothing yet" is correct — there are no notifications.
+
 ## 2026-10-16 - Desktop bottom-nav drill-down completed
 
 - Club: Squad -> First team/Juniors; Tactics -> Tactics setup/Tactic Editor; Training -> Setup/Reports; Results moved after Schedule.
