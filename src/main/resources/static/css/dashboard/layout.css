@@ -476,3 +476,58 @@
     font-weight: bold;
     color: #2a8c4a;
 }
+
+
+/* Bottom navigation for phone shell. */
+.mobile-bottom-nav.mobile-only {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1300;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    background: rgba(8, 12, 20, 0.94);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px);
+}
+
+.mobile-bottom-nav button {
+    display: grid;
+    align-items: center;
+    justify-items: center;
+    min-height: 44px;
+    gap: 1px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #c7d2e3;
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+}
+
+.mobile-bottom-nav button:active {
+    background: rgba(143, 211, 255, 0.12);
+    color: #eef4ff;
+}
+
+.mobile-bottom-nav button span {
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding-bottom: 72px;
+    }
+}
+
+@media (min-width: 769px) {
+    .mobile-bottom-nav {
+        display: none;
+    }
+}
+

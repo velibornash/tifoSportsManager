@@ -189,6 +189,14 @@
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
 
+<nav class="mobile-bottom-nav mobile-only" aria-label="Mobile navigation">
+    <button type="button" onclick="loadDashboard()">&#127968;<span>Home</span></button>
+    <button type="button" onclick="loadPage('clubProfile')">&#9917;<span>Club</span></button>
+    <button type="button" onclick="loadPage('leagueTable')">&#127942;<span>League</span></button>
+    <button type="button" onclick="loadPage('world')">&#127757;<span>World</span></button>
+    <button type="button" onclick="loadPage('search')">&#128269;<span>Search</span></button>
+</nav>
+
 <div class="dashboard-content">
     <div id="main-content" style="opacity:0.9"></div>
 </div>
