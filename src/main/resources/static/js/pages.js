@@ -1658,8 +1658,8 @@ async function loadUserProfile() {
             return [
                 { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
                 { label: 'My profile', onclick: 'window.loadUserProfile()' },
-                { label: 'Club settings', page: 'clubProfileSettings' },
                 { label: 'Settings', page: 'settings' },
+                { label: 'Sign out', onclick: 'window.logout()' },
             ];
         }
         return [
