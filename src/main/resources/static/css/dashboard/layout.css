@@ -723,3 +723,30 @@ body.desktop-bottom-nav-on {
 /* JS mobile-class fallback for first four team columns. */
 html.is-mobile-nav .fm-squad-wrap .fm-squad th:nth-child(n+3):nth-child(-n+8), html.is-mobile-nav .fm-squad-wrap .fm-squad td:nth-child(n+3):nth-child(-n+8) { display: none !important; }
 html.is-mobile-nav .club-profile-detail-row strong { overflow-wrap: break-word; }
+
+
+/* Club stat text should break at word boundaries, never mid-word;
+   prefer a slightly smaller type to fitting a broken line. */
+.fm-club-hero .fm-medical-stat-grid > div strong,
+.fm-club-hero .fm-medical-stat-grid > div span,
+.club-profile-detail-row strong {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: auto;
+    text-wrap: balance;
+}
+
+.fm-club-hero .fm-medical-stat-grid > div strong {
+    font-size: 0.86rem;
+}
+
+.fm-club-hero .fm-medical-stat-grid > div span {
+    font-size: 0.72rem;
+}
+
+/* On narrow phones, give long club values enough width instead of breaking "Omladinac" awkwardly. */
+@media (max-width: 768px) {
+    .fm-club-hero .fm-medical-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}
