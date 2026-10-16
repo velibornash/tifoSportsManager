@@ -171,8 +171,8 @@ function updateLiveClock() {
     // Game state only, per the owner (2026-09-28): the real calendar date is not a category in this
     // world. The day is a position in the seven-day cycle and is derived from the clock, so it and
     // the time beside it are the same instant by construction.
-    const dayText = dayLabel ? ` · Day ${dayNumber} (${dayLabel})` : ` · Day ${dayNumber}`;
-    const seasonWeek = `Season ${seasonNumber} • Week ${weekNumber}${dayText}`;
+    // Short header form: season, week, day. No day-name, no phase sentence.
+    const seasonWeek = `S${seasonNumber}/W${weekNumber}/D${dayNumber}`;
 
     const timeEl = document.getElementById('clock-time');
     const dateEl = document.getElementById('clock-date');
