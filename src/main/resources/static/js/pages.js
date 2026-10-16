@@ -1576,13 +1576,13 @@ async function loadUserProfile() {
         return next;
     }
 
-    /** The top bar's height, as a CSS variable the navigation bar sticks to. */
+    /** The bar's own height, as `--desktop-nav-h`: in the top position the page starts below it. */
     function measureTopBar() {
-        const topBar = document.querySelector('.top-menu');
-        if (!topBar) return;
-        const height = Math.round(topBar.getBoundingClientRect().height);
+        const nav = document.querySelector('.desktop-nav');
+        if (!nav) return;
+        const height = Math.round(nav.getBoundingClientRect().height);
         if (height > 0) {
-            document.documentElement.style.setProperty('--fm-topbar-h', `${height}px`);
+            document.documentElement.style.setProperty('--desktop-nav-h', `${height}px`);
         }
     }
 

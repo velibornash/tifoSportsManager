@@ -674,13 +674,13 @@ html.is-mobile-nav .live-clock-date-mobile {
  * when the bar grows a line.
  */
 .desktop-nav {
-    position: sticky;
+    position: fixed;
     display: flex;
     align-items: center;
     gap: 12px;
     left: 0;
     right: 0;
-    top: var(--fm-topbar-h, 84px);
+    top: 0;
     z-index: 1240;
     padding: 8px 12px;
     background: rgba(8, 12, 20, 0.94);
@@ -689,13 +689,14 @@ html.is-mobile-nav .live-clock-date-mobile {
     -webkit-backdrop-filter: blur(14px);
 }
 
+/* A desktop bar at the top sits where the header used to be. No measured offset any more: the header
+   is gone and the bar is the first thing on screen, which is what the owner asked for when he said
+   "pin it to the top, the way you pinned it to the bottom". */
 html.nav-bottom .desktop-nav {
-    position: fixed;
     top: auto;
     bottom: 0;
     border-bottom: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
 .desktop-nav .bottom-nav-grid {
@@ -708,55 +709,40 @@ html.nav-bottom .desktop-nav {
     margin: 0 auto;
 }
 
+/* The nav's right-hand cluster deliberately spans three sizes of screen without stealing the grid's
+   space; on a narrow desktop it shrinks and the grid still gets the room. */
 .desktop-nav-right {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 10px;
     padding-left: 12px;
+    max-width: 50vw;
+    overflow: hidden;
 }
 
-/* Bottom position: the bar may be short (few items), so pad evenly. */
-html.nav-bottom .desktop-nav {
-    justify-content: space-between;
+/* TOP position: content starts below the bar. BOTTOM position: ... */
+html.nav-top body {
+    padding-top: var(--desktop-nav-h, 72px);
 }
 
-.desktop-nav button {
-    display: grid;
-    align-items: center;
-    justify-items: center;
-    min-height: 54px;
-    gap: 2px;
-    border: 0;
-    border-radius: 10px;
-    background: transparent;
-    color: #c7d2e3;
-    font-size: 0.72rem;
-    font-weight: 700;
-    line-height: 1.05;
-}
-
-.desktop-nav button:active,
-.desktop-nav button:hover {
-    background: rgba(143, 211, 255, 0.12);
-    color: #eef4ff;
-}
-
-/* **The phone keeps its own header; the desktop's header is gone** (owner, 2026-10-16). Everything it
-   used to carry sits inside `.desktop-nav` now, so hiding the mobile header on desktop removes a row
-   of elements that were only there for phones. */
+/* BOTTOM: the existing rule already adds the padding-bottom - keep it. */
+/* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */
+/* Desktop hides its own (now dead) top bar. The phone keeps its header. */
 @media (min-width: 769px) {
     .top-menu {
         display: none !important;
     }
 }
 
-/* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */
 @media (max-width: 768px) {
     html.is-mobile-nav .desktop-nav {
         display: none !important;
     }
 }
+
+html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
+
 
 /* Content must not hide behind the bar. In the bottom position it needs room at the foot of the page;
    in the top position the bar is in normal flow under the top bar and needs nothing.
