@@ -1,3 +1,9 @@
+## 2026-10-16 - Header short labels and icon search
+
+- Mobile search control now shows only the search icon, with no text label.
+- Clock date line is now `S/W/D` shorthand and stays below the time.
+- Updated MD after saving.
+
 ## 2026-10-16 - Mobile header visible again
 
 - Restored the notification bell at the top of the header.
