@@ -3988,9 +3988,16 @@ body {
     position: static;
     display: flex;
     align-items: center;
-    margin-left: auto;
     padding: 0 4px;
     flex: 0 0 auto;
+}
+
+/* **The clock and the logo sit together in the top right corner** (owner, 2026-10-16), in both
+   navigation positions. The auto margin therefore belongs to the account menu, which is the only
+   thing left in this row that belongs on the left - it used to belong to the logo, which left the
+   clock stranded mid-row with a gap between them. */
+.top-menu .user-menu {
+    margin-left: auto;
 }
 
 .desktop-only.logo-corner .corner-logo {
@@ -4004,16 +4011,14 @@ body {
  * forcing it visible and reading its right edge: it does not fit at 1440 (right edge 1485) and does
  * from 1500 up (1485, 1540, 1580, 1680 across 1500/1560/1600/1700). So the band is 769-1499.
  *
- * The logo is decoration and the buttons are not, so below 1500 it goes and the row is whole. The
- * threshold is measured rather than guessed — 1440 is a common laptop width and a guessed 1400 would
- * have put the logo half off-screen there, which is worse than the overlap it replaced.
+ * **This threshold was removed on 2026-10-16, and the logo now shows at every desktop width.**
+ * The rule hid the logo below 1500px because the top bar also carried eight destination buttons that
+ * needed the room: measured at 1440 the row ran to 1485 and the logo was pushed off screen. That row
+ * is gone - the destinations are one navigation bar below the top bar now - so the reason this
+ * existed no longer does, and the owner asked for the clock, the S/W/D line and the logo to stay in
+ * the top right corner whatever the navigation is doing. A logo that disappears at 1440, which is a
+ * common laptop width, is not "in the corner".
  */
-@media (min-width: 769px) and (max-width: 1499px) {
-    .desktop-only.logo-corner {
-        display: none;
-    }
-}
-
 /* The clock sits to the left of the logo. It must be allowed to shrink and must not force the row
    wider than the viewport — the original bug was the opposite (the fixed logo pushed scrollWidth to
    1303 in a 1280 window). `flex: 0 1 auto` lets it compress; the date/phase lines ellipsis instead of

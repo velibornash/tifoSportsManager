@@ -661,26 +661,41 @@ html.is-mobile-nav .live-clock-date-mobile {
 }
 
 
-/* Desktop bottom navigation, visually identical to the mobile bar but covering every header
-   destination. Off by `fm_desktop_bottom_nav=false`. */
-.desktop-bottom-nav {
-    position: fixed;
+/* The desktop navigation: one bar, two positions (owner, 2026-10-16).
+ *
+ * It replaced the row of destination buttons that used to sit in the top header, and it is the same
+ * component the bottom position already used - one element, one set of buttons, so the two positions
+ * cannot drift apart. `html.nav-top` / `html.nav-bottom` decide where it sits; the clock, the S/W/D
+ * line and the logo stay in the top bar in both.
+ *
+ * The clock is what fixes the top offset. It is measured, not guessed: at the standard desktop width
+ * the top bar is 86px tall, so a sticky bar offset of 84 leaves the navigation clear of it without a
+ * visible seam. `--fm-topbar-h` is written by the same measurement in `pages.js`, so the two agree
+ * when the bar grows a line.
+ */
+.desktop-nav {
+    position: sticky;
     left: 0;
     right: 0;
-    bottom: 0;
-    z-index: 1250;
-    display: none;
-    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+    top: var(--fm-topbar-h, 84px);
+    z-index: 1240;
+    padding: 8px 12px;
     background: rgba(8, 12, 20, 0.94);
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
 }
 
-html.desktop-bottom-nav-on .desktop-bottom-nav {
-    display: block;
+html.nav-bottom .desktop-nav {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    border-bottom: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
-.desktop-bottom-nav .bottom-nav-grid {
+.desktop-nav .bottom-nav-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
     gap: 6px;
@@ -688,7 +703,7 @@ html.desktop-bottom-nav-on .desktop-bottom-nav {
     margin: 0 auto;
 }
 
-.desktop-bottom-nav button {
+.desktop-nav button {
     display: grid;
     align-items: center;
     justify-items: center;
@@ -703,20 +718,24 @@ html.desktop-bottom-nav-on .desktop-bottom-nav {
     line-height: 1.05;
 }
 
-.desktop-bottom-nav button:active,
-.desktop-bottom-nav button:hover {
+.desktop-nav button:active,
+.desktop-nav button:hover {
     background: rgba(143, 211, 255, 0.12);
     color: #eef4ff;
 }
 
+/* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */
 @media (max-width: 768px) {
-    html.is-mobile-nav .desktop-bottom-nav {
+    html.is-mobile-nav .desktop-nav {
         display: none !important;
     }
 }
 
-/* Prevent content hidden behind fixed bottom bars. */
-body.desktop-bottom-nav-on {
+/* Content must not hide behind the bar. In the bottom position it needs room at the foot of the page;
+   in the top position the bar is in normal flow under the top bar and needs nothing.
+   The old rule was `body.desktop-bottom-nav-on` while the class was set on <html>, so it never
+   applied and the last row of every page sat under the bar. */
+html.nav-bottom body {
     padding-bottom: max(76px, env(safe-area-inset-bottom));
 }
 

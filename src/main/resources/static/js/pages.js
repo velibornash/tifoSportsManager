@@ -1559,10 +1559,38 @@ async function loadUserProfile() {
     }
 
     window.openLeagueById = openLeagueById;
+    /**
+     * Applies the chosen position to the document.
+     *
+     * <p>Exposed because the radio has to change the bar under the manager's finger, and because the
+     * measured top-bar height is written here too: the top position sticks the navigation directly under
+     * the clock, and that offset is the height of the bar rather than a number someone guessed once.
+     */
+    function applyDesktopNavPosition(position) {
+        const next = position === 'bottom' ? 'bottom' : 'top';
+        localStorage.setItem('fm_desktop_nav_position', next);
+        document.documentElement.classList.toggle('nav-bottom', next === 'bottom');
+        document.documentElement.classList.toggle('nav-top', next !== 'bottom');
+        window.desktopNavPosition = next;
+        measureTopBar();
+        return next;
+    }
+
+    /** The top bar's height, as a CSS variable the navigation bar sticks to. */
+    function measureTopBar() {
+        const topBar = document.querySelector('.top-menu');
+        if (!topBar) return;
+        const height = Math.round(topBar.getBoundingClientRect().height);
+        if (height > 0) {
+            document.documentElement.style.setProperty('--fm-topbar-h', `${height}px`);
+        }
+    }
+
     async function loadSettingsPage() {
         const mainContent = document.getElementById("main-content");
-        const pref = localStorage.getItem("fm_desktop_bottom_nav");
-        const enabled = pref === null || pref === "true";
+        // Same rule as the head script: anything that is not 'bottom' is 'top'. The old checkbox key
+        // is not consulted, because it cannot be told apart from its own default.
+        const position = localStorage.getItem('fm_desktop_nav_position') === 'bottom' ? 'bottom' : 'top';
         mainContent.innerHTML = `
             <div class="fm-page fm-page--settings">
                 <section class="fm-panel">
@@ -1573,21 +1601,28 @@ async function loadUserProfile() {
                         </div>
                         <span class="fm-panel-action">Settings</span>
                     </div>
-                    <label class="fm-field" style="display:flex; align-items:center; gap:10px;">
-                        <input type="checkbox" id="settings-desktop-nav" ${enabled ? "checked" : ""}>
-                        <span>Show the bottom navigation on desktop</span>
-                    </label>
-                    <p class="fm-subtle" style="margin-top:10px;">Default: yes. Mobile navigation is unaffected.</p>
+                    <fieldset class="fm-field" style="border:0; padding:0; margin:0;">
+                        <legend class="fm-field-label">Navigation menu</legend>
+                        <label class="fm-field" style="display:flex; align-items:center; gap:10px;">
+                            <input type="radio" name="settings-nav-position" value="top" data-nav-position
+                                   ${position === 'top' ? 'checked' : ''}>
+                            <span>Top</span>
+                        </label>
+                        <label class="fm-field" style="display:flex; align-items:center; gap:10px;">
+                            <input type="radio" name="settings-nav-position" value="bottom" data-nav-position
+                                   ${position === 'bottom' ? 'checked' : ''}>
+                            <span>Bottom</span>
+                        </label>
+                    </fieldset>
+                    <p class="fm-subtle" style="margin-top:10px;">Default: top. The clock and the logo stay
+                        in the top corner either way. Mobile navigation is unaffected.</p>
                 </section>
             </div>`;
-        const checkbox = document.getElementById("settings-desktop-nav");
-        if (checkbox) {
-            checkbox.addEventListener("change", () => {
-                const next = !!checkbox.checked;
-                localStorage.setItem("fm_desktop_bottom_nav", String(next));
-                document.documentElement.classList.toggle("desktop-bottom-nav-on", next);
+        mainContent.querySelectorAll('[data-nav-position]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) applyDesktopNavPosition(radio.value);
             });
-        }
+        });
     }
 
     function desktopBottomNavGroup(page) {
@@ -1814,7 +1849,7 @@ async function loadUserProfile() {
         const countryFlag = countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍';
         icons.Country = countryFlag;
         icons['National Team'] = countryFlag;
-        const grid = document.getElementById('desktop-bottom-nav-grid');
+        const grid = document.getElementById('desktop-nav-grid');
         if (!grid) return;
         const group = desktopNavOverrideGroup || desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
         const items = desktopBottomNavItems(group);
@@ -1851,6 +1886,7 @@ async function loadUserProfile() {
     window.setDesktopNavGroup = setDesktopNavGroup;
     window.renderDesktopBottomNav = renderDesktopBottomNav;
     window.loadSettingsPage = loadSettingsPage;
+    window.applyDesktopNavPosition = applyDesktopNavPosition;
     window.logout = logout;
     window.loadUserProfile = loadUserProfile;
     window.openUserProfile = openUserProfile;
@@ -1865,6 +1901,9 @@ async function loadUserProfile() {
     // bar is the first place the old name is looked at. Owner, 2026-10-14.
     window.loadUserTeamId = loadUserTeamId;
     try { renderDesktopBottomNav('dashboard'); } catch (e) { /* layout may not exist yet */ }
+    // The navigation bar sticks directly under the top bar in the top position, and the offset is that
+    // bar's height. Measured here rather than hard-coded, because the clock and the logo decide it.
+    try { measureTopBar(); } catch (e) { /* layout may not exist yet */ }
     initAccountMenu();
     // Signing out from anywhere must also close the account panel, or the next person at this
     // machine opens it and still sees the previous user's name in it.

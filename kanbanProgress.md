@@ -1,3 +1,44 @@
+## 2026-10-16 - One navigation bar, top or bottom; Settings asks which
+
+Owner: "instead of the current top header menu, put an identical nav bar to the bottom one", a radio in
+Settings for **top or bottom** (default top), and "whatever menu is chosen, the clock and S/W/D and the
+logo stay in the top right corner".
+
+**One bar, two positions.** `.desktop-bottom-nav` is now `.desktop-nav` with one set of buttons, and
+`html.nav-top` / `html.nav-bottom` decides where it sits: sticky under the top bar, or fixed at the
+foot. Two copies of the same list in two rows is what this removes. The top offset is not a guessed
+number - `measureTopBar()` writes `--fm-topbar-h` from the top bar's measured height, so the navigation
+cannot end up under the clock when that bar grows a line.
+
+**The eight destination buttons are gone from the header** - Sports Lobby, Club, League, Country,
+World, Community, Search, Admin. What stays is the notification bell, the account corner, the clock and
+the logo.
+
+**Getting the corner right took three stale rules, not one.** The logo was hidden below 1500px by a
+media query whose stated reason was that eight buttons needed the room; that row is gone, so it now
+shows at every desktop width - a logo that vanishes at 1440 is not "in the corner". The clock carried
+`margin-left: auto; margin-right: 190px` to reserve a hole for a logo that used to be `position: fixed`.
+And the logo itself had `margin-left: auto` again. Between them they stranded the clock mid-row with a
+430px gap to the logo. The auto margin now belongs to the **account menu**, the only thing on the left,
+and the clock and logo sit together: measured 15px apart, clock right edge 1173, logo right edge 1260 in
+a 1280 viewport, identical in both positions.
+
+**Settings now asks a question instead of offering a toggle.** "Show the bottom navigation on desktop /
+Default: yes" is gone; "Navigation menu: Top / Bottom", default top, applied live under the finger.
+
+**The old checkbox key is deliberately not migrated.** `fm_desktop_bottom_nav` was a checkbox that
+defaulted to on, so its stored value cannot be told apart from its own default - "migrating" it would
+read as knowledge the setting never had. The new key is `fm_desktop_nav_position`, anything that is not
+`bottom` is `top`.
+
+**One latent bug fixed on the way.** The rule reserving room for the bottom bar was
+`body.desktop-bottom-nav-on` while the class was set on `<html>`, so it had never applied and the last
+row of every page sat under the bar. It is `html.nav-bottom body` now.
+
+**Seen in the browser**, at both positions: the bar is flush with its edge (top 86 = the top bar's
+bottom; bottom 577 = the viewport), no overlap, `scrollWidth` 1280 in a 1280 window, radio switching
+applies without a reload, console empty.
+
 ## 2026-10-16 - Game plan removed; Tactic Editor shape and style belong to one tactic
 
 **The question first, because the answer decided the change.** Game plan was three numbered slots —

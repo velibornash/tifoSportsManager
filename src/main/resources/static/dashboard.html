@@ -20,11 +20,26 @@
     </script>
     <script>
       (function() {
+        // **Where the desktop navigation sits: top or bottom. Default top.**
+        //
+        // Read before first paint so the bar never jumps. Anything that is not one of the two positions
+        // is top, which is the owner's default.
+        //
+        // The old `fm_desktop_bottom_nav` checkbox is deliberately NOT migrated. Its stored value cannot
+        // be told apart from its own default - it was a checkbox that defaulted to on - so "migrating"
+        // it would read as knowledge the setting never contained. The bar is now the same in both
+        // positions and the owner has set the default, so a fresh top is the honest answer.
         try {
-            var pref = localStorage.getItem('fm_desktop_bottom_nav');
-            var on = pref === null || pref === 'true';
-            if (on) document.documentElement.classList.add('desktop-bottom-nav-on');
-        } catch (e) {}
+            var KEY = 'fm_desktop_nav_position';
+            var stored = localStorage.getItem(KEY);
+            var position = stored === 'bottom' ? 'bottom' : 'top';
+            if (stored !== position) localStorage.setItem(KEY, position);
+            document.documentElement.classList.add(position === 'bottom' ? 'nav-bottom' : 'nav-top');
+            window.desktopNavPosition = position;
+        } catch (e) {
+            document.documentElement.classList.add('nav-top');
+            window.desktopNavPosition = 'top';
+        }
       })();
     </script>
 </head>
@@ -49,31 +64,15 @@
     <div class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" data-nav-page="search" aria-label="Search">
         <span class="menu-button-icon mobile-search-icon" aria-hidden="true">&#128269;</span>
     </div>
-    <div class="menu-button menu-button--stacked desktop-only" onclick="window.location.href='/home.html'"><span class="menu-button-icon" aria-hidden="true">⚽🏀🏈</span><span class="menu-button-label">Sports Lobby</span></div>
-    <div class="menu-button menu-button--stacked desktop-only" onclick="loadPage('clubProfile')"><span class="menu-button-icon" aria-hidden="true">⚽</span><span class="menu-button-label">Club</span></div>
-    <div class="menu-button menu-button--stacked desktop-only" onclick="loadPage('leagueTable')"><span class="menu-button-icon" aria-hidden="true">&#127942;</span><span class="menu-button-label">League</span></div>
-	    <div id="country-menu-button" class="menu-button menu-button--stacked desktop-only" onclick="showMyCountry()"><span class="menu-button-icon" aria-hidden="true">&#127758;</span><span class="menu-button-label">Country</span></div>
-	    <div class="menu-button menu-button--stacked desktop-only" onclick="loadPage('world')"><span class="menu-button-icon" aria-hidden="true">🌍</span><span class="menu-button-label">World</span></div>
-    <!-- One Community entry with Forum and Messages as options on the page, the way Club carries
-         First Team and Schedule. The envelope is scaled because U+2709 renders small beside the emoji
-         the other buttons use, and a different glyph would make the row stop reading as one set. -->
-    <div class="menu-button menu-button--stacked desktop-only community-menu-button"
-         onclick="loadPage('forum')"><span class="community-menu-icon menu-button-icon" aria-hidden="true">&#9993;</span><span class="menu-button-label">Community</span></div>
-    <!-- The notification bell. Not a menu button: it opens a panel rather than navigating, and it is
-         the only part of the top bar that changes without the manager doing anything. -->
-    <!-- Global search. Owner, 2026-10-14: "dugme sa lupica ikonicom posle dugmeta notification u
-         headeru, kad se klikne otvori se search stranica u kojoj mogu da se pretrazuju useri, klubovi
-         ili igraci". It is a page and not a panel, because a search over the whole world is not a
-         dropdown - it is something you stay on and keep typing into. -->
-    <div class="menu-button menu-button--stacked desktop-only desktop-header-search" onclick="loadPage('search')"
-         data-nav-page="search">
-        <span class="menu-button-icon" aria-hidden="true">&#128269;</span>
-        <span class="menu-button-label">Search</span>
-    </div>
-    <div id="admin-menu-button" class="menu-button menu-button--stacked desktop-only" data-admin-only hidden onclick="loadPage('admin')"><span class="menu-button-icon" aria-hidden="true">&#128295;</span><span class="menu-button-label">Admin</span></div>
+    <!-- **The desktop destinations are gone from this bar.** Owner, 2026-10-16: "instead of the
+         current top header menu, put an identical nav bar to the bottom one". The eight buttons that
+         used to sit here - Sports Lobby, Club, League, Country, World, Community, Search, Admin - are
+         now one navigation bar, `#desktop-nav`, which is the same component whichever position it is
+         set to. Two copies of the same list in two rows is the thing this removes.
+         What stays here is what that bar is not: who is signed in, the clock, and the logo. -->
     <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
-         no way out of a session at all on a phone. This is the account corner: who you are, your
-         profile, and the way out. -->
+         no way out of a session at all on a phone. It stays because it carries the manager's name,
+         which no icon in the navigation bar can. -->
     <div class="user-menu desktop-only">
         <button type="button" class="menu-button user-menu-trigger" id="user-menu-trigger"
                 aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
@@ -223,8 +222,11 @@
     </div>
 </nav>
 
-<nav class="desktop-bottom-nav" aria-label="Desktop navigation">
-    <div class="bottom-nav-grid" id="desktop-bottom-nav-grid"></div>
+<!-- **One navigation, two positions.** Owner, 2026-10-16: the same bar the bottom had, now optionally
+     at the top. It is one element with one set of buttons; `html.nav-top` / `html.nav-bottom` decide
+     where it sits, so the two positions cannot drift apart. The choice is in Settings. -->
+<nav class="desktop-nav" id="desktop-nav" aria-label="Desktop navigation">
+    <div class="bottom-nav-grid" id="desktop-nav-grid"></div>
 </nav>
 
 <div class="dashboard-content">
