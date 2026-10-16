@@ -505,6 +505,7 @@ window.addEventListener('load', async () => {
         currentSeasonYear = user.seasonYear ?? null;
         currentUserCountryName = user.countryName ?? null;
         currentUserCountryIsoCode = user.countryIsoCode ?? null;
+        window.fmCountryIsoCode = currentUserCountryIsoCode;
         currentUserRole = user.role ?? null;
         setSessionRole(currentUserRole);
         applyAdminVisibility(document);
@@ -520,6 +521,7 @@ window.addEventListener('load', async () => {
         // redirect loop that looks like the app is broken.
         wireNotificationBell();
         startNotificationPolling();
+        if (typeof window.renderDesktopBottomNav === 'function') window.renderDesktopBottomNav('dashboard');
 
         loadDashboard();
     } catch (err) {

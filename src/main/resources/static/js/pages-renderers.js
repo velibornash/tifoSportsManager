@@ -535,9 +535,9 @@ export function buildTrainingActionsHtml(currentPage = '') {
  * fabricated table, or an error card, in the manager's navigation.
  */
 export function buildLeagueActionsHtml(currentPage = '') {
-    return buildActionRowHtml([
-        { label: 'Table', page: 'leagueTable', variant: 'primary' },
-    ], currentPage);
+    // League navigation is a context header, not a Club action row. The table is the page itself,
+    // so an extra action wrapper here only created a misleading "Club actions (1)" control.
+    return '';
 }
 
 export function renderPlayersView(players, title, options = {}) {

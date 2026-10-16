@@ -570,6 +570,10 @@ function buildPageNavState(page, options = {}) {
 
             switch(page) {
 
+                case "dashboard":
+                    if (typeof window.loadDashboard === 'function') window.loadDashboard();
+                    break;
+
                 // TEAM
                 case "firstTeam":
                     await loadFirstTeam();
@@ -682,7 +686,7 @@ function buildPageNavState(page, options = {}) {
                     break;
 
 	                case "world":
-	                    await loadWorldPage();
+	                    await loadWorldPage(options);
 	                    break;
 
 	                case "country":
@@ -1588,7 +1592,10 @@ async function loadUserProfile() {
     function desktopBottomNavGroup(page) {
         if (!page) return 'main';
         if (page === 'dashboard') return 'main';
-        if (['clubProfile', 'firstTeam', 'schedule', 'juniors', 'loans', 'formations', 'tactics', 'tacticEditor', 'staff', 'finances', 'transfers', 'training', 'trainingSetup', 'trainingReports', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium', 'results', 'fixtures'].includes(page)) return 'club';
+        if (['firstTeam', 'juniors'].includes(page)) return 'club:squad';
+        if (['formations', 'tactics', 'tacticEditor'].includes(page)) return 'club:tactics';
+        if (['training', 'trainingSetup', 'trainingReports'].includes(page)) return 'club:training';
+        if (['clubProfile', 'schedule', 'loans', 'staff', 'finances', 'transfers', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium', 'results', 'fixtures'].includes(page)) return 'club';
         if (['leagueTable', 'leagueSchedule', 'leagueMatches', 'topScorers', 'topAssists'].includes(page)) return 'league';
         if (page.startsWith('country') || page === 'nationalTournament') return 'country';
         if (page === 'world' || page === 'clubCup' || page === 'nationalTournament' || page === 'countryCup' || page === 'countryPlayoffs') return 'world';
@@ -1600,29 +1607,46 @@ async function loadUserProfile() {
     }
 
     function desktopBottomNavItems(group) {
+        if (group === 'club:squad') {
+            return [
+                { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'First team', page: 'firstTeam' },
+                { label: 'Juniors', page: 'juniors' },
+            ];
+        }
+        if (group === 'club:tactics') {
+            return [
+                { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'Tactics setup', page: 'formations' },
+                { label: 'Tactic Editor', page: 'tacticEditor' },
+            ];
+        }
+        if (group === 'club:training') {
+            return [
+                { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'Training Setup', page: 'trainingSetup' },
+                { label: 'Training Reports', page: 'trainingReports' },
+            ];
+        }
         if (group === 'club') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
-                { label: 'First team', page: 'firstTeam' },
+                { label: 'Squad', gotoGroup: 'club:squad', icon: '👥' },
                 { label: 'Schedule', page: 'schedule' },
-                { label: 'Juniors', page: 'juniors' },
+                { label: 'Results', page: 'results' },
                 { label: 'Loans', page: 'loans' },
-                { label: 'Tactics', page: 'formations' },
-                { label: 'Tactic Editor', page: 'tacticEditor' },
+                { label: 'Tactics', gotoGroup: 'club:tactics', icon: '🧠' },
                 { label: 'Staff', page: 'staff' },
                 { label: 'Finances', page: 'finances' },
                 { label: 'Transfers', page: 'transfers' },
-                { label: 'Training', page: 'trainingSetup' },
-                { label: 'Reports', page: 'trainingReports' },
+                { label: 'Training', gotoGroup: 'club:training', icon: '⚙️' },
                 { label: 'Medical', page: 'medicalCenter' },
                 { label: 'Profile', page: 'profile' },
                 { label: 'Stadium', page: 'stadium' },
-                { label: 'Results', page: 'results' },
             ];
         }
         if (group === 'league') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'Table', page: 'leagueTable' },
                 { label: 'Schedule', page: 'leagueSchedule' },
                 { label: 'Matches', page: 'leagueMatches' },
@@ -1632,47 +1656,47 @@ async function loadUserProfile() {
         }
         if (group === 'community') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'Forum', page: 'forum' },
                 { label: 'Messages', page: 'messages' },
             ];
         }
         if (group === 'admin') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'Admin', page: 'admin' },
             ];
         }
         if (group === 'country') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
-                { label: 'General', onclick: "window.loadPage('country', { tab: 'general' })" },
-                { label: 'Calendar', onclick: "window.loadPage('country', { tab: 'calendar' })" },
-                { label: 'Clubs', onclick: "window.loadPage('country', { tab: 'clubs' })" },
-                { label: 'Qualifying', onclick: "window.loadPage('country', { tab: 'qualifying' })" },
-                { label: 'National Team', onclick: "window.loadPage('country', { tab: 'senior' })" },
-                { label: 'U-21', onclick: "window.loadPage('country', { tab: 'u21' })" },
+                { icon: '&#9664;', label: 'Back', navBack: true },
+                { label: 'General', page: 'country', options: { tab: 'general' } },
+                { label: 'Calendar', page: 'country', options: { tab: 'calendar' } },
+                { label: 'Clubs', page: 'country', options: { tab: 'clubs' } },
+                { label: 'Qualifying', page: 'country', options: { tab: 'qualifying' } },
+                { label: 'National Team', page: 'country', options: { tab: 'senior' } },
+                { label: 'U-21', page: 'country', options: { tab: 'u21' } },
             ];
         }
         if (group === 'world') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
-                { label: 'Clubs', onclick: "window.loadPage('world', { tab: 'clubs' })" },
-                { label: 'Competitions', onclick: "window.loadPage('world', { tab: 'competitions' })" },
-                { label: 'Friendlies', onclick: "window.loadPage('world', { tab: 'friendlies' })" },
+                { icon: '&#9664;', label: 'Back', navBack: true },
+                { label: 'Clubs', page: 'world', options: { tab: 'clubs' } },
+                { label: 'Competitions', page: 'world', options: { tab: 'competitions' } },
+                { label: 'Friendlies', page: 'world', options: { tab: 'friendlies' } },
             ];
         }
         if (group === 'search') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'Search', page: 'search' },
             ];
         }
         if (group === 'user') {
             return [
-                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'My profile', onclick: 'window.loadUserProfile()' },
-                { label: 'Settings', page: 'settings' },
+                { label: 'User Settings', page: 'settings' },
                 { label: 'Sign out', onclick: 'window.logout()' },
             ];
         }
@@ -1680,19 +1704,44 @@ async function loadUserProfile() {
             { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
             { label: 'Club', page: 'clubProfile' },
             { label: 'League', page: 'leagueTable' },
-            { label: 'Country', onclick: 'showMyCountry()' },
+            { label: 'Country', page: 'country' },
             { label: 'World', page: 'world' },
             { label: 'Community', page: 'forum' },
             { label: 'Search', page: 'search' },
             { label: 'Notifications', onclick: 'window.openNotificationPanel()' },
             { label: 'Admin', page: 'admin', adminOnly: true },
-            { label: 'Settings', page: 'settings' },
+            { label: 'User Settings', page: 'settings' },
         ];
     }
 
 
     function openNotificationPanel() {
         document.querySelector('#notification-bell')?.click();
+    }
+
+    // Desktop bottom navigation keeps its own return stack. The app history stack is shared with
+    // match/route replay and does not represent a menu drill-down reliably.
+    const desktopNavReturnStack = [];
+    let desktopNavOverrideGroup = null;
+    function desktopNavGo(page, options = {}) {
+        desktopNavOverrideGroup = null;
+        const from = typeof currentPageId === 'string' ? currentPageId : 'dashboard';
+        if (from !== page) desktopNavReturnStack.push(from);
+        return loadPage(page, options);
+    }
+    function desktopNavBack() {
+        if (desktopNavOverrideGroup) {
+            desktopNavOverrideGroup = null;
+            renderDesktopBottomNav(currentPageId);
+            return;
+        }
+        const previous = desktopNavReturnStack.pop() || 'dashboard';
+        desktopNavOverrideGroup = null;
+        return loadPage(previous, { pushHistory: false });
+    }
+    function setDesktopNavGroup(group) {
+        desktopNavOverrideGroup = group || null;
+        renderDesktopBottomNav(currentPageId);
     }
 
     function renderDesktopBottomNav(activePage) {
@@ -1705,19 +1754,31 @@ async function loadUserProfile() {
             'Country': '🇷🇸', 'World': '🌍', 'Community': '👥', 'Search': '🔍', 'Notifications': '🔔',
             'Clubs': '🏟', 'Competitions': '🏆', 'Friendlies': '🤝', 'General': '🌍', 'Calendar': '📅',
             'Qualifying': '🎯', 'National Team': '🇷🇸', 'U-21': '👶',
-            'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
+            'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'User Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
         };
+        const countryFlag = countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍';
+        icons.Country = countryFlag;
+        icons['National Team'] = countryFlag;
         const grid = document.getElementById('desktop-bottom-nav-grid');
         if (!grid) return;
-        const group = desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
+        const group = desktopNavOverrideGroup || desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
         const items = desktopBottomNavItems(group);
         const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
         grid.innerHTML = items
             .filter(item => !item.adminOnly || isAdmin)
             .map(item => {
-                const onclick = item.isExternal
-                    ? `window.location.href = "${item.isExternal}"`
-                    : (item.onclick ? item.onclick : `window.loadPage('${item.page}')`);
+                const optionsLiteral = item.options
+                    ? `, ${JSON.stringify(item.options).replace(/"/g, '&quot;')}`
+                    : '';
+                const onclick = item.navBack
+                    ? 'window.desktopNavBack()'
+                    : (item.gotoGroup
+                        ? `window.setDesktopNavGroup('${item.gotoGroup}')`
+                        : (item.isExternal
+                            ? `window.location.href = "${item.isExternal}"`
+                            : (item.page
+                                ? `window.desktopNavGo('${item.page}'${optionsLiteral})`
+                                : (item.onclick ? item.onclick : ''))));
                 const icon = item.icon || icons[item.label] || '•';
                 return `<button type="button" onclick="${onclick}">
                     <span class="desktop-nav-icon">${icon}</span>
@@ -1728,6 +1789,9 @@ async function loadUserProfile() {
 
     window.loadPage = loadPage;
     window.openNotificationPanel = openNotificationPanel;
+    window.desktopNavGo = desktopNavGo;
+    window.desktopNavBack = desktopNavBack;
+    window.setDesktopNavGroup = setDesktopNavGroup;
     window.renderDesktopBottomNav = renderDesktopBottomNav;
     window.loadSettingsPage = loadSettingsPage;
     window.logout = logout;
