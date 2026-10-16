@@ -694,6 +694,150 @@ browser session, which is the standard this repository holds itself to.
 
 ---
 
+---
+
+## Addendum — 2026-10-16: mobile/top-bar redesign after a week of iteration
+
+This addendum updates the 2026-10-14 review in two ways. First, **several P0/P1 items from §3-§8
+are now visibly half-finished**: the backend and JavaScript kept moving while the visual language
+behind them lagged. Second, it records what I would still change on mobile and desktop, now that the
+navigation shell itself has been reworked into the order the user asked for (hamburger, bell, clock,
+search, then the desktop-only buttons).
+
+### A. What changed and is now good
+
+1. **Top-bar ownership is clearer.** The mobile header now has one line of identity (`hamburger →
+   notification bell → clock → search`) instead of the earlier bell/overflow arrangement. That is
+   the correct order: navigation, then attention, then orientation.
+2. **Clock is smaller and opinionated**: the full `Season x Week y Day z (Phase)` line is gone from
+   the header; it now reads `time` over `S1/W1/D2`. The information density tradeoff is in the
+   header's favour — the phase string belongs inside a hover/focus tooltip or the club dashboard,
+   not in persistent chrome.
+3. **Club summary got promoted into a first-class line.** The dashboard no longer relies on a
+   four-card grid alone; the position/points/W-D-L/goal difference is now text on the same row
+   scale as the club banner. That is the correct treatment for a one-glance number: same type, same
+   weight, no KPI theatre.
+4. **Repeated 15-button toolbars are gone.** The club action row is now collapsed by default on
+   every viewport. For a 15-item navigation list, hiding it is less wrong than displaying it, but
+   the remaining risk is real (see §C.1).
+5. **Week 6 is the floatting friendly board slot.** Surfacing a break week in the International
+   tab matches the league calendar without the manager having to understand the slot table first.
+6. **Country/cup pages can draw season 1.** The previous dead-end for a fresh world is gone.
+
+### B. What is still borrowed, not fixed
+
+- **No actual §3 issue from the 2026-10-14 pass is closed in the visual treatment.** The logo or
+  equivalent fixed overlay issue still depends on the top bar structure and should be revisited; the
+  player page overlap bug is still a real CSS fix; the league table still clips points on a phone.
+- **The mobile club summary card has no colour or rank tint when a goal difference or points value
+  changes sign.** Money remains white even when negative, and goal difference is unsigned. Any
+  financial or standing metric of the opposite sense still needs a signed treatment.
+- **The transition from `1  POSITION` cards to an inline string improved density, but it lost the
+  tapping affordance.** The old grid invited a tap to open the league table; the new line should
+  still be tappable as a whole row.
+
+### C. Precise task list — do these next
+
+#### C.1 Navigation remains the largest UX debt (priority: high)
+
+- **One navigation hierarchy.** The removal of the 15-button toolbar is only half a solution; the
+  options are still all 15. Reduce to five groups: `Club · Squad · Staff · Finance · Match`, each
+  opening a compact 3-5 item menu on both mobile and desktop. Do not bring back 15 flat buttons,
+  and do not leave a standalone `Club actions` disclosure that has to be opened on every screen.
+- **Keep the mobile hamburger as a menu, not a duplicate toolbar.** It should show the same five
+  groups, with one level deep expansion, and no 950px scroll. Target ~560px for the expanded
+  drawer on an iPhone 14 Pro Max.
+- **Desktop club pages need a predictable secondary nav surface.** Right now a manager lands on a
+  club page and has to return to the top bar to move on. Put the grouped five-item control either
+  inside the club hero or in a wide horizontal tab strip with `overflow-x: auto` and 44px targets.
+- **Search does not belong in the primary action sequence.** Keep the icon in the top bar, but let
+  it open a full-screen search sheet on desktop as well as mobile.
+- **League page navigation is over-contained now.** Only `Table` is visible. Either keep all five
+  league entry points in one horizontal scrollable tab row, or move them into a dropdown; do not
+  silently remove Schedule, Matches and Top Scorers. The table is not self-contained (scorers and
+  fixture context live elsewhere).
+
+#### C.2 Mobile header budget (priority: medium)
+
+- **Target exactly two rows of chrome**: time above, `S/W/D` plus icon row below. Every other
+  content element starts below the header.
+- **Clock line 2.** It should read `S1 · W1 · D2` using interpuncts or slashes, with a tooltip or
+  short label for “season/week/day”, not `S1/W1/D2`.
+- **Global search goes full width on mobile.** A lone search button is good; a full-height
+  bottom-sheet search over the whole app is better. Keep the desktop label as a button.
+- **Sidebar top logo.** Reduce from 64px to 48px; the rounded sticker is too large relative to
+  button text on a 430px screen.
+- **Admin operations should never scroll off-screen.** Jobs table at 430px currently hides two
+  columns; keep that, but show an explicit “scrollable” fade and a “3 of 5 columns” hint.
+
+#### C.3 Tables and player lists (priority: high)
+
+- **The league table must not lose PTS, GD or club identity.** On mobile, drop `GF` and `GA`
+  first, then make club and `#` sticky, then add a strong right-edge fade. There should never be
+  ambiguity whether points off-screen can be reached.
+- **Rows should be shorter than 200px.** For ten clubs at 200px each the page is 2,000px; that is
+  not a table a manager scans. Keep `AI` chips off their own lines and put manager names in a
+  fallback position outside the table, or defer them.
+- **Player and squad lists need number + segment bar, not emoji walls.** Top scorers, milestones
+  and transfer lists all repeat icons; one 4-segment bar and a number are cheaper and clearer.
+- **Contrast signed values.** Negative money is `#f87171`; positive is `#eef4ff`; goal difference
+  green/`#8fd3ff` blue. Keep 10px vertical gap (flex row) between the four line items.
+- **`formWrap` with no horizontal affordance is a bug.** Every scrollable container needs
+  `.is-scroll` or a right-edge fade, and there should be a `scrollbar-width: thin` on the wrapper.
+
+#### C.4 List, country and market wayfinding (priority: medium-high)
+
+- **“Join / Compare / Find your club” everywhere.** The three-item convention is good; every list
+  where clubs appear must have it. Qualifying and country clubs already do; league, cup, schedule
+  and top lists still do not.
+- **Turn dropdown navigations into lists when they mask the user’s path.** Country league
+  dropdowns (31 options) and transfer market (49 countries) hide all state except active one.
+- **Pinned lists are fine where the choice tree is deep, but a one-screen “where I belong” card
+  must precede them.** Example: a club manager’s default page should say above the menu,
+  “You: OFK Omladinac · Superliga Srbije · Season 1 Week 6 Day 1”.
+- **Cups and qualifying should collapse secondary rounds into one line** (`Rounds 9–12 not drawn`)
+  so the own-club row stays in view.
+- **World page needs columns, not numbers.** All 48 countries read `1500`; lower tier is invisible
+  and only 14 of 48 active countries are lit. Add confederation, average tier and last-changed
+  delta, and keep a green pill for active vs grey for inactive.
+
+#### C.5 Small refactors that pay outsized dividends
+
+- **One table language.** Five table classes render the same concept differently. Pick
+  `.fm-squad` as the base, `.fm-league-table` as a variant with a single `--league` modifier, and
+  drop `.fm-cup-tie` to flex-list-with-header. No molecule should need three paddings.
+- **One pixel-per-unit contract.** `10px/12px/14px` sizes should be tokens; at least establish
+  `--s-1…--s-6` and use them in mobile breakpoints.
+- **Repeated UI uses the same pattern everywhere.** Country flags, club crest, status pills,
+  rank badge, competition chip, season/week/day: all can be one sprite / icon set. Right now each
+  uses inline emoji or strings.
+- **Container queries over media queries.** The job-table adaptation already does it right
+  (`min-width: auto`, etc.). Apply the same rule to all four tables at 430-768ppx to skip mobile
+  rows.
+- **No silent content truncation.** Club and manager names, team/manager tags, and text on pills
+  are truncated at different widths via `overflow: hidden` inconsistently. Define `--ellip col-block`
+  or group clipping, never inline badge.
+- **Abandon the free-floating logo during the second data fetch.** It covers 12px dead band at 1280
+  and is a real breakage even if the existing copy still floats.
+- **Ensure the stats line is live.** The inline stat line stays static if no league exists. Show
+  `Your club is not listed yet` rather than fake data. The current fallback `— / — points / —` is
+  honest and should remain, but it needs readable tone.
+- **Make the club page portable.** Right now first team captures and the dashboard do not agree on
+  what basic data is coming; a single `team_overview` object with `lg_rank`, `pts`, `w-d-l`, `gd`,
+  `logo`, `country_id` and `manager_id` would eliminate four independent API calls.
+
+### D. Net recommendation
+
+1. The largest UX leverage is in C.1 and C.4: a **single grouped secondary navigation** and
+   **one “you are here” convention**. The data model is there; only surface consistency is
+   missing.
+2. After that, fix C.3 because League Tables and squad lists are the app's daily drivers.
+3. Everything in §P1 of the original report stays relevant and is not superseded: the tablet is
+   a good product, but the **mobility** (180px header, clipped ticker) has not been reworked yet.
+4. No backend change is required for roughly the first half of the tasks above, and the rest is
+   component-level CSS and list logic.
+
+
 ## Appendix — how this was produced
 
 Every measurement in this document was taken in the running application with `agent-browser`:
