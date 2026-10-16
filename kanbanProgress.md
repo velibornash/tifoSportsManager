@@ -1,3 +1,10 @@
+## 2026-10-16 - Mobile header, bottom bar, favicon
+
+- Made the mobile bottom bar horizontal on phones and desktop-clean.
+- Kept the time and `S/W/D` stacked in the header.
+- Fixed the desktop ordering (Sports lobby first, bell after search, admin and user last).
+- Used the logo as `/favicon.ico`.
+
 ## 2026-10-16 - Mobile shell bottom navigation added
 
 - Added a five-tab bottom navigation bar for phones, inspired by modern mobile manager shells.
