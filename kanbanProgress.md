@@ -1,3 +1,29 @@
+## 2026-10-16 - Mobile header locked; nav-bar text made bigger with transparent background
+
+Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore", "sat na kom
+pise loading i s/w/d dole levo SKLONI", "bottom nav bara sa desktopa kao i top nav bar NE SME DA SE vidi
+na mobu (sad se vidi)". Plus: "(ako mislis da ima smisla) neka cifre na satu i s/w/d budu drugacije
+boje a da ima smisla".
+
+What went in:
+- `@media (max-width: 768px) { .desktop-nav { display: none !important; } }` with no gate on
+  `html.is-mobile-nav`, which half-loaded phones could fail to gain.
+- `@media (max-width: 768px) { html.nav-top body { padding-top: 0 } }`, so the mobile header starts at
+  the top of the body instead of 72 px down where the hidden desktop bar used to be.
+- Search (already duplicated by the bottom bar) removed from the mobile header; the bell, the mobile
+  clock and the logo keep their places. The clock row is `margin-left: auto` on the bell so the trinity
+  sits together at the right end of the status bar.
+- The bottom bar no longer carries its own clock ("Loading... / S?/W?/D?"), so the five icons stop
+  duplicating the header.
+- The mobile clock now reads as a clock rather than as one line of grey print: time in `#e8f2ff`,
+  `S1/W2/D2` in `#9aa0a6`, with the appropriate line heights.
+- Desktop nav text went from 0.72rem to 0.92rem (14 px on a 16 px base), a size a manager can read at
+  arm's length. Grid cells are 84 px min-width and the bar's min-height is 54 px, so the larger glyph
+  did not eat into the next row. The bar's translucent fill stayed; the browser-default button face
+  (`buttonface = #efefef`) that was over each letter is transparent now, which is what "BELA RUZNA
+  pozadina" was about.
+
+## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
 ## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore — hamburger,
