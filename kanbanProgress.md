@@ -1,3 +1,10 @@
+## 2026-10-16 - Four mobile/desktop UX tasks
+
+- Mobile header order set to hamburger, notification, search, clock, logo.
+- Reduced wrapping in club hero and profile detail rows and kept a safer wrap policy.
+- Restricted mobile First Team table to its first four statistics.
+- Added a settings page with a desktop bottom-nav toggle (default on), plus a desktop navigation shell using the same bottom-nav visuals.
+
 ## 2026-10-16 - Mobile bottom nav and clock verified
 
 - JS mobile flag now correctly forces bottom nav horizontal and clock stacked.
