@@ -1,3 +1,8 @@
+## 2026-10-16 - Task P0-6: scrollable table fade affordance added
+
+- Horizontal table wrappers now carry a right-edge fade so managers can tell when
+  PTS/Elo or similar columns are clipped on a phone.
+
 ## 2026-10-16 - P0-4: league table own-club class is already wired
 
 - `renderTableView` adds `is-own` based on team IDs and `dashboard.css` styles
