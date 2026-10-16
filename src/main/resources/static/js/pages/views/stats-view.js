@@ -92,13 +92,13 @@ export function createStatsView(deps) {
             let html = `
             <div class="manager-card" style="padding: 25px;">
                 <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
-                <h2 style="text-align: center; margin: 20px 0 30px; color: #e94560;">League Stats - Top Lists</h2>
+                <h2 style="text-align: left; margin: 20px 0 30px; color: #e94560;">League Stats - Top Lists</h2>
 
                 <div class="top-lists">
 
                     ${mode !== "assists" ? `
                     <div class="top-scorers top-list-panel">
-                        <h3 style="text-align: center; color: #ffd700; margin-bottom: 15px;">Top Scorers</h3>
+                        <h3 style="text-align: left; color: #ffd700; margin-bottom: 15px;">Top Scorers</h3>
                         <ul style="list-style: none; padding: 0; margin: 0;">` : ""}`;
 
             if (mode !== "assists") {
@@ -115,7 +115,7 @@ export function createStatsView(deps) {
                             <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${htmlEscape(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
                         <span class="top-list-value" style="color: #ff7582;">
-                            ${s.goals} goals
+                            <span class="league-stat-icon league-stat-icon--goal">&#9917;</span>&nbsp;${s.goals}
                         </span>
                     </li>`;
                 });
@@ -127,7 +127,7 @@ export function createStatsView(deps) {
 
             if (mode !== "scorers") {
                 html += `<div class="top-assists top-list-panel">
-                        <h3 style="text-align: center; color: #9d4edd; margin-bottom: 15px;">Top Assists</h3>
+                        <h3 style="text-align: left; color: #9d4edd; margin-bottom: 15px;">Top Assists</h3>
                         <ul style="list-style: none; padding: 0; margin: 0;">`;
             }
 
@@ -145,7 +145,7 @@ export function createStatsView(deps) {
                             <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${htmlEscape(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
                         <span class="top-list-value" style="color: #4fc3f7;">
-                            ${a.assists} assists
+                            <span class="league-stat-icon league-stat-icon--assist">A</span>&nbsp;${a.assists}
                         </span>
                     </li>`;
                 });

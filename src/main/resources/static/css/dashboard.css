@@ -6852,3 +6852,6 @@ body {
 .fm-club-elo-delta.is-down {
     color: #ff9d9d;
 }
+
+.league-stat-icon--goal { color: #ffd700; font-weight: 800; }
+.league-stat-icon--assist { color: #ff7582; font-style: italic; font-weight: 900; }
