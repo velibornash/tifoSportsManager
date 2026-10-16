@@ -1,3 +1,12 @@
+## 2026-10-16 - Matches opens the Schedule; no Results entry in the Club menu
+
+- The Club menu's **Matches** entry opens the Schedule page directly. The Matches submenu (Back,
+  Schedule, Results) is gone — the Schedule page already carries the played matches on its timeline, so
+  a second nav entry pointed at the same facts.
+- `schedule`, `results` and `fixtures` now belong to the Club group rather than to a group of their own.
+- Seen in the browser: Club → Matches lands on "CLUB SCHEDULE · Schedule" and the nav stays on the Club
+  menu.
+
 ## 2026-10-16 - The User submenu's second entry is Settings, not User Settings
 
 - The main bar keeps **User Settings** so the corner of the nav is unambiguous; inside the menu the
