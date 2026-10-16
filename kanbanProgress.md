@@ -1,3 +1,8 @@
+## 2026-10-16 - Bottom nav icon coverage completed
+
+- Every menu entry now renders its own icon in the desktop bottom nav.
+- Verified on the running app and committed.
+
 ## 2026-10-16 - Desktop bottom nav fixed after SyntaxError
 
 - Fixed object shorthand and quoting so renderDesktopBottomNav now runs on page load.
