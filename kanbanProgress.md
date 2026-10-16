@@ -1,3 +1,9 @@
+## 2026-10-16 - Mobile header and club summary one-row fix
+
+- Mobile clock now keeps time and short S/W/D on separate lines.
+- Club summary stats can sit on one compact row.
+- Updated MD.
+
 ## 2026-10-16 - Header short labels and icon search
 
 - Mobile search control now shows only the search icon, with no text label.
