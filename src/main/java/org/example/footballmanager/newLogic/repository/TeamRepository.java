@@ -153,6 +153,22 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findClubTeamsForCountry(@Param("countryId") Long countryId);
 
     /**
+     * One country's clubs by ISO code rather than by row id.
+     *
+     * <p>{@link #findClubTeamsForCountry(Long)} is the same question asked with a different key. This
+     * one exists for callers that only know the ISO code — the transfer market filters by the manager's
+     * country, and asking for a country id there would have meant loading every club in the world just
+     * to find which rows matched.
+     *
+     * <p>{@code upper(...)} rather than {@code =}, because the Java side this replaces compared with
+     * {@code equalsIgnoreCase}. Passing the code already upper-cased keeps both spellings working.
+     */
+    @Query("select t from Team t where upper(t.country.isoCode) = :isoCode "
+            + "and (t.type is null or t.type = org.example.footballmanager.newLogic.model.CompetitionTeamType.CLUB) "
+            + "order by t.id asc")
+    List<Team> findClubTeamsForCountryIso(@Param("isoCode") String isoCode);
+
+    /**
      * Every team of one kind - club or national side.
      *
      * <p>findClubTeamsForOperations returns clubs only, which is right for club work and quietly

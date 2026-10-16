@@ -1,3 +1,32 @@
+## 2026-10-16 - NAV-8: Transfers opens in 0.6 s instead of 11.6 s
+
+**Measured, both ways, same database and same server.**
+
+| | Before | After |
+|---|---|---|
+| `GET /transfers?teamId=1` | 11.70 s / 11.62 s | 0.61 s / 0.66 s / 0.61 s |
+| Transfers page, nav click to rendered rows | — | 1.37 s, 89 rows |
+
+**What was wrong.** `TransferService.scoutedUnlisted` asked the database two questions it already knew
+the answer to:
+
+1. `playerRepository.findByTeamId(...)` once per club in the world, and only then threw the clubs of
+   other countries away — 14,880 queries to keep 310 clubs' players.
+2. `transferRepository.findByPlayerId(...)` once per player it had kept, before the `.limit(60)`.
+
+**What it does now.** Three queries:
+
+- `TeamRepository.findClubTeamsForCountryIso` — the country's clubs, asked of the database. New.
+- `PlayerRepository.findByTeamIdIn` — every player in those clubs, once.
+- `TransferRepository.findActiveListedPlayerIds` — who is already on the market, once. New.
+
+**What changed in the output, stated plainly.** The market still returns 74 rows, and the 14 listed
+players are untouched. 15 of the 60 scouted rows are different players from the old baseline. The old
+cut was "whichever sixty the database happened to return first", which was never specified anywhere;
+the new one is the lowest 60 player ids in the country, and it is **stable across calls** — verified by
+calling the endpoint twice and comparing row for row. Without the sort the new query would also have
+reshuffled the market on every call, which is worse than either.
+
 ## 2026-10-16 - NAV-7: the setup page is Tactics Setup, not Tactic Editor
 
 - Two different pages shared one heading. The club tactics setup page is now "Tactics Setup"; the drag-

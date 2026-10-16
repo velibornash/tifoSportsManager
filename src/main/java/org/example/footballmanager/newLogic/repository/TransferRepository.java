@@ -47,4 +47,18 @@ public interface TransferRepository extends JpaRepository<Transfer, Long> {
             + " AND t.buyerTeam IS NULL AND t.listingObjection IS NOT NULL"
             + " AND t.listingObjection <> org.example.footballmanager.newLogic.model.ListingObjection.NONE")
     List<Transfer> findActiveObjectedListings();
+
+    /**
+     * The player ids that are on the market right now — one query for the whole world.
+     *
+     * <p>The transfer market shows unlisted players as scout reports, but must leave out anyone who is
+     * already for sale. That test used to be asked one player at a time
+     * ({@code transferRepository.findByPlayerId(p.getId())}), which is one round-trip per player in
+     * the country before the result is even trimmed to sixty. The same predicate as
+     * {@code isActiveListing}: {@code LISTED}, no buyer, a real player.
+     */
+    @Query("SELECT DISTINCT t.player.id FROM Transfer t"
+            + " WHERE t.status = org.example.footballmanager.newLogic.model.TransferStatus.LISTED"
+            + " AND t.buyerTeam IS NULL AND t.player IS NOT NULL")
+    List<Long> findActiveListedPlayerIds();
 }

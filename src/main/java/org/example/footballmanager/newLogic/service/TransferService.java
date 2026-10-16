@@ -200,18 +200,33 @@ public class TransferService {
     public List<Player> scoutedUnlisted(Long viewerTeamId, String viewerCountryCode) {
         if (viewerTeamId == null) return List.of();
         if (viewerCountryCode == null || viewerCountryCode.isBlank()) return List.of();
-        return teamRepository.findClubTeamsForOperations().stream()
+        // Three queries, whatever the world looks like.
+        //
+        // This was the reason the Transfers screen took ten seconds to open. It asked
+        // playerRepository.findByTeamId(...) once per club in the world and only then threw the clubs
+        // of other countries away, then asked transferRepository.findByPlayerId(...) once per player it
+        // had kept. At 48 countries that is 14,880 club queries plus a few thousand player queries, to
+        // produce sixty rows. The country is now asked of the database, the players come back in one
+        // query, and the players already on the market are excluded by one id list.
+        List<Long> countryClubIds = teamRepository.findClubTeamsForCountryIso(viewerCountryCode.toUpperCase()).stream()
                 .filter(Objects::nonNull)
-                .filter(team -> team.getId() != null)
-                .filter(team -> !Objects.equals(team.getId(), viewerTeamId))
-                .filter(team -> inCountry(team, viewerCountryCode))
-                .flatMap(team -> playerRepository.findByTeamId(team.getId()).stream())
+                .map(Team::getId)
+                .filter(Objects::nonNull)
+                .filter(id -> !Objects.equals(id, viewerTeamId))
+                .toList();
+        if (countryClubIds.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> alreadyOnTheMarket = new HashSet<>(transferRepository.findActiveListedPlayerIds());
+        return playerRepository.findByTeamIdIn(countryClubIds).stream()
                 .filter(Objects::nonNull)
                 .filter(p -> p.getId() != null && p.getTeam() != null)
                 .filter(p -> p.getPosition() == null || p.getPosition() != Position.GK)
-                .filter(p -> transferRepository.findByPlayerId(p.getId())
-                        .map(t -> !isActiveListing(t))
-                        .orElse(true))
+                .filter(p -> !alreadyOnTheMarket.contains(p.getId()))
+                // Sorted because the cut below is a cut: an unordered stream lets the database decide
+                // which sixty survive, so the same manager could see a different market on the next
+                // call. By id is the order the old per-club walk happened in.
+                .sorted(Comparator.comparing(Player::getId))
                 .limit(60)
                 .toList();
     }
