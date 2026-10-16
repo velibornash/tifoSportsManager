@@ -505,6 +505,7 @@ window.addEventListener('load', async () => {
         currentSeasonYear = user.seasonYear ?? null;
         currentUserCountryName = user.countryName ?? null;
         currentUserCountryIsoCode = user.countryIsoCode ?? null;
+        window.fmCountryName = currentUserCountryName;
         window.fmCountryIsoCode = currentUserCountryIsoCode;
         currentUserRole = user.role ?? null;
         setSessionRole(currentUserRole);

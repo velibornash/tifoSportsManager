@@ -1756,7 +1756,7 @@ async function loadUserProfile() {
             { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
             { label: 'Club', page: 'clubProfile' },
             { label: 'League', page: 'leagueTable' },
-            { label: 'Country', page: 'country' },
+            { icon: (countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍'), label: (window.fmCountryName || 'Country'), page: 'country' },
             { label: 'World', page: 'world' },
             { label: 'Community', page: 'forum' },
             { label: 'Search', page: 'search' },
@@ -1819,12 +1819,11 @@ async function loadUserProfile() {
         renderDesktopBottomNav(currentPageId);
     }
     function desktopNavBack() {
-        const stackBefore = [...desktopNavMenuStack];
         const previousGroup = desktopNavMenuStack.pop();
-        console.log('BACK clicked. stackBefore', stackBefore, 'popped', previousGroup, 'page', currentPageId);
         if (previousGroup === undefined) {
-            desktopNavOverrideGroup = 'main';
-            renderDesktopBottomNav(currentPageId);
+            // Owner: Back must never invent a destination labelled "Home". Doing nothing is the honest
+            // answer when there is no menu behind this one, which is what he asked for after Back kept
+            // landing on the root bar and reading as "home" even when he expected no change.
             return;
         }
         const pageGroup = desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
