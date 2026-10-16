@@ -252,6 +252,7 @@ function buildPageNavState(page, options = {}) {
 	        await loadPage(target, { pushHistory: false, preserveLeagueContext: isLeaguePage(target) });
         } finally {
             navBusy = false;
+            try { renderDesktopBottomNav(currentPageId); } catch (e) { /* no-op outside dashboard layout */ }
         }
     }
 
@@ -1576,6 +1577,117 @@ async function loadUserProfile() {
                 document.documentElement.classList.toggle("desktop-bottom-nav-on", next);
             });
         }
+    }
+
+    function desktopBottomNavGroup(page) {
+        if (!page) return 'main';
+        if (page === 'dashboard') return 'main';
+        if (['clubProfile', 'firstTeam', 'schedule', 'juniors', 'loans', 'formations', 'tactics', 'tacticEditor', 'staff', 'finances', 'transfers', 'training', 'trainingSetup', 'trainingReports', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium', 'results', 'fixtures'].includes(page)) return 'club';
+        if (['leagueTable', 'leagueSchedule', 'leagueMatches', 'topScorers', 'topAssists'].includes(page)) return 'league';
+        if (page.startsWith('country') || page === 'nationalTournament') return 'country';
+        if (page === 'world' || page === 'clubCup' || page === 'nationalTournament' || page === 'countryCup' || page === 'countryPlayoffs') return 'world';
+        if (page === 'forum' || page === 'forumSection' || page === 'forumTopic' || page === 'messages' || page === 'messageThread') return 'community';
+        if (page === 'search') return 'search';
+        if (page === 'admin') return 'admin';
+        if (page === 'settings' || page === 'publicUserProfile' || page === 'loadPublicUserProfile') return 'user';
+        return 'main';
+    }
+
+    function desktopBottomNavItems(group) {
+        if (group === 'club') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Club profile', page: 'clubProfile' },
+                { label: 'First team', page: 'firstTeam' },
+                { label: 'Schedule', page: 'schedule' },
+                { label: 'Juniors', page: 'juniors' },
+                { label: 'Loans', page: 'loans' },
+                { label: 'Tactics', page: 'formations' },
+                { label: 'Tactic Editor', page: 'tacticEditor' },
+                { label: 'Staff', page: 'staff' },
+                { label: 'Finances', page: 'finances' },
+                { label: 'Transfers', page: 'transfers' },
+                { label: 'Training', page: 'trainingSetup' },
+                { label: 'Reports', page: 'trainingReports' },
+                { label: 'Medical', page: 'medicalCenter' },
+                { label: 'Profile', page: 'profile' },
+                { label: 'Stadium', page: 'stadium' },
+                { label: 'Results', page: 'results' },
+            ];
+        }
+        if (group === 'league') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Table', page: 'leagueTable' },
+                { label: 'Schedule', page: 'leagueSchedule' },
+                { label: 'Matches', page: 'leagueMatches' },
+                { label: 'Top Scorers', page: 'topScorers' },
+                { label: 'Top Assists', page: 'topAssists' },
+            ];
+        }
+        if (group === 'community') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Forum', page: 'forum' },
+                { label: 'Messages', page: 'messages' },
+            ];
+        }
+        if (group === 'admin') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Admin', page: 'admin' },
+            ];
+        }
+        if (group === 'country') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Country', onclick: 'showMyCountry()' },
+            ];
+        }
+        if (group === 'search') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Search', page: 'search' },
+            ];
+        }
+        if (group === 'user') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'My profile', onclick: 'window.loadUserProfile()' },
+                { label: 'Club settings', page: 'clubProfileSettings' },
+                { label: 'Settings', page: 'settings' },
+            ];
+        }
+        return [
+            { label: 'Sports Lobby', isExternal: 'home.html' },
+            { label: 'Club', page: 'clubProfile' },
+            { label: 'League', page: 'leagueTable' },
+            { label: 'Country', onclick: 'showMyCountry()' },
+            { label: 'World', page: 'world' },
+            { label: 'Community', page: 'forum' },
+            { label: 'Search', page: 'search' },
+            { label: 'Notifications', onclick: 'document.querySelector("#notification-bell")?.click()' },
+            { label: 'Admin', page: 'admin', adminOnly: true },
+            { label: 'Settings', page: 'settings' },
+        ];
+    }
+
+    function renderDesktopBottomNav(activePage) {
+        const grid = document.getElementById('desktop-bottom-nav-grid');
+        if (!grid) return;
+        const group = desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
+        const items = desktopBottomNavItems(group);
+        const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
+        grid.innerHTML = items
+            .filter(item => !item.adminOnly || isAdmin)
+            .map(item => {
+                const onclick = item.isExternal
+                    ? "window.location.href='" + item.isExternal + "'"
+                    : (item.onclick ? item.onclick : 'window.loadPage('' + item.page + '')');
+                return '<button type="button" onclick="' + onclick + '">' +
+                    (item.icon ? '<span class="desktop-nav-icon">' + item.icon + '</span>' : '') +
+                    '<span>' + htmlEscape(item.label) + '</span></button>';
+            }).join('');
     }
 
     window.loadPage = loadPage;

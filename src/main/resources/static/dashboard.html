@@ -89,9 +89,6 @@
             <button type="button" class="user-menu-item" role="menuitem" onclick="loadUserProfile()">
                 <span class="user-menu-item-icon" aria-hidden="true">&#128100;</span> My profile
             </button>
-            <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('clubProfileSettings')">
-                <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Club settings
-            </button>
             <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('settings')">
                 <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Settings
             </button>
@@ -222,31 +219,8 @@
     <button type="button" onclick="loadPage('search')">&#128269;<span>Search</span></button>
 </nav>
 
-<nav class="desktop-bottom-nav is-enabled" aria-label="Desktop navigation">
-    <div class="bottom-nav-grid">
-        <button type="button" onclick="window.location.href='/home.html'">&#127968;<span>Sports Lobby</span></button>
-        <button type="button" onclick="loadPage('clubProfile')">&#11044;<span>Club</span></button>
-        <button type="button" onclick="loadPage('firstTeam')">&#128106;<span>First Team</span></button>
-        <button type="button" onclick="loadPage('juniors')">&#128105;<span>Juniors</span></button>
-        <button type="button" onclick="loadPage('loans')">&#128205;<span>Loans</span></button>
-        <button type="button" onclick="loadPage('tactics')">&#129504;<span>Tactics</span></button>
-        <button type="button" onclick="loadPage('tacticEditor')">&#128221;<span>Tactic Editor</span></button>
-        <button type="button" onclick="loadPage('staff')">&#128100;<span>Staff</span></button>
-        <button type="button" onclick="loadPage('finances')">&#128176;<span>Finances</span></button>
-        <button type="button" onclick="loadPage('transfers')">&#128205;<span>Transfers</span></button>
-        <button type="button" onclick="loadPage('training')">&#127947;<span>Training</span></button>
-        <button type="button" onclick="loadPage('medicalCenter')">&#128137;<span>Medical</span></button>
-        <button type="button" onclick="loadPage('profile')">&#128100;<span>Profile</span></button>
-        <button type="button" onclick="loadPage('stadium')">&#127960;<span>Stadium</span></button>
-        <button type="button" onclick="loadPage('results')">&#128202;<span>Results</span></button>
-        <button type="button" onclick="loadPage('leagueTable')">&#127942;<span>League</span></button>
-        <button type="button" onclick="showMyCountry()">&#127758;<span>Country</span></button>
-        <button type="button" onclick="loadPage('world')">&#127757;<span>World</span></button>
-        <button type="button" onclick="loadPage('forum')">&#9993;<span>Community</span></button>
-        <button type="button" onclick="loadPage('search')">&#128269;<span>Search</span></button>
-        <button type="button" data-admin-only hidden onclick="loadPage('admin')">&#128295;<span>Admin</span></button>
-        <button type="button" onclick="loadPage('settings')">&#9881;<span>Settings</span></button>
-    </div>
+<nav class="desktop-bottom-nav" aria-label="Desktop navigation">
+    <div class="bottom-nav-grid" id="desktop-bottom-nav-grid"></div>
 </nav>
 
 <div class="dashboard-content">
