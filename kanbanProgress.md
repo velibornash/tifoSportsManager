@@ -1,3 +1,9 @@
+## 2026-10-16 - Task P0-2: player grid min width reached desktop
+
+- `.fm-player-grid > * { min-width: 0; }` is now applied outside mobile media. Verified
+  against the CSS rules: the left and right tracks can no longer push their min-content past the
+  container.
+
 ## 2026-10-16 - City: P0-1 corner logo no longer a fixed overlay
 
 - `.logo-corner` now lays out in the `top-menu` flex row instead of floating over the season
