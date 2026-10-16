@@ -1674,6 +1674,15 @@ async function loadUserProfile() {
     }
 
     function renderDesktopBottomNav(activePage) {
+        const icons = {
+            'Back': '◀', 'Club profile': '🏟', 'First team': '👥', 'Schedule': '📅', 'Juniors': '🎓',
+            'Loans': '💸', 'Tactics': '🧠', 'Tactic Editor': '📋', 'Staff': '👥', 'Finances': '💰',
+            'Transfers': '💼', 'Training': '⚙️', 'Reports': '📊', 'Medical': '🏥', 'Profile': '👤',
+            'Club settings': '⚙️', 'Stadium': '🏟', 'Results': '📊', 'Table': '🏆', 'Schedule': '📅',
+            'Matches': '⚽', 'Top Scorers': '🥅', 'Top Assists': '🎯', 'Forum': '💬', 'Messages': '✉️',
+            'Country': '🇷🇸', 'World': '🌍', 'Community': '👥', 'Search': '🔍', 'Notifications': '🔔',
+            'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
+        };
         const grid = document.getElementById('desktop-bottom-nav-grid');
         if (!grid) return;
         const group = desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
@@ -1683,11 +1692,13 @@ async function loadUserProfile() {
             .filter(item => !item.adminOnly || isAdmin)
             .map(item => {
                 const onclick = item.isExternal
-                    ? "window.location.href='" + item.isExternal + "'"
+                    ? `window.location.href = "${item.isExternal}"`
                     : (item.onclick ? item.onclick : `window.loadPage('${item.page}')`);
-                return '<button type="button" onclick="' + onclick + '">' +
-                    (item.icon ? '<span class="desktop-nav-icon">' + item.icon + '</span>' : '') +
-                    '<span>' + htmlEscape(item.label) + '</span></button>';
+                const icon = item.icon || icons[item.label] || '•';
+                return `<button type="button" onclick="${onclick}">
+                    <span class="desktop-nav-icon">${icon}</span>
+                    <span>${htmlEscape(item.label)}</span>
+                </button>`;
             }).join('');
     }
 
