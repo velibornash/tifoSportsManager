@@ -234,7 +234,7 @@ body {
 
 .corner-logo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
 .logo-corner { margin-left: auto; display: flex; align-items: center; }
-.mobile-logo-wrapper { margin-left: auto; display: flex; align-items: center; }
+.mobile-logo-wrapper { display: flex; align-items: center; }  /* margin-left: auto is on .notification-bell-wrap now, so the trinity (bell/clock/logo) moves as one unit */
 .mobile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 15; display: none; }
 .mobile-overlay.active { display: block; }
 

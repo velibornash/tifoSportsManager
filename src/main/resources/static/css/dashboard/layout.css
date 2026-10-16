@@ -570,6 +570,18 @@
 
 /* Desktop ordering on the same row. */
 .notification-bell-wrap { order: 95; }
+/* **Hard mobile ordering** (owner, tired of it). On mobile, flex order alone + a long-standing margin
+   rule on the logo produced a Hamburger → Sat → Logo → Notification visual order. Setting flex: 1
+   on bell and the explicit order values below handles any leftover rule. */
+@media (max-width: 768px) {
+    .top-menu { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; justify-content: flex-start !important; gap: 10px !important; align-items: center !important; }
+    .mobile-hamburger-btn { order: 0 !important; flex: 0 0 auto !important; }
+    .notification-bell-wrap { order: 1 !important; flex: 0 0 auto !important; margin-left: auto !important; }
+    .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; margin-left: 0 !important; }
+    .live-clock-mobile { order: 2 !important; flex: 0 0 auto !important; }
+    .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; }
+    .mobile-logo-wrapper, .mobile-logo-wrapper .corner-logo { margin-left: auto !important; }
+}
 #admin-menu-button { order: 96; }
 .user-menu { order: 97; }
 .desktop-only.live-clock { order: 98; }
