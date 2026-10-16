@@ -1,3 +1,8 @@
+## 2026-10-16 - Touch-safe fixes for mobile bottom nav and clock
+
+- Added touch-pointer media (`hover: none and pointer: coarse`) so the bottom nav stays horizontal
+  and the clock remains two-row even when browser tooling reports a desktop-width viewport.
+
 ## 2026-10-16 - Mobile bottom nav horizontal and clock stacked
 
 - Force .mobile-bottom-nav to horizontal grid with !important over mobile utility.
