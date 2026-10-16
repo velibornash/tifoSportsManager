@@ -1,3 +1,9 @@
+## 2026-10-16 - Task P1-6 ticker already uses scrolling marquee
+
+- `.fm-dashboard-ticker-move` animates continuously and the host has `overflow: hidden`, so the latest
+  release code already exceeds the two-line clipped state from the old report.
+- Result: no CSS change in this pass; the code audit already contains the reflection.
+
 ## 2026-10-16 - Task P0-3/P0-5 back button width is already fixed
 
 - `.back-to-dashboard` carries `justify-self: start` in `dashboard.css`, keeping the slab from
