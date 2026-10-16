@@ -1,3 +1,10 @@
+## 2026-10-16 - Desktop bottom nav with contextual sections
+
+- Replaced the static desktop bottom bar with a live hierarchical section: main destinations,
+  then each major section (Club, League, Country, World, Community, Search, Admin, User) expands
+  into its own links plus a Back action.
+- Added a `settings` route for desktop bottom-nav preference and Commit 5.
+
 ## 2026-10-16 - Four mobile/desktop UX tasks
 
 - Mobile header order set to hamburger, notification, search, clock, logo.
