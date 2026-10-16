@@ -617,16 +617,16 @@
 
 
 /* JS-detected mobile shell. */
-body.is-mobile-nav .mobile-bottom-nav {
+html.is-mobile-nav .mobile-bottom-nav {
     display: grid !important;
     grid-template-columns: repeat(5, 1fr) !important;
 }
-body.is-mobile-nav .live-clock-mobile,
-body.is-mobile-nav .live-clock-mobile-header {
+html.is-mobile-nav .live-clock-mobile,
+html.is-mobile-nav .live-clock-mobile-header {
     display: block !important;
 }
-body.is-mobile-nav .live-clock-time-mobile,
-body.is-mobile-nav .live-clock-date-mobile {
+html.is-mobile-nav .live-clock-time-mobile,
+html.is-mobile-nav .live-clock-date-mobile {
     display: block !important;
     width: 100%;
     text-align: center;

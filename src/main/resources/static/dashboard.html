@@ -14,7 +14,7 @@
         var mobile = window.matchMedia('(max-width:768px)').matches
             || ('ontouchstart' in window)
             || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-        if (mobile) document.body.classList.add('is-mobile-nav');
+        if (mobile) document.documentElement.classList.add('is-mobile-nav');
         window.isMobileNav = mobile;
       })();
     </script>
