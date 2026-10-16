@@ -28,7 +28,6 @@ import { createMedicalView } from './pages/views/medical-view.js';
 import { createLeagueView } from './pages/views/league-view.js';
 import { createFixtureView } from './pages/views/fixture-view.js';
 import { createSubstitutionPlanView } from './pages/views/substitution-plan-view.js';
-import { createMatchTacticPlanView } from './pages/views/match-tactic-plan-view.js';
 import { createMatchLineupView } from './pages/views/match-lineup-view.js';
 import { createTacticOrderView } from './pages/views/tactic-order-view.js';
 import { createCountryView } from './pages/views/country-view.js';
@@ -419,7 +418,6 @@ function buildPageNavState(page, options = {}) {
         ensureTeamId: () => ensureUserTeamId(),
         getLeagueNavState: getActiveLeagueNavState,
         createSubstitutionPlanView: () => substitutionPlanView,
-        createMatchTacticPlanView: () => createMatchTacticPlanView({ authFetch, getTeamId: () => currentUserTeamId }),
         createMatchLineupView: () => createMatchLineupView({ authFetch, getTeamId: () => currentUserTeamId }),
         createTacticOrderView: () => createTacticOrderView({ authFetch }),
         // The Match Setup tab carries the same club menu as the club pages, so a manager can reach

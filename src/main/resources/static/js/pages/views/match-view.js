@@ -214,7 +214,6 @@ export function createMatchView(deps) {
                         closed an hour before kickoff, when the match is decided.
                     </p>
                     <div id="fm-match-lineup"></div>
-                    <div id="fm-match-tactic-plan"></div>
                     <div id="fm-substitution-plan"></div>
                 </div>
                 <div style="text-align:center; margin-top:30px;">
@@ -909,14 +908,20 @@ export function createMatchView(deps) {
             /**
              * The things a manager sets before kickoff, in the order a manager does them.
              *
-             * <p><b>"Tactic orders" is the fourth and it is not a fourth tactic.</b> The owner settled it
-             * on 2026-10-12: three tactics in the game plan, and up to ten rows saying when to switch
-             * between them. They live on separate panels with separate caps because one constant holding
-             * both is how "three tactics" quietly becomes ten.
+             * <p><b>There was a fifth and it was a duplicate.</b> "Game plan" held three numbered slots
+             * — first, second, third choice — each with a tactic, a condition and a from-minute. "Tactic
+             * orders" holds ten rows of those same three fields. Same data at two sizes, and the owner
+             * read the two panels and said they look like the same thing (2026-10-16). The plan is gone
+             * from this screen and orders stand alone.
+             *
+             * <p>Nothing is lost by it. An order may name any of the club's own tactics, not only three
+             * of them, and `MatchTacticsPreparationService` already resolves a fixture that carries orders
+             * and no plan: the default shape holds until the first order fires. The plan's PUT, its
+             * reorder endpoint and `MatchTacticAssignment` are still there and the engine still reads
+             * them — this only stops the screen offering the same thing twice.
              */
             const PANELS = [
                 { host: 'fm-match-lineup', title: 'The eleven', load: (body) => mountLineup(body) },
-                { host: 'fm-match-tactic-plan', title: 'Game plan', load: (body) => mountTacticPlan(body) },
                 { host: 'fm-tactic-orders', title: 'Tactic orders', load: (body) => mountTacticOrders(body) },
                 { host: 'fm-substitution-plan', title: 'Substitutions', load: (body) => mountSubstitutionPlan(body) },
             ];
@@ -992,22 +997,6 @@ export function createMatchView(deps) {
                 } catch (error) {
                     host.innerHTML = `<p class="fm-setup-error">Tactic orders could not be shown:
                         ${htmlEscape(error && error.message ? error.message : String(error))}</p>`;
-                }
-            }
-
-            async function mountTacticPlan(host) {
-                if (!host) return;
-                const managerTeamId = await resolveTeamId();
-                if (!managerTeamId) {
-                    host.innerHTML = '<p class="fm-setup-error">Your club could not be resolved on this page.</p>';
-                    return;
-                }
-                try {
-                    const planView = deps.createMatchTacticPlanView?.();
-                    if (!planView) throw new Error('the game plan module did not load');
-                    await planView.loadPlan(matchId, host);
-                } catch (error) {
-                    console.warn('Could not load the game plan:', error);
                 }
             }
 

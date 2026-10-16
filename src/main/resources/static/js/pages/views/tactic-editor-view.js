@@ -117,22 +117,9 @@ export function createTacticEditorView(deps) {
 
     async function loadTacticEditor() {
         const mainContent = document.getElementById("main-content");
-        const DRAFT_KEY = `te_draft_${getTeamId()}`;
-        const FORMATION_KEY = `te_requested_formation_${getTeamId()}`;
         const POSSESSION_CONTEXT = 'WE_HAVE_BALL'; // Koristimo samo jednu varijantu
         const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"];
         const availableFormations = ["4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "4-5-1", "3-5-2", "3-4-3", "3-4-2-1", "5-3-2", "5-4-1"];
-        const requestedFormation = localStorage.getItem(FORMATION_KEY) || '';
-        const editorUrl = requestedFormation
-            ? `/teams/${getTeamId()}/tactics-editor?formation=${encodeURIComponent(requestedFormation)}`
-            : `/teams/${getTeamId()}/tactics-editor`;
-
-        const editorRes = await authFetch(editorUrl);
-        if (!editorRes.ok) {
-            mainContent.innerHTML = `<div class="fm-page"><section class="fm-panel"><div class="fm-empty">Failed to load tactic editor data.</div></section></div>`;
-            return;
-        }
-        const editor = await editorRes.json();
 
         // An hour before kickoff the match has been computed. The server refuses the save with 423
         // either way; this asks first so the page can say why, rather than letting a manager find out
@@ -140,7 +127,14 @@ export function createTacticEditorView(deps) {
         const matchLock = await fetchMatchLock(authFetch, getTeamId());
         const locked = isPageLocked(matchLock);
 
-        // Which tactic the grid is editing. The shelf is the library; the grid below edits one of them.
+        // **The library is read before the editor grid, because the grid belongs to one tactic.**
+        //
+        // It used to be the other way round: the grid was loaded from the club-level tactics profile
+        // and the tactic was picked afterwards, so the shape on screen belonged to the club while the
+        // name in the corner belonged to a tactic. The owner asked for the opposite — "4-3-3 in one
+        // tactic, 4-4-2 in the other" (2026-10-16) — which cannot be true while the shape is read from
+        // a club-level endpoint. So the tactic is settled first, and its own formation is what the grid
+        // is asked for below.
         const library = await loadLibrary(getTeamId(), authFetch);
         // **The tactic the manager is on survives a reload.** It used to snap back to the first in the
         // library, which meant that after "Copy (based on)" the page reloaded onto the *original* — and
@@ -154,8 +148,29 @@ export function createTacticEditorView(deps) {
         let selectedTacticId = focusedId;
         let workingName = focused ? focused.name : '';
 
+        // **One draft per tactic, not one per club.** A single `te_draft_{club}` key meant a draft
+        // written while editing one tactic was loaded onto whichever tactic was opened next — the exact
+        // leak the owner is describing, and the reason a shape changed in one tactic and appeared in
+        // another. The key names the tactic, so the two drafts cannot meet.
+        const DRAFT_KEY = focusedId != null ? `te_draft_${getTeamId()}_${focusedId}` : `te_draft_${getTeamId()}_none`;
         let draft = null;
         try { const raw = localStorage.getItem(DRAFT_KEY); if (raw) draft = JSON.parse(raw); } catch (_) { draft = null; }
+
+        // **The shape asked for is this tactic's own.** The endpoint still returns slot anchors for a
+        // formation, which is what the grid draws, so it is asked for the tactic's shape rather than
+        // the club's default. A draft wins: a manager who changed the shape and has not saved yet must
+        // still see the shape he changed it to.
+        const shapeForGrid = (draft && draft.formation) || (focused && focused.formation) || '';
+        const editorUrl = shapeForGrid
+            ? `/teams/${getTeamId()}/tactics-editor?formation=${encodeURIComponent(shapeForGrid)}`
+            : `/teams/${getTeamId()}/tactics-editor`;
+
+        const editorRes = await authFetch(editorUrl);
+        if (!editorRes.ok) {
+            mainContent.innerHTML = `<div class="fm-page"><section class="fm-panel"><div class="fm-empty">Failed to load tactic editor data.</div></section></div>`;
+            return;
+        }
+        const editor = await editorRes.json();
 
         const slots = Array.isArray(editor.slotDefinitions) ? editor.slotDefinitions : [];
         const slotKeys = slots.map(slot => slot.slotKey);
@@ -177,12 +192,28 @@ export function createTacticEditorView(deps) {
             return map;
         };
 
-        const useDraft = !!(draft && draft.formation === editor.formation && typeof draft.draftVersion === 'number' && draft.draftVersion >= (editor.version || 0));
+        // **A draft for this tactic is this tactic's unsaved work, whatever shape it was written in.**
+        //
+        // The test used to be `draft.formation === editor.formation`, i.e. "keep the draft only if the
+        // shape did not change" — which meant changing the shape threw the draft away, rules and all,
+        // and the panel came back showing the shape the tactic was saved with. The version check stayed
+        // as it is: it still means "the draft is not older than what the server has".
+        const useDraft = !!(draft && typeof draft.draftVersion === 'number' && draft.draftVersion >= (editor.version || 0));
         const setPiecesSource = useDraft ? (draft.setPieceAssignments || editor.setPieceAssignments || {}) : (editor.setPieceAssignments || {});
 
+        // **The shape and the style come from this tactic, not from the club.**
+        //
+        // The endpoint answers with the club's own formation and style when nothing is asked for, so
+        // reading them from there is what made 4-3-3 in one tactic and 4-4-2 in the other impossible:
+        // both would open showing the club's. The tactic's own values win, a draft for this tactic wins
+        // over them, and the endpoint is only the last resort for a club with no tactics yet.
         const state = {
-            formation: useDraft ? (draft.formation || editor.formation) : editor.formation,
-            style: useDraft ? (draft.style || editor.style) : editor.style,
+            formation: (useDraft ? (draft.formation || null) : null)
+                || (focused && focused.formation)
+                || editor.formation,
+            style: (useDraft ? (draft.style || null) : null)
+                || (focused && focused.style)
+                || editor.style,
             rulesMap: buildRulesMap(useDraft ? draft.movementRules : editor.movementRules),
             setPieces: {
                 penaltyTakerSlot: setPiecesSource.penaltyTakerSlot || '',
@@ -380,9 +411,10 @@ export function createTacticEditorView(deps) {
                     preferredTacticId = picked;
                     const found = library.tactics.find(t => t.id === picked);
                     workingName = found ? found.name : '';
-                    // The grid keeps its own draft; loading a different tactic under a stale draft is
-                    // how a manager edits one shape and saves it over another.
-                    localStorage.removeItem(DRAFT_KEY);
+                    // **Nothing is removed here.** Drafts are keyed by tactic now, so picking another
+                    // one loads that one's draft and cannot pick up this one's. Deleting the draft of
+                    // the tactic being left is what used to keep them apart — at the price of losing
+                    // unsaved work every time the manager looked at another tactic and came back.
                     await loadTacticEditor();
                 });
             });
@@ -402,7 +434,6 @@ export function createTacticEditorView(deps) {
                     if (saved) {
                         // Stay on what was just made, or the next Save writes over the first tactic.
                         preferredTacticId = saved.id;
-                        localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {
                         say(shelfMessage);
@@ -428,7 +459,6 @@ export function createTacticEditorView(deps) {
                         `/teams/${getTeamId()}/tactics/${sourceId}/copy`, { name });
                     if (saved) {
                         preferredTacticId = saved.id;
-                        localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {
                         say(shelfMessage);
@@ -444,7 +474,6 @@ export function createTacticEditorView(deps) {
                         `/teams/${getTeamId()}/tactics/${selectedTacticId}/mirror`, null);
                     if (saved) {
                         preferredTacticId = saved.id;
-                        localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } else {
                         say(shelfMessage);
@@ -539,7 +568,6 @@ export function createTacticEditorView(deps) {
                     });
                     if (saved) {
                         preferredTacticId = saved.id;
-                        localStorage.removeItem(DRAFT_KEY);
                         if (pastePanel) pastePanel.hidden = true;
                         if (pasteName) pasteName.value = '';
                         await loadTacticEditor();
@@ -562,6 +590,8 @@ export function createTacticEditorView(deps) {
                     try {
                         await authFetch(`/teams/${getTeamId()}/tactics/${selectedTacticId}`, { method: 'DELETE' });
                         selectedTacticId = null;
+                        // The deleted tactic's own draft, and only that: DRAFT_KEY is keyed by the
+                        // tactic this load was for, which is the one just deleted.
                         localStorage.removeItem(DRAFT_KEY);
                         await loadTacticEditor();
                     } catch (error) {
@@ -578,7 +608,32 @@ export function createTacticEditorView(deps) {
             // bindEvents() is called at the end of render(), which is the only point at which the
             // markup exists.
             wireShelf();
-            mainContent.querySelectorAll('[data-te-formation]').forEach(btn => { btn.addEventListener('click', async () => { const nextFormation = btn.getAttribute('data-te-formation') || state.formation; localStorage.setItem(FORMATION_KEY, nextFormation); await loadTacticEditor(); }); });
+            // **Changing the shape belongs to the open tactic.**
+            //
+            // It used to write `te_requested_formation_{club}` and reload, which is a club-level note:
+//            every tactic opened afterwards was drawn in the shape the last one left behind. It now
+            // changes this tactic's draft and re-reads the grid for that shape, because a 4-3-3 slot
+            // list is not a 4-4-2 one and the anchors have to come back from the endpoint.
+            mainContent.querySelectorAll('[data-te-formation]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const nextFormation = btn.getAttribute('data-te-formation') || state.formation;
+                    if (nextFormation === state.formation) return;
+                    state.formation = nextFormation;
+                    // **The movement rules are dropped, and deliberately.** They are keyed by slot key,
+                    // and the slot keys belong to the shape — DEF_1 means a defender in a 4-3-3 and a
+                    // different defender in a 4-4-2. Carrying them across would keep the old shape's
+                    // instructions against the new shape's slots, which is how a manager ends up with
+                    // rules that say nothing about the team he is looking at. The shape is what he
+                    // changed; the rules are redrawn from the new shape's anchors.
+                    state.rulesMap = {};
+                    // `draftVersion` is deliberately left alone. It says how fresh the draft is against
+                    // the server, and zeroing it would mark this draft stale and throw the shape change
+                    // away with it — which is the bug the old `draft.formation === editor.formation`
+                    // test caused.
+                    saveDraft();
+                    await loadTacticEditor();
+                });
+            });
             mainContent.querySelectorAll('[data-te-style]').forEach(btn => { btn.addEventListener('click', () => { state.style = btn.getAttribute('data-te-style') || state.style; saveDraft(); render(); }); });
             mainContent.querySelectorAll('[data-te-slot-marker]').forEach(marker => {
                 marker.addEventListener('click', () => { state.focusedSlot = marker.getAttribute('data-te-slot-marker') || state.focusedSlot; render(); });
@@ -624,11 +679,16 @@ export function createTacticEditorView(deps) {
                             rulesJson: JSON.stringify(serializeRules()),
                             setPiecesJson: JSON.stringify(state.setPieces)
                         };
+                        // Saves under the name the tactic was opened with, and the server upserts by
+                        // name, so this is an edit of that tactic. The shape and the style in the payload
+                        // are this tactic's own — "4-3-3 in one tactic, 4-4-2 in the other" is only true
+                        // while nothing here falls back to a club-level value.
                         const saved = await postJson(`/teams/${getTeamId()}/tactics`, payload);
                         if (!saved) throw new Error(shelfMessage || 'The tactic was not saved.');
-                        // Keep the local draft so the page reloads what the manager actually arranged,
-                        // instead of resetting to the server profile. Draft is cleared on switching tactic.
-                        localStorage.setItem(FORMATION_KEY, state.formation);
+                        // The draft stays so the page reloads what the manager arranged rather than
+                        // resetting, and it stays under this tactic's key.
+                        preferredTacticId = saved.id;
+                        saveDraft();
                         saveBtn.textContent = 'Saved'; await loadTacticEditor();
                     } catch (error) { console.error('Failed to save tactic editor', error); saveBtn.disabled = false; saveBtn.textContent = 'Save failed'; setTimeout(() => { saveBtn.textContent = 'Save Tactic Editor'; }, 1400); }
                 });
@@ -660,7 +720,7 @@ export function createTacticEditorView(deps) {
                             <div><strong>${htmlEscape(state.formation || '4-4-2')}</strong><span>Shape</span></div>
                             <div><strong>${slots.length}</strong><span>Slots</span></div>
                             <div><strong>${ruleCount}</strong><span>Rules</span></div>
-                            <div><strong>${draftLoaded ? 'Draft' : `v${editor.version || 0}`}</strong><span>Status</span></div>
+                            <div><strong>${htmlEscape(state.style || 'BALANCED')}</strong><span>Style</span></div>
                         </div>
                     </section>
                     ${renderLibraryShelf(library, selectedTacticId, locked)}
@@ -668,7 +728,9 @@ export function createTacticEditorView(deps) {
                         <div class="fm-panel-head">
                             <div>
                                 <h3>Base setup</h3>
-                                <p class="fm-subtle">Changing formation reloads slot anchors from the backend. Style and visual edits autosave locally until you press Save.</p>
+                                <p class="fm-subtle">This tactic's own shape and style. Save writes both to
+                                    <strong>${htmlEscape(workingName || 'this tactic')}</strong> and to no other, so two tactics can hold
+                                    two different shapes.</p>
                             </div>
                             <span class="fm-panel-action">${htmlEscape(state.style || 'BALANCED')}</span>
                         </div>
@@ -712,7 +774,7 @@ export function createTacticEditorView(deps) {
                                     <h3>Focused slot & save</h3>
                                     <p class="fm-subtle">Slot-based set-pieces stay separate from the visual pitch editor.</p>
                                 </div>
-                                <span class="fm-panel-action">${draftLoaded ? 'Local draft loaded' : 'Server profile'}</span>
+                                <span class="fm-panel-action">${draftLoaded ? 'Unsaved changes' : 'Saved'}</span>
                             </div>
                             <div class="training-actions te-actions-stack">
                                 <button type="button" id="te-save-btn" class="big-button">Save Tactic Editor</button>

@@ -1,3 +1,51 @@
+## 2026-10-16 - Game plan removed; Tactic Editor shape and style belong to one tactic
+
+**The question first, because the answer decided the change.** Game plan was three numbered slots —
+first, second, third choice — each with a tactic, a condition and a from-minute. Tactic orders is ten
+rows of **those same three fields**. The owner's read was right: they are the same data at two sizes,
+and the screen was offering the same thing twice.
+
+- The Game plan panel, its host div, its mount function, its dependency wiring and
+  `match-tactic-plan-view.js` are gone from the screen. The backend keeps its PUT, its reorder endpoint
+  and `MatchTacticAssignment`, and the engine still reads them — this only stops the screen duplicating
+  itself.
+- Nothing is lost by it: an order may name **any** of the club's tactics, not only three, and
+  `MatchTacticsPreparationService` already resolves a fixture carrying orders and no plan — the default
+  shape holds until the first order fires.
+- Match Setup now reads: The eleven, Tactic orders, Substitutions. Verified in the browser; the plan's
+  host element is absent.
+
+**Formation and style are now per tactic.** The owner: "4-3-3 in one tactic, 4-4-2 in the other." Three
+things leaked, and all three had to go:
+
+1. **The grid was loaded before the tactic was chosen.** `loadTacticEditor` fetched the club-level
+   `tactics-editor` endpoint first and picked the tactic afterwards, so the shape on screen belonged to
+   the club while the name in the corner belonged to a tactic. The library is now read first and the
+   grid is asked for **that tactic's** formation.
+2. **One draft key per club.** `te_draft_{club}` meant a draft written on one tactic was loaded onto
+   whichever was opened next. The key is now `te_draft_{club}_{tactic}`, and picking another tactic
+   removes nothing — drafts that are per tactic cannot collide, so unsaved work is no longer destroyed
+   by looking at something else.
+3. **`useDraft` required `draft.formation === editor.formation`** — "keep the draft unless the shape
+   changed" — so changing the shape threw the draft away and the panel came back on the saved shape.
+   The test is now freshness only.
+
+`state.formation` and `state.style` read the tactic's own values first and the club endpoint last, so a
+club with no tactics still has something to draw. The Base setup text says whose shape it is, and the
+hero's fourth tile is now the style rather than a club-level version number.
+
+**A shape change clears the movement rules, deliberately.** They are keyed by slot key and the slot keys
+belong to the shape — `DEF_1` is one defender in a 4-3-3 and another in a 4-4-2 — so carrying them
+across would attach the old shape's instructions to the new shape's slots.
+
+**Seen in the browser, on the database.** Tactic 2 opened at 4-3-3 / ATTACKING, tactic 4 at 4-4-2 /
+ATTACKING. Changed tactic 4 to 4-2-3-1 and COUNTER, pressed Save: `/teams/1/tactics` then read
+`4-4-2 → 4-2-3-1 COUNTER` while tactic 2 stayed `4-3-3 ATTACKING`. Reopened both: each showed its own.
+
+**Put back afterwards.** Verifying a save means writing to the owner's club, so the tactic was restored
+from `var/tactics-editor-profiles.json` — tactic 4 back to 4-4-2 / ATTACKING with its 1012 rules and its
+set pieces, which a bare shape restore would have wiped.
+
 ## 2026-10-16 - The Champions Cup is not hiding: International now finds it
 
 Owner report: "Schedule does not show international matches even though Omladinac is in the Champions
