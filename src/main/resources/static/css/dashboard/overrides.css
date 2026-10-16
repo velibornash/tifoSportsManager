@@ -260,10 +260,10 @@
 @media (min-width: 769px) {
     .logo-corner {
         display: block;
-        position: fixed;
-        top: 12px;
-        right: 20px;
-        z-index: 10;
+        position: static;
+        margin-left: auto;
+        align-self: center;
+        z-index: auto;
     }
 
     .corner-logo {
