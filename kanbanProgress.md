@@ -1,3 +1,9 @@
+## 2026-10-16 - Mobile header visible again
+
+- Restored the notification bell at the top of the header.
+- Added hamburger, clock and search controls after the bell for mobile.
+- Updated MD after the fix.
+
 ## 2026-10-16 - Mobile header, search, club and league nav cleanup
 
 - Hamburger button, notification bell, clock and search now sit in the mobile header; search added to mobile menu.
