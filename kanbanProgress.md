@@ -5,7 +5,7 @@
 | | Before | After |
 |---|---|---|
 | `GET /transfers?teamId=1` | 11.70 s / 11.62 s | 0.61 s / 0.66 s / 0.61 s |
-| Transfers page, nav click to rendered rows | — | 1.37 s, 89 rows |
+| Transfers page, nav click to 89 rendered rows | — | **0.65 s** |
 
 **What was wrong.** `TransferService.scoutedUnlisted` asked the database two questions it already knew
 the answer to:
@@ -49,6 +49,16 @@ a green test measuring nothing.
 18 deletions in `CSMatchSimulator.java` — a Counter-Strike teletext score fix that jumps backwards
 because penalties were generated after open play. It is uncommitted work belonging to another task and
 was **not** touched here. It is still in the stash.
+
+**A regression I caused and then caught in the browser.** While fixing NAV-1 I made every nav `onclick`
+handler receive the click event: `event.preventDefault(); event.stopPropagation(); <onclick>(event)`.
+That is wrong for any handler that is a complete statement rather than a call — it produced
+`window.location.href='/home.html'(event)`, which throws, so **Sports Lobby silently stopped working**,
+and it turned `window.loadUserProfile()` into `window.loadUserProfile()(event)`. Only the
+Notifications entry needed the event, so only it now asks for it (`stopsClick`). Re-checked in the
+browser afterwards: Sports Lobby lands on `/home.html`, My profile opens, Notifications opens, Sign out
+carries its own icon. A console sweep across Club → Matches → Schedule → Tactics → Squad → Juniors
+after the fix is empty.
 
 ## 2026-10-16 - NAV-7: the setup page is Tactics Setup, not Tactic Editor
 

@@ -1720,7 +1720,7 @@ async function loadUserProfile() {
             { label: 'World', page: 'world' },
             { label: 'Community', page: 'forum' },
             { label: 'Search', page: 'search' },
-            { label: 'Notifications', onclick: 'window.openNotificationPanel(event)' },
+            { label: 'Notifications', onclick: 'window.openNotificationPanel(event)', stopsClick: true },
             { label: 'Admin', page: 'admin', adminOnly: true },
             { label: 'User Settings', page: 'settings' },
         ];
@@ -1777,7 +1777,8 @@ async function loadUserProfile() {
             'Countries': '🌍', 'First team': '👥', 'Juniors': '🎓',
             'Tactics setup': '🧠', 'Training Setup': '⚙️', 'Training Reports': '📊',
             'Qualifying': '🎯', 'National Team': '🇷🇸', 'U-21': '👶',
-            'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'User Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
+            'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'User Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️',
+            'Sign out': '🚪'
         };
         const countryFlag = countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍';
         icons.Country = countryFlag;
@@ -1801,7 +1802,9 @@ async function loadUserProfile() {
                             ? `window.location.href = "${item.isExternal}"`
                             : (item.page
                                 ? `window.desktopNavGo('${item.page}'${optionsLiteral})`
-                                : (item.onclick ? `event.preventDefault(); event.stopPropagation(); ${item.onclick}(event)` : ''))));
+                                : (item.onclick
+                                ? `${item.stopsClick ? 'event.preventDefault(); event.stopPropagation(); ' : ''}${item.onclick}`
+                                : ''))));
                 const icon = item.icon || icons[item.label] || '•';
                 return `<button type="button" onclick="${onclick}">
                     <span class="desktop-nav-icon">${icon}</span>
