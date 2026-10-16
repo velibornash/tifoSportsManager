@@ -1598,7 +1598,8 @@ async function loadUserProfile() {
         if (['firstTeam', 'juniors'].includes(page)) return 'club:squad';
         if (['formations', 'tactics', 'tacticEditor'].includes(page)) return 'club:tactics';
         if (['training', 'trainingSetup', 'trainingReports'].includes(page)) return 'club:training';
-        if (['clubProfile', 'schedule', 'loans', 'staff', 'finances', 'transfers', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium', 'results', 'fixtures'].includes(page)) return 'club';
+        if (['schedule', 'results', 'fixtures'].includes(page)) return 'club:matches';
+        if (['clubProfile', 'loans', 'staff', 'finances', 'transfers', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium'].includes(page)) return 'club';
         if (['leagueTable', 'leagueSchedule', 'leagueMatches', 'topScorers', 'topAssists'].includes(page)) return 'league';
         if (page.startsWith('country') || page === 'nationalTournament') return 'country';
         if (page === 'world' || page === 'clubCup' || page === 'nationalTournament' || page === 'countryCup' || page === 'countryPlayoffs') return 'world';
@@ -1631,11 +1632,18 @@ async function loadUserProfile() {
                 { label: 'Training Reports', page: 'trainingReports' },
             ];
         }
-        if (group === 'club') {
+        if (group === 'club:matches') {
             return [
-                { label: 'Squad', gotoGroup: 'club:squad', icon: '👥' },
+                { navBack: true, label: 'Back', icon: '◀' },
                 { label: 'Schedule', page: 'schedule' },
                 { label: 'Results', page: 'results' },
+            ];
+        }
+        if (group === 'club') {
+            return [
+                { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'Squad', gotoGroup: 'club:squad', icon: '👥' },
+                { label: 'Matches', gotoGroup: 'club:matches', icon: '⚽' },
                 { label: 'Loans', page: 'loans' },
                 { label: 'Tactics', gotoGroup: 'club:tactics', icon: '🧠' },
                 { label: 'Staff', page: 'staff' },

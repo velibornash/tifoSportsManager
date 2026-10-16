@@ -1,3 +1,11 @@
+## 2026-10-16 - NAV-5 and NAV-6: Back on Club, Matches takes Schedule and Results
+
+- Club now reads Back, Squad, Matches, Loans, Tactics, Staff, Finances, Transfers, Training, Medical,
+  Profile, Stadium. Matches opens Back, Schedule, Results.
+- The schedule and results pages keep the Matches group while they are open, so the nav does not
+  scatter back to the Club menu behind them.
+- Seen in the browser, both pages, both nav states.
+
 ## 2026-10-16 - NAV-4: Friendlies opens from the bottom nav
 
 - **What was wrong:** the World page applied the requested tab before the Friendlies panel existed.
