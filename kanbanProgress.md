@@ -1,3 +1,10 @@
+## 2026-10-16 - Desktop bottom-nav submenus completed
+
+- Country now opens General, Calendar, Clubs, Qualifying, National Team and U-21 with icons.
+- World now opens Clubs, Competitions and Friendlies with icons.
+- User menu now contains My profile, User Settings and Sign out only.
+- Sports Lobby and Notifications actions were corrected at the source of the desktop navigation.
+
 ## 2026-10-16 - League stats visual cleanup
 
 - Left-aligned Top Lists, Top Scorers and Top Assists headings.
