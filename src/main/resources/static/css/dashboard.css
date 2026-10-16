@@ -6854,4 +6854,4 @@ body {
 }
 
 .league-stat-icon--goal { color: #ffd700; font-weight: 800; }
-.league-stat-icon--assist { color: #ff7582; font-style: italic; font-weight: 900; }
+.league-stat-icon--assist { font-weight: 900; }

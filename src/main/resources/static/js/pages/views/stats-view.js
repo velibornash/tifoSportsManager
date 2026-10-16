@@ -115,7 +115,7 @@ export function createStatsView(deps) {
                             <small style="color: #888;">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${htmlEscape(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
                         </span>
                         <span class="top-list-value" style="color: #ff7582;">
-                            <span class="league-stat-icon league-stat-icon--goal">&#9917;</span>&nbsp;${s.goals}
+                            ${s.goals}&nbsp;<span class="league-stat-icon league-stat-icon--goal">&#9917;</span>
                         </span>
                     </li>`;
                 });
@@ -145,7 +145,7 @@ export function createStatsView(deps) {
                             <small style="color: #888;">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${htmlEscape(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
                         <span class="top-list-value" style="color: #4fc3f7;">
-                            <span class="league-stat-icon league-stat-icon--assist">A</span>&nbsp;${a.assists}
+                            ${a.assists}&nbsp;<span class="league-stat-icon league-stat-icon--assist">&#127969;</span>
                         </span>
                     </li>`;
                 });
