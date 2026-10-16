@@ -402,13 +402,15 @@ export function buildSquadTableHtml(players, options = {}) {
     const teamId = options.teamId ?? '';
     const teamName = options.teamName ?? '';
     const emptyText = options.emptyText || 'No players found.';
+    const sortable = !!options.sortable;
+    const wrapClass = sortable ? ' fm-squad-wrap--sortable' : '';
 
     if (!rows.length) {
         return `<div class="fm-empty">${htmlEscape(emptyText)}</div>`;
     }
 
     return `
-        <div class="fm-squad-wrap">
+        <div class="fm-squad-wrap${sortable ? " fm-squad-wrap--sortable" : ""}">
             <table class="fm-squad">
                 <thead>
                     <tr>
@@ -420,10 +422,10 @@ export function buildSquadTableHtml(players, options = {}) {
                         <th class="sq-potential">Potential</th>
                         <th class="sq-cond">Condition</th>
                         <th class="sq-morale">Morale</th>
-                        <th class="sq-games">Apps</th>
-                        <th class="sq-goals">Gls</th>
-                        <th class="sq-goals">Ast</th>
-                        <th class="sq-rating">Av Rat</th>
+                        <th class="sq-games sortable" data-sort="apps">Apps ⇅</th>
+                        <th class="sq-goals sortable" data-sort="goals">Gls ⇅</th>
+                        <th class="sq-goals sortable" data-sort="assists">Ast ⇅</th>
+                        <th class="sq-rating sortable" data-sort="rating">Av Rat ⇅</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -437,7 +439,7 @@ export function buildSquadTableHtml(players, options = {}) {
                         const assists = Number(player?.totalAssists ?? player?.assists ?? 0);
 
                         return `
-                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}">
+                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}">
                                 <td class="sq-inf"><div class="fm-badge-deck">${badgeDeck(player)}</div></td>
                                 <td class="sq-name"><span class="sq-player-link">${htmlEscape(player?.name || 'Unknown')}</span></td>
                                 <td class="sq-pos">${htmlEscape(player?.position || '-')}</td>
@@ -462,6 +464,47 @@ export function buildSquadTableHtml(players, options = {}) {
         </div>`;
 }
 
+/**
+ * Makes `.fm-squad-wrap--sortable` tables reorderable by clicking a sortable column header.
+ * Sorting happens client-side on the values emitted as `data-*` attributes, so a click only
+ * reorders the rows the server already sent. Sensible for a club squad, whose players are a
+ * single fixed set for this page.
+ */
+export function bindSortableSquadTable(container) {
+    const wrap = container?.querySelector?.('.fm-squad-wrap--sortable');
+    if (!wrap) return;
+    const table = wrap.querySelector('table.fm-squad');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const heads = Array.from(table.querySelectorAll('thead .sortable[data-sort]'));
+    if (!tbody || !heads.length) return;
+
+    const attrOf = (key) => `data-${key === 'rating' ? 'rating' : key === 'assists' ? 'assists' : key === 'goals' ? 'goals' : 'apps'}`;
+    const readNum = (row, key) => {
+        if (key === 'apps') return Number(row.dataset.apps) || 0;
+        if (key === 'goals') return Number(row.dataset.goals) || 0;
+        if (key === 'assists') return Number(row.dataset.assists) || 0;
+        return Number(row.dataset.rating) || 0;
+    };
+
+    heads.forEach(head => {
+        head.style.cursor = 'pointer';
+        head.addEventListener('click', () => {
+            const key = head.dataset.sort;
+            const ascending = head.dataset.dir !== 'asc';
+            heads.forEach(h => { if (h !== head) h.dataset.dir = ''; });
+            head.dataset.dir = ascending ? 'asc' : 'desc';
+            const rows = Array.from(tbody.querySelectorAll('tr.fm-squad-row'));
+            rows.sort((a, b) => {
+                const left = readNum(a, key);
+                const right = readNum(b, key);
+                if (left === right) return 0;
+                return (ascending ? 1 : -1) * (left > right ? 1 : -1);
+            });
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    });
+}
 export function bindSquadRowClicks(container, onClick, selector = '.league-player-card') {
     container.querySelectorAll(selector).forEach(row => {
         row.addEventListener('click', () => onClick(row));
@@ -596,18 +639,7 @@ export function renderPlayersView(players, title, options = {}) {
                     <div><strong>${totalGoals}/${totalAssists}</strong><span>Goals / assists</span></div>
                 </div>
             </section>
-            ${milestonesHtml ? `
-            <section class="fm-panel fm-milestone-board-panel">
-                <div class="fm-panel-head">
-                    <div>
-                        <h3>Club milestones</h3>
-                        <p class="fm-subtle">Season context stays visible directly on the First Team page too.</p>
-                    </div>
-                    <span class="fm-panel-action">Club area</span>
-                </div>
-                ${milestonesHtml}
-            </section>` : ''}
-            <div class="fm-CTeam-layout has-side-panel">
+            <div class="fm-CTeam-layout">
                 <section class="fm-panel">
                     <div class="fm-panel-head">
                         <h3>Squad</h3>
@@ -617,23 +649,10 @@ export function renderPlayersView(players, title, options = {}) {
                         rowClass: 'league-player-card',
                         teamId,
                         teamName: resolvedTeamName,
-                        emptyText: 'No registered players found for this CTeam.'
+                        emptyText: 'No registered players found for this CTeam.',
+                        sortable: true
                     })}
                 </section>
-                <aside class="fm-panel fm-medical-panel">
-                    <div class="fm-panel-head">
-                        <h3>Medical Center</h3>
-                        <span class="fm-panel-action">Club area</span>
-                    </div>
-                    <div class="fm-medical-icon">&#10010; &#129658;</div>
-                    <p class="fm-subtle">Condition now follows fatigue consistently here and on the player page, with recovery cases always visible.</p>
-                    <div class="fm-medical-stat-grid">
-                        <div><strong>${injuryCount}</strong><span>Injuries</span></div>
-                        <div><strong>${rehabCount}</strong><span>Recovery queue</span></div>
-                        <div><strong>${averageCondition}%</strong><span>Avg condition</span></div>
-                    </div>
-                    <button type="button" class="fm-action-btn secondary" onclick="loadPage('medicalCenter')">Open Medical Center</button>
-                </aside>
             </div>
         </div>`;
 
@@ -641,6 +660,7 @@ export function renderPlayersView(players, title, options = {}) {
             const playerId = Number(row.dataset.playerId);
             if (playerId) loadPlayer(playerId, callerPage);
         });
+        bindSortableSquadTable(mainContent);
         return;
     }
 
@@ -670,6 +690,7 @@ export function renderPlayersView(players, title, options = {}) {
         const playerId = Number(row.dataset.playerId);
         if (playerId) loadPlayer(playerId, callerPage);
     });
+    bindSortableSquadTable(mainContent);
 }
 
 export function renderMatchesView(matches, title, { loadMatch, currentPage = 'schedule', currentTeamName = '' } = {}) {

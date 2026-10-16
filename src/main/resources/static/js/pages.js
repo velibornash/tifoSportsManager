@@ -1809,24 +1809,26 @@ async function loadUserProfile() {
         return loadPage(page, options);
     }
 
+
+
+    function setDesktopNavGroup(group) {
+        const pushed = activeDesktopNavGroup();
+        (window.__nstack = window.__nstack || []).push({pushed, group, page:currentPageId});
+        desktopNavMenuStack.push(pushed);
+        desktopNavOverrideGroup = group || null;
+        renderDesktopBottomNav(currentPageId);
+    }
     function desktopNavBack() {
+        const stackBefore = [...desktopNavMenuStack];
         const previousGroup = desktopNavMenuStack.pop();
+        console.log('BACK clicked. stackBefore', stackBefore, 'popped', previousGroup, 'page', currentPageId);
         if (previousGroup === undefined) {
-            // Nothing behind this menu but the root one, which is still a menu. Returning to it keeps
-            // the button honest without touching a page.
             desktopNavOverrideGroup = 'main';
             renderDesktopBottomNav(currentPageId);
             return;
         }
-        // Going back to the menu this page already owns means there is no submenu to hold on to.
         const pageGroup = desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
         desktopNavOverrideGroup = previousGroup === pageGroup ? null : previousGroup;
-        renderDesktopBottomNav(currentPageId);
-    }
-
-    function setDesktopNavGroup(group) {
-        desktopNavMenuStack.push(activeDesktopNavGroup());
-        desktopNavOverrideGroup = group || null;
         renderDesktopBottomNav(currentPageId);
     }
 
