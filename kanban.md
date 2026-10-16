@@ -19,18 +19,19 @@ newest first, each carrying its commit.
 # 📌 OPEN WORK — owner pass, 2026-10-16 (navigation)
 
 Raised by the owner in one message after the first bottom-nav pass. All eight are navigation or
-navigation-adjacent, and none of them is a new feature.
+navigation-adjacent, and none of them is a new feature. **All eight are closed and each was seen in the
+browser**; `kanbanProgress.md` carries what was measured and what each one actually was.
 
 | # | Pri | Task | State |
 |---|---|---|---|
 | **NAV-1** | 🔴 | **Bottom-nav Notifications opens nothing; the header bell opens "Nothing yet"** | ✅ **Fixed and seen.** The dropdown opens from the nav, the bell still toggles it, and a click outside still closes it. |
-| **NAV-2** | 🔴 | **Bottom-nav Back closed the menu but did not go back a page** | ⬜ Open. Back pops the return stack and loads the previous page; **not yet seen in the browser**. |
+| **NAV-2** | 🔴 | **Bottom-nav Back closed the menu but did not go back a page** | ✅ **Fixed and seen.** Back pops the nav return stack and loads the previous page — World → Clubs → Back lands on the dashboard, First team → Back lands on the club overview. |
 | **NAV-3** | 🟡 | **World submenu had no Countries entry** | ✅ **Fixed and seen.** Back, Countries, Clubs, Competitions, Friendlies — and Countries opens the Countries tab. |
 | **NAV-4** | 🔴 | **Friendlies from the bottom nav opened nothing; the header path worked** | ✅ **Fixed and seen.** The tab is applied again after the panel is built; the free-slot board renders. |
 | **NAV-5** | 🟡 | **Club submenu from the bottom nav had no Back** | ✅ **Fixed and seen.** Every group now opens with Back, Club included. |
 | **NAV-6** | 🟡 | **Schedule and Results sat directly in the Club menu** | ✅ **Fixed and seen.** Matches → Back, Schedule, Results; the Club menu keeps one Matches entry. |
 | **NAV-7** | 🟡 | **The tactics-setup page titled itself "Tactic Editor"** | ✅ **Fixed and seen.** Tactics Setup on the setup page; the editor keeps its own name. |
-| **NAV-8** | 🔴 | **Transfers took about ten seconds to open** | ✅ **Fixed, measured.** `GET /transfers` **11.63 s → 0.61 s**; the page opens in **1.37 s** with 89 rows. Two N+1 queries removed; same database, same server, same request. |
+| **NAV-8** | 🔴 | **Transfers took about ten seconds to open** | ✅ **Fixed, measured.** `GET /transfers` **11.70 s → 0.61 s**; the page opens in **0.65 s** with 89 rows. Two N+1 queries removed; same database, same server, same request. Guarded by `TransferScoutReadCountTest`. |
 
 ---
 
