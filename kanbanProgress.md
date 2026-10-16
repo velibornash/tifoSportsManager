@@ -1,3 +1,9 @@
+## 2026-10-16 - City: P0-1 corner logo no longer a fixed overlay
+
+- `.logo-corner` now lays out in the `top-menu` flex row instead of floating over the season
+  dropdown and the ticker. The 1100-1303 px sideways overflow was caused by the fixed 146 px
+  emblem occupying a band no element had reserved.
+
 ## 2026-10-16 - Inline club summary without duplicated actions
 
 - Removed the repeated club action toolbar from club pages.
