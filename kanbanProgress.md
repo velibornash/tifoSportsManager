@@ -1,3 +1,7 @@
+## 2026-10-16 - Redundant Club Profile removed from club section
+
+- `desktopBottomNavItems` no longer lists `Club profile` in the Club group.
+
 ## 2026-10-16 - Bottom nav icon coverage completed
 
 - Every menu entry now renders its own icon in the desktop bottom nav.
