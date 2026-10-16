@@ -838,6 +838,83 @@ search, then the desktop-only buttons).
    component-level CSS and list logic.
 
 
+---
+
+## Code-first mobile design audit — 2026-10-16
+
+This second audit was written against the JavaScript/CSS first, with the running browser used only to
+confirm parsing/rendering. The primary question was answered directly: **no part of this audit depends
+on a policy document.** Every concrete observation below points to a source file or CSS rule.
+
+### 1. How I audited
+
+- Read `dashboard.html`, `pages.js`, `pages-renderers.js`, `club-view.js`, `country-view.js`,
+  `friendly-board.js`, `era-*`/compact CSS.
+- Searched all responsive rules (`@media`, `.mobile-only`, `overflow-x`).
+- Counted table usage and navigation-call sites with text search.
+- Checked the current “Club overview” markup and the underlying `loadHomeTeamStats` update path.
+
+### 2. Current mobile regressions, ranked
+
+1. **Action-sheet navigation was replaced with a void.**  
+   `buildClubActionsHtml()` now returns an empty string.  
+   - Source: `pages-renderers.js`, lines around the early-return `return '';`.
+   - Result: `club-view.js`, `loans.js`, and every `.fm-club-actions` slot lost their panel-level
+     secondary nav. The mobile drawer keeps the same list, but users on desktop lose the lateral menu.
+   - Priority: **high**. Put back a compact navigation strip that is 5-button grouped.
+
+2. **Summary line still competes with invisible cards.**  
+   The dashboard summary changed classes, but `stats-grid` keeps `style="display:none;"`, so
+   the browser still downloads, lays out and keeps the four cells in the accessibility tree:
+   - Layout: `dashboard.css` lines ~2960–3005
+   - JS node set: `dashboard.js`, `loadHomeTeamStats` at ~1070
+   The current targeting should use `aria-hidden="true"` at minimum; preferable is one text block
+   instead of both.
+   - Priority: **medium**.
+
+3. **Mobile header has no fixed-element budget.**  
+   The class `.mobile-only` toggles display to inline-flex only under 768px, but the number of items
+   (`hamburger`, `notification-bell-wrap`, `live-clock`, `search`) can exceed 300px of premium
+   screen width. Current cart:
+   - `dashboard.html` places bell + clock + search after the hamburger.
+   - `overrides.css:227 menut-button.mobile-only` scales the bell to 1.8rem.
+   - The shorthand clock line `S/W/D` is better than a full sentence, but should be accessible and
+     still be a `<time>` element.
+   - Priority: **medium-high**.
+
+4. **Table overflow affordance remains invisible.**  
+   `fm-squad-wrap { overflow-x: auto; }` is present in multiple files; there is still no
+   `.is-scroll` rail/shadow or sticky identity column. A user cannot tell that the points column is
+   off the edge.
+   - Priority: high on mobile.
+
+5. **Dropdown proliferation.**  
+   Native selects: country leaguues (31), transfers (49), finance period (3), role (7), season (1).
+   - Only finance has a visible style mismatch.
+   - Priority: medium unless the request is simply country/league visibility.
+
+### 3. Concrete screen-specific tasks (code pointers)
+
+| Task | File | Notes |
+|---|---|---|
+| Restore and compact secondary nav | `pages-renderers.js`, `club-view.js` | use five grouped affordances; retract the dead `buildClubActionsHtml` |
+| Keep only the summary line in `dashboard.js` | `dashboard.js` lines ~556, 1070 | remove hidden grid or reuse the values; update inline `summaryLine` |
+| Mobile header layout | `dashboard.html`, `overrides.css:286` | test 393px width; keep the thumb clock on one line |
+| Refuse truncation-as-design | `country-view.js`, `club-view`, `pages-renderers` | Replace truncated `fm-CTeam-link` and em-block with ellipsis utility |
+| Responsive table pattern | `dashboard.css` around fm-standings / fm-squad-wrap | Make all tables explicit horizontal scroll |
+| World list layout | `pages.js`, `friendly-board.js`, `country-view.js` | Add tab labels and one-letter day cues |
+| Style transfers form/menu | `transfers-view.js` / CSS style | match `.fm-season-select` |
+| Admin panel queues | `admin-view.js`, `css` | try drawer-style cards with no sticky horizontal scrollbars |
+| Bench/medical summary | `pages-renderers.js`, `features/medical/overview` | condense milestone board |
+| Watch tickets | helper script/load | use in narrow/mobile footer |
+
+### 4. What came from the code only
+
+- No backend panels were altered.
+- All observations above are based on JS/CSS references in the current repository.
+- The file `designAnalysis.md` now carries both the owner-approved history and this code-only cut.
+
+
 ## Appendix — how this was produced
 
 Every measurement in this document was taken in the running application with `agent-browser`:
