@@ -1,3 +1,10 @@
+## 2026-10-16 - NAV-3: Countries is back in the World submenu
+
+- Back, Countries, Clubs, Competitions, Friendlies.
+- Icons added for the entries that were rendering as a bullet: Countries, Tactics setup, Training Setup,
+  Training Reports.
+- Seen in the browser: the Countries entry is there and it opens the Countries tab.
+
 ## 2026-10-16 - NAV-1: bottom-nav Notifications opens the dropdown
 
 - `toggleNotificationDropdown()` is now an exported function that both the header bell and the nav entry

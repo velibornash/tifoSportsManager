@@ -1681,6 +1681,7 @@ async function loadUserProfile() {
         if (group === 'world') {
             return [
                 { icon: '&#9664;', label: 'Back', navBack: true },
+                { label: 'Countries', page: 'world', options: { tab: 'countries' } },
                 { label: 'Clubs', page: 'world', options: { tab: 'clubs' } },
                 { label: 'Competitions', page: 'world', options: { tab: 'competitions' } },
                 { label: 'Friendlies', page: 'world', options: { tab: 'friendlies' } },
@@ -1762,6 +1763,8 @@ async function loadUserProfile() {
             'Matches': '⚽', 'Top Scorers': '🥅', 'Top Assists': '🎯', 'Forum': '💬', 'Messages': '✉️',
             'Country': '🇷🇸', 'World': '🌍', 'Community': '👥', 'Search': '🔍', 'Notifications': '🔔',
             'Clubs': '🏟', 'Competitions': '🏆', 'Friendlies': '🤝', 'General': '🌍', 'Calendar': '📅',
+            'Countries': '🌍', 'First team': '👥', 'Juniors': '🎓',
+            'Tactics setup': '🧠', 'Training Setup': '⚙️', 'Training Reports': '📊',
             'Qualifying': '🎯', 'National Team': '🇷🇸', 'U-21': '👶',
             'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'User Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
         };
