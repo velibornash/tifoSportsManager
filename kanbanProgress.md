@@ -1,3 +1,8 @@
+## 2026-10-16 - League stat ordering corrected
+
+- Scorer rows now show the number followed by the football icon.
+- Assist rows now show the number followed by the standard 🅰️ icon.
+
 ## 2026-10-16 - Desktop bottom-nav submenus completed
 
 - Country now opens General, Calendar, Clubs, Qualifying, National Team and U-21 with icons.
