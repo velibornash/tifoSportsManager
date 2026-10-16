@@ -1,3 +1,9 @@
+## 2026-10-16 - Collapsed repeated action rows and inline club summary
+
+- Club action rows now stay collapsed by default to avoid duplicate navigation.
+- Dashboard club stats use a compact inline row.
+- Kept mobile and desktop behavior aligned.
+
 ## 2026-10-16 - Mobile header and club summary one-row fix
 
 - Mobile clock now keeps time and short S/W/D on separate lines.
