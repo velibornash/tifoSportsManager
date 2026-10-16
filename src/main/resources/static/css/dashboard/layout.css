@@ -757,13 +757,13 @@ html.nav-bottom .desktop-nav {
     text-align: right;
 }
 .desktop-nav-right #live-clock strong {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #eef4ff;
     display: block;
 }
 .desktop-nav-right #live-clock small {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     line-height: 1;
     color: #9aa0a6;
     max-width: 150px;
@@ -805,6 +805,12 @@ html.nav-top body {
     padding-top: var(--desktop-nav-h, 72px);
 }
 
+@media (max-width: 768px) {
+    html.nav-top body {
+        padding-top: 0;
+    }
+}
+
 /* BOTTOM: the existing rule already adds the padding-bottom - keep it. */
 /* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */
 /* Desktop hides its own (now dead) top bar. The phone keeps its header. */
@@ -837,9 +843,9 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
     border-radius: 8px;
     background: transparent;
     color: #c7d2e3;
-    font-size: 0.72rem;
+    font-size: 0.92rem;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1.15;
     margin: 0;
     cursor: pointer;
     font-family: inherit;
