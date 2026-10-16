@@ -1,3 +1,8 @@
+## 2026-10-16 - Task P1-9: finance period/season selects now match rest of controls
+
+- Added `fm-season-select` to the finance period and season dropdowns so the dark, styled
+  control is used instead of the native OS box.
+
 ## 2026-10-16 - Task P1-7/padding collapse fixed
 
 - Corrected the mobile accordion padding so its 10px bottom strip does not show while closed.
