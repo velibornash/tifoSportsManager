@@ -611,6 +611,7 @@ function loadDashboard() {
 
     loadRecentMatches();
     loadHomeTeamStats();
+    if (typeof window.renderDesktopBottomNav === 'function') try { window.renderDesktopBottomNav('dashboard'); } catch (e) {}
     loadDashboardMilestones();
     loadNextMatch();
 	loadImportantUpdates();
