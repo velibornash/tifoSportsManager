@@ -42,7 +42,24 @@ What went in:
   (`buttonface = #efefef`) that was over each letter is transparent now, which is what "BELA RUZNA
   pozadina" was about.
 
+## 2026-10-16 - Back through menus, not home; Country renamed; first-team squad sanitary
+
+Owner: "back dugme u nav baru iz podmen ija npr club - tactics ne vraca na prethodni nego na home, gtreba da
+vraca na prethodni. Country u nav bar-u treba pored zastavice da pise IME ZEMLJE a ne 'Country'. prvi tim u
+Club - first team, o uba view da lista/tabela igraca bude sortabilna po apps, gls, ast, av rat.. izbaciti
+club ,ilestones i medical center iz first team styranice za oba view-a."
+
+* Back no longer invents "Home". It walks the **menu tree**: Club main uses `MENU_PARENT` for the parent of
+  each menu, and Back at the root does nothing instead of jumping to the root bar. Verified in the
+  browser: Club -> Squad -> Back -> Club menu; Back again stays on the Club menu.
+* Country reads "🇷🇸 Serbia" (the manager's own country, from `/auth/me`) with the flag as its icon, rather
+  than the word "Country".
+* First Team no longer renders the milestones or medical-centre panels; `loadFirstTeam` drops both fetches.
+  The `Apps / Gls / Ast / Av Rat` columns are sortable client-side (`bindSortableSquadTable`), verified on
+  all 13 rows.
+
 ## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
+
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore — hamburger,
 search, notification, sat sa s/w/d, logo" plus "sat na kom pise loading i s/w/d dole levo SKLONI" and
