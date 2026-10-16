@@ -590,3 +590,20 @@
 /* Mobile bottom nav is controlled here, not by .mobile-only utility. */
 .mobile-bottom-nav { display:none !important; }
 @media (max-width:768px) { .mobile-bottom-nav { display:grid !important; } .live-clock-mobile { display:flex !important; flex-direction:column !important; } }
+
+
+/* Touch devices can report unusual viewport widths in the tooling used here, so the phone shell is
+   also keyed on a coarse pointer. That keeps the bottom nav horizontal and the clock two-row. */
+@media (hover: none) and (pointer: coarse) {
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+    .top-menu > .live-clock-mobile,
+    .live-clock-mobile,
+    .live-clock-mobile-header {
+        display: inline-flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 0 !important;
+    }
+}
