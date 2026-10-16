@@ -542,13 +542,30 @@
     }
 }
 
-/* Keep the mobile header's bell/clock/search arrangement fixed: hamburger first, bell second,
-   clock third, search fourth. */
+/* Keep the mobile header's bell/clock/logo arrangement fixed: hamburger first, notification, clock,
+   logo (search removed 2026-10-16, it already lives in the five-icon bottom bar). */
 @media (max-width: 768px) {
     .mobile-hamburger-btn { order: 0; }
-    .notification-bell-wrap { order: 1; flex-direction: row; align-items: center; }
+    .notification-bell-wrap { order: 1; flex-direction: row; align-items: center; margin-left: auto; }
     .live-clock-mobile { order: 2; flex-direction: column !important; align-items: center; }
-    .mobile-search-btn { order: 3; }
+    .mobile-logo-wrapper { order: 3; margin-left: 0; }
+}
+
+/* Distinct colors for the phone clock, so the hour is read as an hour rather than as one line of
+   grey print (owner, 2026-10-16). */
+@media (max-width: 768px) {
+    .live-clock-mobile .live-clock-time-mobile {
+        color: #e8f2ff;
+        font-weight: 800;
+        font-size: 1.05rem;
+        letter-spacing: 0.02em;
+    }
+    .live-clock-mobile .live-clock-date-mobile {
+        color: #9aa0a6;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+    }
 }
 
 /* Desktop ordering on the same row. */
