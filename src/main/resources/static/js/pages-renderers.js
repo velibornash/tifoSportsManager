@@ -146,8 +146,9 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
 
     // Tag the row with what kind of match it is, so the competition-type filter can select without a
     // second round trip. `competitionType` is already on every row from the backend; without the class
-    // the filter would have to re-read the payload to use a field the page already has.
-    const competitionType = normaliseCompetitionType(match?.competitionType);
+    // the filter would have to re-read the payload to use a field the page already has. The class is
+    // the group, not the raw type, so a Champions Cup tie is `international` and the chip matches it.
+    const competitionType = competitionGroupOf(match);
     if (competitionType) {
         classes.push(`fm-fixture--${competitionType}`);
     }
@@ -221,7 +222,7 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
                 <span class="fx-score ${match?.played ? '' : 'pending'}">${match?.played ? `${match?.homeGoals ?? 0} – ${match?.awayGoals ?? 0}` : safe(pendingLabel)}</span>
                 <span class="fx-away ${match?.awayTeamId ? 'js-load-CTeam' : ''}" data-CTeam-id="${match?.awayTeamId || ''}" data-CTeam-name="${safe(match?.awayTeam || 'Away')}" data-season-year="${seasonYear}">${safe(match?.awayTeam || 'Away')}</span>
             </div>
-            ${match?.competitionType ? `<div class="fx-competition-type">${safe(match.competitionType)}</div>` : ''}
+            ${match?.competitionType ? `<div class="fx-competition-type">${safe(capitalise(competitionGroupOf(match)))}</div>` : ''}
             ${playedBadge ? `<div class="fx-result-chip">${buildResultBadgeHtml(playedBadge.label, playedBadge.className)}</div>` : ''}
             ${showInsights ? `
                 <div class="fx-insights">
@@ -1427,7 +1428,7 @@ function scheduleFilterHtml(fixtureRows) {
  * the two into one list of chips would make every combination its own button.
  */
 function competitionTypeFilterHtml(fixtureRows) {
-    const countOf = type => fixtureRows.filter(f => normaliseCompetitionType(f?.competitionType) === type).length;
+    const countOf = type => fixtureRows.filter(f => competitionGroupOf(f) === type).length;
     const types = ['league', 'cup', 'international'];
     if (!types.some(type => countOf(type) > 0)) {
         return '';
@@ -1440,7 +1441,24 @@ function competitionTypeFilterHtml(fixtureRows) {
     </div>`;
 }
 
-/** The backend's `competitionType`, as a lowercase slug the filter and the CSS class agree on. */
+/**
+ * Which of the three chips a fixture belongs to, as a lowercase slug the filter and the CSS class
+ * agree on.
+ *
+ * <p><b>Scope first, type second.</b> A Champions Cup round is `competitionType = CUP` and
+ * `competitionScope = INTERNATIONAL`, so grouping by type alone put every continental tie in the same
+ * bucket as the domestic cup and left "International" at zero on a club that is in the Champions Cup
+ * (owner, 2026-10-16). A competition's scope is the better answer to "who plays this": a national
+ * league and the national cup are NATIONAL, the continental cups are INTERNATIONAL, and a friendly
+ * belongs to neither and is grouped by its match type.
+ */
+function competitionGroupOf(fixture) {
+    const scope = String(fixture?.competitionScope ?? '').trim().toUpperCase();
+    if (scope === 'INTERNATIONAL') return 'international';
+    return normaliseCompetitionType(fixture?.competitionType);
+}
+
+/** The backend's `competitionType`, as a lowercase slug. Scope is handled above this. */
 function normaliseCompetitionType(raw) {
     const value = String(raw ?? '').trim().toUpperCase();
     if (!value) return '';

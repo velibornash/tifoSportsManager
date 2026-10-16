@@ -1,3 +1,24 @@
+## 2026-10-16 - The Champions Cup is not hiding: International now finds it
+
+Owner report: "Schedule does not show international matches even though Omladinac is in the Champions
+Cup." **The fixtures were there all along** — `/teams/1/schedule` has returned all five Champions Cup
+ties since the start — so this was never a missing-data problem.
+
+**What was wrong.** The League / Cup / International filter grouped by `competitionType`, and a
+Champions Cup row's type is `CUP`. Its `scope` is `INTERNATIONAL`. Every continental tie therefore
+landed in the same bucket as the national cup and "International" read zero on a club that was in the
+Champions Cup — a filter that is confidently wrong rather than empty.
+
+**Fixed by asking the column that carries the answer.** `TeamController` now puts `competitionScope` on
+every schedule row, and `competitionGroupOf()` groups by scope first and by type only for rows without
+one — which leaves a national league and the national cup NATIONAL, the continental cups INTERNATIONAL,
+and a friendly, which has no competition, grouped by its match type.
+
+**Seen in the browser.** The chips now read League 18, Cup 1, **International 5**. Clicking
+International leaves exactly the five Champions Cup ties and nothing else; League leaves only league
+rows; All types restores 24. The badge on the row reads "International" rather than "CUP", so the two
+agree instead of contradicting each other.
+
 ## 2026-10-16 - Back in the nav bar goes back through the nav bar, and only that
 
 The owner, for the fifth time on this button: **"Back from the nav bar only goes back through the nav bar

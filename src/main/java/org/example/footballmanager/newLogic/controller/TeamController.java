@@ -775,6 +775,12 @@ public class TeamController {
         // league page. Two divisions can share a name; they do not share a type.
         row.put("competitionType", fixture.getCompetition() != null && fixture.getCompetition().getType() != null
                 ? fixture.getCompetition().getType().name() : null);
+        // Who plays it, which is not what `competitionType` says. A Champions Cup round is `type = CUP`
+        // and `scope = INTERNATIONAL`: by type alone every continental tie in a club's schedule reads as
+        // a domestic cup, the International filter finds nothing, and a manager in the Champions Cup
+        // cannot find his own fixtures (owner, 2026-10-16).
+        row.put("competitionScope", fixture.getCompetition() != null && fixture.getCompetition().getScope() != null
+                ? fixture.getCompetition().getScope().name() : null);
         // The match's own type, which is not the same thing: a friendly belongs to no competition, and
         // resolvedMatchType falls back to the competition for the rows that predate the column.
         row.put("matchType", fixture.resolvedMatchType() == null ? null : fixture.resolvedMatchType().name());
