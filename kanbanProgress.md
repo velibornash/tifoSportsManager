@@ -1,3 +1,10 @@
+## 2026-10-16 - Desktop bottom-nav drill-down completed
+
+- Club: Squad -> First team/Juniors; Tactics -> Tactics setup/Tactic Editor; Training -> Setup/Reports; Results moved after Schedule.
+- Country and World open their matching tab submenus.
+- Back now navigates to the previous page (dashboard handled as a real route).
+- Removed the League Club-actions wrapper; User is now User Settings and has My profile/Settings/Sign out only.
+
 ## 2026-10-16 - League stat ordering corrected
 
 - Scorer rows now show the number followed by the football icon.
