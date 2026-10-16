@@ -1,3 +1,7 @@
+## 2026-10-16 - Bottom nav renders with dashboard
+
+- Ensures desktop bottom navigation remains visible after dashboard load.
+
 ## 2026-10-16 - Bottom nav clock added
 
 - Added a clock cell with time and S/W/D to the bottom navigation.
