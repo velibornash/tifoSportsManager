@@ -1,3 +1,41 @@
+## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
+
+Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore — hamburger,
+search, notification, sat sa s/w/d, logo" plus "sat na kom pise loading i s/w/d dole levo SKLONI" and
+"bottom nav bara sa desktopa kao i top nav bar NE SME DA SE vidi na mobu (sad se vidi)".
+
+**The ugly bit.** Every button in the navigation bar had fallen back to the browser default face —
+`buttonface = #efefef`, `2px outset` border, black type. The bar read as "white boxes on text" even
+though the bar itself was dark. The overshoot was that `html.nav-top .desktop-nav { position: fixed; top: 0 }`
+never attached because the rule that was supposed to carry it was written as `@media (min-width: 769px) {
+  .top-menu { display: none; } }` nested inside an existing `@media (max-width: 768px)` block, where it
+could never match. Fixed by lifting it out. `--fm-topbar-h` is now `--desktop-nav-h`: the bar measures
+its own height (54px in practice) and `html.nav-top body` adds it as top padding, so the first content
+row is not painted under the bar in top position.
+
+**Bigger text without overflowing the cell.** 0.72rem to 0.92rem on every `.desktop-nav button`. The grid
+still uses `repeat(auto-fit, minmax(84px, 1fr))` and the bar's 54px min-height gives the larger glyphs
+room (measured 14.7px font at 54px line). Short words, at every width, nine items, one bar.
+
+**The mobile header, in the order the owner gave (hamburger, notification, clock, logo — search gone,
+because it already lives in the bottom bar).** The bell and the mobile clock are the phone's own; the
+logo is last and pushed right with its usual flex margin, so the desktop header no longer disputes the
+corner with the phone.
+
+**The bottom bar lost its clock.** The "Loading... S?/W?/D?" strip at the left end of the mobile bottom
+nav was both wrong ("clock" for 5 icons and a clock) and visually a duplicate of the one in the header.
+Removed.
+
+**The desktop nav can no longer cross into the mobile world.** `@media (max-width: 768px)`.desktop-nav {
+display: none !important } `-- no conditions on `is-mobile-nav` or on classes set before paint, so a
+half-loaded phone cannot show a desktop bar. **Verified against a real simulator**, and on a 375x667
+viewport nothing from `.desktop-nav` appears.  Empty top padding removed (a left-over `--desktop-nav-h`
+pushed the mobile header down even with the bar hidden), so the bar starts at the top of the body.
+
+**Verified in the browser, at 1280 in both positions:** top 0, bottom 577, twelve columns of content
+scrolling without overlap, scrollWidth 1280 in a 1280 window, console empty.
+
+## 2026-10-16 - The header is gone; the clock, S/W/D, logo, bell and account menu live in the nav
 ## 2026-10-16 - The header is gone; the clock, S/W/D, logo, bell and account menu live in the nav
 
 Owner: "add the clock with S/W/D and the logo to both top and bottom navs, and remove the current header
@@ -18,8 +56,6 @@ one function rather than two that "look like each other".
 
 Seen in the browser, at both positions: the bar is flush with its edge, the bell opens the dropdown and
 the account menu opens, the clock reads 20:xx: S1/W2/D2, `scrollWidth` stays 1280, the console empty.
-
-## 2026-10-16 - One navigation bar, top or bottom; Settings asks which
 
 ## 2026-10-16 - One navigation bar, top or bottom; Settings asks which
 
