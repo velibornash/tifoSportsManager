@@ -1791,43 +1791,43 @@ async function loadUserProfile() {
     // `desktopNavOverrideGroup` alone was not enough. It answers "is a submenu open", which is a
     // yes/no question, and a two-level drill-down (Club → Squad → …) needs to know *which* menu to go
     // back to, not merely that there was one.
-    const desktopNavMenuStack = [];
+    /** Back goes through the **menu tree**, not through a history list.
+     *
+     * A history list (the 2026-10-16 version) works once and then empties itself, which is what the owner
+     * describes as "nije radio back cak ni ovaj iz Squad koji je radio SAMO PRVI PUT": the first drill-down
+     * pushed one entry, the next action cleared it, and every subsequent Back landed on the root menu
+     * (read by him as "home"). Basing Back on the menu the page actually lives against gives a consistent
+     * parent for as long as the page is open. */
+    const MENU_PARENT = {
+        'club': 'main', 'club:squad': 'club', 'club:tactics': 'club',
+        'club:training': 'club', 'club:matches': 'club',
+        'league': 'main', 'country': 'main', 'world': 'main',
+        'community': 'main', 'search': 'main', 'admin': 'main', 'user': 'main'
+    };
     let desktopNavOverrideGroup = null;
 
-    /** The menu on screen right now: the submenu that was opened, or the one the page belongs to. */
-    function activeDesktopNavGroup() {
-        return desktopNavOverrideGroup || desktopBottomNavGroup(
-            typeof currentPageId === 'string' ? currentPageId : 'dashboard'
-        );
-    }
-
     function desktopNavGo(page, options = {}) {
-        // A nav entry that opens a page is not a menu drill-down, so there is no menu behind it to go
-        // back to: the page's own group is the menu now.
         desktopNavOverrideGroup = null;
-        desktopNavMenuStack.length = 0;
         return loadPage(page, options);
     }
 
-
-
     function setDesktopNavGroup(group) {
-        const pushed = activeDesktopNavGroup();
-        (window.__nstack = window.__nstack || []).push({pushed, group, page:currentPageId});
-        desktopNavMenuStack.push(pushed);
         desktopNavOverrideGroup = group || null;
         renderDesktopBottomNav(currentPageId);
     }
+
     function desktopNavBack() {
-        const previousGroup = desktopNavMenuStack.pop();
-        if (previousGroup === undefined) {
-            // Owner: Back must never invent a destination labelled "Home". Doing nothing is the honest
-            // answer when there is no menu behind this one, which is what he asked for after Back kept
-            // landing on the root bar and reading as "home" even when he expected no change.
+        const current = desktopNavOverrideGroup
+            || desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
+        const parent = MENU_PARENT[current];
+        if (!parent || parent === 'main') {
+            // Nothing to step up to (or already at the top). Return to the root bar without inventing
+            // a "home" destination.
+            desktopNavOverrideGroup = null;
+            renderDesktopBottomNav(currentPageId);
             return;
         }
-        const pageGroup = desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
-        desktopNavOverrideGroup = previousGroup === pageGroup ? null : previousGroup;
+        desktopNavOverrideGroup = parent;
         renderDesktopBottomNav(currentPageId);
     }
 
