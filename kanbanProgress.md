@@ -1,3 +1,8 @@
+## 2026-10-16 - Mobile shell bottom navigation added
+
+- Added a five-tab bottom navigation bar for phones, inspired by modern mobile manager shells.
+- Added bottom spacing so content is not hidden behind the fixed nav.
+
 ## 2026-10-16 - Task P0-6: scrollable table fade affordance added
 
 - Horizontal table wrappers now carry a right-edge fade so managers can tell when
