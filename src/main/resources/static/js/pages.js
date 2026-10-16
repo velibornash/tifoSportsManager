@@ -642,6 +642,10 @@ function buildPageNavState(page, options = {}) {
                 case "settings":
                     await loadSettingsPage();
                     break;
+                case "clubProfileSettings":
+                    await loadSettingsPage();
+                    break;
+
 
                 // MATCHES
                 case "results":
@@ -1674,7 +1678,7 @@ async function loadUserProfile() {
 
     function renderDesktopBottomNav(activePage) {
         const icons = {
-            'Back': '◀', 'Club profile': '🏟', 'First team': '👥', 'Schedule': '📅', 'Juniors': '🎓',
+            'Back': '◀', 'Club': '⚽', 'Club profile': '🏟', 'League': '🏆', 'First team': '👥', 'Schedule': '📅', 'Juniors': '🎓',
             'Loans': '💸', 'Tactics': '🧠', 'Tactic Editor': '📋', 'Staff': '👥', 'Finances': '💰',
             'Transfers': '💼', 'Training': '⚙️', 'Reports': '📊', 'Medical': '🏥', 'Profile': '👤',
             'Club settings': '⚙️', 'Stadium': '🏟', 'Results': '📊', 'Table': '🏆', 'Schedule': '📅',
@@ -1717,6 +1721,7 @@ async function loadUserProfile() {
     // name a manager goes by can refresh the top bar without waiting for a full page load — the top
     // bar is the first place the old name is looked at. Owner, 2026-10-14.
     window.loadUserTeamId = loadUserTeamId;
+    try { renderDesktopBottomNav('dashboard'); } catch (e) { /* layout may not exist yet */ }
     initAccountMenu();
     // Signing out from anywhere must also close the account panel, or the next person at this
     // machine opens it and still sees the previous user's name in it.
