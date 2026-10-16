@@ -1,3 +1,9 @@
+## 2026-10-16 - Mobile bottom nav horizontal and clock stacked
+
+- Force .mobile-bottom-nav to horizontal grid with !important over mobile utility.
+- Force live clock to two rows.
+- Updated MD.
+
 ## 2026-10-16 - Mobile header, bottom bar, favicon
 
 - Made the mobile bottom bar horizontal on phones and desktop-clean.
