@@ -1708,7 +1708,10 @@ async function loadUserProfile() {
             return [
                 { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'My profile', onclick: 'window.loadUserProfile()' },
-                { label: 'User Settings', page: 'settings' },
+                // The main nav entry says "User Settings" so the corner of the bar is unambiguous;
+                // inside the menu it is the manager's settings and the name is just "Settings"
+                // (owner, 2026-10-16).
+                { label: 'Settings', page: 'settings' },
                 { label: 'Sign out', onclick: 'window.logout()' },
             ];
         }

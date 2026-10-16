@@ -1,3 +1,11 @@
+## 2026-10-16 - The User submenu's second entry is Settings, not User Settings
+
+- The main bar keeps **User Settings** so the corner of the nav is unambiguous; inside the menu the
+  entry is **Settings**, next to **My profile** and **Sign out** (owner, 2026-10-16).
+- All four entries carry an icon.
+- Seen in the browser: Back, My profile, Settings, Sign out. Settings opens the settings page, My
+  profile opens the account page, the console stays empty.
+
 ## 2026-10-16 - NAV-8: Transfers opens in 0.6 s instead of 11.6 s
 
 **Measured, both ways, same database and same server.**
