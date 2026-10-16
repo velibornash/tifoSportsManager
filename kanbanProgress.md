@@ -1,3 +1,8 @@
+## 2026-10-16 - Bottom nav clock added
+
+- Added a clock cell with time and S/W/D to the bottom navigation.
+- Updated MD.
+
 ## 2026-10-16 - User nav corrected
 
 - Bottom-bar user menu now has `My profile`, `Settings`, and `Sign out`.
