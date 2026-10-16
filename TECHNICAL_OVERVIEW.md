@@ -222,7 +222,8 @@ tab and no browser URL routing for the in-dashboard pages.
 ### 4.2 Dashboard startup
 
 `dashboard.js` loads `/auth/me`, stores the manager's club, country, league and role, applies the
-admin visibility rules, wires the notification bell and starts the 30-second notification poll. It
+admin visibility rules, wires the notification bell, starts the 30-second notification poll and paints
+the navigation bar's own bell in the same call. It
 then renders the club overview and loads its independent panels:
 
 - important updates ticker;
@@ -257,7 +258,7 @@ The football graphical path is centered on:
 
 | File | Role |
 |---|---|
-| `dashboard.html` | Shell, top navigation, sidebar, notifications and main content host |
+| `dashboard.html` | Shell, one desktop navigation bar (top or bottom), mobile header, sidebar, notifications and main content host |
 | `js/dashboard.js` | Authenticated dashboard, clock, ticker and admin database actions |
 | `js/pages.js` | In-document router and dependency composition |
 | `js/pages-renderers.js` | Shared table, fixture, player and empty/error renderers |
@@ -311,7 +312,7 @@ carries either a fixture count and week, or "Not drawn yet".
 ### 5.4 Back navigation
 
 `goBackSmart` pops an in-document history stack (`navHistoryStack`, bounded at 50 entries) and falls back
-to a named target when the stack is empty. Two changes in this revision:
+to a named target when the stack is empty. Two changes in this revision, plus one more in October 2026:
 
 - `match-view.js` used to map the opening caller to a Back target through an allowlist and fell through
   to the league match list for anything else, so Back on a national-team tie landed in a league the
@@ -322,12 +323,18 @@ to a named target when the stack is empty. Two changes in this revision:
 
 The country page carries its own `data-nav-back="dashboard"` button in the header of each of its pages.
 
+As of October 2026 the **desktop navigation bar's Back button goes back through nav menus only** and never
+loads a page. It maintains its own stack (`desktopNavMenuStack`) of which *menu* was open and returns to
+the previous one; with nothing behind it it returns to the root menu. `desktopNavGo`, which fires when an
+entry opens a page, clears that stack, because the target page's own group becomes the menu. This is
+deliberately only navigation between menus and not between pages.
+
 ### 5.5 Global search and opponent search
 
 Since the October 2026 revisions there are two search surfaces, and they ask different
 questions:
 
-- **Global search** — the magnifying-glass button next to the notification bell opens
+- **Global search** — the Search entry in the navigation bar opens
   `search-view.js`. One box; filter chips **All / Clubs / Managers / Players** re-run the
   query server-side rather than filtering 60-row result sets in the browser. An empty box
   returns nothing (14,880 clubs and 33,580 players is not a list). National-squad copies are
@@ -346,7 +353,27 @@ questions:
 club (`teamId` has no silently substituted fallback). `GET /teams/{teamId}/profile` carries
 league, tier, stadium and the Elo-related fields added for this: `eloRating`,
 `eloPreviousRating` (movement since last time) and `worldPosition`. World position counts
-clubs only. The top-bar Club button opens the viewer's own profile.
+clubs only. The Club entry in the navigation bar opens the viewer's own profile.
+
+### 5.7 The navigation bar
+
+`dashboard.html` no longer has a top header menu. There is a single navigation bar, `.desktop-nav`,
+whose position is a device-local preference (`fm_desktop_nav_position`, top by default, bottom by
+choice from Settings). Top and bottom positions render the same element - one set of buttons, one set
+of submenus - so the two cannot drift. CSS moves the bar: top uses `position: fixed; top: 0` with
+`--desktop-nav-h` (the bar's measured height, 54px at the current 0.92rem font) added as body
+padding so the first content row clears it; bottom uses `position: fixed; bottom: 0` with 76px of
+foot padding.
+
+The bar carries the destination menu, the notification bell (two bells total - the phone's and the
+bar's, both opening the shared body-level dropdown, both painted by `paintBell`), the account menu,
+the clock with its S/W/D line and the The logo. The clock and logo stay together in the top right
+corner in both positions; the bell and the account menu are on the right cluster too. `pages.js`
+exposes `applyDesktopNavPosition(position)` (no reload needed) and `renderDesktopNav(group)`.
+
+On a phone (width <= 768) the desktop bar is `display: none` unconditionally, and the phone keeps
+its own hamburger, bell, S/W/D line, and logo. The desktop header that used to hold the notification
+bell and the account menu is retired. 
 
 ## 6. What the manager can do
 
