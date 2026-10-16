@@ -1918,3 +1918,11 @@ button.fm-cup-tie-sep {
 @media (max-width: 820px) {
     .fm-page--country .fm-cup-sides { grid-template-columns: 1fr; }
 }
+
+/* Bottom mobile navigation must win against the mobile-only utility. */
+@media (max-width: 768px) {
+    .mobile-bottom-nav.mobile-only,
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+}
