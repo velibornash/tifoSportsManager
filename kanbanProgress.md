@@ -1,3 +1,10 @@
+## 2026-10-16 - Mobile header, search, club and league nav cleanup
+
+- Hamburger button, notification bell, clock and search now sit in the mobile header; search added to mobile menu.
+- Club action rows collapse on phones instead of pushing content down.
+- League action row keeps only Table.
+- Back buttons and mobile header arrangement verified against the club cup and World pages.
+
 ## 2026-10-15 — Break-week offers and season-1 club cups
 
 - International club cup redraw now accepts season 1 and draws Tier 1 through Tier 5 for active season 1; `/club-cups` shows back button and tier fixtures.
