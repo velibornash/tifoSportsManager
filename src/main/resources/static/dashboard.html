@@ -25,8 +25,8 @@
              aria-label="Notifications" hidden></div>
     </div>
     <div id="live-clock-mobile-header" class="mobile-only live-clock-mobile">
-        <strong class="live-clock-time-mobile">Loading...</strong><br>
-        <small class="live-clock-date-mobile"></small>
+        <div class="live-clock-time-mobile">Loading...</div>
+        <div class="live-clock-date-mobile"></div>
     </div>
     <div class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" data-nav-page="search" aria-label="Search">
         <span class="menu-button-icon mobile-search-icon" aria-hidden="true">&#128269;</span>
@@ -190,7 +190,7 @@
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
 
-<nav class="mobile-bottom-nav mobile-only" aria-label="Mobile navigation">
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
     <button type="button" onclick="loadDashboard()">&#127968;<span>Home</span></button>
     <button type="button" onclick="loadPage('clubProfile')">&#9917;<span>Club</span></button>
     <button type="button" onclick="loadPage('leagueTable')">&#127942;<span>League</span></button>

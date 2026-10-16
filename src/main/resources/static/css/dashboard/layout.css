@@ -479,7 +479,7 @@
 
 
 /* Bottom navigation for phone shell. */
-.mobile-bottom-nav.mobile-only {
+.mobile-bottom-nav {
     position: fixed;
     left: 0;
     right: 0;
@@ -572,3 +572,21 @@
         display: grid !important;
     }
 }
+
+
+/* Orthographic encoder: flex direction override needs to override .mobile-only and utility
+   !important below 769px so the time and short season form never sit on one line. */
+@media (max-width: 768px) {
+    .top-menu > .live-clock-mobile,
+    .live-clock-mobile {
+        display: inline-flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0 !important;
+    }
+}
+
+/* Mobile bottom nav is controlled here, not by .mobile-only utility. */
+.mobile-bottom-nav { display:none !important; }
+@media (max-width:768px) { .mobile-bottom-nav { display:grid !important; } .live-clock-mobile { display:flex !important; flex-direction:column !important; } }
