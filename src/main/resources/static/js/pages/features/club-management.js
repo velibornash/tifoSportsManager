@@ -76,7 +76,7 @@ export function createClubManagementFeature(deps) {
                         </div>
                         <div class="fm-panel-action">
                             <label for="finances-period" class="fm-subtle">Period</label>
-                            <select id="finances-period" data-finances-period>
+                            <select id="finances-period" class="fm-season-select" data-finances-period>
                                 <option value="week" ${period === 'week' ? 'selected' : ''}>This week</option>
                                 <option value="month" ${period === 'month' ? 'selected' : ''}>Last four weeks</option>
                                 <option value="season" ${period === 'season' ? 'selected' : ''}>Whole season</option>
@@ -202,7 +202,7 @@ export function createClubManagementFeature(deps) {
                     ${seasons.length > 1 ? `
                         <div class="fm-panel-action" style="margin-top:12px;">
                             <label for="finances-season" class="fm-subtle">Season</label>
-                            <select id="finances-season" data-finances-season>
+                            <select id="finances-season" class="fm-season-select" data-finances-season>
                                 ${seasons.map(y => `<option value="${y}" ${Number(finances.seasonYear) === Number(y) ? 'selected' : ''}>${y}</option>`).join('')}
                             </select>
                         </div>` : ''}
