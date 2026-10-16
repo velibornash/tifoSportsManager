@@ -58,7 +58,21 @@ club ,ilestones i medical center iz first team styranice za oba view-a."
   The `Apps / Gls / Ast / Av Rat` columns are sortable client-side (`bindSortableSquadTable`), verified on
   all 13 rows.
 
+## 2026-10-16 - Back walks the menu tree; Country name in the bar; First Team verified
+
+Owner's complaint and feature:
+
+- `Back` lives on the **menu hierarchy**, not history. `desktopNavMenuStack` was emptied by the next
+  page-navigation, so `Back in Squad` went from "works once" to "does nothing / root" forever. The
+  replacement walks one level up via MENU_PARENT (Club -> Squad -> Back -> Club menu; Back there again
+  returns nothing instead of inventing Home). Verified in the browser without console errors.
+- The Country entry in the desktop bar now reads "🇷🇸 Serbia" — `window.fmCountryName` from `/auth/me`
+  rather than the word "Country".
+- `loadFirstTeam()` keeps milestones and the medical side-panel off the page; the `Apps / Gls / Ast /
+  Av Rat` columns are sortable client-side (`bindSortableSquadTable`). Verified on 13 squad rows.
+
 ## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
+
 
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore — hamburger,
