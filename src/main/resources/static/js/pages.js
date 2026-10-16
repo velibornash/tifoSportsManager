@@ -636,6 +636,12 @@ function buildPageNavState(page, options = {}) {
                     searchView.loadSearch('');
                     break;
 
+                // Desktop navigation preference. Preference is device-local; there is no reason to
+                // push this to the backend and every reason not to.
+                case "settings":
+                    await loadSettingsPage();
+                    break;
+
                 // MATCHES
                 case "results":
                     await loadResults();
@@ -1541,7 +1547,39 @@ async function loadUserProfile() {
     }
 
     window.openLeagueById = openLeagueById;
+    async function loadSettingsPage() {
+        const mainContent = document.getElementById("main-content");
+        const pref = localStorage.getItem("fm_desktop_bottom_nav");
+        const enabled = pref === null || pref === "true";
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--settings">
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h2>Settings</h2>
+                            <p class="fm-subtle">Device-local preferences. None of this touches team data.</p>
+                        </div>
+                        <span class="fm-panel-action">Settings</span>
+                    </div>
+                    <label class="fm-field" style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="settings-desktop-nav" ${enabled ? "checked" : ""}>
+                        <span>Show the bottom navigation on desktop</span>
+                    </label>
+                    <p class="fm-subtle" style="margin-top:10px;">Default: yes. Mobile navigation is unaffected.</p>
+                </section>
+            </div>`;
+        const checkbox = document.getElementById("settings-desktop-nav");
+        if (checkbox) {
+            checkbox.addEventListener("change", () => {
+                const next = !!checkbox.checked;
+                localStorage.setItem("fm_desktop_bottom_nav", String(next));
+                document.documentElement.classList.toggle("desktop-bottom-nav-on", next);
+            });
+        }
+    }
+
     window.loadPage = loadPage;
+    window.loadSettingsPage = loadSettingsPage;
     window.logout = logout;
     window.loadUserProfile = loadUserProfile;
     window.openUserProfile = openUserProfile;

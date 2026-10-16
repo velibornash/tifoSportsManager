@@ -631,3 +631,91 @@ html.is-mobile-nav .live-clock-date-mobile {
     width: 100%;
     text-align: center;
 }
+
+
+/* Mobile club profile/details should not split one word per line. */
+@media (max-width:768px) {
+    .fm-page--club .fm-club-hero,
+    .club-profile-detail-card,
+    .fm-country-hero,
+    .mobile-user-identity {
+        hyphens: auto;
+        overflow-wrap: normal !important;
+        word-break: auto !important;
+    }
+    .fm-page--club .fm-club-hero h2,
+    .fm-page--club .fm-club-hero h3 {
+        font-size: clamp(1.05rem, 4.5vw, 1.45rem);
+        line-height: 1.12;
+    }
+    .fm-page--club .club-profile-detail-row strong,
+    .fm-page--club .team-summary-inline {
+        overflow-wrap: anywhere;
+    }
+    /* First Team table: keep the core match output visible on phones. Position, age and bars are
+       still available on wider screens. */
+    .fm-squad-wrap .fm-squad th:nth-child(n+3):nth-child(-n+8),
+    .fm-squad-wrap .fm-squad td:nth-child(n+3):nth-child(-n+8) {
+        display: none !important;
+    }
+}
+
+
+/* Desktop bottom navigation, visually identical to the mobile bar but covering every header
+   destination. Off by `fm_desktop_bottom_nav=false`. */
+.desktop-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1250;
+    display: none;
+    padding: 8px 12px max(8px, env(safe-area-inset-bottom));
+    background: rgba(8, 12, 20, 0.94);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(14px);
+}
+
+html.desktop-bottom-nav-on .desktop-bottom-nav {
+    display: block;
+}
+
+.desktop-bottom-nav .bottom-nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 6px;
+    max-width: 1320px;
+    margin: 0 auto;
+}
+
+.desktop-bottom-nav button {
+    display: grid;
+    align-items: center;
+    justify-items: center;
+    min-height: 54px;
+    gap: 2px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #c7d2e3;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.05;
+}
+
+.desktop-bottom-nav button:active,
+.desktop-bottom-nav button:hover {
+    background: rgba(143, 211, 255, 0.12);
+    color: #eef4ff;
+}
+
+@media (max-width: 768px) {
+    html.is-mobile-nav .desktop-bottom-nav {
+        display: none !important;
+    }
+}
+
+/* Prevent content hidden behind fixed bottom bars. */
+body.desktop-bottom-nav-on {
+    padding-bottom: max(76px, env(safe-area-inset-bottom));
+}
