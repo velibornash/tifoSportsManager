@@ -580,7 +580,10 @@
     .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; margin-left: 0 !important; }
     .live-clock-mobile { order: 2 !important; flex: 0 0 auto !important; }
     .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; }
-    .mobile-logo-wrapper, .mobile-logo-wrapper .corner-logo { margin-left: auto !important; }
+    /* **Only ONE auto margin.** Two of them split the free space between the items (flexbox rule), which
+       is what put the cluster in the middle of the bar with the hamburger glued to the left edge instead
+       of the trinity at the right. The bell wrapper carries it, so hamburger stays left and notification,
+       the clock and the logo travel together to the far right. (owner, persistent.) */
 }
 #admin-menu-button { order: 96; }
 .user-menu { order: 97; }
