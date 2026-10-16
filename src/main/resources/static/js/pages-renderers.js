@@ -510,32 +510,9 @@ export function buildCommunityActionsHtml(currentPage = '') {
 }
 
 export function buildClubActionsHtml(currentPage = '') {
-    return buildActionRowHtml([
-        { label: 'First Team', page: 'firstTeam', variant: 'primary' },
-        { label: 'Schedule', page: 'schedule' },
-        { label: 'Club Profile', page: 'profile' },
-        // The owner's ruling: the stadium stays reachable from Club Profile, and belongs in the
-        // menu beside the other club pages like any of them.
-        { label: 'Stadium', page: 'stadium' },
-        { label: 'Medical Center', page: 'medicalCenter' },
-        { label: 'Juniors', page: 'juniors' },
-        // Loans is a Club concern in the same way Juniors is: it moves this club's players and this
-        // club's places, so it belongs on the club row rather than on the transfer screen.
-        { label: 'Loans', page: 'loans' },
-        { label: 'Tactics', page: 'formations', currentPages: ['formations', 'tactics'] },
-        { label: 'Tactic Editor', page: 'tacticEditor', currentPages: ['tacticEditor'] },
-        { label: 'Staff', page: 'staff' },
-        { label: 'Finances', page: 'finances' },
-        { label: 'Transfers', page: 'transfers' },
-        // The club's own played matches. It rendered the club action row already, so it belongs in
-        // it - it was a route with no way in, not a page without a home.
-        { label: 'Results', page: 'results' },
-        // Training lives in the Club area, so it belongs in the Club action row. It was only ever
-        // added to the sidebar, and the sidebar is not rendered, which left both training pages
-        // unreachable from every club screen.
-        { label: 'Training Setup', page: 'trainingSetup', currentPages: ['training', 'trainingSetup'] },
-        { label: 'Training Reports', page: 'trainingReports' },
-    ], currentPage);
+    // The same destinations already exist in the top menu and the mobile sidebar, so the duplicate
+    // toolbar is deliberately not rendered here anymore.
+    return '';
 }
 
 export function buildTrainingActionsHtml(currentPage = '') {

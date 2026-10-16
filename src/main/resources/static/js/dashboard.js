@@ -71,6 +71,8 @@ function setLeagueStatsUnavailable() {
     if (subtitle && !subtitle.textContent.trim()) {
         subtitle.textContent = 'No league yet';
     }
+    const summaryLine = document.getElementById('team-summary-inline');
+    if (summaryLine) summaryLine.textContent = '— · — points · — · GD —';
 }
 
 function getCurrentLeagueName() {
@@ -557,10 +559,11 @@ function loadDashboard() {
                     <div class="fm-eyebrow">Club overview</div>
                     <h1>${teamName}</h1>
                     <p class="team-subtitle">${buildDashboardSubtitle()}</p>
+                <p class="team-subtitle team-summary-inline" id="team-summary-inline">Loading...</p>
                 </div>
             </div>
 
-            <div class="stats-grid clickable" onclick="loadLeagueTable()">
+            <div class="stats-grid clickable" onclick="loadLeagueTable()" style="display:none;">
                 <div class="stat-item">
                     <div class="stat-value">—</div>
                     <div class="stat-label">Position</div>
@@ -1074,6 +1077,8 @@ async function loadHomeTeamStats() {
         statValues[1].textContent = entry.points || '0';
         statValues[2].textContent = `${entry.wins || 0}-${entry.draws || 0}-${entry.losses || 0}`;
         statValues[3].textContent = entry.goalDifference || '0';
+        const summaryLine = document.getElementById('team-summary-inline');
+        if (summaryLine) summaryLine.textContent = `${entry.position || '?'} · ${entry.points || 0} points · ${entry.wins || 0}-${entry.draws || 0}-${entry.losses || 0} · GD ${entry.goalDifference || 0}`;
     } catch (err) {
         console.error('Error loading team stats:', err);
     }
