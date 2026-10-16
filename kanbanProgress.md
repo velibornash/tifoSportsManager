@@ -1,3 +1,7 @@
+## 2026-10-16 - Task P1-7/padding collapse fixed
+
+- Corrected the mobile accordion padding so its 10px bottom strip does not show while closed.
+
 ## 2026-10-16 - Task P1-6 ticker already uses scrolling marquee
 
 - `.fm-dashboard-ticker-move` animates continuously and the host has `overflow: hidden`, so the latest
