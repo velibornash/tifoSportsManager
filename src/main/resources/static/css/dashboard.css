@@ -5339,9 +5339,12 @@ body {
 }
 
 .notification-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+    /* Moved to a body-level element on 2026-10-16, because the header it used to anchor to is mobile-only
+       now and there are two bells (mobile + the navigation bar). Fixed so it opens from whichever bell
+       was clicked, without one disappearing with its parent. */
+    position: fixed;
+    top: 96px;
+    right: 12px;
     width: min(400px, calc(100vw - 32px));
     max-height: 70vh;
     overflow-y: auto;

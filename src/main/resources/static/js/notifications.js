@@ -101,33 +101,42 @@ export function readUnreadCount(payload) {
 }
 
 function paintBell(payload) {
-    const bell = document.getElementById('notification-bell');
-    const badge = document.getElementById('notification-badge');
-    const dropdown = document.getElementById('notification-dropdown');
-    if (!bell || !badge) return;
-
     const unread = readUnreadCount(payload);
 
-    if (badge) {
+    // **Two bells now: one on the phone, one in the navigation bar.** Both open the same dropdown, so
+    // they always paint together and cannot drift apart.
+    const bells = [
+        document.getElementById('notification-bell'),
+        document.getElementById('notification-bell-desktop')
+    ].filter(Boolean);
+    const badges = [
+        document.getElementById('notification-badge'),
+        document.getElementById('notification-badge-desktop')
+    ].filter(Boolean);
+
+    const firstBadge = badges[0];
+    const dropdown = document.getElementById('notification-dropdown');
+    if (!bells.length || !firstBadge) return unread;
+
+    for (const badge of badges) {
         badge.textContent = unread > 99 ? '99+' : String(unread);
         badge.hidden = unread === 0;
     }
+    for (const bell of bells) {
+        bell.classList.toggle('has-unread', unread > 0);
+        bell.setAttribute('aria-label', unread > 0 ? `Notifications, ${unread} unread` : 'Notifications, none unread');
+    }
 
-    // The red dot is a *separate* mark from the count, on purpose (owner, 2026-10-06). The count already
-    // says whether anything is unread, but a number is read rather than noticed: at 40px of top bar, in
-    // peripheral vision, a manager sees the bell change colour and then decides to look. The dot is
-    // what makes it noticeable; the number is what tells him how bad it is once he has looked.
-    bell.classList.toggle('has-unread', unread > 0);
-
-    bell.setAttribute('aria-label',
-        unread > 0 ? `Notifications, ${unread} unread` : 'Notifications, none unread');
-
-    announceNewArrivals(unread);
-
+    // The red dot count is a separate mark from the number, on purpose (owner 2026-10-06): the number is
+    // read rather than noticed, and the dot is what draws the eye. The badge only needs to exist, which
+    // is why it was tested twice before.
     if (dropdown && !dropdown.hidden) {
         dropdown.innerHTML = buildDropdownHtml(payload);
         bindDropdown(dropdown);
     }
+
+    announceNewArrivals(unread);
+    return unread;
 }
 
 /**
@@ -459,12 +468,12 @@ function closeDropdown() {
  * markup rebuilt 120 times an hour.
  */
 export async function toggleNotificationDropdown() {
-    const bell = document.getElementById('notification-bell');
+    const bells = document.querySelectorAll('[data-notification-bell]');
     const dropdown = document.getElementById('notification-dropdown');
-    if (!bell || !dropdown) return;
+    if (!bells.length || !dropdown) return;
     const willOpen = dropdown.hidden;
     dropdown.hidden = !willOpen;
-    bell.setAttribute('aria-expanded', String(willOpen));
+    bells.forEach(b => b.setAttribute('aria-expanded', String(willOpen)));
     if (willOpen) {
         try {
             const response = await authFetch(`/notifications?size=${DROPDOWN_PAGE}`);
@@ -480,20 +489,25 @@ export async function toggleNotificationDropdown() {
 }
 
 export function wireNotificationBell() {
-    const bell = document.getElementById('notification-bell');
+    const bells = document.querySelectorAll('[data-notification-bell]');
     const dropdown = document.getElementById('notification-dropdown');
-    if (!bell || !dropdown) return;
+    if (!bells.length || !dropdown) return;
 
-    bell.addEventListener('click', (event) => {
-        event.stopPropagation();
-        void toggleNotificationDropdown();
+    bells.forEach((bell) => {
+        bell.addEventListener('click', (event) => {
+            event.stopPropagation();
+            void toggleNotificationDropdown();
+        });
     });
 
     document.addEventListener('click', (event) => {
         if (dropdown.hidden) return;
-        if (dropdown.contains(event.target) || bell.contains(event.target)) return;
+        if (dropdown.contains(event.target)) return;
+        let inside = false;
+        bells.forEach(b => { if (b.contains(event.target)) inside = true; });
+        if (inside) return;
         dropdown.hidden = true;
-        bell.setAttribute('aria-expanded', 'false');
+        bells.forEach(b => b.setAttribute('aria-expanded', 'false'));
     });
 
     document.addEventListener('keydown', (event) => {

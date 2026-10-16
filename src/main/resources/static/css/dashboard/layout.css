@@ -675,6 +675,9 @@ html.is-mobile-nav .live-clock-date-mobile {
  */
 .desktop-nav {
     position: sticky;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     left: 0;
     right: 0;
     top: var(--fm-topbar-h, 84px);
@@ -696,11 +699,26 @@ html.nav-bottom .desktop-nav {
 }
 
 .desktop-nav .bottom-nav-grid {
+    flex: 1 1 auto;
+    min-width: 0;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
     gap: 6px;
     max-width: 1320px;
     margin: 0 auto;
+}
+
+.desktop-nav-right {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 12px;
+}
+
+/* Bottom position: the bar may be short (few items), so pad evenly. */
+html.nav-bottom .desktop-nav {
+    justify-content: space-between;
 }
 
 .desktop-nav button {
@@ -722,6 +740,15 @@ html.nav-bottom .desktop-nav {
 .desktop-nav button:hover {
     background: rgba(143, 211, 255, 0.12);
     color: #eef4ff;
+}
+
+/* **The phone keeps its own header; the desktop's header is gone** (owner, 2026-10-16). Everything it
+   used to carry sits inside `.desktop-nav` now, so hiding the mobile header on desktop removes a row
+   of elements that were only there for phones. */
+@media (min-width: 769px) {
+    .top-menu {
+        display: none !important;
+    }
 }
 
 /* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */

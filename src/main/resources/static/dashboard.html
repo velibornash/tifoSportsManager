@@ -47,15 +47,16 @@
 <div class="background"></div>
 <div class="top-menu">
     <div class="menu-button mobile-only mobile-hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">&#9776;</div>
+    <!-- The phone's own bell. The dropdown it opens is the shared body element, which is
+         position: fixed; on a desktop the desktop bell opens the same one, so a second copy of the
+         panel is not maintained. -->
     <div class="notification-bell-wrap">
         <button type="button" class="menu-button notification-bell" id="notification-bell"
-                aria-haspopup="true" aria-expanded="false" aria-controls="notification-dropdown"
-                aria-label="Notifications">
+                data-notification-bell aria-haspopup="true" aria-expanded="false"
+                aria-controls="notification-dropdown" aria-label="Notifications">
             <span aria-hidden="true">&#128276;</span>
-            <span class="notification-badge" id="notification-badge" hidden>0</span>
+            <span class="notification-badge" id="notification-badge" data-notification-badge hidden>0</span>
         </button>
-        <div class="notification-dropdown" id="notification-dropdown" role="dialog"
-             aria-label="Notifications" hidden></div>
     </div>
     <div id="live-clock-mobile-header" class="mobile-only live-clock-mobile">
         <div class="live-clock-time-mobile">Loading...</div>
@@ -73,36 +74,7 @@
     <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
          no way out of a session at all on a phone. It stays because it carries the manager's name,
          which no icon in the navigation bar can. -->
-    <div class="user-menu desktop-only">
-        <button type="button" class="menu-button user-menu-trigger" id="user-menu-trigger"
-                aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
-            <span class="user-menu-avatar" id="user-menu-avatar" aria-hidden="true">?</span>
-            <span class="user-menu-name" id="user-menu-name">Signed in</span>
-            <span class="user-menu-caret" aria-hidden="true">&#9662;</span>
-        </button>
-        <div class="user-menu-panel" id="user-menu-panel" role="menu" hidden>
-            <div class="user-menu-identity">
-                <div class="user-menu-identity-name" id="user-menu-panel-name">&mdash;</div>
-                <div class="user-menu-identity-meta" id="user-menu-panel-meta"></div>
-            </div>
-            <button type="button" class="user-menu-item" role="menuitem" onclick="loadUserProfile()">
-                <span class="user-menu-item-icon" aria-hidden="true">&#128100;</span> My profile
-            </button>
-            <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('settings')">
-                <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Settings
-            </button>
-            <div class="user-menu-sep" role="separator"></div>
-            <button type="button" class="user-menu-item user-menu-item--danger" role="menuitem" onclick="logout()">
-                <span class="user-menu-item-icon" aria-hidden="true">&#128682;</span> Sign out
-            </button>
-        </div>
-    </div>
-    <div id="live-clock" class="desktop-only live-clock">
-        <strong id="clock-time">Loading...</strong>
-        <small id="clock-date"></small>
-        <small id="clock-phase"></small>
-    </div>
-    <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
+    <!-- ** desktop account/clock/logo moved into the nav right cluster below ** -->
     <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
 </div>
 
@@ -227,7 +199,48 @@
      where it sits, so the two positions cannot drift apart. The choice is in Settings. -->
 <nav class="desktop-nav" id="desktop-nav" aria-label="Desktop navigation">
     <div class="bottom-nav-grid" id="desktop-nav-grid"></div>
+    <div class="desktop-nav-right">
+        <div class="notification-bell-wrap">
+            <button type="button" class="menu-button notification-bell" id="notification-bell-desktop"
+                    data-notification-bell aria-haspopup="true" aria-expanded="false"
+                    aria-controls="notification-dropdown" aria-label="Notifications">
+                <span aria-hidden="true">&#128276;</span>
+                <span class="notification-badge" id="notification-badge-desktop" data-notification-badge hidden>0</span>
+            </button>
+        </div>
+<div class="user-menu desktop-only">
+        <button type="button" class="menu-button user-menu-trigger" id="user-menu-trigger"
+                aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
+            <span class="user-menu-avatar" id="user-menu-avatar" aria-hidden="true">?</span>
+            <span class="user-menu-name" id="user-menu-name">Signed in</span>
+            <span class="user-menu-caret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="user-menu-panel" id="user-menu-panel" role="menu" hidden>
+            <div class="user-menu-identity">
+                <div class="user-menu-identity-name" id="user-menu-panel-name">&mdash;</div>
+                <div class="user-menu-identity-meta" id="user-menu-panel-meta"></div>
+            </div>
+            <button type="button" class="user-menu-item" role="menuitem" onclick="loadUserProfile()">
+                <span class="user-menu-item-icon" aria-hidden="true">&#128100;</span> My profile
+            </button>
+            <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('settings')">
+                <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Settings
+            </button>
+            <div class="user-menu-sep" role="separator"></div>
+            <button type="button" class="user-menu-item user-menu-item--danger" role="menuitem" onclick="logout()">
+                <span class="user-menu-item-icon" aria-hidden="true">&#128682;</span> Sign out
+            </button>
+        </div>
+    </div>
+<div id="live-clock" class="desktop-only live-clock">
+        <strong id="clock-time">Loading...</strong>
+        <small id="clock-date"></small>
+        <small id="clock-phase"></small>
+    </div>
+<div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
+    </div>
 </nav>
+<div class="notification-dropdown" id="notification-dropdown" role="dialog" aria-label="Notifications" hidden></div>
 
 <div class="dashboard-content">
     <div id="main-content" style="opacity:0.9"></div>
