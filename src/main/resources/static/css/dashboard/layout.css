@@ -222,6 +222,38 @@
     .fm-page--club .fm-club-hero .team-summary-grid span {
         font-size: 0.72rem;
     }
+
+    /* Dashboard club summary: one compact row instead of four separate cards. */
+    .team-header + .stats-grid,
+    .stats-grid.clickable {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        margin-top: 8px;
+    }
+
+    .stats-grid .stat-item {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+        background: none;
+        border: none;
+        padding: 0;
+        min-width: 0;
+    }
+
+    .stats-grid .stat-value {
+        min-width: 0;
+        margin-right: 2px;
+    }
+
+    .stats-grid .stat-label {
+        margin-left: 0;
+        text-transform: none;
+    }
+
+}
 }
 
 /* Lista igrača */

@@ -478,8 +478,9 @@ function buildActionRowHtml(actions, currentPage = '') {
         return `<button type="button" class="${className}" onclick="${onclick}">${htmlEscape(action.label)}</button>`;
     }).join('');
 
-    const mobile = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-        && window.matchMedia('(max-width: 760px)').matches;
+    // The same options live in the hamburger/menu already, so do not repeat a full button toolbar
+    // on every club subpage. It stays collapsed into one summary line on every viewport.
+    const mobile = true;
     if (mobile) {
         return `<details class="fm-club-actions fm-club-actions-collapse">
             <summary class="fm-club-actions-summary">Club actions (${actions.length})</summary>
