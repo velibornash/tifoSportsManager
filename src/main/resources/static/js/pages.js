@@ -776,6 +776,7 @@ function buildPageNavState(page, options = {}) {
             mainContent.innerHTML = buildErrorState(err, describePage(page));
         } finally {
             scrollToTopOfPage();
+            try { renderDesktopBottomNav(page); } catch (e) { /* no-op outside the dashboard layout */ }
         }
     }
 
@@ -1683,7 +1684,7 @@ async function loadUserProfile() {
             .map(item => {
                 const onclick = item.isExternal
                     ? "window.location.href='" + item.isExternal + "'"
-                    : (item.onclick ? item.onclick : 'window.loadPage('' + item.page + '')');
+                    : (item.onclick ? item.onclick : `window.loadPage('${item.page}')`);
                 return '<button type="button" onclick="' + onclick + '">' +
                     (item.icon ? '<span class="desktop-nav-icon">' + item.icon + '</span>' : '') +
                     '<span>' + htmlEscape(item.label) + '</span></button>';
@@ -1691,6 +1692,7 @@ async function loadUserProfile() {
     }
 
     window.loadPage = loadPage;
+    window.renderDesktopBottomNav = renderDesktopBottomNav;
     window.loadSettingsPage = loadSettingsPage;
     window.logout = logout;
     window.loadUserProfile = loadUserProfile;
