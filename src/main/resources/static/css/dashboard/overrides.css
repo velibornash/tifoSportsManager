@@ -10,7 +10,7 @@
     transition: max-height 0.35s ease-out;
     background: #1a1a1a;          /* crna pozadina kontejnera */
     border-radius: 0 0 8px 8px;
-    padding: 0 0 10px 20px;       /* indent, ali bez prelivanja */
+    padding: 0 0 0 20px;       /* collapsed accordion hides its 10px bottom gap as well */ 
 }
 
 .accordion-content div {
