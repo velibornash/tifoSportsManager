@@ -1,3 +1,26 @@
+## 2026-10-16 - The header is gone; the clock, S/W/D, logo, bell and account menu live in the nav
+
+Owner: "add the clock with S/W/D and the logo to both top and bottom navs, and remove the current header
+completely, the one where notification and user stayed."
+
+The phone's own header (hamburger, bell, mobile clock, search, logo) survives and is hidden on desktop.
+Everything the old desktop header carried now lives in `.desktop-nav-right`:
+
+* the notification bell (its own id, `notification-bell-desktop`, tagged `[data-notification-bell]`);
+* the account menu, moved as-is — its ids survived, so `paintAccountMenu` is unchanged;
+* the clock with its S1/W2/D2 line;
+* the logo.
+
+One bell becomes two, honestly. Both open the same body-level dropdown, and `paintBell` together with
+`decrementUnread` run on every bell in the page, so the badge and the red dot cannot disagree. The
+wiring binds the click on every bell. The owner asked for the two not to drift, so they are painted in
+one function rather than two that "look like each other".
+
+Seen in the browser, at both positions: the bar is flush with its edge, the bell opens the dropdown and
+the account menu opens, the clock reads 20:xx: S1/W2/D2, `scrollWidth` stays 1280, the console empty.
+
+## 2026-10-16 - One navigation bar, top or bottom; Settings asks which
+
 ## 2026-10-16 - One navigation bar, top or bottom; Settings asks which
 
 Owner: "instead of the current top header menu, put an identical nav bar to the bottom one", a radio in
