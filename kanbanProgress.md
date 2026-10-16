@@ -1,3 +1,8 @@
+## 2026-10-16 - League stats visual cleanup
+
+- Left-aligned Top Lists, Top Scorers and Top Assists headings.
+- Scorer totals use the football icon; assist totals use the styled red A.
+
 ## 2026-10-16 - Bottom nav renders with dashboard
 
 - Ensures desktop bottom navigation remains visible after dashboard load.
