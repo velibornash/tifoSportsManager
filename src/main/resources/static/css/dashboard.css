@@ -2188,7 +2188,22 @@ button.training-week-item {
 .fm-squad-wrap {
     width: 100%;
     overflow-x: auto;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
 }
+
+.fm-squad-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 24px;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(6, 10, 16, 0.94));
+    opacity: 0.9;
+}
+
 
 /* An international cup that exists, as opposed to a disabled row saying it does not. */
 .fm-competition.is-real {
