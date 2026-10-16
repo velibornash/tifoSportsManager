@@ -1,3 +1,8 @@
+## 2026-10-16 - Task P0-3/P0-5 back button width is already fixed
+
+- `.back-to-dashboard` carries `justify-self: start` in `dashboard.css`, keeping the slab from
+  stretching. The fix is committed and no further CSS change is needed in this task.
+
 ## 2026-10-16 - Task P0-2: player grid min width reached desktop
 
 - `.fm-player-grid > * { min-width: 0; }` is now applied outside mobile media. Verified
