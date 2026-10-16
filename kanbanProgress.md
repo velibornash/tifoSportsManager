@@ -1,3 +1,8 @@
+## 2026-10-16 - Mobile bottom nav and clock verified
+
+- JS mobile flag now correctly forces bottom nav horizontal and clock stacked.
+- Updated MD.
+
 ## 2026-10-16 - Mobile bottom nav and clock fixed with JS detection
 
 - Added a user-agent / touch based mobile flag and applied it to bottom nav and clock.
