@@ -531,3 +531,44 @@
     }
 }
 
+
+/* Keep the fixed bottom navigation strictly phone-only; it otherwise leaked onto desktop
+   because display:grid is more specific than .mobile-only's utility. */
+@media (min-width: 769px) {
+    .mobile-bottom-nav.mobile-only,
+    .mobile-bottom-nav {
+        display: none !important;
+        visibility: hidden !important;
+    }
+}
+
+/* Keep the mobile header's bell/clock/search arrangement fixed: hamburger first, bell second,
+   clock third, search fourth. */
+@media (max-width: 768px) {
+    .mobile-hamburger-btn { order: 0; }
+    .notification-bell-wrap { order: 1; flex-direction: row; align-items: center; }
+    .live-clock-mobile { order: 2; flex-direction: column !important; align-items: center; }
+    .mobile-search-btn { order: 3; }
+}
+
+/* Desktop ordering on the same row. */
+.notification-bell-wrap { order: 95; }
+#admin-menu-button { order: 96; }
+.user-menu { order: 97; }
+.desktop-only.live-clock { order: 98; }
+.desktop-only.logo-corner { order: 99; }
+
+/* The compact clock stays on two lines inside the top bar. */
+@media (max-width: 768px) {
+    .top-menu > .live-clock.mobile-only,
+    .live-clock-mobile {
+        display: inline-flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 0 !important;
+        white-space: nowrap !important;
+    }
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+}
