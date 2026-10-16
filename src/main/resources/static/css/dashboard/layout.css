@@ -721,6 +721,85 @@ html.nav-bottom .desktop-nav {
     overflow: hidden;
 }
 
+/* **The right cluster must read like the nav, not like the old header buttons** (owner, 2026-10-16:
+   "I don't want the white background on the text"). The rest of the nav is `background: transparent`,
+   grid cells with an icon and a label, so a button with `#222` over it -- the old `.menu-button` look
+   - stands out wrong. Strip the card, keep the icon. */
+.desktop-nav-right .menu-button,
+.desktop-nav-right .menu-button.notification-bell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+    border: 0;
+    background: transparent;
+    color: #c7d2e3;
+    padding: 6px 8px;
+    border-radius: 8px;
+    gap: 6px;
+    line-height: 1;
+    font-family: inherit;
+}
+
+.desktop-nav-right .menu-button:hover,
+.desktop-nav-right .menu-button:focus-visible {
+    background: rgba(143, 211, 255, 0.12);
+    color: #eef4ff;
+}
+
+/* Bell stays a square, clock and logo get their own size. */
+.desktop-nav-right .notification-bell-wrap { display: inline-flex; align-items: center; }
+.desktop-nav-right #live-clock,
+.desktop-nav-right .live-clock {
+    margin: 0;
+    padding: 0 4px;
+    color: #c7d2e3;
+    text-align: right;
+}
+.desktop-nav-right #live-clock strong {
+    font-size: 0.9rem;
+    color: #eef4ff;
+    display: block;
+}
+.desktop-nav-right #live-clock small {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1;
+    color: #9aa0a6;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.desktop-nav-right .logo-corner {
+    position: static;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    flex: 0 0 auto;
+    margin-left: 0;
+    margin-right: 0;
+}
+.desktop-nav-right .logo-corner .corner-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+}
+.desktop-nav-right .user-menu { position: relative; }
+.desktop-nav-right .user-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 0;
+    color: #c7d2e3;
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+.desktop-nav-right .user-menu-trigger:hover { background: rgba(143, 211, 255, 0.12); color: #eef4ff; }
+.desktop-nav-right .user-menu-name { font-size: 0.78rem; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+
+
 /* TOP position: content starts below the bar. BOTTOM position: ... */
 html.nav-top body {
     padding-top: var(--desktop-nav-h, 72px);
@@ -736,12 +815,44 @@ html.nav-top body {
 }
 
 @media (max-width: 768px) {
-    html.is-mobile-nav .desktop-nav {
+    .desktop-nav {
         display: none !important;
     }
 }
 
 html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
+
+/* **The nav bar's own look**, lost during the header teardown. Every button inside it must look like
+   the original mobile bottom nav, not like a browser-default grey box (`buttonface = #efefef`), which is
+   what showed up as the "ugly white background on the text" (owner, 2026-10-16). Transparent, no
+   border, the same colour and the same pressed state as the bottom bar. */
+.desktop-nav button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 54px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #c7d2e3;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+.desktop-nav button span {
+    white-space: nowrap;
+}
+.desktop-nav button:active,
+.desktop-nav button:hover,
+.desktop-nav button:focus-visible {
+    background: rgba(143, 211, 255, 0.12);
+    color: #eef4ff;
+}
 
 
 /* Content must not hide behind the bar. In the bottom position it needs room at the foot of the page;

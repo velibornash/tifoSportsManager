@@ -58,12 +58,10 @@
             <span class="notification-badge" id="notification-badge" data-notification-badge hidden>0</span>
         </button>
     </div>
+
     <div id="live-clock-mobile-header" class="mobile-only live-clock-mobile">
         <div class="live-clock-time-mobile">Loading...</div>
         <div class="live-clock-date-mobile"></div>
-    </div>
-    <div class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" data-nav-page="search" aria-label="Search">
-        <span class="menu-button-icon mobile-search-icon" aria-hidden="true">&#128269;</span>
     </div>
     <!-- **The desktop destinations are gone from this bar.** Owner, 2026-10-16: "instead of the
          current top header menu, put an identical nav bar to the bottom one". The eight buttons that
@@ -188,10 +186,7 @@
     <button type="button" onclick="loadPage('leagueTable')">&#127942;<span>League</span></button>
     <button type="button" onclick="loadPage('world')">&#127757;<span>World</span></button>
     <button type="button" onclick="loadPage('search')">&#128269;<span>Search</span></button>
-    <div class="bottom-nav-clock">
-        <strong class="bottom-clock-time">Loading...</strong>
-        <span class="bottom-clock-date">S?/W?/D?</span>
-    </div>
+
 </nav>
 
 <!-- **One navigation, two positions.** Owner, 2026-10-16: the same bar the bottom had, now optionally

@@ -1576,7 +1576,6 @@ async function loadUserProfile() {
         return next;
     }
 
-    /** The bar's own height, as `--desktop-nav-h`: in the top position the page starts below it. */
     function measureTopBar() {
         const nav = document.querySelector('.desktop-nav');
         if (!nav) return;
