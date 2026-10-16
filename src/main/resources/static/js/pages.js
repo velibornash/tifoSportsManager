@@ -1035,7 +1035,8 @@ function buildPageNavState(page, options = {}) {
                 </tr>`;
     }
 
-    async function loadWorldPage() {
+    async function loadWorldPage(options = {}) {
+        const initialWorldTab = options?.tab || 'countries';
         const mainContent = document.getElementById('main-content');
         try {
             const teamId = typeof currentUserTeamId !== 'undefined' ? currentUserTeamId : null;
@@ -1228,7 +1229,7 @@ function buildPageNavState(page, options = {}) {
             mainContent.querySelectorAll('[data-world-tab]').forEach(button => {
                 button.addEventListener('click', () => setWorldTab(button.dataset.worldTab));
             });
-            setWorldTab('countries');
+            setWorldTab(initialWorldTab);
 
             const freeSlotHtml = worldFriendlyBoard && typeof worldFriendlyBoard.buildHtml === 'function'
                 ? worldFriendlyBoard.buildHtml(worldFriendlyBoardData == null ? { failed: true, status: 0 } : worldFriendlyBoardData,
@@ -1645,7 +1646,20 @@ async function loadUserProfile() {
         if (group === 'country') {
             return [
                 { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
-                { label: 'Country', onclick: 'showMyCountry()' },
+                { label: 'General', onclick: "window.loadPage('country', { tab: 'general' })" },
+                { label: 'Calendar', onclick: "window.loadPage('country', { tab: 'calendar' })" },
+                { label: 'Clubs', onclick: "window.loadPage('country', { tab: 'clubs' })" },
+                { label: 'Qualifying', onclick: "window.loadPage('country', { tab: 'qualifying' })" },
+                { label: 'National Team', onclick: "window.loadPage('country', { tab: 'senior' })" },
+                { label: 'U-21', onclick: "window.loadPage('country', { tab: 'u21' })" },
+            ];
+        }
+        if (group === 'world') {
+            return [
+                { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
+                { label: 'Clubs', onclick: "window.loadPage('world', { tab: 'clubs' })" },
+                { label: 'Competitions', onclick: "window.loadPage('world', { tab: 'competitions' })" },
+                { label: 'Friendlies', onclick: "window.loadPage('world', { tab: 'friendlies' })" },
             ];
         }
         if (group === 'search') {
@@ -1663,17 +1677,22 @@ async function loadUserProfile() {
             ];
         }
         return [
-            { label: 'Sports Lobby', isExternal: 'home.html' },
+            { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
             { label: 'Club', page: 'clubProfile' },
             { label: 'League', page: 'leagueTable' },
             { label: 'Country', onclick: 'showMyCountry()' },
             { label: 'World', page: 'world' },
             { label: 'Community', page: 'forum' },
             { label: 'Search', page: 'search' },
-            { label: 'Notifications', onclick: 'document.querySelector("#notification-bell")?.click()' },
+            { label: 'Notifications', onclick: 'window.openNotificationPanel()' },
             { label: 'Admin', page: 'admin', adminOnly: true },
             { label: 'Settings', page: 'settings' },
         ];
+    }
+
+
+    function openNotificationPanel() {
+        document.querySelector('#notification-bell')?.click();
     }
 
     function renderDesktopBottomNav(activePage) {
@@ -1684,6 +1703,8 @@ async function loadUserProfile() {
             'Club settings': '⚙️', 'Stadium': '🏟', 'Results': '📊', 'Table': '🏆', 'Schedule': '📅',
             'Matches': '⚽', 'Top Scorers': '🥅', 'Top Assists': '🎯', 'Forum': '💬', 'Messages': '✉️',
             'Country': '🇷🇸', 'World': '🌍', 'Community': '👥', 'Search': '🔍', 'Notifications': '🔔',
+            'Clubs': '🏟', 'Competitions': '🏆', 'Friendlies': '🤝', 'General': '🌍', 'Calendar': '📅',
+            'Qualifying': '🎯', 'National Team': '🇷🇸', 'U-21': '👶',
             'Admin': '🔧', 'My profile': '👤', 'Settings': '⚙️', 'Sports Lobby': '🏠', 'Club settings': '⚙️'
         };
         const grid = document.getElementById('desktop-bottom-nav-grid');
@@ -1706,6 +1727,7 @@ async function loadUserProfile() {
     }
 
     window.loadPage = loadPage;
+    window.openNotificationPanel = openNotificationPanel;
     window.renderDesktopBottomNav = renderDesktopBottomNav;
     window.loadSettingsPage = loadSettingsPage;
     window.logout = logout;
