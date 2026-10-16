@@ -1,3 +1,7 @@
+## 2026-10-16 - User nav corrected
+
+- Bottom-bar user menu now has `My profile`, `Settings`, and `Sign out`.
+
 ## 2026-10-16 - Club profile text wrap and First Team mobile columns refined
 
 - Club profile stat text now breaks only at word boundaries, with slightly smaller type.
