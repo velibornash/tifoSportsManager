@@ -1682,6 +1682,9 @@ async function loadUserProfile() {
                 { label: 'Stadium', page: 'stadium' },
             ];
         }
+        if (group === 'main') {
+            return mainDesktopNavItems();
+        }
         if (group === 'league') {
             return [
                 { icon: '&#9664;', label: 'Back', navBack: true },
@@ -1820,14 +1823,13 @@ async function loadUserProfile() {
         const current = desktopNavOverrideGroup
             || desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
         const parent = MENU_PARENT[current];
-        if (!parent || parent === 'main') {
-            // Nothing to step up to (or already at the top). Return to the root bar without inventing
-            // a "home" destination.
-            desktopNavOverrideGroup = null;
-            renderDesktopBottomNav(currentPageId);
+        if (!parent) {
+            // No parent menu (already at the root): do nothing rather than jumping.
             return;
         }
-        desktopNavOverrideGroup = parent;
+        // Only set to null if parent is main; the root menu is the only menu shown without a Back
+        // button, and only on the dashboard. For a page underneath that root bar shows main (no Back).
+        desktopNavOverrideGroup = parent === 'main' ? null : parent;
         renderDesktopBottomNav(currentPageId);
     }
 
