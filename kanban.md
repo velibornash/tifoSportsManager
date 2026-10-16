@@ -26,7 +26,7 @@ navigation-adjacent, and none of them is a new feature.
 | **NAV-1** | 🔴 | **Bottom-nav Notifications opens nothing; the header bell opens "Nothing yet"** | ✅ **Fixed and seen.** The dropdown opens from the nav, the bell still toggles it, and a click outside still closes it. |
 | **NAV-2** | 🔴 | **Bottom-nav Back closed the menu but did not go back a page** | ⬜ Open. Back pops the return stack and loads the previous page; **not yet seen in the browser**. |
 | **NAV-3** | 🟡 | **World submenu had no Countries entry** | ✅ **Fixed and seen.** Back, Countries, Clubs, Competitions, Friendlies — and Countries opens the Countries tab. |
-| **NAV-4** | 🔴 | **Friendlies from the bottom nav opened nothing; the header path worked** | ⬜ Open. Tab is applied again after the panel is built; **not yet seen in the browser**. |
+| **NAV-4** | 🔴 | **Friendlies from the bottom nav opened nothing; the header path worked** | ✅ **Fixed and seen.** The tab is applied again after the panel is built; the free-slot board renders. |
 | **NAV-5** | 🟡 | **Club submenu from the bottom nav had no Back** | ⬜ Open. Added; **not yet seen in the browser**. |
 | **NAV-6** | 🟡 | **Schedule and Results sat directly in the Club menu** | ⬜ Open. Moved into a Matches submenu; **not yet seen in the browser**. |
 | **NAV-7** | 🟡 | **The tactics-setup page titled itself "Tactic Editor"** | ⬜ Open. Retitled; **not yet seen in the browser**. |

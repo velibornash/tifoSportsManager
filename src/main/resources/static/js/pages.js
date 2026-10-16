@@ -1249,6 +1249,9 @@ function buildPageNavState(page, options = {}) {
                 const host = mainContent.querySelector('.fm-page--world') || mainContent;
                 host.insertAdjacentHTML('beforeend', freeSlotSection);
                 worldFriendlyBoard.wire(mainContent, teamId);
+                // The Friendlies panel is created after the initial tab switch above, so apply the
+                // requested tab once more now that every panel exists.
+                setWorldTab(initialWorldTab);
             }
 
             const openCountry = row => {

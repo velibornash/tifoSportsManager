@@ -1,3 +1,11 @@
+## 2026-10-16 - NAV-4: Friendlies opens from the bottom nav
+
+- **What was wrong:** the World page applied the requested tab before the Friendlies panel existed.
+  The free-slot board is appended after that first switch, so it stayed `hidden` and nothing showed —
+  the header path worked only because it arrived at the tab a beat later.
+- The requested tab is applied again once every panel is in the DOM.
+- Seen in the browser: `friendlies` is the only visible panel and the board reads "FREE-SLOT BOARD".
+
 ## 2026-10-16 - NAV-3: Countries is back in the World submenu
 
 - Back, Countries, Clubs, Competitions, Friendlies.
