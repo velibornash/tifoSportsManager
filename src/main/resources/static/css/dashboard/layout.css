@@ -196,6 +196,32 @@
     .desktop-only { display: none; }
     .mobile-only { display: block; }
     .top-menu > .mobile-only { display: inline-flex; }
+    /* Mobile header clock keeps the time on the first row and the compact S/W/D form below it. */
+    .top-menu > .live-clock.mobile-only { flex-direction: column; align-items: center; gap: 0; white-space: nowrap; }
+    .live-clock-mobile small { line-height: 1.15; }
+
+    /* Club summary stats can share one compact row instead of a 2x2 block on a phone. */
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid,
+    .fm-page--club .fm-club-hero .team-summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 6px;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid > div,
+    .fm-page--club .fm-club-hero .team-summary-grid > div {
+        padding: 8px 4px;
+        font-size: 0.82rem;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid strong,
+    .fm-page--club .fm-club-hero .team-summary-grid strong {
+        font-size: 1.0rem;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid span,
+    .fm-page--club .fm-club-hero .team-summary-grid span {
+        font-size: 0.72rem;
+    }
 }
 
 /* Lista igrača */
