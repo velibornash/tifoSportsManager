@@ -1,3 +1,8 @@
+## 2026-10-16 - Desktop bottom nav fixed after SyntaxError
+
+- Fixed object shorthand and quoting so renderDesktopBottomNav now runs on page load.
+- Verified grid, navigation, and back button against the running app.
+
 ## 2026-10-16 - Desktop bottom nav with contextual sections
 
 - Replaced the static desktop bottom bar with a live hierarchical section: main destinations,
