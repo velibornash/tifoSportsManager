@@ -1,3 +1,17 @@
+## 2026-10-16 - First Team squad: sortable; Club milestones and Medical Center removed
+
+Owner: "prvi tim u Club - first team, o uba view da lista/tabela igraca bude sortabilna po apps, gls, ast,
+av rat.. izbaciti club ,ilestones i medical center iz first team styranice za oba view-a."
+
+- Club milestones panel and Medical Center side panel are gone from the enhanced First Team view.
+- `loadFirstTeam()` no longer fetches `/teams/{id}/milestones` or `/teams/{id}/medical`, so two round trips
+  are saved per page open.
+- `buildSquadTableHtml` learned `sortable`; the `Apps / Gls / Ast / Av Rat` headers now carry
+  `data-sort`, every row emits `data-apps`, `data-goals`, `data-assists`, `data-rating`, and
+  `bindSortableSquadTable` reorders the rows locally off a click.
+- Verified in the browser: sorting by any of the four headers reorders all 13 rows; milestones and the
+  medical panel are absent.
+
 ## 2026-10-16 - Mobile header locked; nav-bar text made bigger with transparent background
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore", "sat na kom
@@ -23,7 +37,6 @@ What went in:
   (`buttonface = #efefef`) that was over each letter is transparent now, which is what "BELA RUZNA
   pozadina" was about.
 
-## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
 ## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
 
 Owner: "NA MOB VIEW sam rekao PREVISE PUTA da NIKAD NE SMES da menjas RASPORED ikonica gore — hamburger,
@@ -61,7 +74,6 @@ pushed the mobile header down even with the bar hidden), so the bar starts at th
 **Verified in the browser, at 1280 in both positions:** top 0, bottom 577, twelve columns of content
 scrolling without overlap, scrollWidth 1280 in a 1280 window, console empty.
 
-## 2026-10-16 - The header is gone; the clock, S/W/D, logo, bell and account menu live in the nav
 ## 2026-10-16 - The header is gone; the clock, S/W/D, logo, bell and account menu live in the nav
 
 Owner: "add the clock with S/W/D and the logo to both top and bottom navs, and remove the current header
@@ -3968,7 +3980,6 @@ where `computeTeamStats` prefers `statsJson` and carries the real score — but 
 no `statsJson` computes `goals * 0.7 + 0.5` and labels it xG. Nothing in the current world takes that path.
 Recorded rather than quietly fixed, because the fallback is deliberate.
 
-## ✅ T0-BE-3 UI — the Team selection screen (2026-10-10)
 ## ✅ T0-BE-3 UI — the Team selection screen (2026-10-10)
 
 A club could pick a team for one fixture and had nowhere to pick it. Third time this session that a working
