@@ -365,7 +365,7 @@ export function createFormationsView(deps) {
                     <div class="fm-club-hero-main">
                         <div>
                             <div class="fm-eyebrow">Club tactics</div>
-                            <h2>Tactic Editor</h2>
+                            <h2>Tactics Setup</h2>
                             <p class="fm-subtle">Manage the base shape, XI, bench, and the advanced tactics editor flow from one club screen.</p>
                         </div>
                         ${buildClubActionsHtml(currentPageId === 'tacticEditor' ? 'tacticEditor' : 'formations')}

@@ -29,7 +29,7 @@ navigation-adjacent, and none of them is a new feature.
 | **NAV-4** | 🔴 | **Friendlies from the bottom nav opened nothing; the header path worked** | ✅ **Fixed and seen.** The tab is applied again after the panel is built; the free-slot board renders. |
 | **NAV-5** | 🟡 | **Club submenu from the bottom nav had no Back** | ✅ **Fixed and seen.** Every group now opens with Back, Club included. |
 | **NAV-6** | 🟡 | **Schedule and Results sat directly in the Club menu** | ✅ **Fixed and seen.** Matches → Back, Schedule, Results; the Club menu keeps one Matches entry. |
-| **NAV-7** | 🟡 | **The tactics-setup page titled itself "Tactic Editor"** | ⬜ Open. Retitled; **not yet seen in the browser**. |
+| **NAV-7** | 🟡 | **The tactics-setup page titled itself "Tactic Editor"** | ✅ **Fixed and seen.** Tactics Setup on the setup page; the editor keeps its own name. |
 | **NAV-8** | 🔴 | **Transfers took about ten seconds to open** | ⬜ Open. N+1 removed, **not yet measured**. |
 
 ---

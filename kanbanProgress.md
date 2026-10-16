@@ -1,3 +1,10 @@
+## 2026-10-16 - NAV-7: the setup page is Tactics Setup, not Tactic Editor
+
+- Two different pages shared one heading. The club tactics setup page is now "Tactics Setup"; the drag-
+  and-drop page keeps "Tactic Editor".
+- Seen in the browser through the nav: Club → Tactics → Tactics setup reads "Tactics Setup",
+  Tactic Editor reads "Tactic Editor".
+
 ## 2026-10-16 - NAV-5 and NAV-6: Back on Club, Matches takes Schedule and Results
 
 - Club now reads Back, Squad, Matches, Loans, Tactics, Staff, Finances, Transfers, Training, Medical,
