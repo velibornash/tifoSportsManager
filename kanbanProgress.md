@@ -1,3 +1,21 @@
+## 2026-10-16 - Back in the nav bar goes back through the nav bar, and only that
+
+The owner, for the fifth time on this button: **"Back from the nav bar only goes back through the nav bar
+menus — not through the application/pages; it only returns to the previous menu."**
+
+Two earlier readings of that same sentence pulled this button in opposite directions, and both shipped:
+first it closed the menu and did not move the page, then it was made to navigate pages as well. This
+time the instruction is unambiguous, so the button now does one thing:
+
+- `desktopNavMenuStack` records **which menu** was open, not which page.
+- Back puts that menu back. It never calls `loadPage`, and there is no fallback to the dashboard.
+- With nothing behind it, Back returns to the **root** nav menu — still a menu, so the button is never
+  a dead thing on screen.
+
+**Seen in the browser.** Club → Squad → Back → the Club menu, page untouched. Back again → the root
+nav, page untouched. Club → Matches (the Schedule page) → Back → the Club menu, and the Schedule page
+stays open rather than the nav dragging the manager somewhere else.
+
 ## 2026-10-16 - Match Setup: the eleven is the tactics board now
 
 The owner: "the eleven and the bench as they are is **not good** — the eleven and the bench should look

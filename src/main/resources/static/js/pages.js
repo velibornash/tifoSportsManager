@@ -1635,6 +1635,9 @@ async function loadUserProfile() {
             return [
                 { navBack: true, label: 'Back', icon: '◀' },
                 { label: 'Squad', gotoGroup: 'club:squad', icon: '👥' },
+                // Opens the Schedule straight away. Matches was a submenu with Schedule and Results
+                // until 2026-10-16; the Schedule page carries the played matches on its own timeline,
+                // so a second entry pointed at the same facts.
                 { label: 'Matches', page: 'schedule', icon: '⚽' },
                 { label: 'Loans', page: 'loans' },
                 { label: 'Tactics', gotoGroup: 'club:tactics', icon: '🧠' },
@@ -1707,6 +1710,16 @@ async function loadUserProfile() {
                 { label: 'Sign out', onclick: 'window.logout()' },
             ];
         }
+        return mainDesktopNavItems();
+    }
+
+    /**
+     * The nav bar's root menu.
+     *
+     * <p>Named rather than left as the fallthrough so Back can return to it: Back with nothing behind it
+     * lands here rather than on a dead button. Still a menu, never a page.
+     */
+    function mainDesktopNavItems() {
         return [
             { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
             { label: 'Club', page: 'clubProfile' },
@@ -1735,27 +1748,52 @@ async function loadUserProfile() {
         document.querySelector('#notification-bell')?.click();
     }
 
-    // Desktop bottom navigation keeps its own return stack. The app history stack is shared with
-    // match/route replay and does not represent a menu drill-down reliably.
-    const desktopNavReturnStack = [];
+    // Desktop bottom navigation keeps its own stack of **menus**, and nothing else.
+    //
+    // The owner's instruction, 2026-10-16, after five attempts at this button: "Back from the nav bar
+    // only goes back through the nav bar menus — not through the application/pages; it only returns to
+    // the previous menu." So this stack records which menu was open, and Back puts that menu back on
+    // screen. **It never loads a page.** With no menu behind it, Back goes to the root menu rather than
+    // inventing a destination.
+    //
+    // `desktopNavOverrideGroup` alone was not enough. It answers "is a submenu open", which is a
+    // yes/no question, and a two-level drill-down (Club → Squad → …) needs to know *which* menu to go
+    // back to, not merely that there was one.
+    const desktopNavMenuStack = [];
     let desktopNavOverrideGroup = null;
+
+    /** The menu on screen right now: the submenu that was opened, or the one the page belongs to. */
+    function activeDesktopNavGroup() {
+        return desktopNavOverrideGroup || desktopBottomNavGroup(
+            typeof currentPageId === 'string' ? currentPageId : 'dashboard'
+        );
+    }
+
     function desktopNavGo(page, options = {}) {
+        // A nav entry that opens a page is not a menu drill-down, so there is no menu behind it to go
+        // back to: the page's own group is the menu now.
         desktopNavOverrideGroup = null;
-        const from = typeof currentPageId === 'string' ? currentPageId : 'dashboard';
-        if (from !== page) desktopNavReturnStack.push(from);
+        desktopNavMenuStack.length = 0;
         return loadPage(page, options);
     }
+
     function desktopNavBack() {
-        if (desktopNavOverrideGroup) {
-            desktopNavOverrideGroup = null;
+        const previousGroup = desktopNavMenuStack.pop();
+        if (previousGroup === undefined) {
+            // Nothing behind this menu but the root one, which is still a menu. Returning to it keeps
+            // the button honest without touching a page.
+            desktopNavOverrideGroup = 'main';
             renderDesktopBottomNav(currentPageId);
             return;
         }
-        const previous = desktopNavReturnStack.pop() || 'dashboard';
-        desktopNavOverrideGroup = null;
-        return loadPage(previous, { pushHistory: false });
+        // Going back to the menu this page already owns means there is no submenu to hold on to.
+        const pageGroup = desktopBottomNavGroup(typeof currentPageId === 'string' ? currentPageId : 'dashboard');
+        desktopNavOverrideGroup = previousGroup === pageGroup ? null : previousGroup;
+        renderDesktopBottomNav(currentPageId);
     }
+
     function setDesktopNavGroup(group) {
+        desktopNavMenuStack.push(activeDesktopNavGroup());
         desktopNavOverrideGroup = group || null;
         renderDesktopBottomNav(currentPageId);
     }
