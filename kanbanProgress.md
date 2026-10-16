@@ -1,3 +1,9 @@
+## 2026-10-16 - Refine mobile text wrap and First Team columns
+
+- Turned off additional mobile-only columns so First Team shows its match output first on a phone.
+- Tightened club-profile/detail wraps where the hero was breaking single-character lines.
+- Updated MD.
+
 ## 2026-10-16 - Club settings route wired
 
 - `clubProfileSettings` now resolves through `loadSettingsPage` instead of falling through to "Page not found".
