@@ -1,3 +1,7 @@
+## 2026-10-16 - Club settings route wired
+
+- `clubProfileSettings` now resolves through `loadSettingsPage` instead of falling through to "Page not found".
+
 ## 2026-10-16 - Redundant Club Profile removed from club section
 
 - `desktopBottomNavItems` no longer lists `Club profile` in the Club group.
