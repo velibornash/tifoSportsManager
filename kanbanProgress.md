@@ -1,3 +1,8 @@
+## 2026-10-16 - P0-4: league table own-club class is already wired
+
+- `renderTableView` adds `is-own` based on team IDs and `dashboard.css` styles
+  `.fm-panel tbody tr.is-own` strongly, giving a visible mark on the manager's row.
+
 ## 2026-10-16 - Task P1-9: finance period/season selects now match rest of controls
 
 - Added `fm-season-select` to the finance period and season dropdowns so the dark, styled
