@@ -1598,7 +1598,6 @@ async function loadUserProfile() {
         if (group === 'club') {
             return [
                 { icon: '&#9664;', label: 'Back', onclick: 'window.goBackSmart()' },
-                { label: 'Club profile', page: 'clubProfile' },
                 { label: 'First team', page: 'firstTeam' },
                 { label: 'Schedule', page: 'schedule' },
                 { label: 'Juniors', page: 'juniors' },
