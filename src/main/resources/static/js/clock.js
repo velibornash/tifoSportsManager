@@ -181,10 +181,8 @@ function updateLiveClock() {
     if (dateEl) dateEl.textContent = seasonWeek;
     if (phaseEl) phaseEl.textContent = phaseLabel;
 
-    const timeMobile = document.getElementById('clock-time-m');
-    const dateMobile = document.getElementById('clock-date-m');
-    if (timeMobile) timeMobile.textContent = timeStr;
-    if (dateMobile) dateMobile.textContent = seasonWeek;
+    document.querySelectorAll('.live-clock-time-mobile').forEach(el => { el.textContent = timeStr; });
+    document.querySelectorAll('.live-clock-date-mobile').forEach(el => { el.textContent = seasonWeek; });
 }
 
 syncGameClock();

@@ -468,18 +468,25 @@ export function bindSquadRowClicks(container, onClick, selector = '.league-playe
 }
 
 function buildActionRowHtml(actions, currentPage = '') {
-    return `
-        <div class="fm-club-actions">
-            ${actions.map(action => {
-                const currentPages = Array.isArray(action.currentPages) && action.currentPages.length
-                    ? action.currentPages
-                    : [action.page];
-                const base = action.variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
-                const className = currentPages.includes(currentPage) ? `${base} is-current` : base;
-                const onclick = action.onclick || `loadPage('${action.page}')`;
-                return `<button type="button" class="${className}" onclick="${onclick}">${htmlEscape(action.label)}</button>`;
-            }).join('')}
-        </div>`;
+    const body = actions.map(action => {
+        const currentPages = Array.isArray(action.currentPages) && action.currentPages.length
+            ? action.currentPages
+            : [action.page];
+        const base = action.variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
+        const className = currentPages.includes(currentPage) ? `${base} is-current` : base;
+        const onclick = action.onclick || `loadPage('${action.page}')`;
+        return `<button type="button" class="${className}" onclick="${onclick}">${htmlEscape(action.label)}</button>`;
+    }).join('');
+
+    const mobile = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        && window.matchMedia('(max-width: 760px)').matches;
+    if (mobile) {
+        return `<details class="fm-club-actions fm-club-actions-collapse">
+            <summary class="fm-club-actions-summary">Club actions (${actions.length})</summary>
+            <div class="fm-club-actions-inner">${body}</div>
+        </details>`;
+    }
+    return `<div class="fm-club-actions">${body}</div>`;
 }
 
 /**
@@ -552,10 +559,6 @@ export function buildTrainingActionsHtml(currentPage = '') {
 export function buildLeagueActionsHtml(currentPage = '') {
     return buildActionRowHtml([
         { label: 'Table', page: 'leagueTable', variant: 'primary' },
-        { label: 'Schedule', page: 'leagueSchedule' },
-        { label: 'Matches', page: 'leagueMatches' },
-        { label: 'Top Scorers', page: 'topScorers' },
-        { label: 'Top Assists', page: 'topAssists' },
     ], currentPage);
 }
 

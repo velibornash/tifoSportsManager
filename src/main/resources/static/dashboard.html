@@ -24,17 +24,7 @@
          onclick="loadPage('forum')"><span class="community-menu-icon menu-button-icon" aria-hidden="true">&#9993;</span><span class="menu-button-label">Community</span></div>
     <!-- The notification bell. Not a menu button: it opens a panel rather than navigating, and it is
          the only part of the top bar that changes without the manager doing anything. -->
-    <div class="notification-bell-wrap">
-        <button type="button" class="menu-button notification-bell" id="notification-bell"
-                aria-haspopup="true" aria-expanded="false" aria-controls="notification-dropdown"
-                aria-label="Notifications">
-            <span aria-hidden="true">&#128276;</span>
-            <span class="notification-badge" id="notification-badge" hidden>0</span>
-        </button>
-        <div class="notification-dropdown" id="notification-dropdown" role="dialog"
-             aria-label="Notifications" hidden></div>
-    </div>
-	    <!-- Global search. Owner, 2026-10-14: "dugme sa lupica ikonicom posle dugmeta notification u
+    <!-- Global search. Owner, 2026-10-14: "dugme sa lupica ikonicom posle dugmeta notification u
          headeru, kad se klikne otvori se search stranica u kojoj mogu da se pretrazuju useri, klubovi
          ili igraci". It is a page and not a panel, because a search over the whole world is not a
          dropdown - it is something you stay on and keep typing into. -->
@@ -77,7 +67,6 @@
         <small id="clock-phase"></small>
     </div>
     <div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
-    <div class="menu-button mobile-only" onclick="toggleMobileMenu()">&#9776;</div>
     <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
 </div>
 
