@@ -144,6 +144,7 @@ function buildImportantTickerMarkup(message) {
 function isAdminUser() {
     return isAdminSession();
 }
+window.isAdminUser = isAdminUser;
 
 function readDashboardFlowFlash() {
     try {

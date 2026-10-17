@@ -619,9 +619,9 @@
     }
 }
 
-/* Mobile bottom nav is controlled here, not by .mobile-only utility. */
+/* Mobile bottom nav is retired: the desktop nav bar doubles as the mobile bottom bar now, so the
+   phone gets the same six groups and drill-down as the desktop. */
 .mobile-bottom-nav { display:none !important; }
-@media (max-width:768px) { .mobile-bottom-nav { display:grid !important; } .live-clock-mobile { display:flex !important; flex-direction:column !important; } }
 
 
 /* Touch devices can report unusual viewport widths in the tooling used here, so the phone shell is
@@ -648,10 +648,14 @@
 }
 
 
-/* JS-detected mobile shell. */
+/* JS-detected mobile shell: the desktop nav bar IS the mobile bottom bar. */
 html.is-mobile-nav .mobile-bottom-nav {
-    display: grid !important;
-    grid-template-columns: repeat(6, 1fr) !important;
+    display: none !important;
+}
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+    html.is-mobile-nav .desktop-nav {
+        display: flex !important;
+    }
 }
 html.is-mobile-nav .live-clock-mobile,
 html.is-mobile-nav .live-clock-mobile-header {
