@@ -204,7 +204,7 @@ export function createMatchView(deps) {
                     <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
                     <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
                     <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
-                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Available once the match has been played"'}>Replay</button>
+                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn"${(hasPlayedMatch && (matchMeta?.replayId ?? -1) > 0) ? '' : ' disabled title="No replay is stored for this match — replays are kept only for manually simulated matches."'}>Replay</button>
                     <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
@@ -1099,7 +1099,8 @@ export function createMatchView(deps) {
             document.getElementById("view-replay").addEventListener("click", () => {
                 void (async () => {
                     await revealMatchResultIfAllowed();
-                    window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(matchId)}`;
+                    const replayTarget = hasPlayedMatch && playedMatchId ? playedMatchId : matchId;
+                    window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(replayTarget)}`;
                 })();
             });
             document.getElementById("view-report").addEventListener("click", () => void showMatchReport());

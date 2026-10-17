@@ -925,7 +925,7 @@ html.nav-bottom body {
 }
 
 /* JS mobile-class fallback for first four team columns. */
-html.is-mobile-nav .fm-squad-wrap .fm-squad th:nth-child(n+3):nth-child(-n+8), html.is-mobile-nav .fm-squad-wrap .fm-squad td:nth-child(n+3):nth-child(-n+8) { display: none !important; }
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) th:nth-child(n+3):nth-child(-n+8), html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) td:nth-child(n+3):nth-child(-n+8) { display: none !important; }
 html.is-mobile-nav .club-profile-detail-row strong { overflow-wrap: break-word; }
 
 

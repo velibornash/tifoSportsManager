@@ -204,30 +204,6 @@
                 <span class="notification-badge" id="notification-badge-desktop" data-notification-badge hidden>0</span>
             </button>
         </div>
-<div class="user-menu desktop-only">
-        <button type="button" class="menu-button user-menu-trigger" id="user-menu-trigger"
-                aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
-            <span class="user-menu-avatar" id="user-menu-avatar" aria-hidden="true">?</span>
-            <span class="user-menu-name" id="user-menu-name">Signed in</span>
-            <span class="user-menu-caret" aria-hidden="true">&#9662;</span>
-        </button>
-        <div class="user-menu-panel" id="user-menu-panel" role="menu" hidden>
-            <div class="user-menu-identity">
-                <div class="user-menu-identity-name" id="user-menu-panel-name">&mdash;</div>
-                <div class="user-menu-identity-meta" id="user-menu-panel-meta"></div>
-            </div>
-            <button type="button" class="user-menu-item" role="menuitem" onclick="loadUserProfile()">
-                <span class="user-menu-item-icon" aria-hidden="true">&#128100;</span> My profile
-            </button>
-            <button type="button" class="user-menu-item" role="menuitem" onclick="loadPage('settings')">
-                <span class="user-menu-item-icon" aria-hidden="true">&#9881;</span> Settings
-            </button>
-            <div class="user-menu-sep" role="separator"></div>
-            <button type="button" class="user-menu-item user-menu-item--danger" role="menuitem" onclick="logout()">
-                <span class="user-menu-item-icon" aria-hidden="true">&#128682;</span> Sign out
-            </button>
-        </div>
-    </div>
 <div id="live-clock" class="desktop-only live-clock">
         <strong id="clock-time">Loading...</strong>
         <small id="clock-date"></small>

@@ -1740,15 +1740,17 @@ async function loadUserProfile() {
             ];
         }
         if (group === 'user') {
-            return [
+            const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
+            const items = [
                 { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'My profile', onclick: 'window.loadUserProfile()' },
-                // The main nav entry says "User Settings" so the corner of the bar is unambiguous;
-                // inside the menu it is the manager's settings and the name is just "Settings"
-                // (owner, 2026-10-16).
                 { label: 'Settings', page: 'settings' },
-                { label: 'Sign out', onclick: 'window.logout()' },
             ];
+            if (isAdmin) {
+                items.push({ label: 'Admin', page: 'admin', icon: '🔧' });
+            }
+            items.push({ label: 'Sign out', onclick: 'window.logout()' });
+            return items;
         }
         return mainDesktopNavItems();
     }
@@ -1761,7 +1763,7 @@ async function loadUserProfile() {
      */
     function mainDesktopNavItems() {
         return [
-            { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
+            { label: 'Sports Lobby', onclick: "window.location.href='/home.html'", mobileHidden: true },
             { label: 'Club', gotoGroup: 'club', icon: '⚽' },
             { label: 'League', page: 'leagueTable' },
             { label: 'World', page: 'world' },
@@ -1857,7 +1859,7 @@ async function loadUserProfile() {
         const grid = document.getElementById('desktop-nav-grid');
         if (!grid) return;
         const group = desktopNavOverrideGroup || desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
-        const items = desktopBottomNavItems(group);
+        const items = desktopBottomNavItems(group).filter(item => !(item.mobileHidden && window.isMobileNav));
         const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
         grid.innerHTML = items
             .filter(item => !item.adminOnly || isAdmin)

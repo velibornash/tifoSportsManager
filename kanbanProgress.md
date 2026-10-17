@@ -121,7 +121,30 @@ Owner's complaint and feature:
 - `loadFirstTeam()` keeps milestones and the medical side-panel off the page; the `Apps / Gls / Ast /
   Av Rat` columns are sortable client-side (`bindSortableSquadTable`). Verified on 13 squad rows.
 
-## 2026-10-17 - Mobile top header and bottom nav restructured (verified)
+## 2026-10-17 - Replay button guarded; ranking tables scrollable on mobile; admin in User menu; extra user removed
+
+Owner: "MOB VIEW: skloni Sports lobby iz bottom nav bar-a! Countries rank list, club rank list - ne vidi se
+rejting niti se moze skrolati! U user meni na mobu dodaj ceo ADMIN deo - ako je admin. Isto vazi i za
+desktop. na desktopu imas dugme user izmedju Country i Community koje je ok i ostaje (u njega dodaj admin)
+ali imas visak usera izmedju notification i sata - to skloni." plus "Replay not found za sve odigrane
+meceve".
+
+* **Replay**: `storeReplay = false` in `MatchdayScheduler`, so regular matchday matches never have a replay.
+  The Replay button is now disabled with a clear title when `matchMeta.replayId` is null/-1, so a manager
+  no longer clicks it and gets "Replay not found" for every regular match.
+* **Ranking tables on mobile**: `html.is-mobile-nav .fm-squad-wrap .fm-squad th:nth-child(n+3):nth-child(-n+8)`
+  hid columns 3-8 of EVERY squad table, including the 5-column club/country ranking tables where column 5
+  is the Rating. Added `:not(.fm-clubs-ranking-table):not(.fm-world-table)` so the rating survives, plus a
+  60vh scroll container with sticky header for `.fm-clubs-ranking` on phones.
+* **User submenu**: admin items (Admin) added when `isAdminUser()` is true, on both desktop and mobile.
+* **Extra user menu removed** from the nav bar right cluster (between notification and clock). The nav's
+  User entry (labeled with the manager's name) is the only one now.
+* **Sports Lobby removed from mobile bottom nav** via `mobileHidden: true` on the Sports Lobby grid item.
+
+Verified in the browser: desktop nav right cluster has no user-menu element; User submenu shows Admin for
+the owner; First Team / squad tables unaffected; console empty.
+
+
 
 Owner: "sklonimo hamburger button kompletno iz top headera... nove grupe osnovnog menije u bottom nav baru:
 Club, League, World, Country, User (prikazuje ime ulogovanog usera), Community ... pod meniji za svaku

@@ -2240,6 +2240,22 @@ button.training-week-item {
     }
 }
 
+/* Country clubs ranking: keep the rating visible and let the table scroll horizontally on a phone,
+   because the rating column is the whole point of the list. */
+@media (max-width: 768px) {
+    .fm-clubs-ranking .fm-squad-wrap {
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .fm-clubs-ranking .fm-world-table thead th {
+        position: sticky;
+        top: 0;
+        background: #0b101a;
+        z-index: 2;
+    }
+}
+
 /* The whole row is the link to a country now, so it has to say so.
 
    A button wrapped around the name made the row read as a list of names rather than a table, and the
