@@ -1,3 +1,20 @@
+## 2026-10-17 - Desktop nav restructured to six groups; User entry carries the name
+
+Owner: "DESKTOP VIEW: kada kliknemo na ime ulogovanog korisnika u nav baru ne desi se nista, izmenicemo tako
+da sve sto se nalazi trenutno u podmeniju User settings (My profile, Settings, Sign out) ces staviti da
+bude kad se klikne na korisnika a User settings ces skloniti iz menija."
+
+* Top-level now reads Sports Lobby, Club, League, World, Country (Serbia), User (Velja), Community,
+  Admin (admin-only). Search, Notifications and User Settings are out of the grid: Search and
+  Notifications live in the right-hand cluster as icons; the account menu is gone and its entries are
+  now the User submenu.
+* Club is re-grouped: Back, Office, Squad, Matches, Training, Tactics. Office = Profile, Stadium,
+  Finances, Staff, Transfers; Squad = First Team, Juniors, Loans, Medical; Matches opens Schedule;
+  Training = Setup / Reports; Tactics = Setup / Editor. `club:office` and its `MENU_PARENT` entry
+  were added; the old flat Club list is gone.
+* Verified in the browser: every drill-down and every Back returns one menu up, down to the root, which
+  has no Back of its own. The right cluster still carries the bell, the clock and the logo.
+
 ## 2026-10-16 - Back walks one menu up, verified; Country label + First Team ready
 
 Reviewed and verified against the browser (Club to Squad to Back to Club menu; Back again to root;
