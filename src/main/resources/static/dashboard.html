@@ -45,11 +45,16 @@
 </head>
 <body>
 <div class="background"></div>
+<!-- **Mobile top header** (owner spec, 2026-10-17): Sports Lobby icon, Search icon, notification,
+     clock + S/W/D, logo. No hamburger. The hamburger is gone; everything that used to live behind it
+     is reachable from the bottom nav bar. -->
 <div class="top-menu">
-    <div class="menu-button mobile-only mobile-hamburger-btn" onclick="toggleMobileMenu()" aria-label="Menu">&#9776;</div>
-    <!-- The phone's own bell. The dropdown it opens is the shared body element, which is
-         position: fixed; on a desktop the desktop bell opens the same one, so a second copy of the
-         panel is not maintained. -->
+    <button type="button" class="menu-button mobile-only mobile-sports-lobby-btn" onclick="window.location.href='/home.html'" aria-label="Sports Lobby">
+        <span aria-hidden="true">&#9917;&#127936;&#127947;</span>
+    </button>
+    <button type="button" class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" aria-label="Search">
+        <span aria-hidden="true">&#128269;</span>
+    </button>
     <div class="notification-bell-wrap">
         <button type="button" class="menu-button notification-bell" id="notification-bell"
                 data-notification-bell aria-haspopup="true" aria-expanded="false"
@@ -58,7 +63,6 @@
             <span class="notification-badge" id="notification-badge" data-notification-badge hidden>0</span>
         </button>
     </div>
-
     <div id="live-clock-mobile-header" class="mobile-only live-clock-mobile">
         <div class="live-clock-time-mobile">Loading...</div>
         <div class="live-clock-date-mobile"></div>
@@ -180,14 +184,11 @@
 </div>
 <div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
 
-<nav class="mobile-bottom-nav" aria-label="Mobile navigation">
-    <button type="button" onclick="loadDashboard()">&#127968;<span>Home</span></button>
-    <button type="button" onclick="loadPage('clubProfile')">&#9917;<span>Club</span></button>
-    <button type="button" onclick="loadPage('leagueTable')">&#127942;<span>League</span></button>
-    <button type="button" onclick="loadPage('world')">&#127757;<span>World</span></button>
-    <button type="button" onclick="loadPage('search')">&#128269;<span>Search</span></button>
-
-</nav>
+<!-- **Mobile bottom nav is the same component as the desktop one**, styled for a phone. The five-icon bar
+     (Home, Club, League, World, Search) is retired: Home lives in the top header now (Sports Lobby icon)
+     and Search moved up there too, leaving the six groups - Club, League, World, Country, User,
+     Community - each with its own drill-down. -->
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation" style="display:none !important;"></nav>
 
 <!-- **One navigation, two positions.** Owner, 2026-10-16: the same bar the bottom had, now optionally
      at the top. It is one element with one set of buttons; `html.nav-top` / `html.nav-bottom` decide

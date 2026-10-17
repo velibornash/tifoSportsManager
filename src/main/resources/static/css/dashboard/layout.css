@@ -853,8 +853,31 @@ html.nav-top body {
 }
 
 @media (max-width: 768px) {
+    /* **The mobile bottom nav is the same component as the desktop one**, just pinned to the bottom
+       and with the right-hand cluster (bell, clock, logo) hidden - those live in the mobile header. */
     .desktop-nav {
+        display: flex !important;
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        padding: 6px 8px max(6px, env(safe-area-inset-bottom)) !important;
+    }
+    .desktop-nav-right {
         display: none !important;
+    }
+    .desktop-nav .bottom-nav-grid {
+        grid-template-columns: repeat(auto-fit, minmax(60px, 1fr)) !important;
+        gap: 4px !important;
+    }
+    .desktop-nav button {
+        min-height: 44px !important;
+        font-size: 0.62rem !important;
+        gap: 1px !important;
+    }
+    html.nav-top body,
+    html.nav-bottom body {
+        padding-top: 0 !important;
+        padding-bottom: 72px !important;
     }
 }
 
