@@ -1,3 +1,14 @@
+## 2026-10-17 - Replay button guarded; ranking tables scrollable on mobile; admin in User menu; extra user removed (verified)
+
+* **Replay**: `storeReplay = false` in `MatchdayScheduler`, so regular matchday matches never have a replay.
+  The Replay button is now disabled with a clear title when `matchMeta.replayId` is null/-1.
+* **Ranking tables on mobile**: columns 3-8 hid the Rating on 5-column ranking tables. Fixed with
+  `:not(.fm-clubs-ranking-table):not(.fm-world-table)` plus a 60vh scroll container.
+* **User submenu**: admin items added when `isAdminUser()` is true (fixed: `isAdminUser` was not exposed
+  on `window` from `dashboard.js`). Now shows Admin for the owner on both desktop and mobile.
+* **Extra user menu removed** from the nav bar right cluster. The nav's User entry is the only one now.
+* **Sports Lobby removed from mobile bottom nav** via `mobileHidden: true`.
+
 ## 2026-10-17 - Game clock watermark was real time, not game time; Next Match picks the right fixture
 
 Owner: "kako nije odigrana International? kako nije Next match danasnja utakmica lige iz Day 3, tek kad se
