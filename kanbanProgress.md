@@ -1,4 +1,29 @@
-## 2026-10-17 - Admin only in User submenu; removed from main nav; mobile bottom nav clean
+## 2026-10-17 - World NT qualifying stays on World menu; Country shows Serbia; mobile ranking tables fixed
+
+Owner: "MOBILE VIEW: Country strana - Clubs - ne vidi se rejting niti se moze skrolati; Qualfying - ne vidi se
+tabela, ne moze ni da se skrola. World strana - ne vide se podaci iz tabela niti mogu da se skrolaju:
+Countries, Clubs, WC Qualifiers (u21 i prvi timovi)... BUG! (i desktop i mobile view) World - Competitons -->
+otvorim NT kvalifikacije bilo u-21 bilo prvi nt tim - PROMENI SE meni na Country meni (TO VEC NIJE DOBRO),
+sad kliknem na neku od opcija Clubs ili qualifying ili stagod - PRIKAZUJE BOSNU I HERCEGOVINU a ne Srbiju!
+Hitno srediti."
+
+* **World NT qualifying no longer steals the Country menu.** `desktopBottomNavGroup('nationalTournament')`
+  returned `'country'`, so opening a national tournament from World -> Competitions switched the bar to
+  the Country menu. Fixed to return `'world'`. Verified: the bar stays on Back/Countries/Clubs/
+  Competitions/Friendlies/Transfers.
+* **Country page no longer shows the last-opened country.** `openCountry` in the World page now resets
+  `selectedCountryIsoCode` before navigating, so a later click on "Clubs" or "Qualifying" in the Country
+  menu shows the manager's own country (Serbia) instead of whichever country was last opened from a
+  qualifying table (Bosnia).
+* **Ranking tables on mobile**: `html.is-mobile-nav .fm-squad-wrap .fm-squad th:nth-child(n+3):nth-child(-n+8)`
+  hid columns 3-8 of EVERY squad table, including the 5-column club/country ranking tables where column 5
+  is the Rating. Added `:not(.fm-clubs-ranking-table):not(.fm-world-table)` so the rating survives, plus a
+  60vh scroll container with sticky header for `.fm-clubs-ranking` and `.fm-page--world` on phones.
+
+Verified in the browser: World -> Competitions -> NT qualifying (senior) stays on the World menu and shows
+"World Cup Qualifiers"; Country page shows Serbia; console empty.
+
+
 
 Owner: "skini admin viska i u mob view u glavnom men iju bottom bar-a (ostaje onaj ispod user opcije)".
 
