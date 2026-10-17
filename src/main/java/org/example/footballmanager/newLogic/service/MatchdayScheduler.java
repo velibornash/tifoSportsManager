@@ -125,7 +125,7 @@ public class MatchdayScheduler {
                     if (fixture == null || fixture.getPreparedMatchId() != null) {
                         return;
                     }
-                    var outcome = sim.simulate(fixture, false);
+                    var outcome = sim.simulate(fixture, true);
                     if (outcome != null) {
                         matchId[0] = sim.prepareMatch(fixture, outcome.outcome(), outcome.replayId(),
                                 outcome.snapshots());
@@ -203,7 +203,7 @@ public class MatchdayScheduler {
                     }
                     // Simulated here for the same reason as the prepare path: the fixture's teams are
                     // lazy proxies and there is no session without one.
-                    var outcome = sim.simulate(fixture, false);
+                    var outcome = sim.simulate(fixture, true);
                     if (outcome != null) {
                         sim.persist(fixture, outcome.outcome(), outcome.replayId(), outcome.snapshots());
                         released[0] = true;
