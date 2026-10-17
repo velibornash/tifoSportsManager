@@ -319,13 +319,17 @@ public class GameClockService {
         // matchday and both Elo ledgers all went unmoved while the app looked perfectly healthy.
         //
         // So the watermark is repaired rather than trusted. It is a resume point, and a resume point
-        // that lies about how far we got must not be believed; treating it as "now" costs at most one
-        // already-elapsed hour and makes the runner self-heal on the next tick instead of staying dead.
+        // that lies about how far we got must not be believed. Resetting it to `now` alone (the previous
+        // behaviour) costs at most one already-elapsed hour but leaves every missed job un-run: a
+        // manager whose app was down over a kickoff comes back and finds the matchday still unplayed,
+        // because `steps` is zero and nothing catches up. Resetting it to a week earlier lets the walk
+        // replay the missed hours instead - the jobs are idempotent by key, so a second run of a DONE
+        // job is a no-op rather than a duplicate.
         if (from.isAfter(now)) {
-            log.warn("Clock watermark {} is ahead of game time {}; rewinding it so jobs can run again.",
-                    from, now);
-            from = now;
-            clock.setLastSyncedAt(now);
+            log.warn("Clock watermark {} is ahead of game time {}; rewinding it one catch-up window so "
+                    + "missed jobs can run again.", from, now);
+            from = now.minusSeconds(MAX_CATCH_UP_HOURS * 3600L);
+            clock.setLastSyncedAt(from);
         }
 
         long fromIndex = GameTimeline.hourIndex(GameTimeline.positionAt(clock.anchor(), from));
@@ -371,7 +375,13 @@ public class GameClockService {
             }
         }
 
-        clock.setLastSyncedAt(now);
+        // **The watermark is real time, not game time.** The game has no date as a category: it counts
+        // season, week, day and hour, and the offset is what moves the world on. The walk is measured
+        // from `lastSyncedAt` to game time (`now`), and if the watermark is stored as game time the two
+        // are equal, `delta` is zero and no job ever runs — which is exactly how a whole matchday came
+        // to sit unplayed while the clock advanced past it (owner, 2026-10-17). Real time is the resume
+        // point; game time is what the walk covers.
+        clock.setLastSyncedAt(instant());
         clocks.save(clock);
 
         Map<String, Object> result = snapshot();
@@ -446,7 +456,10 @@ public class GameClockService {
      */
     private void establishBaseline(GameClock clock) {
         if (clock.getLastSyncedAt() == null) {
-            clock.setLastSyncedAt(clock.gameTimeAt(instant()));
+            // Real time, not game time: the game has no date as a category, and the walk is measured
+            // from real time to game time (real time + offset). Storing game time here made the two equal
+            // and the walk zero hours long (owner, 2026-10-17).
+            clock.setLastSyncedAt(instant());
         }
     }
 

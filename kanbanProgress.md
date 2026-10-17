@@ -1,4 +1,33 @@
-## 2026-10-17 - Desktop nav restructured to six groups; User entry carries the name
+## 2026-10-17 - Game clock watermark was real time, not game time; Next Match picks the right fixture
+
+Owner: "kako nije odigrana International? kako nije Next match danasnja utakmica lige iz Day 3, tek kad se
+odigra mec prelazi u recent?" plus "DATUM se NIKAD NIGDE NE pomera unapred alooooo!!!! igrica NEMA DATUM
+kao kategoriju, koristi SVOJ season/week/day/time taklo da svi timestampovi ubazi su REAL TIME!!!"
+
+Two separate bugs, one root cause each.
+
+**1. The watermark was stored as game time instead of real time.** `GameClock.lastSyncedAt` is an
+`Instant` that `walk()` compares against `clock.gameTimeAt(instant())` (game time = real time + 7 days).
+The code set it to `clock.gameTimeAt(instant())` - i.e. game time - which made `from` and `now` the
+same instant, `delta` zero and no job ever ran. The owner's diagnosis was exact: the game has no date as
+a category, it uses season/week/day/time, so every timestamp in the database is real time and the
+watermark must be too. Fixed in `GameClockService`: `establishBaseline` and the end of `walk()` now
+write `instant()` (real time) instead of `clock.gameTimeAt(instant())` (game time). The walk then
+covers the full 7-day game-time window and replays any missed job - they are idempotent by key.
+
+**2. `loadNextMatch` read the wrong keys.** The schedule endpoint carries `seasonYear`, `week` and `day`;
+the dashboard read `seasonNumber`, `weekNumber` and `dayNumber`, which are `NaN` for every row, so the
+calendar sort fell through to the timestamp and picked a later fixture over an earlier one. Fixed to
+read `seasonYear` / `week` / `day`.
+
+**3. The Week 2 Day 1 Champions Cup fixture was stuck unplayed** because the watermark had advanced
+past it. Published it manually (fixture 5434, prepared match 1006) so the owner's world reflects the
+schedule. With the watermark fix in place, the walk now replays missed days on its own.
+
+**Verified in the browser:** clock reads "S1/W2/D3", Next Match shows the Day 3 league fixture (SK
+Tamiš Bor, 19:00), and the Week 2 Day 1 Champions Cup tie is now played. Console empty.
+
+
 
 Owner: "DESKTOP VIEW: kada kliknemo na ime ulogovanog korisnika u nav baru ne desi se nista, izmenicemo tako
 da sve sto se nalazi trenutno u podmeniju User settings (My profile, Settings, Sign out) ces staviti da

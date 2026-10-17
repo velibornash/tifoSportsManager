@@ -639,11 +639,23 @@ async function loadNextMatch() {
         // means by "next". The timestamp is the tiebreaker, and also the only key when the calendar
         // columns are missing on an old row.
         const calendarOrder = (a, b) => {
-            for (const key of ['seasonNumber', 'weekNumber', 'dayNumber']) {
-                const left = Number(a?.[key]);
-                const right = Number(b?.[key]);
-                const leftRank = Number.isFinite(left) ? left : Number.MAX_SAFE_INTEGER;
-                const rightRank = Number.isFinite(right) ? right : Number.MAX_SAFE_INTEGER;
+            // The schedule endpoint carries `seasonYear`, `week` and `day`, not `seasonNumber`,
+            // `weekNumber` and `dayNumber`. Reading the latter three gave NaN for every row, so the
+            // calendar sort fell through to the timestamp and picked a later fixture over an earlier
+            // one — which is why "Next Match" showed a day-7 tie while a day-3 tie was still unplayed.
+            // Owner, 2026-10-17. Both spellings are accepted because the payload has changed shape once
+            // already and a row from an older build must not become unsortable.
+            const pick = (row, key) => {
+                const v = row?.[key];
+                const n = Number(v);
+                return Number.isFinite(n) ? n : null;
+            };
+            for (const key of ['seasonYear', 'week', 'day']) {
+                const left = pick(a, key);
+                const right = pick(b, key);
+                if (left === null && right === null) continue;
+                const leftRank = left === null ? Number.MAX_SAFE_INTEGER : left;
+                const rightRank = right === null ? Number.MAX_SAFE_INTEGER : right;
                 if (leftRank !== rightRank) return leftRank - rightRank;
             }
             const leftTime = parseDashboardDate(a.matchDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
