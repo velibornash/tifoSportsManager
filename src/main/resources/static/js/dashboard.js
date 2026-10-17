@@ -202,6 +202,21 @@ function buildSeasonFlowPanel() {
         : 'Prepare the current week once, then either watch your match or open the live results desk before advancing.');
     const simulateDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
 
+    // **Match Week Controls are admin-only.** The owner asked for the heading and the advance
+    // buttons ("Match Week Controls i oba dugmeta") to be removed for non-admin users. The Watch / Simulate
+    // buttons stay for everyone, because a manager still needs to watch and simulate his own match; only
+    // the calendar-advance controls and their heading are gated.
+    if (!isAdminUser()) {
+        return `
+        <div class="recent-matches-section fm-season-flow-panel">
+            <div class="dashboard-actions fm-season-flow-buttons">
+                <button id="start-realistic-demo-btn"${watchTitle} data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
+                <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
+            </div>
+            <div id="dashboard-season-flow-status" class="fm-season-flow-status is-${escapeHtml(statusTone)}">${escapeHtml(statusMessage)}</div>
+        </div>`;
+    }
+
     return `
         <div class="recent-matches-section fm-season-flow-panel">
             <div class="fm-season-flow-head">
@@ -211,14 +226,14 @@ function buildSeasonFlowPanel() {
                         ? 'Your replay and live results desk are now closed for this week. Advance the calendar to unlock the next match week.'
                         : 'Current week can be prepared once, then viewed either through your replay or the live results desk. After that, advance the calendar.')}</div>
                 </div>
-                ${isAdminUser() ? '<span class="fm-season-flow-badge">Admin</span>' : ''}
+                <span class="fm-season-flow-badge">Admin</span>
             </div>
             <div class="dashboard-actions fm-season-flow-buttons">
                 <button id="start-realistic-demo-btn"${watchTitle} data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
                 <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
-                ${isAdminUser() ? '<button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>' : ''}
-                ${isAdminUser() ? '<button id="advance-day-btn" data-label="📆 Advance Day" class="fm-action-btn secondary" onclick="advanceDayTest()">📆 Advance Day</button>' : ''}
-                ${isAdminUser() ? '<button id="advance-hour-btn" data-label="⏩ Advance Hour" class="fm-action-btn secondary" onclick="advanceHourTest()">⏩ Advance Hour</button>' : ''}
+                <button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>
+                <button id="advance-day-btn" data-label="📆 Advance Day" class="fm-action-btn secondary" onclick="advanceDayTest()">📆 Advance Day</button>
+                <button id="advance-hour-btn" data-label="⏩ Advance Hour" class="fm-action-btn secondary" onclick="advanceHourTest()">⏩ Advance Hour</button>
             </div>
             <div id="dashboard-season-flow-status" class="fm-season-flow-status is-${escapeHtml(statusTone)}">${escapeHtml(statusMessage)}</div>
         </div>`;
