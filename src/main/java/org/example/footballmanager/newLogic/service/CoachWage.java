@@ -43,6 +43,7 @@ public final class CoachWage {
             1_900,   // ASSISTANT
             1_600,   // GK_COACH
             1_800,   // PHYSIO
+            1_800,   // DOCTOR
             1_700,   // SCOUT
             1_500,   // YOUTH_COACH
     };

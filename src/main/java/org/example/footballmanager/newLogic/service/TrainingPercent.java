@@ -170,7 +170,7 @@ public final class TrainingPercent {
             case GK_COACH -> skill == SkillName.GOALKEEPER;
             case PHYSIO -> skill == SkillName.STAMINA || skill == SkillName.FATIGUE;
             case YOUTH_COACH -> playerAge < 23;
-            case SCOUT -> false;
+            case SCOUT, DOCTOR -> false;
         };
     }
 

@@ -4,10 +4,13 @@ import lombok.RequiredArgsConstructor;
 import org.example.footballmanager.newLogic.dto.PlayerDTO;
 import org.example.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
 import org.example.footballmanager.newLogic.model.Player;
+import org.example.footballmanager.newLogic.model.StaffMember;
+import org.example.footballmanager.newLogic.model.StaffRole;
 import org.example.footballmanager.newLogic.model.SkillName;
 import org.example.footballmanager.newLogic.model.Skills;
 import org.example.footballmanager.newLogic.model.Team;
 import org.example.footballmanager.newLogic.repository.PlayerRepository;
+import org.example.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.example.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +28,7 @@ public class TeamMedicalService {
 
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
+    private final StaffMemberRepository staffMemberRepository;
 
     @Transactional(readOnly = true)
     public TeamMedicalOverviewDTO buildOverview(Long teamId) {
@@ -57,7 +61,16 @@ public class TeamMedicalService {
 
         int currentInjuryDays = Math.max(0, player.getInjuryDaysRemaining());
         if (currentInjuryDays > 0) {
-            int next = Math.max(0, currentInjuryDays - RECOVERY_DAY_REDUCTION);
+            // **Doctor shortens injury recovery.** The base reduction is 3 days; if the club has a
+            // doctor, his fitness attribute adds up to 4 more (20 fitness = 7 days total). Physio
+            // handles fatigue, doctor handles injuries - two roles, two jobs.
+            int reduction = RECOVERY_DAY_REDUCTION;
+            StaffMember doctor = staffMemberRepository.findByTeamId(teamId).stream()
+                    .filter(sm -> sm.getRole() == StaffRole.DOCTOR).findFirst().orElse(null);
+            if (doctor != null && doctor.getFitness() != null) {
+                reduction += (int) Math.round(doctor.getFitness() / 5.0);
+            }
+            int next = Math.max(0, currentInjuryDays - reduction);
             player.setInjuryDaysRemaining(next);
             if (next == 0) {
                 player.setInjurySeasonNumber(null);

@@ -1,3 +1,14 @@
+## 2026-10-17 - Staff: DOCTOR role added; medical recovery uses doctor; login default switched to Kecko
+
+* **StaffRole.DOCTOR** added (between PHYSIO and SCOUT). **CoachWage** ROLE_FLOOR extended with a 1_800
+  doctor floor. **TrainingPercent.teaches()** returns false for DOCTOR (medical, not coaching).
+* **TeamMedicalService** now uses a doctor's fitness to shorten injury recovery: base reduction 3 days
+  plus up to 4 more (20 fitness = 7 days total). Physio handles fatigue, doctor handles injuries.
+  `StaffMemberRepository` injected.
+* **StaffSponsorService.ageFor** updated with a DOCTOR case (age 40).
+* Default login username changed from `velibor@example.com` to `kecko@example.com` / `Kecko123!` on the
+  login page. `/tmp/login.py` updated to match.
+
 ## 2026-10-17 - Text-based manager next round crash fixed
 
 Owner: "udji sa agent-browser sa lobby u TEXT based fudbal manager i pokusaj next round - puca neku gresku".

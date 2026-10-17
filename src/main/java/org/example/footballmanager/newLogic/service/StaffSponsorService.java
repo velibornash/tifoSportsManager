@@ -329,6 +329,7 @@ public class StaffSponsorService {
             case ASSISTANT -> 40;
             case GK_COACH -> 44;
             case PHYSIO -> 38;
+            case DOCTOR -> 40;
             case SCOUT -> 42;
             case YOUTH_COACH -> 34;
         };
