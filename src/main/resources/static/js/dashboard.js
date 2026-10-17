@@ -506,6 +506,8 @@ window.addEventListener('load', async () => {
         currentUserCountryName = user.countryName ?? null;
         currentUserCountryIsoCode = user.countryIsoCode ?? null;
         window.fmCountryName = currentUserCountryName;
+        // The nav bar's User entry carries the manager's name instead of a generic 'User'.
+        window.fmUserName = user.displayName || user.username || user.email || 'Manager';
         window.fmCountryIsoCode = currentUserCountryIsoCode;
         currentUserRole = user.role ?? null;
         setSessionRole(currentUserRole);

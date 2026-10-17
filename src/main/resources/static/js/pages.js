@@ -1630,7 +1630,9 @@ async function loadUserProfile() {
         if (['firstTeam', 'juniors'].includes(page)) return 'club:squad';
         if (['formations', 'tactics', 'tacticEditor'].includes(page)) return 'club:tactics';
         if (['training', 'trainingSetup', 'trainingReports'].includes(page)) return 'club:training';
-        if (['clubProfile', 'schedule', 'results', 'fixtures', 'loans', 'staff', 'finances', 'transfers', 'medicalCenter', 'profile', 'clubProfileSettings', 'stadium'].includes(page)) return 'club';
+        if (['profile', 'stadium', 'finances', 'staff', 'transfers'].includes(page)) return 'club:office';
+        if (['firstTeam', 'juniors', 'loans', 'medicalCenter'].includes(page)) return 'club:squad';
+        if (['schedule', 'results', 'fixtures', 'clubProfile'].includes(page)) return 'club';
         if (['leagueTable', 'leagueSchedule', 'leagueMatches', 'topScorers', 'topAssists'].includes(page)) return 'league';
         if (page.startsWith('country') || page === 'nationalTournament') return 'country';
         if (page === 'world' || page === 'clubCup' || page === 'nationalTournament' || page === 'countryCup' || page === 'countryPlayoffs') return 'world';
@@ -1645,8 +1647,10 @@ async function loadUserProfile() {
         if (group === 'club:squad') {
             return [
                 { navBack: true, label: 'Back', icon: '◀' },
-                { label: 'First team', page: 'firstTeam' },
+                { label: 'First Team', page: 'firstTeam' },
                 { label: 'Juniors', page: 'juniors' },
+                { label: 'Loans', page: 'loans' },
+                { label: 'Medical', page: 'medicalCenter' },
             ];
         }
         if (group === 'club:tactics') {
@@ -1663,23 +1667,24 @@ async function loadUserProfile() {
                 { label: 'Training Reports', page: 'trainingReports' },
             ];
         }
+        if (group === 'club:office') {
+            return [
+                { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'Profile', page: 'profile' },
+                { label: 'Stadium', page: 'stadium' },
+                { label: 'Finances', page: 'finances' },
+                { label: 'Staff', page: 'staff' },
+                { label: 'Transfers', page: 'transfers' },
+            ];
+        }
         if (group === 'club') {
             return [
                 { navBack: true, label: 'Back', icon: '◀' },
+                { label: 'Office', gotoGroup: 'club:office', icon: '🏢' },
                 { label: 'Squad', gotoGroup: 'club:squad', icon: '👥' },
-                // Opens the Schedule straight away. Matches was a submenu with Schedule and Results
-                // until 2026-10-16; the Schedule page carries the played matches on its own timeline,
-                // so a second entry pointed at the same facts.
                 { label: 'Matches', page: 'schedule', icon: '⚽' },
-                { label: 'Loans', page: 'loans' },
-                { label: 'Tactics', gotoGroup: 'club:tactics', icon: '🧠' },
-                { label: 'Staff', page: 'staff' },
-                { label: 'Finances', page: 'finances' },
-                { label: 'Transfers', page: 'transfers' },
                 { label: 'Training', gotoGroup: 'club:training', icon: '⚙️' },
-                { label: 'Medical', page: 'medicalCenter' },
-                { label: 'Profile', page: 'profile' },
-                { label: 'Stadium', page: 'stadium' },
+                { label: 'Tactics', gotoGroup: 'club:tactics', icon: '🧠' },
             ];
         }
         if (group === 'main') {
@@ -1757,15 +1762,13 @@ async function loadUserProfile() {
     function mainDesktopNavItems() {
         return [
             { label: 'Sports Lobby', onclick: "window.location.href='/home.html'" },
-            { label: 'Club', page: 'clubProfile' },
+            { label: 'Club', gotoGroup: 'club', icon: '⚽' },
             { label: 'League', page: 'leagueTable' },
-            { icon: (countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍'), label: (window.fmCountryName || 'Country'), page: 'country' },
             { label: 'World', page: 'world' },
+            { icon: (countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍'), label: (window.fmCountryName || 'Country'), page: 'country' },
+            { label: (window.fmUserName || 'User'), gotoGroup: 'user', icon: '👤' },
             { label: 'Community', page: 'forum' },
-            { label: 'Search', page: 'search' },
-            { label: 'Notifications', onclick: 'window.openNotificationPanel(event)', stopsClick: true },
             { label: 'Admin', page: 'admin', adminOnly: true },
-            { label: 'User Settings', page: 'settings' },
         ];
     }
 
@@ -1802,7 +1805,7 @@ async function loadUserProfile() {
      * (read by him as "home"). Basing Back on the menu the page actually lives against gives a consistent
      * parent for as long as the page is open. */
     const MENU_PARENT = {
-        'club': 'main', 'club:squad': 'club', 'club:tactics': 'club',
+        'club': 'main', 'club:office': 'club', 'club:squad': 'club', 'club:tactics': 'club',
         'club:training': 'club', 'club:matches': 'club',
         'league': 'main', 'country': 'main', 'world': 'main',
         'community': 'main', 'search': 'main', 'admin': 'main', 'user': 'main'
