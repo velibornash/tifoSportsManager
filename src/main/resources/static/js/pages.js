@@ -1770,7 +1770,9 @@ async function loadUserProfile() {
             { icon: (countryFlagEmojiFromIso(window.fmCountryIsoCode || currentUserCountryIsoCode) || '🌍'), label: (window.fmCountryName || 'Country'), page: 'country' },
             { label: (window.fmUserName || 'User'), gotoGroup: 'user', icon: '👤' },
             { label: 'Community', page: 'forum' },
-            { label: 'Admin', page: 'admin', adminOnly: true },
+            // Admin lives in the User submenu now (owner, 2026-10-17) — both desktop and mobile. Keeping it
+            // here as well duplicated the entry: once as a top-level button and once under the user's name.
+            // { label: 'Admin', page: 'admin', adminOnly: true },
         ];
     }
 
