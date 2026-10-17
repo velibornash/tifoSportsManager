@@ -570,6 +570,26 @@
 
 /* Desktop ordering on the same row. */
 .notification-bell-wrap { order: 95; }
+/* World and country ranking tables on a phone: keep the rating visible and let the table scroll
+   horizontally, because the rating column is the whole point of the list. */
+@media (max-width: 768px) {
+    .fm-page--world .fm-squad-wrap,
+    .fm-clubs-ranking .fm-squad-wrap,
+    .fm-page--country .fm-squad-wrap {
+        max-height: 60vh;
+        overflow-x: auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .fm-page--world .fm-world-table thead th,
+    .fm-clubs-ranking .fm-world-table thead th {
+        position: sticky;
+        top: 0;
+        background: #0b101a;
+        z-index: 2;
+    }
+}
+
 /* **Hard mobile ordering** (owner, tired of it). On mobile, flex order alone + a long-standing margin
    rule on the logo produced a Hamburger → Sat → Logo → Notification visual order. Setting flex: 1
    on bell and the explicit order values below handles any leftover rule. */

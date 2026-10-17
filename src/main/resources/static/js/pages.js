@@ -1279,9 +1279,15 @@ function buildPageNavState(page, options = {}) {
             });
 
             mainContent.querySelectorAll('[data-national-level][tabindex]').forEach(row => {
-                const open = () => loadPage('nationalTournament', {
-                    level: row.dataset.nationalLevel, stage: row.dataset.nationalStage
-                });
+                const open = () => {
+                    // The competition is global, not the manager's own country's. Reset the selected
+                    // country so a later click on "Clubs" or "Qualifying" in the Country menu shows the
+                    // manager's own country rather than whichever one was last opened from a table.
+                    if (typeof setSelectedCountry === 'function') setSelectedCountry('');
+                    loadPage('nationalTournament', {
+                        level: row.dataset.nationalLevel, stage: row.dataset.nationalStage
+                    });
+                };
                 row.addEventListener('click', open);
                 row.addEventListener('keydown', event => {
                     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
@@ -1634,7 +1640,8 @@ async function loadUserProfile() {
         if (['firstTeam', 'juniors', 'loans', 'medicalCenter'].includes(page)) return 'club:squad';
         if (['schedule', 'results', 'fixtures', 'clubProfile'].includes(page)) return 'club';
         if (['leagueTable', 'leagueSchedule', 'leagueMatches', 'topScorers', 'topAssists'].includes(page)) return 'league';
-        if (page.startsWith('country') || page === 'nationalTournament') return 'country';
+        if (page.startsWith('country')) return 'country';
+        if (page === 'nationalTournament') return 'world';
         if (page === 'world' || page === 'clubCup' || page === 'nationalTournament' || page === 'countryCup' || page === 'countryPlayoffs') return 'world';
         if (page === 'forum' || page === 'forumSection' || page === 'forumTopic' || page === 'messages' || page === 'messageThread') return 'community';
         if (page === 'search') return 'search';
