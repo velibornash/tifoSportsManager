@@ -1,3 +1,14 @@
+## 2026-10-17 - Replay works for all played matches (re-simulate on demand)
+
+Owner: "Replay i dalje ne radi za ODIGRANI mec. When i click replay on played match it should start 2d match!"
+
+`storeReplay = false` in `MatchdayScheduler` meant regular matchday matches never got a replay. Rather than
+disabling the button, the Replay button is now always enabled for played matches and re-simulates on
+demand via `POST /api/sim/replay/{matchId}`. The endpoint finds the fixture, re-runs the simulation with
+`storeReplay = true` (deterministic seed from the fixture id, so the result is the one the manager already
+saw), persists the new replay id to the match row, and returns it. Verified: clicking Replay on match 976
+navigated to the 2D viewer with matchId=57 and the viewer loaded the match.
+
 ## 2026-10-17 - xG scaled down to realistic values
 
 Owner: "jako bitna stvar xG u match izvestaju ne radi dobro, bas daje nerealno visoke brojeve, umanji to malo
