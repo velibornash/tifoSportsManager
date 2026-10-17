@@ -545,12 +545,24 @@ function buildActionRowHtml(actions, currentPage = '') {
  * reading a topic rather than only on the section list.
  */
 export function buildCommunityActionsHtml(currentPage = '') {
-    return buildActionRowHtml([
+    // The Community page carries Forum and Messages as plain options, not as a "Club actions" wrapper:
+    // the owner's complaint was that the wrapper said "Club actions (2)" on a page that has nothing to
+    // do with club actions. The two buttons go out bare.
+    const actions = [
         { label: 'Forum', page: 'forum', variant: 'primary',
           currentPages: ['forum', 'forumSection', 'forumTopic'] },
         { label: 'Messages', page: 'messages',
           currentPages: ['messages', 'messageThread'] },
-    ], currentPage);
+    ];
+    return actions.map(action => {
+        const currentPages = Array.isArray(action.currentPages) && action.currentPages.length
+            ? action.currentPages
+            : [action.page];
+        const base = action.variant === 'primary' ? 'fm-action-btn' : 'fm-action-btn secondary';
+        const className = currentPages.includes(currentPage) ? `${base} is-current` : base;
+        const onclick = action.onclick || `loadPage('${action.page}')`;
+        return `<button type="button" class="${className}" onclick="${onclick}">${htmlEscape(action.label)}</button>`;
+    }).join(' ');
 }
 
 export function buildClubActionsHtml(currentPage = '') {

@@ -1,3 +1,13 @@
+## 2026-10-17 - Community page: Forum and Messages without the "Club actions" wrapper
+
+Owner: "na Community strani Club actions (2) Forum Messages - ne treba da stoji Club actions samo forum i
+messages."
+
+`buildCommunityActionsHtml` no longer calls `buildActionRowHtml` (which wraps the buttons in a
+`<details class="fm-club-actions"><summary>Club actions (2)</summary>...</details>`). It now emits the two
+buttons bare. Verified in the browser: the Community page shows "Forum" and "Messages" without the
+"Club actions (2)" summary line.
+
 ## 2026-10-17 - Staff: DOCTOR role added; medical recovery uses doctor; login default switched to Kecko
 
 * **StaffRole.DOCTOR** added (between PHYSIO and SCOUT). **CoachWage** ROLE_FLOOR extended with a 1_800
