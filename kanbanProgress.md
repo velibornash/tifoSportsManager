@@ -92,7 +92,25 @@ Owner's complaint and feature:
 - `loadFirstTeam()` keeps milestones and the medical side-panel off the page; the `Apps / Gls / Ast /
   Av Rat` columns are sortable client-side (`bindSortableSquadTable`). Verified on 13 squad rows.
 
-## 2026-10-16 - Nav bar styling fixed; mobile header restored; desktop nav hidden on phones
+## 2026-10-17 - Mobile top header and bottom nav restructured (verified)
+
+Owner: "sklonimo hamburger button kompletno iz top headera... nove grupe osnovnog menije u bottom nav baru:
+Club, League, World, Country, User (prikazuje ime ulogovanog usera), Community ... pod meniji za svaku
+opciju kad se klikne ...".
+
+* Mobile top header: Sports Lobby icon (far left), Search icon, notification bell, clock with S/W/D,
+  logo (far right, still back to dashboard). Hamburger is gone.
+* Mobile bottom nav: six groups - Club, League, World, Country, User, Community - using the same
+  drill-down as the desktop bar. Home and Search were removed from it (Home lives in the top header,
+  Search moved up there).
+* Submenus: Club -> Back, Office, Squad, Matches, Training, Tactics (with Office/Squad/Training/Tactics
+  having their own submenus); League -> Back, Table, Schedule, Matches, Top scorers, Top assistants;
+  World -> Back, Countries, Clubs, Competitions, Friendlies, Transfers; Country -> Back, General,
+  Calendar, Clubs, Qualifying, National Team, U-21; User -> Back, My profile, Settings, Sign out;
+  Community -> Back, Forum, Messages. Matches opens the Schedule page directly.
+* Verified in the browser: six groups on the bottom bar, drill-down and Back both work, console empty.
+
+
 
 
 
