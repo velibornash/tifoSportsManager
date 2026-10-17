@@ -1740,7 +1740,7 @@ async function loadUserProfile() {
             ];
         }
         if (group === 'user') {
-            const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
+            const isAdmin = typeof window.isAdminSession === 'function' ? window.isAdminSession() : false;
             const items = [
                 { icon: '&#9664;', label: 'Back', navBack: true },
                 { label: 'My profile', onclick: 'window.loadUserProfile()' },
@@ -1859,8 +1859,9 @@ async function loadUserProfile() {
         const grid = document.getElementById('desktop-nav-grid');
         if (!grid) return;
         const group = desktopNavOverrideGroup || desktopBottomNavGroup(activePage || (typeof currentPageId === 'string' ? currentPageId : 'dashboard'));
-        const items = desktopBottomNavItems(group).filter(item => !(item.mobileHidden && window.isMobileNav));
-        const isAdmin = typeof isAdminUser === 'function' ? isAdminUser() : false;
+        const isMobile = window.isMobileNav === true || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width:768px)').matches);
+        const items = desktopBottomNavItems(group).filter(item => !(item.mobileHidden && isMobile));
+        const isAdmin = typeof window.isAdminSession === 'function' ? window.isAdminSession() : false;
         grid.innerHTML = items
             .filter(item => !item.adminOnly || isAdmin)
             .map(item => {

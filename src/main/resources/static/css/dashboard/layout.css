@@ -644,7 +644,7 @@
 @media (max-width:768px) {
  .live-clock-mobile, .live-clock-mobile-header { display:block !important; }
  .live-clock-time-mobile, .live-clock-date-mobile { display:block !important; width:100%; text-align:center; }
- .mobile-bottom-nav { display:grid !important; grid-template-columns:repeat(5, 1fr) !important; }
+
 }
 
 
