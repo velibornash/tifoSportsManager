@@ -180,12 +180,15 @@ public class ProposalMatchOutcomeBuilder {
     }
 
     private static double xgFromMeters(double meters) {
-        if (meters < 6.0) return 0.75;
-        if (meters < 10.0) return 0.60;
-        if (meters < 14.0) return 0.45;
-        if (meters < 20.0) return 0.30;
-        if (meters < 28.0) return 0.20;
-        return 0.12;
+        // Owner, 2026-10-17: the old table gave xG totals of 3-4 per match, which is not what a
+        // football report should read. Halved across the board; the bands keep their order so a tap-in
+        // is still the largest single contribution.
+        if (meters < 6.0) return 0.38;
+        if (meters < 10.0) return 0.30;
+        if (meters < 14.0) return 0.22;
+        if (meters < 20.0) return 0.15;
+        if (meters < 28.0) return 0.10;
+        return 0.06;
     }
 
     /** Compact formation string (e.g. "4-3-3") derived from role counts. */
