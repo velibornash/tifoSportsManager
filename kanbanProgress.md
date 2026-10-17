@@ -1,4 +1,14 @@
-## 2026-10-17 - Replay button guarded; ranking tables scrollable on mobile; admin in User menu; extra user removed (verified)
+## 2026-10-17 - Admin only in User submenu; removed from main nav; mobile bottom nav clean
+
+Owner: "skini admin viska i u mob view u glavnom men iju bottom bar-a (ostaje onaj ispod user opcije)".
+
+* **Admin** is no longer a top-level entry in the main nav (desktop or mobile). It lives only in the User
+  submenu (Back, My profile, Settings, Admin, Sign out), where it shows only when `isAdminSession()` is
+  true. The owner's main nav now reads Sports Lobby, Club, League, World, Country, User, Community.
+* Verified in the browser: clicking Velja opens Back/My profile/Settings/Admin/Sign out; the main nav no
+  longer has an Admin button; console empty.
+
+
 
 * **Replay**: `storeReplay = false` in `MatchdayScheduler`, so regular matchday matches never have a replay.
   The Replay button is now disabled with a clear title when `matchMeta.replayId` is null/-1.
