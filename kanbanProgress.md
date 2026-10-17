@@ -121,7 +121,27 @@ Owner's complaint and feature:
 - `loadFirstTeam()` keeps milestones and the medical side-panel off the page; the `Apps / Gls / Ast /
   Av Rat` columns are sortable client-side (`bindSortableSquadTable`). Verified on 13 squad rows.
 
-## 2026-10-17 - Replay button guarded; ranking tables scrollable on mobile; admin in User menu; extra user removed
+## 2026-10-17 - Mobile restructure: top header + 6-group bottom nav (final)
+
+Owner: "sklonimo hamburger button kompletno iz top headera... nove grupe osnovnog menije u bottom nav baru:
+Club, League, World, Country, User (prikazuje ime ulogovanog usera), Community ... pod meniji za svaku
+opciju kad se klikne ...".
+
+* Mobile top header: Sports Lobby icon, Search icon, notification bell, clock with S/W/D, logo. No
+  hamburger. The hamburger is gone; everything that used to live behind it is reachable from the bottom
+  nav bar.
+* Mobile bottom nav: six groups - Club, League, World, Country, User, Community - using the same
+  drill-down as the desktop bar. Home and Search were removed from it (Home lives in the top header,
+  Search moved up there). The old 5-icon bar is retired.
+* Submenus: Club -> Back, Office, Squad, Matches, Training, Tactics (with Office/Squad/Training/Tactics
+  having their own submenus); League -> Back, Table, Schedule, Matches, Top scorers, Top assistants;
+  World -> Back, Countries, Clubs, Competitions, Friendlies, Transfers; Country -> Back, General,
+  Calendar, Clubs, Qualifying, National Team, U-21; User -> Back, My profile, Settings, Sign out (plus
+  Admin when the manager is an admin); Community -> Back, Forum, Messages. Matches opens the Schedule
+  page directly.
+* Verified in the browser: six groups on the bottom bar, drill-down and Back both work, console empty.
+
+
 
 Owner: "MOB VIEW: skloni Sports lobby iz bottom nav bar-a! Countries rank list, club rank list - ne vidi se
 rejting niti se moze skrolati! U user meni na mobu dodaj ceo ADMIN deo - ako je admin. Isto vazi i za
