@@ -644,6 +644,13 @@ public class CSMatchSimulator {
             List<CSPlayer> scoringPlayers = eligibleScorers.isEmpty() ? allScoringPlayers : eligibleScorers;
 
             CSPlayer scorer = pickScorer(scoringPlayers);
+            if (scorer == null) {
+                // No eligible scorer for this side (empty squad or every man still on the bench).
+                // Count the goal as played so the loop terminates, but do not crash the whole round.
+                if (isHome) remainingHome = Math.max(0, remainingHome - 1);
+                else remainingAway = Math.max(0, remainingAway - 1);
+                continue;
+            }
             CSPlayer assist = pickAssist(scoringPlayers, scorer);
             if (scorer != null && assist != null && scorer.getId().equals(assist.getId())) {
                 assist = null;

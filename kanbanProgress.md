@@ -1,3 +1,19 @@
+## 2026-10-17 - Text-based manager next round crash fixed
+
+Owner: "udji sa agent-browser sa lobby u TEXT based fudbal manager i pokusaj next round - puca neku gresku".
+
+The text-based round simulation threw `Cannot invoke "org.example.footballtextmanager.model.CSPlayer.getGoals()"
+because "scorer" is null`: `generateGoalEvents` called `pickScorer(scoringPlayers)` and then
+`scorer.setGoals(...)` without checking the result. When a side's eligible scorer list came back empty
+(the entry-minute filter left nobody who was on the pitch yet at that minute, or the squad was empty),
+`pickScorer` returned null and the whole round aborted with a 400.
+
+Guarded the goal loop: if `pickScorer` returns null, decrement the remaining-goal counter and `continue`
+instead of dereferencing. The round now completes; the simulation log is unchanged otherwise.
+
+Verified with agent-browser: clicked `▶ NEXT ROUND`, the round simulated live (min 25 → 80 → done),
+the button re-enabled, and the console stayed empty.
+
 ## 2026-10-17 - Replay works for all played matches (re-simulate on demand)
 
 Owner: "Replay i dalje ne radi za ODIGRANI mec. When i click replay on played match it should start 2d match!"
