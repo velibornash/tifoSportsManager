@@ -1,3 +1,14 @@
+## 2026-10-17 - xG scaled down to realistic values
+
+Owner: "jako bitna stvar xG u match izvestaju ne radi dobro, bas daje nerealno visoke brojeve, umanji to malo
+molim te".
+
+`ProposalMatchOutcomeBuilder.xgFromMeters` returned 0.75 / 0.60 / 0.45 / 0.30 / 0.20 / 0.12 per shot. A
+match with ten shots in the box came out at 3-4 xG, which is not what a football report should read.
+The bands keep their order (a tap-in is still the largest single contribution) but the values are halved:
+0.38 / 0.30 / 0.22 / 0.15 / 0.10 / 0.06. Expected goals now land in the 0.5-1.5 range per side, which
+is what the engine's own per-match prediction already implies.
+
 ## 2026-10-17 - World NT qualifying stays on World menu; Country shows Serbia; mobile ranking tables fixed
 
 Owner: "MOBILE VIEW: Country strana - Clubs - ne vidi se rejting niti se moze skrolati; Qualfying - ne vidi se
