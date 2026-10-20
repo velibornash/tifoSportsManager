@@ -1122,6 +1122,59 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
     }
 
     /*
+     * The Tifo logo in the top-right corner of the phone's header, where it was (owner, 2026-10-20:
+     * "OBAVEZNO vratiti logo u gornji desni ugao top bara gde je i bio i klik na njega vraca na
+     * dashboard ko sto je i vracao!", and then: "LOGO ide u SAM DESNI ugao, ne notifications, VRATI
+     * RASPORED u top baru kakav je bio pre tvojih brljotina").
+     *
+     * <p>It was hidden because the `.mobile-only` / `.desktop-only` utilities - the ones that say
+     * "this element is for the phone" and "this one is for the desktop" - live in a block that starts
+     * at 481px, so the phone never got them. The logo's own click already goes to the dashboard
+     * (`loadDashboard()`), and it is that click the owner wants back with it.
+     *
+     * <p><b>The order of the bar is the one in his screenshot</b>: the game icons, the search, the
+     * bell, the clock and the logo last, at the far right. The bell had an `order` of its own that
+     * pushed it past the clock and the logo, so all three are back in the order the markup has them
+     * in, and the clock takes the space that pushes the pair to the right.
+     */
+    .top-menu > .notification-bell-wrap {
+        order: 0;
+        margin-left: 0;
+    }
+
+    .top-menu > .mobile-only.live-clock-mob {
+        order: 0;
+        margin-left: auto;
+    }
+
+    .top-menu > .mobile-logo-wrapper {
+        display: inline-flex !important;
+        order: 0;
+        margin-left: 0;
+    }
+
+    /* The logo is the size the bar is built around, so the bar is not taller than it has to be. */
+    .top-menu > .mobile-logo-wrapper .corner-logo {
+        width: 48px;
+        height: 48px;
+    }
+
+    /* The clock is two lines, and they belong in the middle of the bar like every other icon. */
+    .top-menu > .mobile-only.live-clock-mobile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+    }
+
+    /* The game icons are three characters, not a paragraph: they stay on one line. */
+    .top-menu > .menu-button.mobile-only {
+        flex-wrap: nowrap;
+        white-space: nowrap;
+    }
+
+    /*
      * The screen belongs to the header now, and the bar at the bottom takes its own space: the
      * nav's height is no longer the body's top padding, because the nav is not at the top any more.
      */
