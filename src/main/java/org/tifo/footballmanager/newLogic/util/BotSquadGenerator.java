@@ -263,9 +263,17 @@ public class BotSquadGenerator {
                         Set<String> taken) {
         String iso = country.getIsoCode();
         if (iso != null && !iso.isBlank() && namePool != null) {
-            String first = namePool.randomFirstName(iso, random);
-            String last = namePool.randomLastName(iso, random);
-            if (first != null && last != null) {
+            // **Draw again rather than give up.** A country with eighteen first names and eighteen
+            // last names has three hundred and twenty-four combinations, and twenty-five players
+            // drawn from them collide by the birthday paradox about half the time - so a name that
+            // is already taken is drawn again, up to eight times. The code-based name is the last
+            // resort, not the first one.
+            for (int attempt = 0; attempt < 8; attempt++) {
+                String first = namePool.randomFirstName(iso, random);
+                String last = namePool.randomLastName(iso, random);
+                if (first == null || last == null) {
+                    break;
+                }
                 String full = first + " " + last;
                 if (taken.add(full)) {
                     return full;
