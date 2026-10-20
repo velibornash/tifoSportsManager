@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Immutable event contract for the demo timeline. */
 public interface SimulationEvent {

@@ -1,0 +1,583 @@
+package org.tifo.footballmanager.newLogic.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.tifo.footballmanager.newLogic.model.FriendlyRequest;
+import org.tifo.footballmanager.newLogic.model.FriendlyRequest.FriendlyStatus;
+import org.tifo.footballmanager.newLogic.model.FriendlyOffer;
+import org.tifo.footballmanager.newLogic.model.GameClock;
+import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.GameClockRepository;
+import org.tifo.footballmanager.newLogic.repository.FriendlyRequestRepository;
+import org.tifo.footballmanager.newLogic.repository.FriendlyOfferRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * Friendlies are requested, not scheduled (owner-defined, 2026-09-26).
+ *
+ * <p>This replaced a generator that quietly created a full round of friendlies in weeks 5, 6, 11 and
+ * 12, which was wrong twice over: a manager was handed matches they had not asked for, and a club
+ * had no way to trade a friendly for training time. Now a week simply has four slots, an empty one
+ * is an opportunity, and a club asks.
+ *
+ * <p>The decision the owner actually wants to make is therefore real: a club with an open slot can
+ * take the friendly without losing a training session, or leave it and train. That is why
+ * {@link #trainingSessionsLostToFriendlies} exists even though there is no training system yet — the
+ * cost is <i>derived</i> from the agreed friendlies rather than stored, so it cannot drift away from
+ * the fixtures and Sprint 4 can read it rather than reinvent it.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class FriendlyRequestService {
+
+    /**
+     * How many training sessions a club gets in a week with no football commitments.
+     *
+     * <p>Kept as the baseline used by the training service. Friendlies do not reduce this budget;
+     * {@link #TRAINING_SESSIONS_PER_FRIENDLY} is explicitly zero.
+     */
+    public static final int BASE_TRAINING_SESSIONS_PER_WEEK = 3;
+
+    /** Training sessions a club gives up per friendly played. */
+    public static final int TRAINING_SESSIONS_PER_FRIENDLY = 0;
+
+    private final FriendlyRequestRepository requests;
+    private final MatchFixtureRepository fixtures;
+    private final TeamRepository teams;
+    private final GameClockRepository clocks;
+    private final PlayerRepository players;
+
+    /**
+     * Used only to close an advertisement once the request it produced is accepted.
+     *
+     * <p>The repository, not {@code FriendlyOfferService}: that service calls into this one to create a
+     * request, so depending on it here would close a bean cycle.
+     */
+    private final FriendlyOfferRepository offers;
+
+    /**
+     * The current clock, read from its repository.
+     *
+     * <p>Straight from the repository rather than through SeasonService: SeasonService depends on
+     * the transfer machinery, which already depends on the window service, and going back through
+     * SeasonService here closes that cycle. The same reasoning as TransferWindowService.
+     */
+    private GameClock currentClock() {
+        return clocks.findAll().stream().findFirst().orElse(null);
+    }
+
+    // ---------------------------------------------------------------- asking
+
+    /**
+     * Asks another club for a friendly in a given week and slot.
+     *
+     * <p>Refuses rather than throws for the ordinary "no" cases, because these are all things a
+     * manager does by accident: asking a club that is already playing, asking a club that is
+     * already busy, or asking for a slot that is not open. A refusal with a reason reads better in
+     * the UI than a stack trace.
+     */
+    @Transactional
+    public Optional<FriendlyRequest> requestFriendly(Long requesterId, Long opponentId, int week, int slot) {
+        GameClock clock = currentClock();
+        if (clock == null || clock.getCurrentSeason() == null) {
+            return Optional.empty();
+        }
+        return requestFriendly(requesterId, opponentId, week, slot,
+                new WeekSnapshot(clock.getCurrentSeason(), week));
+    }
+
+    /**
+     * The same request, against a week already read.
+     *
+     * <p>The public method above builds its own snapshot, which costs the same two queries it always
+     * cost — correct for a manager asking about one club, and ruinous for the AI pass that asks about
+     * every club in the world in a nested loop.
+     */
+    private Optional<FriendlyRequest> requestFriendly(Long requesterId, Long opponentId, int week, int slot,
+                                                     WeekSnapshot snapshot) {
+        if (Objects.equals(requesterId, opponentId)) {
+            return Optional.empty();
+        }
+        if (!teams.existsById(opponentId)) {
+            return Optional.empty();
+        }
+
+        GameClock clock = currentClock();
+        if (clock == null || clock.getCurrentSeason() == null) {
+            return Optional.empty();
+        }
+        Integer season = clock.getCurrentSeason();
+        // A friendly for a week that has already been played is not a friendly.
+        int currentWeek = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        if (week < currentWeek || week > SeasonCalendar.WEEKS_PER_SEASON) {
+            return Optional.empty();
+        }
+
+        SeasonCalendar.WeekSlot weekSlot = SeasonCalendar.slot(week, slot);
+        if (weekSlot == null || !weekSlot.friendlyCapable()) {
+            return Optional.empty();
+        }
+        // Week 11's Thursday slot belongs to the playoff, so a club in it cannot be asked to play
+        // there, and cannot ask to play there either.
+        if (week == SeasonCalendar.PLAYOFF_WEEK && snapshot.hasFixture(requesterId)) {
+            return Optional.empty();
+        }
+        if (isBusy(requesterId, slot, snapshot) || isBusy(opponentId, slot, snapshot)) {
+            return Optional.empty();
+        }
+        // One request per club per slot, so a club cannot stack three asks on the same Thursday. The
+        // isBusy above already answers exactly this, against the snapshot rather than by re-reading the
+        // week's requests for every candidate pair.
+        if (snapshot.liveIn(requesterId, slot) || snapshot.liveIn(opponentId, slot)) {
+            return Optional.empty();
+        }
+
+        FriendlyRequest request = new FriendlyRequest();
+        request.setRequesterTeamId(requesterId);
+        request.setOpponentTeamId(opponentId);
+        request.setSeason(season);
+        request.setWeek(week);
+        request.setSlot(slot);
+        request.setStatus(FriendlyStatus.PENDING);
+        return Optional.of(requests.save(request));
+    }
+
+    // ------------------------------------------------------------- answering
+
+    /**
+     * The other club accepts or refuses.
+     *
+     * <p>Only the club that was asked may answer, which is checked against the id rather than
+     * trusting the caller — otherwise a manager could answer on another club's behalf.
+     */
+    @Transactional
+    public FriendlyRequest respond(Long requestId, Long clubId, boolean accept, String declineReason) {
+        return respond(requestId, clubId, accept, declineReason, null);
+    }
+
+    /**
+     * The same answer, against a week already read.
+     *
+     * <p>The re-check below is the reason this exists. Answering a friendly re-reads the whole week
+     * <i>per side</i>, and the AI pass answers one friendly per club — so the check that was meant to
+     * stop two clubs taking the same slot was itself the most expensive thing in the pass. With a
+     * snapshot the check is exact and free; a null snapshot (the manager's path) builds its own.
+     */
+    private FriendlyRequest respond(Long requestId, Long clubId, boolean accept, String declineReason,
+                                    WeekSnapshot snapshotOrNull) {
+        FriendlyRequest request = requests.findByIdAndOpponentTeamId(requestId, clubId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No pending friendly request " + requestId + " addressed to club " + clubId));
+
+        if (request.isAnswered()) {
+            return request;     // already settled; do not create a second fixture
+        }
+        if (!accept) {
+            request.setStatus(FriendlyStatus.DECLINED);
+            request.setDeclineReason(declineReason == null || declineReason.isBlank()
+                    ? "No reason given" : declineReason);
+            return requests.save(request);
+        }
+
+        // Re-check the slot at the moment of acceptance: the week may have been ticked on since the
+        // request was made, and the other club may have taken its own friendly in the meantime.
+        WeekSnapshot snapshot = snapshotOrNull != null ? snapshotOrNull
+                : new WeekSnapshot(request.getSeason(), request.getWeek());
+        if (isBusy(request.getOpponentTeamId(), request.getSlot(), snapshot)
+                || isBusy(request.getRequesterTeamId(), request.getSlot(), snapshot)) {
+            request.setStatus(FriendlyStatus.EXPIRED);
+            request.setDeclineReason("The slot was taken before this was answered");
+            return requests.save(request);
+        }
+
+        request.setStatus(FriendlyStatus.ACCEPTED);
+        MatchFixture fixture = createFixture(request);
+        request.setAcceptedFixtureId(fixtures.save(fixture).getId());
+        FriendlyRequest settled = requests.save(request);
+        // A slot taken from an advertisement is now really booked, so the advertisement closes and
+        // finally points at the match it produced. Until this line the ad stayed OPEN with a null
+        // fixture, which is the state a claim used to leave it in permanently.
+        closeAdvertisementFor(settled);
+        return settled;
+    }
+
+    /**
+     * Closes an open advertisement that led to this request, and stamps it with the fixture.
+     *
+     * <p>Silent when there was no advertisement — a request made by name has none, and that is the
+     * common case. Also silent when the advertisement has already expired or been withdrawn, because a
+     * club that accepted a genuine request should still get its friendly even if it changed its mind
+     * about the ad in between.
+     */
+    private void closeAdvertisementFor(FriendlyRequest request) {
+        // The advertiser is the club that was ASKED, which is the opponent: the club taking the slot
+        // from an advertisement is the requester, because it has already agreed by claiming.
+        offers.findFirstByOfferingTeamIdAndSeasonYearAndWeekNumberAndSlotAndStatus(
+                        request.getOpponentTeamId(), request.getSeason(), request.getWeek(),
+                        request.getSlot(), FriendlyOffer.OfferStatus.OPEN)
+                .ifPresent(offer -> {
+                    offer.setStatus(FriendlyOffer.OfferStatus.FULFILLED);
+                    offer.setFilledFixtureId(request.getAcceptedFixtureId());
+                    offers.save(offer);
+                });
+    }
+
+    /** The club that asked withdraws. */
+    @Transactional
+    public FriendlyRequest cancel(Long requestId, Long requesterId) {
+        FriendlyRequest request = requests.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("No friendly request " + requestId));
+        if (!Objects.equals(request.getRequesterTeamId(), requesterId)) {
+            throw new IllegalArgumentException("Only the club that asked can withdraw request " + requestId);
+        }
+        if (!request.isAnswered()) {
+            request.setStatus(FriendlyStatus.CANCELLED);
+            return requests.save(request);
+        }
+        return request;
+    }
+
+    /** Turns unanswered requests from a week that has gone into "nobody answered". */
+    @Transactional
+    public int expireStaleRequests() {
+        GameClock clock = currentClock();
+        if (clock == null || clock.getCurrentSeason() == null || clock.getCurrentWeek() == null) {
+            return 0;
+        }
+        List<FriendlyRequest> stale = requests.findStalePending(
+                clock.getCurrentSeason(), clock.getCurrentWeek());
+        for (FriendlyRequest r : stale) {
+            r.setStatus(FriendlyStatus.EXPIRED);
+            r.setDeclineReason("The week passed with no answer");
+        }
+        if (!stale.isEmpty()) requests.saveAll(stale);
+        return stale.size();
+    }
+
+    // ------------------------------------------------------------ the cost
+
+    /**
+     * How many friendlies a club has agreed to play in a week.
+     *
+     * <p>Counted from the agreed requests rather than a stored tally, so it cannot disagree with
+     * the fixtures.
+     */
+    @Transactional(readOnly = true)
+    public int friendliesAgreed(Long teamId, Integer season, Integer week) {
+        return requests.findAcceptedForTeamAndWeek(teamId, season, week).size();
+    }
+
+    /**
+     * How many training sessions a club loses to friendlies in a week.
+     *
+     * <p>Friendlies have no training-session cost. The decision to decline is therefore about
+     * availability and match load, not a reduction in the weekly training budget.
+     */
+    @Transactional(readOnly = true)
+    public int trainingSessionsLostToFriendlies(Long teamId, Integer season, Integer week) {
+        return friendliesAgreed(teamId, season, week) * TRAINING_SESSIONS_PER_FRIENDLY;
+    }
+
+    /** The sessions a club actually gets, after friendlies. */
+    @Transactional(readOnly = true)
+    public int trainingSessionsAvailable(Long teamId, Integer season, Integer week) {
+        int lost = trainingSessionsLostToFriendlies(teamId, season, week);
+        return Math.max(0, BASE_TRAINING_SESSIONS_PER_WEEK - lost);
+    }
+
+    // ------------------------------------------------------------- queries
+
+    /** Requests addressed to a club that are still waiting for an answer. */
+    @Transactional(readOnly = true)
+    public List<FriendlyRequest> incoming(Long clubId, Integer season, Integer week) {
+        return requests.findByOpponentTeamIdAndSeasonAndWeek(clubId, season, week).stream()
+                .filter(r -> r.getStatus() == FriendlyStatus.PENDING)
+                .toList();
+    }
+
+    /** Requests a club has made, settled or not. */
+    @Transactional(readOnly = true)
+    public List<FriendlyRequest> outgoing(Long clubId, Integer season, Integer week) {
+        return requests.findByRequesterTeamIdAndSeasonAndWeek(clubId, season, week);
+    }
+
+    /**
+     * Whether a club is free in a week and slot: no league match, no playoff, no agreed friendly.
+     */
+    @Transactional(readOnly = true)
+    public boolean isBusy(Long teamId, Integer season, Integer week, Integer slot) {
+        if (season == null || week == null) return false;
+        return isBusy(teamId, slot, new WeekSnapshot(season, week));
+    }
+
+    /**
+     * The same question, answered from a week already in hand.
+     *
+     * <p>For the AI pass, which asks it per club and per candidate opponent. The public one above keeps
+     * its behaviour and costs the same two queries for a single club's answer, which is correct when the
+     * caller only wants one club.
+     */
+    private boolean isBusy(Long teamId, Integer slot, WeekSnapshot snapshot) {
+        // The fixture walk and the agreed-friendly walk were two halves of this answer, and
+        // `hasPendingOrAccepted` asked the second half again per candidate pair. All three are one
+        // question now: is this club already committed in this slot?
+        return snapshot.hasFixtureInSlot(teamId, slot) || snapshot.busyIn(teamId, slot);
+    }
+
+    /** Whether a club is in that week's playoff, which costs it the Thursday slot. */
+    @Transactional(readOnly = true)
+    public boolean isInPlayoff(Long teamId, Integer season, Integer week) {
+        if (season == null || week == null) return false;
+        for (MatchFixture f : fixtures.findBySeasonYearAndWeekNumber(season, week)) {
+            if (involves(f, teamId)) return true;
+        }
+        return false;
+    }
+
+    /** Whether a fixture has this club in it. The team is an object, so it is read off the entity. */
+    private static boolean involves(MatchFixture f, Long teamId) {
+        return (f.getHomeTeam() != null && Objects.equals(f.getHomeTeam().getId(), teamId))
+                || (f.getAwayTeam() != null && Objects.equals(f.getAwayTeam().getId(), teamId));
+    }
+
+    private boolean hasPendingOrAccepted(Long teamId, Integer season, Integer week, int slot) {
+        for (FriendlyRequest r : requests.findBySeasonAndWeek(season, week)) {
+            if (!Objects.equals(r.getSlot(), slot)) continue;
+            boolean mine = Objects.equals(r.getRequesterTeamId(), teamId)
+                    || Objects.equals(r.getOpponentTeamId(), teamId);
+            boolean live = r.getStatus() == FriendlyStatus.PENDING
+                    || r.getStatus() == FriendlyStatus.ACCEPTED;
+            if (mine && live) return true;
+        }
+        return false;
+    }
+
+    private MatchFixture createFixture(FriendlyRequest request) {
+        Team home = teams.findById(request.getRequesterTeamId()).orElseThrow();
+        Team away = teams.findById(request.getOpponentTeamId()).orElseThrow();
+        MatchFixture fixture = new MatchFixture();
+        fixture.setHomeTeam(home);
+        fixture.setAwayTeam(away);
+        // **A type and a day, which this fixture did not have for the whole of its life.**
+        //
+        // It carried no competition - correctly, a friendly belongs to none - but it also carried no
+        // `matchType` and no `dayNumber`, and both are what makes a fixture findable. Every matchday job
+        // in the framework selects by *competition type*, so a competition-less fixture was invisible to
+        // all of them; and with no day there was no date to select on either. The result was that a
+        // friendly could be agreed, written to the database, shown on two screens, and **never played**.
+        //
+        // The type is what lets the new friendly matchday find it, and the day is what it plays on.
+        fixture.setMatchType(org.tifo.footballmanager.newLogic.model.MatchType.FRIENDLY);
+        fixture.setSeasonYear(request.getSeason());
+        fixture.setRoundNumber(SeasonCalendar.friendlyRoundNumber(request.getWeek(), request.getSlot()));
+        fixture.setWeekNumber(request.getWeek());
+        fixture.setDayNumber(dayOf(request.getWeek(), request.getSlot()));
+        fixture.setMatchDate(LocalDateTime.now().plusWeeks(request.getWeek()));
+        fixture.setPlayed(false);
+        return fixture;
+    }
+
+    /**
+     * The game day a club slot is played on.
+     *
+     * <p>Slot 1 is the league's first day and slot 2 its second, which is the pair
+     * {@link SeasonCalendar} already defines and asserts against the week template. Derived rather than
+     * restated, so a slot's day cannot disagree with the calendar's own idea of it.
+     */
+    static int dayOf(int week, int slot) {
+        // `dayForSlot`, not a two-slot guess. The calendar is **four** slots wide (day 1, 3, 5, 7) and
+        // this used to say `slot == 1 ? day 1 : day 3`, which put a slot-3 or slot-4 friendly on day 3 -
+        // the league's day - where it would collide with the round. The mapping lives in the calendar
+        // because the calendar is what owns it.
+        return SeasonCalendar.dayForSlot(slot);
+    }
+
+    // ------------------------------------------------------------------ the AI
+
+    /**
+     * One week of fixtures and agreed friendlies, held for the length of an AI pass.
+     *
+     * <p>Two queries to build. {@link #hasFixture} answers all three of {@code isBusy}'s fixture walk,
+     * {@code isInPlayoff} and {@code hasFixtureThatWeek} — which were three separate methods with the
+     * same body.
+     */
+    private final class WeekSnapshot {
+        private final Set<Long> withFixture = new HashSet<>();
+        /** slot -> clubs with a scheduled fixture on that slot's day. */
+        private final Map<Integer, Set<Long>> fixtureInSlot = new HashMap<>();
+        /** slot -> clubs with an AGREED friendly in it. This is what makes a club busy. */
+        private final Map<Integer, Set<Long>> agreedInSlot = new HashMap<>();
+        /** slot -> clubs with a request still waiting for an answer. Stops a club asking twice. */
+        private final Map<Integer, Set<Long>> pendingInSlot = new HashMap<>();
+
+        WeekSnapshot(Integer season, Integer week) {
+            for (MatchFixture f : fixtures.findBySeasonYearAndWeekNumber(season, week)) {
+                int slot = SeasonCalendar.slots(week).stream()
+                        .filter(candidate -> candidate.day() == f.getDayNumber())
+                        .map(SeasonCalendar.WeekSlot::slot)
+                        .findFirst()
+                        .orElse(-1);
+                if (f.getHomeTeam() != null) {
+                    withFixture.add(f.getHomeTeam().getId());
+                    if (slot > 0) fixtureInSlot.computeIfAbsent(slot, ignored -> new HashSet<>())
+                            .add(f.getHomeTeam().getId());
+                }
+                if (f.getAwayTeam() != null) {
+                    withFixture.add(f.getAwayTeam().getId());
+                    if (slot > 0) fixtureInSlot.computeIfAbsent(slot, ignored -> new HashSet<>())
+                            .add(f.getAwayTeam().getId());
+                }
+            }
+            for (FriendlyRequest r : requests.findBySeasonAndWeek(season, week)) {
+                if (r.getStatus() == FriendlyStatus.ACCEPTED) {
+                    hold(agreedInSlot, r.getRequesterTeamId(), r.getOpponentTeamId(), r.getSlot());
+                } else if (r.getStatus() == FriendlyStatus.PENDING) {
+                    hold(pendingInSlot, r.getRequesterTeamId(), r.getOpponentTeamId(), r.getSlot());
+                }
+            }
+        }
+
+        /** A club with a real fixture that week is busy in every slot, which is what the old walk meant. */
+        boolean hasFixture(Long teamId) {
+            return teamId != null && withFixture.contains(teamId);
+        }
+
+        boolean hasFixtureInSlot(Long teamId, Integer slot) {
+            return teamId != null && contains(fixtureInSlot, teamId, slot);
+        }
+
+        /** An agreed friendly in this slot. A request still waiting does not count — see {@link #liveIn}. */
+        boolean busyIn(Long teamId, Integer slot) {
+            return contains(agreedInSlot, teamId, slot);
+        }
+
+        /**
+         * Agreed <b>or</b> still waiting, which is the one-request-per-club-per-slot rule.
+         *
+         * <p>Kept apart from {@link #busyIn} on purpose, and getting this wrong is not subtle: the
+         * original code answered a friendly by re-reading the week, where its own request was PENDING and
+         * therefore did <i>not</i> make either club busy. Hold a pending request in the busy set and every
+         * acceptance expires itself — which is exactly what the first version of this snapshot did, and why the invariant
+         * belongs here rather than at each call site.
+         */
+        boolean liveIn(Long teamId, Integer slot) {
+            return busyIn(teamId, slot) || contains(pendingInSlot, teamId, slot);
+        }
+
+        void asked(Long requesterId, Long opponentId, Integer slot) {
+            hold(pendingInSlot, requesterId, opponentId, slot);
+        }
+
+        void agreed(Long requesterId, Long opponentId, Integer slot) {
+            hold(agreedInSlot, requesterId, opponentId, slot);
+            free(pendingInSlot, requesterId, opponentId, slot);
+        }
+
+        /**
+         * A refusal stops holding both clubs for that slot.
+         *
+         * <p><b>Correct, and deliberately not claimed as a fix.</b> A pending request left in the set
+         * after a refusal keeps both clubs out of that slot for the rest of the week. It is here because
+         * the old code re-read the requests and so did not hold a refusal, and matching that is the point
+         * of a snapshot.
+         */
+        void refused(Long requesterId, Long opponentId, Integer slot) {
+            free(pendingInSlot, requesterId, opponentId, slot);
+        }
+
+        private static boolean contains(Map<Integer, Set<Long>> bySlot, Long teamId, Integer slot) {
+            Set<Long> ids = bySlot.get(slot);
+            return ids != null && teamId != null && ids.contains(teamId);
+        }
+
+        private static void hold(Map<Integer, Set<Long>> bySlot, Long a, Long b, Integer slot) {
+            Set<Long> ids = bySlot.computeIfAbsent(slot, k -> new HashSet<>());
+            ids.add(a);
+            ids.add(b);
+        }
+
+        private static void free(Map<Integer, Set<Long>> bySlot, Long a, Long b, Integer slot) {
+            Set<Long> ids = bySlot.get(slot);
+            if (ids == null) return;
+            ids.remove(a);
+            ids.remove(b);
+        }
+    }
+
+    /** Every open slot a club has this week, for the UI to offer. */
+    @Transactional(readOnly = true)
+    public List<Integer> openSlots(Long teamId, Integer season, Integer week) {
+        List<Integer> open = new ArrayList<>();
+        boolean inPlayoff = isInPlayoff(teamId, season, week);
+        for (SeasonCalendar.WeekSlot slot : SeasonCalendar.slots(week)) {
+            if (!slot.friendlyCapable()) continue;
+            if (slot.kind() == SeasonCalendar.SlotKind.FRIENDLY_IF_NOT_IN_PLAYOFF && inPlayoff) continue;
+            if (!isBusy(teamId, season, week, slot.slot())) open.add(slot.slot());
+        }
+        return open;
+    }
+
+
+    /**
+     * The first future slot both clubs are free in, when a direct invitation is preferred over the board.
+     *
+     * <p>Used by the search entry point: a manager finds a club and offers a friendly without browsing
+     * the board. The answer names a week and a slot; a refusal with no free slot leaves the invitation
+     * unsendable rather than guessing.
+     */
+    public Optional<org.tifo.footballmanager.newLogic.model.SeasonCalendar.WeekSlot> firstFreeSlot(
+            Long teamId, Long opponentId) {
+        GameClock clock = currentClock();
+        if (teamId == null || opponentId == null || clock == null || clock.getCurrentSeason() == null) {
+            return Optional.empty();
+        }
+        int season = clock.getCurrentSeason();
+        int currentWeek = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
+        int currentDay = clock.getCurrentDay() == null ? 1 : clock.getCurrentDay();
+        for (int week = currentWeek; week <= org.tifo.footballmanager.newLogic.model.SeasonCalendar.WEEKS_PER_SEASON; week++) {
+            for (int slot = 1; slot <= org.tifo.footballmanager.newLogic.model.SeasonCalendar.SLOTS_PER_WEEK; slot++) {
+                org.tifo.footballmanager.newLogic.model.SeasonCalendar.WeekSlot weekSlot =
+                        org.tifo.footballmanager.newLogic.model.SeasonCalendar.slot(week, slot);
+                if (weekSlot == null || !weekSlot.friendlyCapable()) {
+                    continue;
+                }
+                int day = weekSlot.day();
+                if (week == currentWeek && currentDay > day) {
+                    continue;
+                }
+                if (season != clock.getCurrentSeason()) {
+                    continue;
+                }
+                org.tifo.footballmanager.newLogic.service.FriendlyRequestService.WeekSnapshot snap =
+                        new WeekSnapshot(season, week);
+                if (snap.hasFixture(teamId) || snap.hasFixture(opponentId)) {
+                    continue;
+                }
+                if (snap.liveIn(teamId, slot) || snap.liveIn(opponentId, slot)) {
+                    continue;
+                }
+                // playoff round occupancy is already covered by hasFixture above; the slot test is enough
+                return Optional.of(weekSlot);
+            }
+        }
+        return Optional.empty();
+    }
+
+}

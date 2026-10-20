@@ -1,9 +1,9 @@
-package org.example.footballmanager.newLogic.util.events;
+package org.tifo.footballmanager.newLogic.util.events;
 
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.dto.*;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.dto.*;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.event.*;
 import org.springframework.stereotype.Component;
 
 @Component

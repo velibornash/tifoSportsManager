@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /**
  * Coordinates the transition from an active spatial duel to a resolved,

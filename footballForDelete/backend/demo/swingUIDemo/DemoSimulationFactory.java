@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /**
  * DemoSimulationFactory — ODGOVORNOST: SKLAPANJE GRAFA SIMULACIJE.

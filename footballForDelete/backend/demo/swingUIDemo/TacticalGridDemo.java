@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;

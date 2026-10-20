@@ -1,20 +1,20 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.dto.BallPositionDTO;
-import org.example.footballmanager.newLogic.dto.PlayerPositionDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSetPieceDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
-import org.example.footballmanager.newLogic.engine.DuelResolver;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.GoalEvent;
-import org.example.footballmanager.newLogic.model.event.PenaltyEvent;
-import org.example.footballmanager.newLogic.model.event.SetPieceEvent;
-import org.example.footballmanager.newLogic.repository.*;
-import org.example.footballmanager.newLogic.service.FormationSlotCatalog;
-import org.example.footballmanager.newLogic.service.SeasonService;
-import org.example.footballmanager.newLogic.service.TeamTacticsService;
+import org.tifo.footballmanager.newLogic.dto.BallPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSetPieceDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSlotDTO;
+import org.tifo.footballmanager.newLogic.engine.DuelResolver;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.GoalEvent;
+import org.tifo.footballmanager.newLogic.model.event.PenaltyEvent;
+import org.tifo.footballmanager.newLogic.model.event.SetPieceEvent;
+import org.tifo.footballmanager.newLogic.repository.*;
+import org.tifo.footballmanager.newLogic.service.FormationSlotCatalog;
+import org.tifo.footballmanager.newLogic.service.SeasonService;
+import org.tifo.footballmanager.newLogic.service.TeamTacticsService;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -357,15 +357,15 @@ public class RealisticMatchEngine {
                 // skip GK movement
                 if ("HOME".equals(pp.getTeam())) {
                     Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null);
-                    if (pObj!=null && pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
+                    if (pObj!=null && pObj.getPosition()==org.tifo.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
                 } else {
                     Player pObj = rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null);
-                    if (pObj!=null && pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
+                    if (pObj!=null && pObj.getPosition()==org.tifo.footballmanager.newLogic.model.Position.GK) { movementTarget.put(pid, playerCell.get(pid)); continue; }
                 }
 
                 // attackers only: team of carrier
                 Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null));
-                boolean isAttacker = pObj!=null && pObj.getPosition()!=org.example.footballmanager.newLogic.model.Position.DEF && pObj.getPosition()!=org.example.footballmanager.newLogic.model.Position.GK;
+                boolean isAttacker = pObj!=null && pObj.getPosition()!=org.tifo.footballmanager.newLogic.model.Position.DEF && pObj.getPosition()!=org.tifo.footballmanager.newLogic.model.Position.GK;
                 if (isAttacker && (rt.homeSquad.contains(carrier) ? "HOME".equals(pObj.getTeam()) : "AWAY".equals(pObj.getTeam()))) {
                     Cell cur = playerCell.get(pid);
                     if (passTargetCell!=null && passTargetPlayerId!=null && passTargetPlayerId==pid) {
@@ -401,7 +401,7 @@ public class RealisticMatchEngine {
         Cell carrierCell = playerCell.get(Math.toIntExact(carrier.getId()));
         for (int pid : teamPlayers.get(rt.homeSquad.contains(carrier)?"AWAY":"HOME")) {
             Player pObj = rt.homeSquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(rt.awaySquad.stream().filter(p->Math.toIntExact(p.getId())==pid).findFirst().orElse(null));
-            if (pObj==null || pObj.getPosition()==org.example.footballmanager.newLogic.model.Position.GK) continue;
+            if (pObj==null || pObj.getPosition()==org.tifo.footballmanager.newLogic.model.Position.GK) continue;
             Cell cur = playerCell.get(pid);
             if (adjacent.test(cur, carrierCell)) {
                 movementTarget.put(pid, carrierCell);

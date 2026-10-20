@@ -1,0 +1,7 @@
+package org.tifo.footballmanager.newLogic.sim.model;
+
+/** Pass height enum. */
+public enum PassHeight {
+    GROUND,
+    AIR
+}

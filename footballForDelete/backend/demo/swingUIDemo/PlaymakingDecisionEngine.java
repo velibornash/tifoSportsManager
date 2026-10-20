@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 import java.util.ArrayList;
 import java.util.List;

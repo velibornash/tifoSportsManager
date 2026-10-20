@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
 import lombok.Getter;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -180,9 +180,9 @@ public final class MatchSimulator {
             metrics.onGoal();
             if ("HOME".equals(attackingSide)) { homeGoals++; homeShots++; homeShotsOnTarget++; }
             else { awayGoals++; awayShots++; awayShotsOnTarget++; }
-            state.addEvent(new org.example.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
+            state.addEvent(new org.tifo.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
                 taker.playerId(), taker.name(), attackingSide, true, false, xG));
-            state.addEvent(new org.example.footballmanager.newLogic.model.event.GoalEvent(state.minute, state.tick,
+            state.addEvent(new org.tifo.footballmanager.newLogic.model.event.GoalEvent(state.minute, state.tick,
                 taker.playerId(), taker.name(), null, null, attackingSide, xG, homeGoals, awayGoals));
             state.lastTouchTeam = attackingSide;
             ballEngine.setLoose(state, 50.0, 50.0);
@@ -193,10 +193,10 @@ public final class MatchSimulator {
             metrics.onShotOnTarget();
             if ("HOME".equals(attackingSide)) { homeShots++; homeShotsOnTarget++; }
             else { awayShots++; awayShotsOnTarget++; }
-            state.addEvent(new org.example.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
+            state.addEvent(new org.tifo.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
                 taker.playerId(), taker.name(), attackingSide, false, true, xG));
             if (gk != null) {
-                state.addEvent(new org.example.footballmanager.newLogic.model.event.GkSaveEvent(state.minute, state.tick, state.possessionChainId,
+                state.addEvent(new org.tifo.footballmanager.newLogic.model.event.GkSaveEvent(state.minute, state.tick, state.possessionChainId,
                     gk.playerId(), gk.name(), defendingSide,
                     taker.playerId(), taker.name(), xG, "penalty_saved", 50.0, 50.0));
                 ballEngine.setCarrier(state, gk.playerId(), defendingSide);
@@ -210,7 +210,7 @@ public final class MatchSimulator {
             metrics.onShot();
             if ("HOME".equals(attackingSide)) homeShots++;
             else awayShots++;
-            state.addEvent(new org.example.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
+            state.addEvent(new org.tifo.footballmanager.newLogic.model.event.PenaltyEvent(state.minute, state.tick,
                 taker.playerId(), taker.name(), attackingSide, false, false, xG));
             state.lastTouchTeam = attackingSide;
             state.stoppage = MatchState.StoppageType.GOAL_KICK;

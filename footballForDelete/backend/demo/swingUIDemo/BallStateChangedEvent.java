@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Explicitly recorded ball-state transition; not reconstructed from runtime fields. */
 public record BallStateChangedEvent(

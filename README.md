@@ -82,7 +82,7 @@ mvn test -Dtest=RatingEngineTest    # one class
 ## The layout
 
 ```
-src/main/java/org/example/
+src/main/java/org/tifo/
 ├── SportsManagerApplication.java     the entry point
 ├── commonmanager/                    accounts, security, the shared admin
 ├── footballmanager/                  the football game: the world, the season, the admin
@@ -97,6 +97,10 @@ src/main/resources/
 └── static/                           the front end: HTML, CSS and ES modules
 
 ops/                                  deployment notes and the maintenance page
+footballForDelete/                     parked work, not built: the old demo game and the games
+                                      that were retired (the footballtextmanager, the
+                                      americanfootballmanager and the basketballmanager trees
+                                      are still built and still live under src/main/java)
 ```
 
 ---

@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /**
  * Converts tactical-editor coordinates (always authored from HOME's view) to

@@ -1,6 +1,6 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.Team;
 
 import java.util.List;
 

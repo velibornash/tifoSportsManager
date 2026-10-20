@@ -886,7 +886,12 @@ async function startAdminDatabaseJob(endpoint, title) {
 }
 
 async function pollAdminDatabaseJob(loadingPopup) {
-    for (let attempt = 0; attempt < 240; attempt += 1) {
+    // Fifteen minutes, not four. The rebuild builds thirty-one divisions, fourteen thousand clubs and
+    // half a million players, and it writes a tactic onto every club that has one; on a slow machine
+    // that is minutes of real work, and a poll that gives up mid-way told the owner the rebuild had
+    // failed when it was still running (owner, 2026-10-20: "Database operation failed. Error:
+    // Database rebuild timed out.").
+    for (let attempt = 0; attempt < 900; attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const response = await authFetch('/admin/database-job/status');
         const snapshot = await response.json();

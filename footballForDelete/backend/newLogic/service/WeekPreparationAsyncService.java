@@ -1,18 +1,18 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.engine_v1.MatchEngine;
-import org.example.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
-import org.example.footballmanager.newLogic.model.Competition;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.MatchFixture;
-import org.example.footballmanager.newLogic.model.Season;
-import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.repository.CompetitionRepository;
-import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
-import org.example.footballmanager.newLogic.repository.SeasonRepository;
-import org.example.footballmanager.newLogic.repository.TeamRepository;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchEngine;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
+import org.tifo.footballmanager.newLogic.model.Competition;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.Season;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.tifo.footballmanager.newLogic.repository.SeasonRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 

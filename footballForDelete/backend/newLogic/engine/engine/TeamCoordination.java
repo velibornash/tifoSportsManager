@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.MatchState;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
-import org.example.footballmanager.newLogic.model.Position;
+import org.tifo.footballmanager.newLogic.model.MatchState;
+import org.tifo.footballmanager.newLogic.model.PlayerSnapshot;
+import org.tifo.footballmanager.newLogic.model.Position;
 
 import java.util.HashMap;
 import java.util.Map;

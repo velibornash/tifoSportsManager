@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 import org.springframework.stereotype.Component;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.util.match.MatchContext;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.util.match.MatchContext;
 
 import java.util.Random;
 

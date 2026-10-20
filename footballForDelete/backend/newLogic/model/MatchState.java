@@ -1,7 +1,7 @@
-package org.example.footballmanager.newLogic.model;
+package org.tifo.footballmanager.newLogic.model;
 
-import org.example.footballmanager.newLogic.engine.MatchMetrics;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.engine.MatchMetrics;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
 
 import java.util.*;
 

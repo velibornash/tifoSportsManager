@@ -1,21 +1,21 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.dto.PlayerPositionDTO;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.*;
-import org.example.footballmanager.newLogic.model.tactics.Formation;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
-import org.example.footballmanager.newLogic.repository.*;
-import org.example.footballmanager.newLogic.service.AttendanceService;
-import org.example.footballmanager.newLogic.service.PlayerMovementDecisionService;
-import org.example.footballmanager.newLogic.service.SeasonService;
-import org.example.footballmanager.newLogic.service.TacticsAdjustmentService;
-import org.example.footballmanager.newLogic.util.events.EventCreator;
-import org.example.footballmanager.newLogic.util.match.MatchContext;
-import org.example.footballmanager.newLogic.util.players.PlayerFactory;
-import org.example.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
+import org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.model.tactics.Formation;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.repository.*;
+import org.tifo.footballmanager.newLogic.service.AttendanceService;
+import org.tifo.footballmanager.newLogic.service.PlayerMovementDecisionService;
+import org.tifo.footballmanager.newLogic.service.SeasonService;
+import org.tifo.footballmanager.newLogic.service.TacticsAdjustmentService;
+import org.tifo.footballmanager.newLogic.util.events.EventCreator;
+import org.tifo.footballmanager.newLogic.util.match.MatchContext;
+import org.tifo.footballmanager.newLogic.util.players.PlayerFactory;
+import org.tifo.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -1222,7 +1222,7 @@ public class MatchEngine {
                 .orElse(squad.getFirst());
     }
 
-    private boolean isInPenaltyBox(org.example.footballmanager.newLogic.dto.PlayerPositionDTO carrier, boolean attacksRight) {
+    private boolean isInPenaltyBox(org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO carrier, boolean attacksRight) {
         if (carrier == null) {
             return false;
         }

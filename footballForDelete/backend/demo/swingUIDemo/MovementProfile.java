@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /**
  * MovementProfile — EXTENSION POINT za buduce sposobnosti kretanja.

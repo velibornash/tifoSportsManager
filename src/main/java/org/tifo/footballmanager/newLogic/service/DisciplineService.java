@@ -1,0 +1,274 @@
+package org.tifo.footballmanager.newLogic.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.tifo.footballmanager.newLogic.model.Competition;
+import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.PlayerDiscipline;
+import org.tifo.footballmanager.newLogic.repository.PlayerDisciplineRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Cards, and what they cost (owner ruling, 2026-10-10).
+ *
+ * <p>Two rules, and they are deliberately different in scope:
+ *
+ * <ul>
+ *   <li><b>A red card bans the player from the first next <em>official</em> match</b> — everything except
+ *       a friendly. The owner said so directly. It is club-wide, not competition-scoped, because the rule
+ *       is about the club and not about the competition the card happened to be in.</li>
+ *   <li><b>Yellows accumulate within the league:</b> three earns one match, six earns two, nine earns
+ *       three. These are served <em>in the league</em>, because that is where they were earned.</li>
+ * </ul>
+ *
+ * <p><b>The counter resets when the bans are served, not when they are earned.</b> Resetting at three
+ * would mean six and nine could never be reached at all, and two thirds of the owner's rule would be
+ * dead letters.
+ *
+ * <p><b>Keyed by season,</b> so the end-of-season reset is structural rather than a sweep somebody has to
+ * remember to run.
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class DisciplineService {
+
+    private final PlayerDisciplineRepository records;
+    private final PlayerRepository players;
+
+    /**
+     * Records the cards a player picked up in one match.
+     *
+     * @param competition the competition he was playing in; null for a friendly, where yellows do not
+     *                    accumulate and a red card still stands
+     */
+    @Transactional
+    public void record(Long playerId, Integer season, Competition competition,
+                       int yellowCards, int redCards) {
+
+        if (playerId == null || season == null || (yellowCards <= 0 && redCards <= 0)) {
+            return;
+        }
+
+        if (redCards > 0) {
+            PlayerDiscipline clubWide = clubWideRecord(playerId, season);
+            clubWide.setBansOwed(clubWide.getBansOwed() + redCards);
+            clubWide.setUpdatedAt(LocalDateTime.now());
+            records.save(clubWide);
+        }
+
+        if (yellowCards > 0 && isOfficial(competition)) {
+            PlayerDiscipline league = competitionRecord(playerId, season, competition);
+            int before = PlayerDiscipline.leagueBansEarnedBy(league.getYellowCards());
+            league.setYellowCards(league.getYellowCards() + yellowCards);
+            int after = PlayerDiscipline.leagueBansEarnedBy(league.getYellowCards());
+            if (after > before) {
+                // Earned, not served: the counter keeps its place so the next band is reachable.
+                league.setBansOwed(league.getBansOwed() + (after - before));
+            }
+            league.setUpdatedAt(LocalDateTime.now());
+            records.save(league);
+        }
+    }
+
+    /**
+     * Whether this player may play this fixture, and why not when he may not.
+     *
+     * <p>Both rules are consulted, because both can bar the same player: a red-card ban is club-wide and
+     * blocks the next official match of any sort, while a yellow ban only blocks this competition.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> suspensionFor(Long playerId, Integer season, MatchFixture fixture) {
+        if (playerId == null || season == null || fixture == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(suspensionsFor(List.of(playerId), season, fixture).get(playerId));
+    }
+
+    /**
+     * The players of a set who are barred from this fixture, and why each one is barred.
+     *
+     * <p><b>One query for the whole set, and the reason it is a set.</b> The per-player question was
+     * asked about every player of both squads, twice, for every fixture of a matchday: about 220
+     * questions a fixture and half a million for 2,400 fixtures. Two things made that fatal rather than
+     * merely slow, and both were measured on the live database on 2026-10-19:
+     *
+     * <ul>
+     *   <li>The second question was a Spring Data <em>derived</em> query, and a derived query rebuilds
+     *       and copies its whole JPQL syntax tree on every execution. 216,000 executions left 20.7
+     *       million live collection objects behind — six gigabytes of an eight gigabyte heap — and the
+     *       day-1 matchday died of {@code OutOfMemoryError} before it finished.</li>
+     *   <li>It was asked through an {@code Optional}-returning method, and a derived {@code Optional}
+     *       throws {@code NonUniqueResultException} the moment a player has two identical rows. This
+     *       world has such players. The repository's own javadoc records the crash that came of it.</li>
+     * </ul>
+     *
+     * <p>Two plain queries replace them, and the answers are the same: a red-card ban is club-wide and
+     * outranks a yellow accumulation, exactly as {@link #suspensionFor} has always ordered them, and
+     * two rows that both owe a ban still mean a ban is owed.
+     *
+     * @param playerIds the players to ask about
+     * @param season the season the bans belong to
+     * @param fixture the fixture they would be barred from
+     * @return player id to the reason, for the barred players only
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, String> suspensionsFor(Collection<Long> playerIds, Integer season, MatchFixture fixture) {
+        if (playerIds == null || playerIds.isEmpty() || season == null || fixture == null) {
+            return Map.of();
+        }
+        Competition competition = fixture.getCompetition();
+        boolean official = isOfficial(competition);
+        Long competitionId = competition != null ? competition.getId() : null;
+        List<Long> ids = new ArrayList<>(playerIds);
+
+        Map<Long, String> reasons = new HashMap<>();
+
+        // **The club-wide ban first.** A red card blocks the next official match of any sort, and it has
+        // always been the reason the manager is shown when both rules bite on the same player.
+        if (official) {
+            for (PlayerDiscipline row : records.findClubWideBySeasonAndPlayerIds(season, ids)) {
+                if (row.getBansOwed() <= 0 || row.getPlayer() == null || row.getPlayer().getId() == null) {
+                    continue;
+                }
+                reasons.putIfAbsent(row.getPlayer().getId(),
+                        "suspended — sent off in his last official match");
+            }
+        }
+
+        // **Then the yellow accumulation**, which only bars this competition.
+        if (competitionId != null) {
+            for (PlayerDiscipline row : records.findBySeasonAndCompetitionAndPlayerIds(
+                    season, competitionId, ids)) {
+                if (row.getBansOwed() <= 0 || row.getPlayer() == null || row.getPlayer().getId() == null) {
+                    continue;
+                }
+                int bans = row.getBansOwed();
+                reasons.putIfAbsent(row.getPlayer().getId(),
+                        "suspended — " + bans + " match ban" + (bans == 1 ? "" : "es")
+                                + " in this competition");
+            }
+        }
+        return reasons;
+    }
+
+    /**
+     * Takes one ban off this player for this fixture, if he has one.
+     *
+     * <p>Called as the match is set up, so a ban is served by playing — or by being selected and then
+     * removed for any other reason, which is the same thing from the record's point of view. There is no
+     * release: a ban is served, not cancelled.
+     */
+    @Transactional
+    public void serve(Long playerId, Integer season, MatchFixture fixture) {
+        if (playerId == null || season == null || fixture == null) {
+            return;
+        }
+        Competition competition = fixture.getCompetition();
+
+        if (isOfficial(competition)) {
+            // One ban is served by decrementing one row. With duplicates present this takes the oldest
+            // row that still owes something, so a second identical row is simply served next time
+            // rather than crashing the matchday.
+            records.findByPlayerIdAndSeasonAndCompetitionIsNullOrderByIdAsc(playerId, season).stream()
+                    .filter(record -> record.getBansOwed() > 0)
+                    .findFirst()
+                    .ifPresent(record -> {
+                        record.setBansOwed(record.getBansOwed() - 1);
+                        record.setUpdatedAt(LocalDateTime.now());
+                        records.save(record);
+                    });
+        }
+
+        if (competition != null && competition.getId() != null) {
+            records.findByPlayerIdAndSeasonAndCompetitionId(playerId, season, competition.getId())
+                    .filter(record -> record.getBansOwed() > 0)
+                    .ifPresent(record -> {
+                        record.setBansOwed(record.getBansOwed() - 1);
+                        record.setBansServed(record.getBansServed() + 1);
+                        record.setUpdatedAt(LocalDateTime.now());
+                        // The cycle is complete once everything the yellows have earned has been served.
+                        // Only then does the counter start again, which is what keeps six and nine
+                        // reachable in the first place.
+                        if (record.getBansServed() >= PlayerDiscipline.leagueBansEarnedBy(record.getYellowCards())) {
+                            record.setYellowCards(0);
+                            record.setBansServed(0);
+                        }
+                        records.save(record);
+                    });
+        }
+    }
+
+    /** The record, for a manager asking why somebody is unavailable. */
+    @Transactional(readOnly = true)
+    public Optional<PlayerDiscipline> recordFor(Long playerId, Integer season, Competition competition) {
+        if (playerId == null || season == null) {
+            return Optional.empty();
+        }
+        return competition == null || competition.getId() == null
+                ? records.findByPlayerIdAndSeasonAndCompetitionIsNull(playerId, season)
+                : records.findByPlayerIdAndSeasonAndCompetitionId(playerId, season, competition.getId());
+    }
+
+    /**
+     * <b>Everything except a friendly is official</b> (owner, 2026-10-10).
+     *
+     * <p>Which is a question about the fixture's <em>competition</em>, not about a competition type:
+     * {@code CompetitionType} has no FRIENDLY value, because a friendly is a fixture that belongs to no
+     * competition at all. {@code MatchType.ofCompetition(null)} is FRIENDLY for exactly that reason.
+     *
+     * <p>So "official" means "plays into something", and the test is one null check. An exhibition is
+     * simulated inline and has no fixture, so it never reaches here either way.
+     */
+    public static boolean isOfficial(Competition competition) {
+        return competition != null;
+    }
+
+    /** True when this fixture is one a suspension can bar the player from. */
+    public static boolean isOfficialFixture(MatchFixture fixture) {
+        return fixture != null && isOfficial(fixture.getCompetition());
+    }
+
+    private PlayerDiscipline clubWideRecord(Long playerId, Integer season) {
+        Player player = players.findById(playerId).orElseThrow(
+                () -> new IllegalArgumentException("Unknown player " + playerId));
+        return records.findByPlayerIdAndSeasonAndCompetitionIsNull(playerId, season)
+                .orElseGet(() -> {
+                    PlayerDiscipline record = new PlayerDiscipline();
+                    record.setPlayer(player);
+                    record.setSeason(season);
+                    record.setCompetition(null);
+                    return record;
+                });
+    }
+
+    private PlayerDiscipline competitionRecord(Long playerId, Integer season, Competition competition) {
+        Player player = players.findById(playerId).orElseThrow(
+                () -> new IllegalArgumentException("Unknown player " + playerId));
+        return records.findByPlayerIdAndSeasonAndCompetitionId(playerId, season, competition.getId())
+                .orElseGet(() -> {
+                    PlayerDiscipline record = new PlayerDiscipline();
+                    record.setPlayer(player);
+                    record.setSeason(season);
+                    record.setCompetition(competition);
+                    return record;
+                });
+    }
+
+    /** Everything a manager might want to show about a player's discipline this season. */
+    @Transactional(readOnly = true)
+    public List<PlayerDiscipline> allFor(Long playerId, Integer season) {
+        return records.findByPlayerIdAndSeason(playerId, season);
+    }
+}

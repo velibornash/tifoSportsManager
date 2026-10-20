@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
-import org.example.footballmanager.newLogic.util.match.MatchContext;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.util.match.MatchContext;
 import org.springframework.stereotype.Service;
 
 @Service

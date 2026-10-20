@@ -1,14 +1,14 @@
-package org.example.footballmanager.newLogic.old.oldService;
+package org.tifo.footballmanager.newLogic.old.oldService;
 
-import org.example.footballmanager.newLogic.dto.BallPositionDTO;
-import org.example.footballmanager.newLogic.dto.PlayerPositionDTO;
-import org.example.footballmanager.newLogic.model.Crowd;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Referee;
-import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.model.event.GoalEvent;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.dto.BallPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO;
+import org.tifo.footballmanager.newLogic.model.Crowd;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.Referee;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.event.GoalEvent;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
 
 import java.util.*;
 

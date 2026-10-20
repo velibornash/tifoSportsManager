@@ -1,4 +1,4 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
 public enum MatchPhase {
     BUILD_UP,

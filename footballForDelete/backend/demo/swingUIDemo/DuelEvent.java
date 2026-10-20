@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Persistable duel lifecycle event, independent of console logging. */
 public record DuelEvent(

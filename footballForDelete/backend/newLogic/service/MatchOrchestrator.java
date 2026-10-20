@@ -1,14 +1,14 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.engine.MatchSimulator;
-import org.example.footballmanager.newLogic.engine.ZonePositionCalculator;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.repository.LineupRepository;
-import org.example.footballmanager.newLogic.repository.PlayerRepository;
-import org.example.footballmanager.newLogic.repository.TeamRepository;
-import org.example.footballmanager.newLogic.store.MatchStore;
+import org.tifo.footballmanager.newLogic.engine.MatchSimulator;
+import org.tifo.footballmanager.newLogic.engine.ZonePositionCalculator;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.repository.LineupRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.tifo.footballmanager.newLogic.store.MatchStore;
 
 import java.util.*;
 import java.util.stream.Collectors;

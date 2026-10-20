@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.util.events;
+package org.tifo.footballmanager.newLogic.util.events;
 
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.util.match.MatchContext;
-import org.example.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.util.match.MatchContext;
+import org.tifo.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
 
 import java.util.List;
 import java.util.Random;
@@ -16,8 +16,8 @@ public class MatchEventFactory {
     public MatchEvent createRandomEvent(MatchContext context,
                                         List<Player> homePlayers,
                                         List<Player> awayPlayers,
-                                        org.example.footballmanager.newLogic.model.tactics.Formation homeFormation,
-                                        org.example.footballmanager.newLogic.model.tactics.Formation awayFormation) {
+                                        org.tifo.footballmanager.newLogic.model.tactics.Formation homeFormation,
+                                        org.tifo.footballmanager.newLogic.model.tactics.Formation awayFormation) {
 
         int minute = context.getCurrentMinute();
         double homeStrength = TeamStrengthCalculator.calculateTeamStrength(homePlayers, homeFormation, context.getHomeTactics(), true);

@@ -1,6 +1,6 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.*;
 
 /**
  * Ball physics in the style of the reference demos (BallTrackingDemo /
@@ -111,7 +111,7 @@ public final class BallEngine {
                         if (passer != null) passerName = passer.name();
                     }
 
-                    state.addEvent(new org.example.footballmanager.newLogic.model.event.PassInterceptedEvent(
+                    state.addEvent(new org.tifo.footballmanager.newLogic.model.event.PassInterceptedEvent(
                         state.minute, state.tick, state.possessionChainId,
                         passerId, passerName,
                         snap.playerId(), snap.name(), snap.teamSide(),

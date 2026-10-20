@@ -1,11 +1,11 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.engine.DuelResolver;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.*;
-import org.example.footballmanager.newLogic.repository.MatchEventRepository;
+import org.tifo.footballmanager.newLogic.engine.DuelResolver;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.repository.MatchEventRepository;
 import org.springframework.stereotype.Component;
 
 @Component

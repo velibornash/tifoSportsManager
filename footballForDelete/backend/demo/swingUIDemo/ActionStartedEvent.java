@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Immutable record of the decision/action start; execution is recorded separately. */
 public record ActionStartedEvent(

@@ -1,15 +1,15 @@
-package org.example.footballmanager.newLogic.util.events;
+package org.tifo.footballmanager.newLogic.util.events;
 
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Position;
-import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.model.event.*;
-import org.example.footballmanager.newLogic.model.tactics.Formation;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
-import org.example.footballmanager.newLogic.repository.PlayerRepository;
-import org.example.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.Position;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.model.tactics.Formation;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.engine_v1.TeamStrengthCalculator;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;

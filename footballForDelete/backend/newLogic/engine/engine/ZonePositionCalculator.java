@@ -1,7 +1,7 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

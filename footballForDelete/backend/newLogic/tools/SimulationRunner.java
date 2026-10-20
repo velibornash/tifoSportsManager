@@ -1,12 +1,12 @@
-package org.example.footballmanager.newLogic.tools;
+package org.tifo.footballmanager.newLogic.tools;
 
-import org.example.footballmanager.newLogic.engine.MatchMetrics;
-import org.example.footballmanager.newLogic.engine.ZonePositionCalculator;
-import org.example.footballmanager.newLogic.model.MatchResult;
-import org.example.footballmanager.newLogic.model.TacticRules;
-import org.example.footballmanager.newLogic.service.MatchOrchestrator;
-import org.example.footballmanager.newLogic.store.MatchStore;
-import org.example.footballmanager.newLogic.util.analysis.MatchAnalyzer;
+import org.tifo.footballmanager.newLogic.engine.MatchMetrics;
+import org.tifo.footballmanager.newLogic.engine.ZonePositionCalculator;
+import org.tifo.footballmanager.newLogic.model.MatchResult;
+import org.tifo.footballmanager.newLogic.model.TacticRules;
+import org.tifo.footballmanager.newLogic.service.MatchOrchestrator;
+import org.tifo.footballmanager.newLogic.store.MatchStore;
+import org.tifo.footballmanager.newLogic.util.analysis.MatchAnalyzer;
 
 import java.util.List;
 import java.util.Map;

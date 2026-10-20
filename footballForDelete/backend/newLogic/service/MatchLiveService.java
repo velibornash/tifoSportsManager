@@ -1,14 +1,14 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.dto.LiveTickDTO;
-import org.example.footballmanager.newLogic.engine.MatchSimulator;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.MatchResult;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.store.MatchStore;
+import org.tifo.footballmanager.newLogic.dto.LiveTickDTO;
+import org.tifo.footballmanager.newLogic.engine.MatchSimulator;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.MatchResult;
+import org.tifo.footballmanager.newLogic.model.PlayerSnapshot;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.store.MatchStore;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -22,11 +22,11 @@ public class MatchLiveService {
     private final Map<Long, MatchLiveSession> liveSessions = new ConcurrentHashMap<>();
     private final MatchStore store;
     private final ObjectMapper objectMapper;
-    private final org.example.commonmanager.util.websocket.MatchEventWSHandler wsHandler;
+    private final org.tifo.commonmanager.util.websocket.MatchEventWSHandler wsHandler;
     private final MatchPersistenceService persistenceService;
 
     public MatchLiveService(MatchStore store, ObjectMapper objectMapper,
-                            org.example.commonmanager.util.websocket.MatchEventWSHandler wsHandler,
+                            org.tifo.commonmanager.util.websocket.MatchEventWSHandler wsHandler,
                             MatchPersistenceService persistenceService) {
         this.store = store;
         this.objectMapper = objectMapper;
@@ -65,7 +65,7 @@ public class MatchLiveService {
         simulator.initializeSystems(match);
         simulator.initializeMatchState(match);
 
-        simulator.getState().addEvent(new org.example.footballmanager.newLogic.model.event.MatchStartEvent(
+        simulator.getState().addEvent(new org.tifo.footballmanager.newLogic.model.event.MatchStartEvent(
             0, 0, match.homeTeam().name(), match.awayTeam().name()));
         simulator.getState().recordTick();
         broadcastTick(session, null);
@@ -109,7 +109,7 @@ public class MatchLiveService {
                     }
                 }
 
-                org.example.footballmanager.newLogic.engine.FatigueSystem fatigue = getFatigue(simulator);
+                org.tifo.footballmanager.newLogic.engine.FatigueSystem fatigue = getFatigue(simulator);
                 if (fatigue != null) {
                     fatigue.updateFatigue(simulator.getState(), minute);
                     fatigue.maybeInjury(simulator.getState(), minute, "HOME");
@@ -129,7 +129,7 @@ public class MatchLiveService {
                 }
             }
 
-            simulator.getState().addEvent(new org.example.footballmanager.newLogic.model.event.MatchEndEvent(
+            simulator.getState().addEvent(new org.tifo.footballmanager.newLogic.model.event.MatchEndEvent(
                 90, simulator.getState().tick,
                 simulator.getHomeGoals(), simulator.getAwayGoals()));
             simulator.getState().recordTick();
@@ -157,10 +157,10 @@ public class MatchLiveService {
     }
 
     private void handleStoppageEnd(MatchSimulator simulator) {
-        org.example.footballmanager.newLogic.model.MatchState state = simulator.getState();
-        if (state.stoppage == org.example.footballmanager.newLogic.model.MatchState.StoppageType.KICK_OFF) {
+        org.tifo.footballmanager.newLogic.model.MatchState state = simulator.getState();
+        if (state.stoppage == org.tifo.footballmanager.newLogic.model.MatchState.StoppageType.KICK_OFF) {
             simulator.startKickoffPlay();
-        } else if (state.stoppage == org.example.footballmanager.newLogic.model.MatchState.StoppageType.PENALTY) {
+        } else if (state.stoppage == org.tifo.footballmanager.newLogic.model.MatchState.StoppageType.PENALTY) {
             simulator.executePenalty();
         } else if (state.carrierId == null) {
             simulator.releaseBallAfterStoppage();
@@ -173,7 +173,7 @@ public class MatchLiveService {
         return events.isEmpty() ? null : events.get(events.size() - 1);
     }
 
-    private org.example.footballmanager.newLogic.engine.FatigueSystem getFatigue(MatchSimulator simulator) {
+    private org.tifo.footballmanager.newLogic.engine.FatigueSystem getFatigue(MatchSimulator simulator) {
         try {
             return simulator.getFatigueSystem();
         } catch (Exception e) {

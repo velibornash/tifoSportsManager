@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
-import org.example.footballmanager.newLogic.engine.MatchSimulator;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.MatchResult;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.engine.MatchSimulator;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.MatchResult;
+import org.tifo.footballmanager.newLogic.model.PlayerSnapshot;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
 
 import java.util.List;
 import java.util.Map;

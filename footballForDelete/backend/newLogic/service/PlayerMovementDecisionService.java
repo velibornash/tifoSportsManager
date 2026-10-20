@@ -1,12 +1,12 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.dto.BallPositionDTO;
-import org.example.footballmanager.newLogic.dto.PlayerPositionDTO;
-import org.example.footballmanager.newLogic.model.MatchRuntime;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.engine_v1.DuelCalculator;
-import org.example.footballmanager.newLogic.util.match.MatchContext;
+import org.tifo.footballmanager.newLogic.dto.BallPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO;
+import org.tifo.footballmanager.newLogic.model.MatchRuntime;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.engine_v1.DuelCalculator;
+import org.tifo.footballmanager.newLogic.util.match.MatchContext;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;

@@ -1,12 +1,12 @@
-package org.example.footballmanager.newLogic.model;
+package org.tifo.footballmanager.newLogic.model;
 
-import org.example.footballmanager.newLogic.dto.BallPositionDTO;
-import org.example.footballmanager.newLogic.dto.PlayerPositionDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSetPieceDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
-import org.example.footballmanager.newLogic.model.event.GoalEvent;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.dto.BallPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.PlayerPositionDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSetPieceDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSlotDTO;
+import org.tifo.footballmanager.newLogic.model.event.GoalEvent;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
 
 import java.util.ArrayList;
 import java.util.HashMap;

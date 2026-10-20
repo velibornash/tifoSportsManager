@@ -1,16 +1,16 @@
-package org.example.footballmanager.newLogic.util;
+package org.tifo.footballmanager.newLogic.util;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.model.event.CardEvent;
-import org.example.footballmanager.newLogic.model.event.GoalEvent;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.repository.*;
-import org.example.footballmanager.newLogic.service.AttendanceService;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.model.event.CardEvent;
+import org.tifo.footballmanager.newLogic.model.event.GoalEvent;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.repository.*;
+import org.tifo.footballmanager.newLogic.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 

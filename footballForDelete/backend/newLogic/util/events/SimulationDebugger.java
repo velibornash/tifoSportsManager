@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.util.events;
+package org.tifo.footballmanager.newLogic.util.events;
 
 import java.util.function.Consumer;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.model.event.PossessionStartEvent;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.model.event.PossessionStartEvent;
 
 public class SimulationDebugger implements Consumer<MatchEvent> {
 

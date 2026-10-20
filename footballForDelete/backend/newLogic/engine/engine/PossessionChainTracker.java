@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.engine;
+package org.tifo.footballmanager.newLogic.engine;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import org.example.footballmanager.newLogic.model.event.PossessionEndEvent;
-import org.example.footballmanager.newLogic.model.event.PossessionStartEvent;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.model.event.PossessionEndEvent;
+import org.tifo.footballmanager.newLogic.model.event.PossessionStartEvent;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
 
 import java.util.ArrayList;
 import java.util.List;

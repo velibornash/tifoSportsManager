@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Jedan aktivan prostorni duel; resolution i posledice vode odvojeni slojevi. */
 public final class Duel {

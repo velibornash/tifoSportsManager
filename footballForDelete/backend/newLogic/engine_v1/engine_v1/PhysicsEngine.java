@@ -1,11 +1,11 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import org.example.footballmanager.newLogic.model.BallState;
-import org.example.footballmanager.newLogic.model.MatchState;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
+import org.tifo.footballmanager.newLogic.model.BallState;
+import org.tifo.footballmanager.newLogic.model.MatchState;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.PlayerSnapshot;
 
 @Component
 @RequiredArgsConstructor

@@ -1,10 +1,10 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.example.footballmanager.newLogic.dto.TacticsRuleDTO;
-import org.example.footballmanager.newLogic.dto.TacticsSlotDTO;
-import org.example.footballmanager.newLogic.service.FormationSlotCatalog;
+import org.tifo.footballmanager.newLogic.dto.TacticsRuleDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSlotDTO;
+import org.tifo.footballmanager.newLogic.service.FormationSlotCatalog;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

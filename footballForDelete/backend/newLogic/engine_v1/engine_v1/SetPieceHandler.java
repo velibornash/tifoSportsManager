@@ -1,17 +1,17 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import org.example.footballmanager.newLogic.engine.DecisionEngine;
-import org.example.footballmanager.newLogic.engine.DuelResolver;
-import org.example.footballmanager.newLogic.engine.MovementEngine;
-import org.example.footballmanager.newLogic.engine_v1.PhysicsEngine;
-import org.example.footballmanager.newLogic.model.BallState;
-import org.example.footballmanager.newLogic.model.MatchState;
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.PlayerSnapshot;
-import org.example.footballmanager.newLogic.model.Position;
-import org.example.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.engine.DecisionEngine;
+import org.tifo.footballmanager.newLogic.engine.DuelResolver;
+import org.tifo.footballmanager.newLogic.engine.MovementEngine;
+import org.tifo.footballmanager.newLogic.engine_v1.PhysicsEngine;
+import org.tifo.footballmanager.newLogic.model.BallState;
+import org.tifo.footballmanager.newLogic.model.MatchState;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.PlayerSnapshot;
+import org.tifo.footballmanager.newLogic.model.Position;
+import org.tifo.footballmanager.newLogic.model.event.*;
 
 import java.util.List;
 import java.util.Random;

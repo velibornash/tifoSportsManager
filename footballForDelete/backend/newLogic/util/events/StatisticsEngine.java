@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.util.events;
+package org.tifo.footballmanager.newLogic.util.events;
 
 import java.util.function.Consumer;
-import org.example.footballmanager.newLogic.engine.MatchMetrics;
-import org.example.footballmanager.newLogic.model.event.*;
+import org.tifo.footballmanager.newLogic.engine.MatchMetrics;
+import org.tifo.footballmanager.newLogic.model.event.*;
 
 public class StatisticsEngine implements Consumer<MatchEvent> {
 

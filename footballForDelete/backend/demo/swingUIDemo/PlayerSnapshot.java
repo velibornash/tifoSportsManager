@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Immutable per-tick player state used by replay/statistics consumers. */
 public record PlayerSnapshot(

@@ -1,8 +1,8 @@
-package org.example.footballmanager.newLogic.old.oldService;
+package org.tifo.footballmanager.newLogic.old.oldService;
 
 import lombok.RequiredArgsConstructor;
-import org.example.footballmanager.newLogic.dto.*;
-import org.example.commonmanager.util.websocket.MatchEventWSHandler;
+import org.tifo.footballmanager.newLogic.dto.*;
+import org.tifo.commonmanager.util.websocket.MatchEventWSHandler;
 import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.*;

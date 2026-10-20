@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 
-import org.example.footballmanager.newLogic.model.Player;
-import org.example.footballmanager.newLogic.model.Position;
-import org.example.footballmanager.newLogic.model.Team;
-import org.example.footballmanager.newLogic.model.tactics.Formation;
-import org.example.footballmanager.newLogic.model.tactics.Tactics;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.Position;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.tactics.Formation;
+import org.tifo.footballmanager.newLogic.model.tactics.Tactics;
 
 import java.util.List;
 

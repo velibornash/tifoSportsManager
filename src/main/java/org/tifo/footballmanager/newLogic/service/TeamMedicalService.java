@@ -1,0 +1,176 @@
+package org.tifo.footballmanager.newLogic.service;
+
+import lombok.RequiredArgsConstructor;
+import org.tifo.footballmanager.newLogic.dto.PlayerDTO;
+import org.tifo.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
+import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.StaffMember;
+import org.tifo.footballmanager.newLogic.model.StaffRole;
+import org.tifo.footballmanager.newLogic.model.SkillName;
+import org.tifo.footballmanager.newLogic.model.Skills;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.StaffMemberRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+
+@Service
+@RequiredArgsConstructor
+public class TeamMedicalService {
+    private static final int FATIGUE_ALERT_THRESHOLD = 18;
+    private static final int RECOVERY_FATIGUE_REDUCTION = 12;
+
+    /**
+     * What a club recovers at when it employs no physio. Not zero: a club without one is slower, not
+     * injured, and a floor of zero would make the medical centre useless to everybody who has not hired.
+     */
+    private static final double NO_PHYSIO_FACTOR = 0.6;
+    private static final int RECOVERY_DAY_REDUCTION = 3;
+
+    private final TeamRepository teamRepository;
+    private final PlayerRepository playerRepository;
+    private final StaffMemberRepository staffMemberRepository;
+
+    @Transactional(readOnly = true)
+    public TeamMedicalOverviewDTO buildOverview(Long teamId) {
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return null;
+        }
+        return buildOverview(team);
+    }
+
+    @Transactional
+    public TeamMedicalOverviewDTO applyRecovery(Long teamId, Long playerId) {
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return null;
+        }
+
+        Player player = playerRepository.findById(playerId)
+                .filter(p -> p.getTeam() != null && Objects.equals(p.getTeam().getId(), teamId))
+                .orElse(null);
+        if (player == null) {
+            return null;
+        }
+
+        Skills skills = player.getSkills();
+        if (skills != null) {
+            // **Physio handles fatigue, doctor handles injuries - two roles, two jobs** (owner,
+            // 2026-10-18). That sentence was in the comment below and the physio did nothing at all: the
+            // fatigue reduction was a flat twelve for every club in the world, whether it employed a
+            // physio or not. He is now what the comment always claimed.
+            int reduction = (int) Math.round(RECOVERY_FATIGUE_REDUCTION * physioFactor(teamId));
+            int reducedFatigue = Math.max(0, skills.getFatigue() - reduction);
+            skills.setSkill(SkillName.FATIGUE, reducedFatigue);
+        }
+
+        int currentInjuryDays = Math.max(0, player.getInjuryDaysRemaining());
+        if (currentInjuryDays > 0) {
+            // **Doctor shortens injury recovery.** The base reduction is 3 days; if the club has a
+            // doctor, his fitness attribute adds up to 4 more (20 fitness = 7 days total). Physio
+            // handles fatigue, doctor handles injuries - two roles, two jobs.
+            int reduction = RECOVERY_DAY_REDUCTION;
+            StaffMember doctor = staffMemberRepository.findByTeamId(teamId).stream()
+                    .filter(sm -> sm.getRole() == StaffRole.DOCTOR).findFirst().orElse(null);
+            if (doctor != null && doctor.getFitness() != null) {
+                reduction += (int) Math.round(doctor.getFitness() / 5.0);
+            }
+            int next = Math.max(0, currentInjuryDays - reduction);
+            player.setInjuryDaysRemaining(next);
+            if (next == 0) {
+                player.setInjurySeasonNumber(null);
+                player.setInjuryWeekNumber(null);
+                player.setInjured(false);
+            }
+        }
+
+        player.setForm(Math.min(10.0, Math.max(1.0, player.getForm() + 0.2)));
+        playerRepository.save(player);
+        return buildOverview(team);
+    }
+
+    /**
+     * What the club's physio is worth to a recovery session (owner, 2026-10-18).
+     *
+     * <p>The owner: *"bez fizija se sporije oporavljaju"* - without a physio they recover more slowly. So
+     * the floor is not zero, it is slow: a club with nobody recovers at 60% of the rate, and the best
+     * physio in the game restores the full twelve points. Between those, it scales with what he knows
+     * about fitness, which is the skill a physio is hired for.
+     *
+     * <p>Judged on {@code coachRating(STAMINA)} rather than his overall, for the same reason the doctor is
+     * judged on {@code fitness}: a medical role is worth what he knows about bodies, not how good a coach
+     * he is in general.
+     */
+    private double physioFactor(Long teamId) {
+        StaffMember best = null;
+        int bestRating = 0;
+        for (StaffMember member : staffMemberRepository.findByTeamId(teamId)) {
+            if (member == null || member.getRole() != StaffRole.PHYSIO) continue;
+            int rating = Math.max(1, Math.min(20, member.coachRating(SkillName.STAMINA)));
+            if (best == null || rating > bestRating) {
+                best = member;
+                bestRating = rating;
+            }
+        }
+        if (best == null) {
+            return NO_PHYSIO_FACTOR;
+        }
+        return NO_PHYSIO_FACTOR + (1.0 - NO_PHYSIO_FACTOR) * (bestRating / 20.0);
+    }
+
+    private TeamMedicalOverviewDTO buildOverview(Team team) {
+        List<Player> players = playerRepository.findByTeamId(team.getId());
+        int injuredCount = (int) players.stream().filter(Player::isInjured).count();
+        int criticalInjuryCount = (int) players.stream()
+                .filter(Player::isInjured)
+                .filter(player -> player.getInjuryDaysRemaining() >= 14)
+                .count();
+        int rehabCount = (int) players.stream().filter(this::needsRecovery).count();
+        int averageConditionPercent = players.isEmpty()
+                ? 100
+                : (int) Math.round(players.stream().mapToInt(this::conditionPercent).average().orElse(100.0));
+
+        List<PlayerDTO> queue = players.stream()
+                .filter(this::needsRecovery)
+                .sorted(Comparator
+                        .comparing(Player::isInjured).reversed()
+                        .thenComparingInt(Player::getInjuryDaysRemaining).reversed()
+                        .thenComparingInt(this::fatigueValue).reversed()
+                        .thenComparing(Player::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(PlayerDTO::from)
+                .toList();
+
+        return new TeamMedicalOverviewDTO(
+                team.getId(),
+                team.getName(),
+                players.size(),
+                Math.max(0, players.size() - injuredCount),
+                injuredCount,
+                criticalInjuryCount,
+                rehabCount,
+                averageConditionPercent,
+                queue
+        );
+    }
+
+    private boolean needsRecovery(Player player) {
+        return player != null && (player.isInjured() || fatigueValue(player) >= FATIGUE_ALERT_THRESHOLD);
+    }
+
+    private int conditionPercent(Player player) {
+        return Math.max(0, Math.min(100, 100 - fatigueValue(player)));
+    }
+
+    private int fatigueValue(Player player) {
+        if (player == null || player.getSkills() == null) {
+            return 0;
+        }
+        return Math.max(0, Math.min(100, player.getSkills().getFatigue()));
+    }
+}

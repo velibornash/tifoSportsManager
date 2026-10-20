@@ -1,4 +1,4 @@
-package org.example.footballmanager.demo.swingUIDemo;
+package org.tifo.footballmanager.demo.swingUIDemo;
 
 /** Stable, persistence-friendly outcomes of completed demo actions. */
 public enum ActionOutcome {

@@ -1,12 +1,12 @@
-package org.example.footballmanager.newLogic.old.oldService;
+package org.tifo.footballmanager.newLogic.old.oldService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.model.*;
-import org.example.footballmanager.newLogic.repository.*;
-import org.example.footballmanager.newLogic.old.oldSimulator.DemoSimulator;
+import org.tifo.footballmanager.newLogic.model.*;
+import org.tifo.footballmanager.newLogic.repository.*;
+import org.tifo.footballmanager.newLogic.old.oldSimulator.DemoSimulator;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 

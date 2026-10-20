@@ -1,20 +1,20 @@
-package org.example.footballmanager.newLogic.service;
+package org.tifo.footballmanager.newLogic.service;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.engine_v1.MatchEngine;
-import org.example.footballmanager.newLogic.engine_v1.MatchPlaybackEngine;
-import org.example.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
-import org.example.footballmanager.newLogic.engine_v1.RealisticMatchEngine;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.MatchRuntime;
-import org.example.footballmanager.newLogic.model.event.MatchEvent;
-import org.example.footballmanager.newLogic.repository.MatchEventRepository;
-import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
-import org.example.footballmanager.newLogic.repository.MatchRepository;
-import org.example.footballmanager.newLogic.repository.MatchTickStateRepository;
-import org.example.footballmanager.newLogic.util.RuntimeSaveToDB;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchEngine;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchPlaybackEngine;
+import org.tifo.footballmanager.newLogic.engine_v1.MatchStatisticEngine;
+import org.tifo.footballmanager.newLogic.engine_v1.RealisticMatchEngine;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.MatchRuntime;
+import org.tifo.footballmanager.newLogic.model.event.MatchEvent;
+import org.tifo.footballmanager.newLogic.repository.MatchEventRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchTickStateRepository;
+import org.tifo.footballmanager.newLogic.util.RuntimeSaveToDB;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 

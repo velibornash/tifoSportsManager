@@ -1,10 +1,10 @@
-package org.example.footballmanager.newLogic.engine_v1;
+package org.tifo.footballmanager.newLogic.engine_v1;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.example.footballmanager.newLogic.model.Match;
-import org.example.footballmanager.newLogic.model.MatchRuntime;
-import org.example.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.Match;
+import org.tifo.footballmanager.newLogic.model.MatchRuntime;
+import org.tifo.footballmanager.newLogic.model.Player;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

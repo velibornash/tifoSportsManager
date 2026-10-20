@@ -1,0 +1,523 @@
+package org.tifo.footballmanager.newLogic.util;
+
+import org.tifo.footballmanager.newLogic.model.Competition;
+import org.tifo.footballmanager.newLogic.model.CompetitionScope;
+import org.tifo.footballmanager.newLogic.model.CompetitionType;
+import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.tifo.footballmanager.newLogic.service.SeasonService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.List;
+import java.util.Random;
+
+/**
+ * The cup draw, so a country has a cup with rounds and a bracket rather than a name in a table
+ * (owner, 2026-09-28).
+ *
+ * <p>{@code Competition} row 32 ("Kup Srbije") has existed since the database was seeded, with
+ * {@code teams_per_competition = 64} and no teams in it. It was a label, not a competition.
+ *
+ * <p><b>The week map, in the owner's words.</b> Kup Srbije for a country of 310 clubs:
+ *
+ * <pre>
+ *   week 1   the bottom 108 (ranks 203-310)   -&gt;  54 ties,  54 winners
+ *   week 2   54 winners + 202 direct entrants -&gt; 128 ties, 128 winners
+ *   week 3                                -&gt;  64 ties
+ *   week 4                                -&gt;  32 ties
+ *   week 5                                -&gt;  16 ties
+ *   week 6                                NT week, no club football
+ *   week 7                                -&gt;   8 ties
+ *   week 8                                -&gt;   4 ties, the quarter-final
+ *   week 9                                -&gt;   2 ties, the semi-final
+ *   week 10                               -&gt;   1 tie,  the final
+ * </pre>
+ *
+ * <p>Nine rounds, no week 6, final on week 10. This was wrong and it was wrong twice over: the constant
+ * read {@code {1, 2, 3, 4, 5, 7, 8, 11}} — eight rounds, so <b>there was no final at all</b> — and it
+ * put the last round three weeks after the quarter-final. Its own comment explained the gap as a
+ * deliberate reading of an earlier, vaguer brief ("the final on week 11" at the cost of weeks 9 and 10
+ * carrying league football only). The owner has since stated the table outright, and it is the table
+ * above.
+ *
+ * <p>{@link InternationalClubCupDraw#CUP_WEEKS} already carried exactly this map. The national cup was
+ * the only competition in the codebase disagreeing with the owner's arithmetic, which is how a wrong
+ * answer survives: there was nothing to compare it against until the two were read side by side.
+ */
+@Component
+public class CupFixtureSeeder {
+
+    private static final Logger log = LoggerFactory.getLogger(CupFixtureSeeder.class);
+
+    /**
+     * Owner, restated 2026-10-13. Nine rounds, no week 6, the final on week 10.
+     *
+     * <p>See the class comment for the table this encodes, and for what it used to say.
+     */
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
+
+    /** Owner: ranks 203-310 enter in week 1; ranks 1-202 join the winners in week 2. */
+    static final int ENTRY_ROUND_TEAMS = 108;
+    static final int MAIN_DRAW_TEAMS = 256;
+
+    /**
+     * Day 5 is the cup slot in the seven-day template.
+     *
+     * <p>Stated here rather than read from the template because the national cup <em>is</em> the day-5
+     * competition — that is what makes it different from the fifteen continental cups, which play in the
+     * day-1 international slot. The hour is not stated: it comes from {@link WeekTemplate}, so the two
+     * cannot drift apart again.
+     */
+    private static final int CUP_DAY = 5;
+
+    /** A fixed seed so the draw is the same on every boot. A random draw would reshuffle the cup
+     *  on every restart, which is not a cup. */
+    private static final long DRAW_SEED = 20260928L;
+
+    /**
+     * When a cup tie in a given week is played.
+     *
+     * <p>Derived from the week number and the cup's own day, rather than invented per tie, so every tie in
+     * a round lands on the same day. Shared with the international cups, which have their own week map
+     * but the same day and hour — two date rules would mean two answers to "when does the cup play".
+     */
+    /**
+     * When a cup tie in a given week is played, measured from the <b>game clock's</b> season start.
+     *
+     * <p>This was measured from a literal, {@code LocalDate.of(2026, 7, 1)}, and that is B4. Every season's
+     * round 1 got the same wall-clock date, and the recovery window is {@code currentDate - 2 days}
+     * ({@code ZoneLoadService:69,127}), so once the clock passed 2026-07-06 <b>no cup fixture ever fell
+     * inside it</b> - loads were written and never read and {@code RecoveryJob} reported zero for ever.
+     *
+     * <p>The league path already had this right: {@code SeasonService:267} seeds from
+     * {@code clock.getCurrentDate()}. This now uses the same clock rather than a date that means nothing
+     * to the running world.
+     *
+     * <p>Still one rule for "when does the cup play", shared with the international cups: the week number
+     * and the cup's own day, so every tie in a round lands on the same day.
+     */
+    public static LocalDateTime matchDateFor(int week, LocalDateTime seasonStart) {
+        // Day and hour come from the seven-day template, from the same place every other fixture
+        // writer reads them. This class used to carry its own CUP_DAY = 5 / CUP_HOUR = 18, and the
+        // continental cups borrowed this method while carrying CUP_DAY = 1 - so fifteen international
+        // competitions reported day 1 in one column and day 5 at 18:00 in the other.
+        return org.tifo.footballmanager.newLogic.model.GameTimeline.kickoffAt(
+                seasonStart.toLocalDate(), week, CUP_DAY);
+    }
+
+    private final SeasonService seasons;
+
+    /**
+     * The season the draw belongs to, read from the clock rather than written here.
+     *
+     * <p>This was a constant, and it was wrong twice. It was 1 - the season number - while the rest
+     * of the world used a calendar year, so the day-5 matchday job asked for a season with no cup
+     * fixtures in it, completed successfully and played nothing. Changing the constant did not help,
+     * because the call sites never came from it. It was then moved onto the calendar year to make
+     * the two agree, which fixed the job and left the country page reading a season the seeder had
+     * never written - "0 ties across 8 rounds" over a bracket the log had just reported as drawn.
+     * A season is a number counted from 1 now, everywhere, and this asks the clock which one it is
+     * so there is no second answer to keep in step.
+     */
+    private int seedSeason() {
+        return seasons.getActiveSeasonYear();
+    }
+
+    private final MatchFixtureRepository fixtures;
+    private final CompetitionRepository competitions;
+    private final TeamRepository teams;
+    private final PlayerRepository players;
+
+    /** Two constructors, so Spring is told which one. Same trap as TransferActivitySeeder and
+     *  NationalTeamSeeder; a unit test cannot catch it because it never goes through Spring. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
+                            TeamRepository teams, PlayerRepository players, SeasonService seasons) {
+        this.competitions = competitions;
+        this.fixtures = fixtures;
+        this.teams = teams;
+        this.players = players;
+        this.seasons = seasons;
+    }
+
+    @Transactional
+    public void seedIfMissing() {
+        // P0-CUPS-6 Option A: draw every national cup independently. This keeps the repair path aligned
+        // with the scheduled path and avoids selecting one country by database id.
+        List<Competition> nationalCups = competitions.findByTypeAndScope(CompetitionType.CUP, CompetitionScope.NATIONAL);
+        int drawn = 0;
+        for (Competition cup : nationalCups) {
+            if (cup.getCountry() == null || cup.getCountry().getId() == null) {
+                continue; // Skip global/continental cups; keep only per-country national cups
+            }
+            // **"Has round 1 been drawn?" — not "are there unplayed round-1 ties left?".**
+            //
+            // The guard counted `...AndPlayedFalse`, so the answer fell to zero the moment round 1 was
+            // played and the next press of the admin button drew all 108 teams a second time. Measured on
+            // the owner's database: 54 duplicate round-1 ties, every one of the field entered twice, added
+            // on every press, by a method whose Javadoc promised the opposite. Its own name said
+            // "if missing", and to that question a played round is missing.
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumber(
+                    cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
+            if (existing > 0) {
+                drawn++;
+                continue;
+            }
+            List<Team> ranked = rankedClubs(cup);
+            if (ranked.size() < MAIN_DRAW_TEAMS) {
+                log.warn("Cup {} (country {}): only {} clubs; needs {}.", cup.getName(), cup.getCountry().getIsoCode(), ranked.size(), MAIN_DRAW_TEAMS);
+                continue;
+            }
+            cup.setTeamsPerCompetition(MAIN_DRAW_TEAMS);
+            competitions.save(cup);
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            List<Team> firstKnockout = new ArrayList<>(ranked.subList(Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS), ranked.size()));
+            List<MatchFixture> round1 = drawRound(cup, 1, firstKnockout, seedSeason());
+            log.info("P0-6 Option A: drew {} ties for cup {} (country {} / season {}).", round1.size(), cup.getName(), cup.getCountry().getIsoCode(), seedSeason());
+            drawn++;
+        }
+        if (drawn == 0) {
+            log.info("P0-6 Option A: no active-country national cup drawn.");
+        } else {
+            log.info("P0-6 Option A: {} country national cup(s) drawn for season {}.", drawn, seedSeason());
+        }
+        return;
+    }
+
+    /**
+     * Ranks the country's clubs.
+     *
+     * <p>By average squad rating, then name. There is no club-level Elo yet — the rating engine exists
+     * but nothing persists a club rating — so squad strength is the only honest ordering available.
+     * Ties break on name rather than on iteration order so two boots produce the same draw.
+     */
+    /** A cup is for clubs, so the field is built from league clubs only. */
+    private static boolean isLeagueClub(Team team) {
+        Competition competition = team.getCompetition();
+        return competition != null && competition.getType() == CompetitionType.LEAGUE;
+    }
+
+    private List<Team> rankedClubs(Competition cup) {
+        // **The cup's own country, not the first club the repository happens to return.**
+        //
+        // It used to take the country from `clubs.get(0)` and `continue` past every team whose country
+        // did not match it - "a Serbia dependency expressed as a continue". Two things were wrong with
+        // that. It scanned every club in the world to answer a question about one country, and the
+        // country it settled on was whichever came first from an unordered query, so the draw silently
+        // is scoped to the cup's country, so a second country's clubs cannot affect this field.
+        if (cup == null || cup.getCountry() == null || cup.getCountry().getId() == null) {
+            log.warn("Cup {} has no country; nothing to rank.", cup == null ? "null" : cup.getName());
+            return new ArrayList<>();
+        }
+        // **A country is not a field of clubs.**
+        //
+        // `findByCountryId` returns every team row carrying that country id, and two of those are not
+        // clubs: `Serbia` and `Serbia U-21`, the senior and under-21 national sides. They sit in the
+        // same country and have no league, which is correct for them and disqualifying here.
+        //
+        // The cost was invisible in every log line it touched. Serbia has 310 league clubs and those two
+        // national teams, so the count was 312; round 1 took 108 and round 2 was handed `312 - 108 =
+        // 204` direct entrants instead of the 202 the code above it documents in plain words, giving
+        // 258 entrants and 129 ties. 129 is odd, so the bracket is destroyed at the first draw — the
+        // owner's own arithmetic (202 + 54 = 256, then 128-64-32-16-8-SF-F) is the correct one and the
+        // seeder's own comment already said so.
+        //
+        // The filter is `type == LEAGUE` rather than "has any competition", because that is the
+        // definition the pyramid uses and it also keeps a misfiled side out.
+        List<Team> clubs = teams.findByCountryId(cup.getCountry().getId()).stream()
+                .filter(team -> team.getId() != null && team.getCountry() != null)
+                .filter(CupFixtureSeeder::isLeagueClub)
+                .toList();
+        return sortByStrength(new ArrayList<>(clubs), strengthOf(clubs));
+    }
+
+    /**
+     * Squad strength for every team, one query each, computed once.
+     *
+     * <p>This exists because the obvious version - sorting with a comparator that calls
+     * {@code averageSquadRating} - re-queries the database on every comparison. With 310 clubs that
+     * is roughly 2500 extra queries, and the draw appeared to do nothing at all: the seeder had not
+     * failed, it was still working. The symptom is indistinguishable from a silent crash, which is
+     * why the earlier rounds of this had "a draw that does nothing" with no error in the log.
+     */
+    private Map<Long, Double> strengthOf(List<Team> clubs) {
+        Map<Long, Double> strength = new HashMap<>();
+        for (Team team : clubs) {
+            strength.put(team.getId(), averageSquadRating(team));
+        }
+        return strength;
+    }
+
+    private List<Team> sortByStrength(List<Team> clubs, Map<Long, Double> strength) {
+        List<Team> sorted = new ArrayList<>(clubs);
+        sorted.sort(Comparator
+                .comparingDouble((Team t) -> strength.getOrDefault(t.getId(), 0.0)).reversed()
+                .thenComparing(t -> t.getName() == null ? "" : t.getName()));
+        return sorted;
+    }
+
+    private double averageSquadRating(Team team) {
+        List<org.tifo.footballmanager.newLogic.model.Player> squad = players.findByTeamId(team.getId());
+        if (squad == null || squad.isEmpty()) {
+            return 0.0;
+        }
+        double total = 0.0;
+        for (org.tifo.footballmanager.newLogic.model.Player player : squad) {
+            total += player.getRating();
+        }
+        return total / squad.size();
+    }
+
+    /**
+     * Draws one round from the clubs that survived the one before it.
+     *
+     * <p>Public so {@code CupDrawJob} can call it per round. The owner's requirement, from watching a
+     * reset leave the cup empty on the Oracle server: every round's draw should be a scheduled job, and
+     * a draw that did not happen gets caught by the next check because it is not marked done.
+     *
+     * <p>That is exactly what the job framework's done-flag is for. The alternative - drawing whatever
+     * rounds happen to be missing whenever anything asks - means a round can be drawn twice, and a
+     * half-drawn tournament is worse than an obviously empty one.
+     */
+    @Transactional
+    public int drawRoundForWeek(int week) {
+        int round = roundForWeek(week);
+        if (round <= 0) {
+            return 0;
+        }
+        int drawn = 0;
+        List<Competition> nationalCups = competitions.findByTypeAndScope(
+                CompetitionType.CUP, CompetitionScope.NATIONAL);
+        for (Competition cup : nationalCups) {
+            if (cup.getCountry() == null || cup.getCountry().getId() == null) {
+                continue;
+            }
+            // The same "has it been drawn?" question, on the per-round path. Counting unplayed ties meant
+            // a round that had been played read as never drawn, so the scheduled draw would deal it again
+            // on any rewind. The job runner's done-flag covers a slot that has not been rewound and covers
+            // nothing at all for one that has.
+            long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumber(
+                    cup.getId(), seedSeason(), round);
+            if (existing > 0) {
+                continue;
+            }
+            List<Team> survivors = survivorsOf(cup, round);
+            if (survivors.size() < 2) {
+                log.info("Cup {} ({}) round {}: {} survivor(s), nothing to pair.", cup.getName(),
+                        cup.getCountry().getIsoCode(), round, survivors.size());
+                continue;
+            }
+            int cupDrawn = drawRound(cup, round, survivors, seedSeason()).size();
+            drawn += cupDrawn;
+            log.info("Cup draw: {} tie(s) drawn for {} ({}) round {}.", cupDrawn, cup.getName(),
+                    cup.getCountry().getIsoCode(), round);
+        }
+        return drawn;
+    }
+
+    /**
+     * The clubs still in the tournament at the start of a round: the previous round's winners.
+     *
+     * <p>Before round 1 it is the entry field - the owner's ranks 203-310. After that it is whoever won,
+     * which is only knowable once the previous round has actually been played. A round whose previous
+     * ties are unplayed yields no draw rather than a draw against teams that have not qualified.
+     */
+    private List<Team> survivorsOf(Competition cup, int round) {
+        // The cup it is drawing for. This called rankedClubs() with no argument, so round 1's field was
+        // the world's bottom 108 clubs rather than this cup's - it never asked which cup it was drawing.
+        List<Team> ranked = rankedClubs(cup);
+        if (round == 1) {
+            // The bottom 108, for the same reason the seeder draws the bottom 108: the preliminary is
+            // for the clubs that have to earn their place, and taking the top 108 here inverted the
+            // whole competition while the comment said otherwise.
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            return new ArrayList<>(ranked.subList(directEntrantCount, ranked.size()));
+        }
+        int previousRound = round - 1;
+        List<MatchFixture> previous = fixtures
+                .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seedSeason())
+                .stream()
+                .filter(f -> f.getRoundNumber() != null && f.getRoundNumber() == previousRound)
+                .toList();
+        if (previous.isEmpty() || previous.stream().anyMatch(f -> !f.isPlayed())) {
+            return List.of();
+        }
+        List<Team> winners = new ArrayList<>();
+        for (MatchFixture tie : previous) {
+            Team winner = winnerOf(tie);
+            if (winner != null) {
+                winners.add(winner);
+            }
+        }
+
+        if (round == 2) {
+            // Round 2 is the 256: the 202 direct entrants plus the 54 first-round winners. It used to
+            // be the 54 winners alone, so the strongest clubs in the country — the ones that had not
+            // played a match — were simply not in the competition from round 2 onwards. The direct
+            // entrants are named here rather than in the seed method because this is where a round's
+            // field is decided: whoever is left, plus whoever came straight through.
+            int directEntrantCount = Math.max(0, ranked.size() - ENTRY_ROUND_TEAMS);
+            winners.addAll(ranked.subList(0, directEntrantCount));
+            log.info("Cup {} round 2: {} first-round winner(s) join {} direct entrants for {}.",
+                    cup.getName(), winners.size() - directEntrantCount, directEntrantCount, winners.size());
+        }
+        return winners;
+    }
+
+    /**
+     * The winning side of a played tie. Null only when it genuinely is not knowable.
+     *
+     * <p>This used to return null for <i>every</i> level tie, on the reasoning that "a knockout tie
+     * cannot be level, so a level scoreline means the shootout was not recorded". True as far as it went,
+     * and it meant every level tie dropped a club from the competition and the next round was drawn
+     * short. Now a level cup tie is settled from the spot when the match is persisted, and the result
+     * lives in the match's own penalty columns.
+     *
+     * <p>The scoreline is not touched by the shootout, and that is deliberate: a tie that finished 1-1
+     * and was won 4-3 on penalties is a 1-1 match, and folding the kicks into the goals would report it
+     * as 5-4 to the table, the replay and the scoreline on the page.
+     */
+    private Team winnerOf(MatchFixture tie) {
+        if (tie.getPlayedMatch() == null) {
+            return null;
+        }
+        int home = tie.getPlayedMatch().getHomeGoals();
+        int away = tie.getPlayedMatch().getAwayGoals();
+        if (home == away) {
+            Integer homePens = tie.getPlayedMatch().getHomePenaltyGoals();
+            Integer awayPens = tie.getPlayedMatch().getAwayPenaltyGoals();
+            if (homePens == null || awayPens == null || homePens.equals(awayPens)) {
+                // Genuinely undecidable: the tie was never settled. Kept as a warning rather than a
+                // coin toss, because a cup that invents a winner is worse than a cup that is one team
+                // short and says so.
+                log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
+                        tie.getId(), home, away);
+                return null;
+            }
+            return homePens > awayPens ? tie.getHomeTeam() : tie.getAwayTeam();
+        }
+        return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
+    }
+
+    /** The round number the calendar puts in a given week, or 0 if that week has no cup round. */
+    private int roundForWeek(int week) {
+        for (int i = 0; i < CUP_WEEKS.length; i++) {
+            if (CUP_WEEKS[i] == week) {
+                return i + 1;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * One knockout round, drawn the way the owner specified.
+     *
+     * <p>The rule: split the remaining clubs by ranking. The better half are the favourites and the
+     * weaker half are the non-favourites. Every tie is one random favourite against one random
+     * non-favourite, and <b>the non-favourite hosts</b>. The split is recomputed each round from
+     * whoever is left, so the favourites are the best of the survivors rather than a fixed group set
+     * at the start of the tournament.
+     *
+     */
+    /**
+     * Splits the entrants into the two halves of a draw.
+     *
+     * <p>The owner's rule, and it is the whole of how a cup is seeded: <b>sort the entrants descending,
+     * halve them, and pair one from the top half against one from the bottom half at random.</b> The
+     * favourite never meets a favourite, the weakest club never draws another weak club, and because
+     * the pairing inside each half is random the draw is still a draw.
+     *
+     * <p>It is one function for every round, including the first. The entry round holds 108 clubs, so
+     * the split is 54 against 54 and the same code that draws a final draws the first tie of the cup.
+     * That is deliberate: a special case for round 1 is a second seeding rule that will eventually
+     * disagree with the first.
+     *
+     * <p>The halves are recomputed from whoever is left in this round, not fixed at the start of the
+     * tournament, so a promoted club and a giant-killed one are re-seeded on what they have actually
+     * done rather than on what they were ranked before the draw.
+     *
+     * @return the top half, strongest first, and the bottom half
+     */
+    public List<List<Team>> splitForDraw(List<Team> rankedDescending) {
+        int half = rankedDescending.size() / 2;
+        return List.of(
+                new ArrayList<>(rankedDescending.subList(0, half)),
+                new ArrayList<>(rankedDescending.subList(half, rankedDescending.size())));
+    }
+
+    private List<MatchFixture> drawRound(Competition cup, int roundNumber, List<Team> entrants,
+                                         int seasonYear) {
+        List<Team> ranked = sortByStrength(new ArrayList<>(entrants), strengthOf(entrants));
+
+        List<List<Team>> halves = splitForDraw(ranked);
+
+        // **The pairing inside each half is shuffled, and this is the whole of what makes it a draw.**
+        //
+        // It used to pair `favourites.get(i)` with `nonFavourites.get(i)` — index against index. Since
+        // `ranked` is sorted strongest first, the strongest club in the country met the weakest club in
+        // the country, in every round, for ever. DRAW_SEED was declared, assigned to a Random and never
+        // read; three javadocs on this class described a shuffle the code did not perform. The
+        // international club cups have always used Collections.shuffle, which is why they were random
+        // and the national cup was not.
+        //
+        // The seed is derived from the cup and the round rather than taken from a shared Random, so the
+        // same cup in the same round draws the same ties on every boot — which is the one property a
+        // reproducible draw has to keep, and the reason the field `random` was never the right thing to
+        // shuffle with in the first place.
+        Random drawRandom = new Random(DRAW_SEED + cup.getId() * 1000L + roundNumber);
+        List<Team> favourites = new ArrayList<>(halves.get(0));
+        List<Team> nonFavourites = new ArrayList<>(halves.get(1));
+        Collections.shuffle(favourites, drawRandom);
+        Collections.shuffle(nonFavourites, drawRandom);
+
+        int week = CUP_WEEKS[Math.min(roundNumber, CUP_WEEKS.length) - 1];
+        int ties = Math.min(favourites.size(), nonFavourites.size());
+        if (ties * 2 < ranked.size()) {
+            // Odd count: the unpaired clubs from the larger half enter as byes rather than being
+            // dropped. Losing a club silently would be worse than a slightly lopsided draw.
+            log.info("Cup {} round {}: {} clubs, {} ties, {} byes.",
+                    cup.getName(), roundNumber, ranked.size(), ties, ranked.size() - ties * 2);
+        }
+
+        List<MatchFixture> made = new ArrayList<>();
+        for (int i = 0; i < ties; i++) {
+            Team favourite = favourites.get(i);
+            Team nonFavourite = nonFavourites.get(i);
+            MatchFixture fixture = new MatchFixture();
+            fixture.setCompetition(cup);
+            // The non-favourite is at home. That is the owner's rule and it is the whole point of
+            // the split: the tie is the upset, and the weaker side gets the home crowd.
+            fixture.setHomeTeam(nonFavourite);
+            fixture.setAwayTeam(favourite);
+            fixture.setRoundNumber(roundNumber);
+            fixture.setWeekNumber(week);
+            // Day 5 is the only cup day in the template, and the day-5 matchday job selects
+            // fixtures by day. Without this it would never find its own football.
+            fixture.setDayNumber(CUP_DAY);
+            fixture.setSeasonYear(seasonYear);
+            fixture.setPlayed(false);
+            // The cup plays on day 5 of its week, so the date is derived from the week number rather
+            // than invented per tie: one rule, and every tie in a round lands on the same day.
+            fixture.setMatchDate(matchDateFor(week, seasons.getOrCreateClock().getCurrentDate()));
+            made.add(fixtures.save(fixture));
+        }
+        log.info("Cup {} round {}: {} ties for week {} (day {}), favourites vs non-favourites, "
+                        + "non-favourite at home.", cup.getName(), roundNumber, made.size(), week, CUP_DAY);
+        return made;
+    }
+}

@@ -1,0 +1,449 @@
+package org.tifo.footballmanager.newLogic.util;
+
+import org.tifo.footballmanager.newLogic.model.Competition;
+import org.tifo.footballmanager.newLogic.model.CompetitionScope;
+import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
+import org.tifo.footballmanager.newLogic.model.CompetitionType;
+import org.tifo.footballmanager.newLogic.model.CompetitionEntry;
+import org.tifo.footballmanager.newLogic.model.SeasonCompetition;
+import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.CompetitionEntryRepository;
+import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.tifo.footballmanager.newLogic.repository.SeasonCompetitionRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.tifo.footballmanager.newLogic.util.LeagueTableOrder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * The three international club cups (owner, 2026-09-30).
+ *
+ * <p>The World page has listed Champions Cup, Masters Cup and Challenge Cup as "Not created yet" since
+ * they were written into the markup. They are created here, and — the part that matters — so are the
+ * clubs that qualify for each one.
+ *
+ * <h2>Who is in each, and why those positions</h2>
+ *
+ * <p>The owner specified it: <b>Champions for the winners, Masters for the second and third, Challenge
+ * for the fourth.</b> It is a nice shape — one competition per finishing place band, so every division in
+ * the world contributes to all three and a club's league position decides which continental competition
+ * it is playing in. A second-tier champion in a fifth division reaches the Champions Cup, exactly as a
+ * fifth-tier champion in a first division does, because the rule is about the place in <i>your</i>
+ * division rather than the strength of the division.
+ *
+ * <h2>Which season's table</h2>
+ *
+ * <p><b>The season that has finished</b>, not the one in progress. A cup is entered on the strength of
+ * last season, so a club that wins its division in week 12 cannot enter the same season's Champions Cup
+ * by winning it in week 12 — the entry is decided by the table everyone has already played.
+ *
+ * <p>Positions come from {@link LeagueTableOrder}, the one comparator in the codebase, rather than from
+ * the stored {@code position} column. A table is only ordered when it is read, and reading a
+ * half-played table through a stale position column is how a table ends up claiming a club finished first
+ * when it finished fourth.
+ */
+@Service
+public class InternationalClubCups {
+
+    private static final Logger log = LoggerFactory.getLogger(InternationalClubCups.class);
+
+    public static final String CHAMPIONS = "Champions Cup";
+    public static final String MASTERS = "Masters Cup";
+    public static final String CHALLENGE = "Challenge Cup";
+
+    /**
+     * One cup at one tier, and the finishing places in a division that qualify for it.
+     *
+     * <p><b>Per tier, and that is the correction that matters</b> (owner, 2026-09-30). The cups are not
+     * three competitions with every division on the planet in them: tier 1's Champions Cup is contested
+     * by tier 1's divisions and meets nobody else. Tier 1 has one division per country while tier 5 has
+     * sixteen, so a single global Champions Cup would have quietly thrown 32 fifth-tier clubs in with
+     * two first-tier ones and called it a competition between equals.
+     *
+     * <p><b>Every division in the tier contributes</b>, because in the lower tiers there is more than one
+     * division per country — they are mini-tables, and each is a separate door into the cups.
+     *
+     * <p>The bands are the owner's: <b>Champions for the winners, Masters for the second and third,
+     * Challenge for the best of the fourth-placed clubs.</b> Every division in the tier sends a club to
+     * each, which is what keeps the draw the same shape whichever tier is being played.
+     */
+    public record Cup(int tier, String name, int placesFrom, int placesTo) {
+
+        /** "Champions Cup", "Tier 3 Champions Cup" - the tier is in the name because they are
+         *  different competitions and a table of three would hide that. */
+        public String fullName() {
+            return tier <= 1 ? name : "Tier " + tier + " " + name;
+        }
+    }
+
+    /** Five tiers, three cups each. The bands are the owner's. */
+    public static List<Cup> cups() {
+        List<Cup> cups = new ArrayList<>();
+        for (int tier = 1; tier <= 5; tier++) {
+            cups.add(new Cup(tier, CHAMPIONS, 1, 1));
+            cups.add(new Cup(tier, MASTERS, 2, 3));
+            cups.add(new Cup(tier, CHALLENGE, 4, 4));
+        }
+        return List.copyOf(cups);
+    }
+
+    /** The coin that separates two teams level on everything the table can measure. */
+    private final org.tifo.footballmanager.newLogic.service.RankingTieBreakService tieBreaks;
+    private final CompetitionRepository competitions;
+    private final CompetitionEntryRepository entries;
+    private final SeasonCompetitionRepository seasonCompetitions;
+    private final TeamRepository teams;
+    private final MatchFixtureRepository fixtures;
+    private final TransactionTemplate requiresNew;
+
+    public InternationalClubCups(org.tifo.footballmanager.newLogic.service.RankingTieBreakService tieBreaks,
+                                 CompetitionRepository competitions,
+                                 CompetitionEntryRepository entries,
+                                 SeasonCompetitionRepository seasonCompetitions,
+                                 TeamRepository teams,
+                                 MatchFixtureRepository fixtures,
+                                 PlatformTransactionManager transactionManager) {
+        this.tieBreaks = tieBreaks;
+        this.competitions = competitions;
+        this.entries = entries;
+        this.seasonCompetitions = seasonCompetitions;
+        this.teams = teams;
+        this.fixtures = fixtures;
+        this.requiresNew = new TransactionTemplate(transactionManager);
+        this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /** One cup's record and its qualified clubs, for the World page and for admin. */
+    /**
+     * One cup as the World page shows it.
+     *
+     * @param qualified how many clubs <b>qualified</b> out of the finished season's tables - zero in the
+     *                  opening season, because there is no finished season yet, which says nothing about
+     *                  whether the cup has been drawn
+     * @param ties      how many ties the cup actually holds - this, not {@code qualified}, is the honest
+     *                  answer to "has it been drawn?"
+     */
+    public record CupSummary(String name, int tier, Long competitionId, int qualified,
+                             int ties, List<String> clubNames) {
+    }
+
+    /**
+     * Creates the three competitions if they are not there.
+     *
+     * <p>Idempotent by name, and deliberately <b>not</b> touching a competition that already exists — a
+     * cup that has been played must not have its record rewritten because the seeder ran again.
+     */
+    /**
+     * Creates the three competitions and commits that on its own.
+     *
+     * <p>The boot listener is one long transaction, and three separate steps in this codebase have been
+     * lost to it: the league-fixture day stamp, the bot league standards, and the national Elo replay.
+     * Each of those writes now in {@code REQUIRES_NEW}, and this is the same. The cups were created
+     * inside the boot transaction, the boot transaction did not survive, and the database was left with
+     * none of them while the World page said "Not created yet" — which was true, but for a different
+     * reason than it had been.
+     */
+    public List<Competition> ensureCompetitionsDurably() {
+        return requiresNew.execute(status -> ensureCompetitions());
+    }
+
+    @Transactional
+    public List<Competition> ensureCompetitions() {
+        List<Competition> ensured = new ArrayList<>();
+        for (Cup cup : cups()) {
+            Competition competition = findByName(cup.fullName()).orElse(null);
+            if (competition == null) {
+                competition = new Competition();
+                competition.setName(cup.fullName());
+                competition.setType(CompetitionType.CUP);
+                // INTERNATIONAL is the whole difference from a national cup: the entrants come from
+                // several countries, and this is the only column that says so.
+                competition.setScope(CompetitionScope.INTERNATIONAL);
+                competition.setTeamType(CompetitionTeamType.CLUB);
+                competition.setTier(cup.tier());
+                competition = competitions.save(competition);
+            }
+            ensured.add(competition);
+        }
+        return ensured;
+    }
+
+    private Optional<Competition> findByName(String name) {
+        return competitions.findAllByName(name).stream().findFirst();
+    }
+
+    /**
+     * The clubs that have qualified for a cup, from the finished season's tables.
+     *
+     * @param finishedSeason the season whose final tables decide entry
+     */
+    /**
+     * What each cup holds, for the World page.
+     *
+     * <p><b>Read-only, and it does not create the competitions.</b> My first version called
+     * {@link #ensureCompetitions()} from here, so a GET on the world page issued an INSERT — and the
+     * endpoint is transactional read-only, so the whole thing failed with "cannot execute INSERT in a
+     * read-only transaction" and the World page returned a 500. A read that writes is wrong twice over: it
+     * breaks under a read-only transaction, and it means the page only works if it is the thing that
+     * happens to run first. The competitions are created on boot instead, and a cup that is somehow
+     * missing is reported as missing rather than conjured by a page view.
+     *
+     * <h2>Why the tables are read once per tier and not once per cup</h2>
+     *
+     * <p>This was the World page's lag, and it was arithmetic rather than anything subtle. The three
+     * cups of a tier are read from <b>the same tables</b>, so asking fifteen cups read them fifteen
+     * times: thirty full scans of the competition table, and two queries for every division in the
+     * world — 768 in tier 5 alone — repeated three times over.
+     *
+     * <p>That is about <b>nine thousand queries for one page view</b>, on a server reached over a
+     * network where every one of them is a round trip. It did not look slow while reading it; it was
+     * slow because of what it did to the wire.
+     *
+     * <p>So a tier's tables are loaded once and its three cups are selected from them. The selection
+     * itself is untouched — same comparator, same pools, same bands — because {@link #qualifyFrom} is
+     * the old body, moved rather than rewritten.
+     */
+    @Transactional(readOnly = true)
+    public List<CupSummary> summarise(int finishedSeason) {
+        List<CupSummary> summaries = new ArrayList<>();
+        for (int tier = 1; tier <= 5; tier++) {
+            Map<Long, List<List<CompetitionEntry>>> tables = tierTables(tier, finishedSeason);
+            for (Cup cup : cups()) {
+                if (cup.tier() != tier) {
+                    continue;
+                }
+                List<Team> qualified = qualifyFrom(tables, cup);
+                Long competitionId = findByName(cup.fullName()).map(Competition::getId).orElse(null);
+                summaries.add(new CupSummary(cup.fullName(), cup.tier(), competitionId,
+                        qualified.size(),
+                        competitionId == null ? 0 : (int) fixtures.countByCompetitionId(competitionId),
+                        qualified.stream().map(Team::getName).sorted().toList()));
+            }
+        }
+        return summaries;
+    }
+
+    /**
+     * Every division of one tier's finished-season table, grouped by country.
+     *
+     * <p>Three queries for the tier whatever its size: the divisions, their season rows, and every
+     * table row in one go. It was two queries <em>per division</em>, which is where the page load went.
+     *
+     * <p>A division with no row for the season is left out, so a tier nobody has finished yet reports
+     * an honest zero rather than a club at the top of an empty table.
+     */
+    private Map<Long, List<List<CompetitionEntry>>> tierTables(int tier, int finishedSeason) {
+        Map<Long, List<List<CompetitionEntry>>> byCountry = new LinkedHashMap<>();
+
+        List<Competition> divisions = divisionsInTier(tier).stream()
+                .filter(division -> division.getCountry() != null)
+                .toList();
+        if (divisions.isEmpty()) {
+            return byCountry;
+        }
+
+        Map<Long, SeasonCompetition> seasonRowByDivision = new HashMap<>();
+        for (SeasonCompetition seasonCompetition
+                : seasonCompetitions.findByCompetitionInAndSeasonYear(divisions, finishedSeason)) {
+            if (seasonCompetition.getCompetition() != null) {
+                seasonRowByDivision.put(seasonCompetition.getCompetition().getId(), seasonCompetition);
+            }
+        }
+        if (seasonRowByDivision.isEmpty()) {
+            return byCountry;
+        }
+
+        Map<Long, List<CompetitionEntry>> rowsBySeasonRow = new HashMap<>();
+        for (CompetitionEntry row : entries.findBySeasonCompetitionIn(
+                new ArrayList<>(seasonRowByDivision.values()))) {
+            if (row.getSeasonCompetition() != null) {
+                rowsBySeasonRow.computeIfAbsent(row.getSeasonCompetition().getId(), key -> new ArrayList<>())
+                        .add(row);
+            }
+        }
+
+        for (Competition division : divisions) {
+            SeasonCompetition seasonRow = seasonRowByDivision.get(division.getId());
+            if (seasonRow == null) {
+                continue;
+            }
+            List<CompetitionEntry> rows = rowsBySeasonRow.get(seasonRow.getId());
+            if (rows == null) {
+                continue;
+            }
+            // Sorted here rather than in the query: LeagueTableOrder is the one comparator in the
+            // codebase, and a table that was also ordered in SQL would be a second ordering waiting to
+            // disagree with it.
+            byCountry.computeIfAbsent(division.getCountry().getId(), key -> new ArrayList<>())
+                    .add(LeagueTableOrder.sort(rows, tieBreaks.worldDraw(seasonRow.getSeasonYear())));
+        }
+        return byCountry;
+    }
+
+    /**
+     * The clubs this tier's cup is contested by.
+     *
+     * <p><b>One entry per country per cup, which is what makes the numbers work</b> (owner, 2026-09-30).
+     * Tier 1 has one division per country, so a country's representative is its division winner, and
+     * 48 countries give the Champions Cup its 48 clubs. The Masters Cup takes the best <b>two</b> of each
+     * country's second- and third-placed clubs, so 48 x 2 = 96. The Challenge Cup takes the best one of
+     * each country's fourth-placed clubs, so 48 again — the same size as the Champions Cup, as specified.
+     *
+     * <h2>The mini-tables, and why a tier needs them</h2>
+     *
+     * <p>A country has more than one division in the lower tiers, and each of those is a mini-table with
+     * its own champion, its own seconds and its own fourths. A country enters its tier's cup with the
+     * best of them:
+     *
+     * <ul>
+     *   <li><b>Champions</b> — the better of the divisions' winners. One club, not one per division, or a
+     *       country with sixteen divisions would enter sixteen times.</li>
+     *   <li><b>Masters</b> — the best two of the pool of every 2nd- and 3rd-placed club. In tier 1 that pool
+     *       is exactly two clubs, so the rule degenerates to "the 2nd and the 3rd", which is the
+     *       straightforward case the owner started from.</li>
+     *   <li><b>Challenge</b> — the best one of the pool of every 4th-placed club. In tier 1 that pool is
+     *       one club.</li>
+     * </ul>
+     *
+     * <p>So the same three rules cover both cases, and tier 1 needs no special case at all — which is
+     * what makes it safe to write once.
+     */
+    @Transactional(readOnly = true)
+    public List<Team> qualifiedFor(Cup cup, int finishedSeason) {
+        return qualifyFrom(tierTables(cup.tier(), finishedSeason), cup);
+    }
+
+    /**
+     * The clubs this tier's cup is contested by, for the first season of a world.
+     *
+     * <p><b>Season 1 has no previous season, and so it has no entry at all</b> — not a wrong one, none.
+     * The rule reads the division winner, the second and third, and the fourth, off a
+     * <em>finished</em> table, and in season 1 there is no season 0 to read. A manager who builds a
+     * world and starts at season 1 got fifteen continental cups that were never drawn, with nothing in
+     * the log but "no qualified clubs" (owner, 2026-10-10).
+     *
+     * <p><b>What this reads instead: the current season's tables, as they stand</b> (owner's choice).
+     * That is the same data the finished-table path reads, through the same
+     * {@link LeagueTableOrder} comparator, so the rule itself is unchanged — only the season it is
+     * asked about is different. No new ordering is invented and reputation is not substituted for
+     * position, because position is what the entries carry.
+     *
+     * <p><b>The honest part.</b> At week 1 day 1 those tables are barely played, so "winner" means
+     * "leading after whatever has been played". That is a real ranking, it is the one the league screen
+     * shows, and it changes as the season goes on — which is why this is a fallback for the first
+     * season and not a second qualification rule.
+     */
+    @Transactional(readOnly = true)
+    public List<Team> qualifiedForFirstSeason(Cup cup, int season) {
+        return qualifyFrom(tierTables(cup.tier(), season), cup);
+    }
+
+    /**
+     * The selection rules, over tables somebody else has already read.
+     *
+     * <p>Separate from {@link #tierTables} so the World page can read a tier's tables once and run
+     * three cups over them. The rules are the owner's and unchanged: Champions takes the better of the
+     * divisions' winners, Masters the best two of the pooled seconds and thirds, Challenge the best of
+     * the pooled fourths.
+     */
+    private List<Team> qualifyFrom(Map<Long, List<List<CompetitionEntry>>> byCountry, Cup cup) {
+        Map<Long, Team> chosen = new LinkedHashMap<>();
+        for (List<List<CompetitionEntry>> divisions : byCountry.values()) {
+            // Pool per finishing place, across all of the country's divisions in this tier.
+            List<Team> winners = poolAt(divisions, 0);
+            List<Team> secondsAndThirds = new ArrayList<>(poolAt(divisions, 1));
+            secondsAndThirds.addAll(poolAt(divisions, 2));
+            secondsAndThirds.sort(Comparator.comparingDouble(this::reputationOf).reversed());
+            List<Team> fourths = poolAt(divisions, 3);
+
+            take(winners, cup.placesFrom() == 1 && cup.placesTo() == 1 ? 1 : 0, chosen);
+            if (cup.placesFrom() == 2) {
+                take(secondsAndThirds, 2, chosen);
+            } else if (cup.placesFrom() == 4) {
+                take(fourths, 1, chosen);
+            }
+        }
+        return List.copyOf(chosen.values());
+    }
+
+    /** Every club sitting at one finishing place across a country's divisions, best first. */
+    private List<Team> poolAt(List<List<CompetitionEntry>> divisions, int index) {
+        List<Team> pool = new ArrayList<>();
+        for (List<CompetitionEntry> table : divisions) {
+            if (index < table.size() && table.get(index).getTeam() != null) {
+                pool.add(table.get(index).getTeam());
+            }
+        }
+        pool.sort(Comparator.comparingDouble(this::reputationOf).reversed());
+        return pool;
+    }
+
+    private void take(List<Team> poolBestFirst, int howMany, Map<Long, Team> chosen) {
+        for (int i = 0; i < Math.min(howMany, poolBestFirst.size()); i++) {
+            Team team = poolBestFirst.get(i);
+            if (team != null && team.getId() != null) {
+                chosen.putIfAbsent(team.getId(), team);
+            }
+        }
+    }
+
+    /**
+     * How good a club is, for picking the better of two divisions' winners.
+     *
+     * <p>Club reputation, which is the 0-100 scale the economy uses — deliberately not a squad average,
+     * which would mean a query per candidate for a question the game already stores the answer to.
+     */
+    private double reputationOf(Team team) {
+        return team.getReputation() == null ? 0.0 : team.getReputation();
+    }
+
+    /** Every club division in one tier, in ladder order. */
+    @Transactional(readOnly = true)
+    public List<Competition> divisionsInTier(int tier) {
+        // Sorted in Java rather than by the query, and deliberately: a division with no level has to
+        // sort last, and NULL ordering differs between H2 and Postgres, so asking the database to do it
+        // would give the same query two different answers in the two places this runs.
+        return competitions.findByTypeAndTier(CompetitionType.LEAGUE, tier).stream()
+                .sorted(java.util.Comparator
+                        .comparing((Competition c) -> c.getDivisionLevel() == null ? Integer.MAX_VALUE : c.getDivisionLevel())
+                        .thenComparing(Competition::getId))
+                .toList();
+    }
+
+    /**
+     * How many divisions a tier has, which is how many clubs each of its cups can draw from.
+     *
+     * <p>Derived, never assumed. The world's shape is not fixed: two active countries with full
+     * pyramids give 2 divisions in tier 1 and 32 in tier 5, and activating a third changes both.
+     */
+    @Transactional(readOnly = true)
+    public long divisionsInTierCount(int tier) {
+        return divisionsInTier(tier).size();
+    }
+
+    /** Every club division in the world, in ladder order. */
+    @Transactional(readOnly = true)
+    public List<Competition> leagueDivisions() {
+        return competitions.findAll().stream()
+                .filter(c -> c.getType() == CompetitionType.LEAGUE)
+                .sorted(java.util.Comparator
+                        .comparing((Competition c) -> c.getTier() == null ? Integer.MAX_VALUE : c.getTier())
+                        .thenComparing(c -> c.getDivisionLevel() == null ? Integer.MAX_VALUE : c.getDivisionLevel())
+                        .thenComparing(Competition::getId))
+                .toList();
+    }
+}
