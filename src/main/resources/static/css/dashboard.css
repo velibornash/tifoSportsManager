@@ -2112,13 +2112,6 @@ button.training-week-item {
 .fm-club-hero {
     display: grid;
     gap: 14px;
-    /* **The column has to be allowed to shrink.** A grid track that is `auto` takes its content's
-       minimum width, so a table with a `min-width` inside a scroll wrapper (the transfer market's
-       three tables are 675-705px wide) made this panel 735px wide inside a 414px phone - and the
-       panel is not scrollable, so the columns were simply cut off and unreachable.
-       `minmax(0, 1fr)` lets the panel shrink to the screen and the wrapper do the scrolling it was
-       written for. This is the phone's whole width question in one line. */
-    grid-template-columns: minmax(0, 1fr);
 }
 
 .fm-club-actions {
@@ -4091,7 +4084,7 @@ select option {
     .fm-ph-banner,
     .fm-ph-id-cols,
     .fm-skills-grid {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-page-toolbar,
@@ -4149,15 +4142,15 @@ select option {
     }
 
     .fm-grid-top--club-profile {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-grid-top--fixture-preview {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-match-lineups-grid {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-page-title-block {
@@ -4165,7 +4158,7 @@ select option {
     }
 
     .fx-main {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
         text-align: left;
     }
 
@@ -4181,7 +4174,7 @@ select option {
     }
 
     .fx-insights {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-fixtures-scroll {
@@ -4241,7 +4234,7 @@ select option {
     .training-grid-setup,
     .training-side-grid,
     .training-pools {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .training-report-item,
@@ -4251,7 +4244,7 @@ select option {
 
     .finance-bottom-grid,
     .finance-chart-row {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .training-report-main,
@@ -4294,7 +4287,7 @@ select option {
     }
 
     .training-graph-row {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
         gap: 6px;
         padding: 10px;
         border: 1px solid rgba(var(--wash-rgb), 0.08);
@@ -4321,7 +4314,7 @@ select option {
     }
 
     .fm-ph-banner {
-        grid-template-columns: minmax(0, 1fr);
+        grid-template-columns: 1fr;
     }
 
     .fm-ph-photo-frame {
@@ -5452,9 +5445,9 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .fm-widget-note--neg { color: var(--neg); }
 
 /*
- * The phone gets the same dashboard as the tablet (owner, 2026-10-20, with the screenshot of how
- * it looks): one column, the four tiles in two columns, the next-match strip under them and the
- * recent matches under that - both full width and both swipeable.
+ * The phone gets the same dashboard as the tablet (owner, 2026-10-20, with the screenshot of how it
+ * looks): one column, the four tiles in two columns, the next-match strip under them and the recent
+ * matches under that - both full width and both swipeable.
  */
 @media (max-width: 1024px) {
     .fm-dashboard-view {

@@ -876,7 +876,7 @@ html.nav-bottom .desktop-nav {
  *
  * <p>They were the two smallest things in the desktop's top bar - 18px next to a 64px logo and a
  * 17px label - and they are the two a manager reaches for most. They are 1.25em now, which is 22px
- * on the desktop's 18px root, and the phone keeps the size it had.
+ * on the desktop's 18px root.
  */
 @media (min-width: 1025px) {
     .desktop-nav-right .desktop-nav-search,
@@ -1072,17 +1072,13 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
 
 @media (max-width: 480px) {
     /*
-     * The phone's nav (owner, 2026-10-20, with the screenshot of how it looks): the nav is a **bar at
-     * the bottom** of the phone, with the icon above the word, and every entry still there.
+     * The phone's nav (owner, 2026-10-20, with the screenshot of how it looks): a **bar at the
+     * bottom** of the phone, with the icon above the word, and every entry still there.
      *
      * <p>It used to be a 371px block at the **top** of the screen - forty per cent of a phone - and
      * it was an accident rather than a decision: the nav is a flex row, the right-hand cluster took
      * the room it needed, and the item grid was left 167px, which is one column, which is a stack of
-     * seven labels down the screen. The header (the logo, the clock, the bell) then started *below*
-     * it, at 371px.
-     *
-     * <p>The nav is not removed and nothing is lost: it moves to the bottom of the phone, in the same
-     * shape the tablet has had all along.
+     * seven labels down the screen. The header then started *below* it, at 371px.
      */
     .desktop-nav {
         display: flex !important;
@@ -1138,10 +1134,6 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
     /*
      * And the header starts at the very top of the screen (owner, 2026-10-20: "top bar pocinje od
      * vrha", and then: "trenutno mob dashboard ti ne pocinje od vrha stranice").
-     *
-     * <p>It was a sticky header under a 68px padding, so it began 68px down the page with a band of
-     * empty background above it. Fixed at the top, it is the first thing on the screen, and the
-     * padding keeps the content below it.
      */
     .top-menu {
         position: fixed !important;
