@@ -4681,8 +4681,38 @@ body {
  * measure, which is the width the panels, the tables and the two-column bands were measured at.
  */
 @media (min-width: 1025px) {
-    .dashboard-content:has(.fm-dashboard-view) {
+    .dashboard-content:has(.fm-dashboard-view),
+    .dashboard-content:has(.fm-match-page) {
         max-width: 1520px;
+    }
+
+    /*
+     * The match details page, with the room it now has (owner, 2026-10-20: "Match Details - isto kao i
+     * dashboard, levo i desno imamo po 15cm prostora na desktopu, trebalo bi rasiriti levo desno i to nam
+     * omoguci da malo povecamo font i ikonice").
+     *
+     * <p>The page is a column of bands, and a wider column with the same type reads as a page of small
+     * print. The names, the headings and the panels grow with it.
+     */
+    .fm-match-page h2 {
+        font-size: 1.9rem;
+    }
+
+    .fm-match-page .fm-match-score-name {
+        font-size: 1.15rem;
+    }
+
+    .fm-match-page .fm-panel h3,
+    .fm-match-page .fm-panel-head h3 {
+        font-size: 1.15rem;
+    }
+
+    .fm-match-page .fm-match-when {
+        font-size: 1rem;
+    }
+
+    .fm-match-page .fm-action-btn {
+        font-size: 0.95rem;
     }
 }
 

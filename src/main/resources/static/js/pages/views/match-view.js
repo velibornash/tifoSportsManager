@@ -176,18 +176,18 @@ export function createMatchView(deps) {
             }
 
             mainContent.innerHTML = `
-            <div class="team-card">
+            <div class="team-card fm-match-page">
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
                     <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget || ''}')">&#8592; Back</button>
                 </div>
                 <h2 style="text-align:center;">${played ? 'Match Details' : 'Match Preview'}</h2>
                 ${competitionHeading}
-                <div class="fm-match-scoreline" style="font-size:1.3em; margin:20px 0; font-weight:bold;">
+                <div class="fm-match-scoreline" style="font-size:1.5em; margin:20px 0; font-weight:bold;">
                     <div class="fm-match-score-team">
                         <div class="fm-match-score-name">${homeTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${homeTeamId}, '${htmlEscape(homeTeamName)}')">${homeTeamName}</span>` : homeTeamName}</div>
                         ${played ? `<div>${homeGoals}</div>` : ''}
                     </div>
-                    <div class="fm-match-score-separator" style="font-size:1.6em;">-</div>
+                    <div class="fm-match-score-separator" style="font-size:1.9em;">-</div>
                     <div class="fm-match-score-team">
                         <div class="fm-match-score-name">${awayTeamId ? `<span class="cs-clickable" onclick="loadLeagueTeam(${awayTeamId}, '${htmlEscape(awayTeamName)}')">${awayTeamName}</span>` : awayTeamName}</div>
                         ${played ? `<div>${awayGoals}</div>` : ''}
