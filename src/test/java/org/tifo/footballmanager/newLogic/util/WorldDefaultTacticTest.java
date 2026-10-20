@@ -49,7 +49,12 @@ class WorldDefaultTacticTest {
 
     @Test
     @DisplayName("the designation travels into the backup file, which is the half that survives a reset")
-    void theDesignationTravelsIntoTheFile() {
+    void theDesignationTravelsIntoTheFile() throws Exception {
+        // A file that starts empty, so the check is about what this run wrote and not about what an
+        // earlier one left behind.
+        java.nio.file.Path path = java.nio.file.Path.of("target/test-tactics-editor-profiles.json");
+        java.nio.file.Files.deleteIfExists(path);
+
         Team club = aClubWithATactic("OFK Omladinac");
         tactics.markProfileAsWorldDefault(club.getId());
 
@@ -76,11 +81,11 @@ class WorldDefaultTacticTest {
         country.setState(org.tifo.footballmanager.newLogic.model.CountryState.SIMULATED);
         country = countries.save(country);
 
-        pyramids.build(country, 1);
+        // The static pyramid: the clubs without their players, because a test that builds half a
+        // million players to look at ten tactics is a test nobody runs.
+        pyramids.buildStatic(country, 1);
 
-        List<Team> built = teams.findAll().stream()
-                .filter(team -> "WDT".equals(team.getCountry() == null ? null : team.getCountry().getIsoCode()))
-                .toList();
+        List<Team> built = teams.findByCountryId(country.getId());
         assertFalse(built.isEmpty(), "the country was built with no clubs at all");
         for (Team team : built) {
             assertTrue(tactics.view(team.getId()).stream()

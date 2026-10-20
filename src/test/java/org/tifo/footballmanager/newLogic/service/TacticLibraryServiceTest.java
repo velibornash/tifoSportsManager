@@ -487,7 +487,9 @@ class TacticLibraryServiceTest {
         //   - it is a cell the editor could name.
         //
         // Adding a column to the editor without teaching the mirror about it fails here.
-        List<String> offered = new org.tifo.footballmanager.demo.service.tactics
+        // The live engine's vocabulary, not the parked demo's: the demo moved out of the source tree
+        // to footballForDelete/demo on 2026-10-20, and the editor's cells are the live engine's.
+        List<String> offered = new org.tifo.footballmanager.newLogic.sim.tactics
                 .FormationSlotCatalog().getSupportedTargetCells();
 
         assertTrue(offered.size() >= 40, "the vocabulary should be the 7x6 grid, got " + offered.size());
