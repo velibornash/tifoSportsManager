@@ -4050,19 +4050,7 @@ select option {
     margin-top: 0;
 }
 
-/*
- * The layout collapses here (owner, 2026-10-20: "hocu da ispitas direktno iz browsera jednu po
- * jednu kategoriju iz navbara sa svim podkategorijama za mobile").
- *
- * <p>**The phone was not in this block.** It started at 481px, so a 430px phone got the desktop's
- * two-column grids: the league table's sidebar was squeezed into 80px and its heading ran down the
- * screen one letter at a time, and the club hero could not shrink, so the transfer market's tables
- * were cut off at the right edge with no way to reach the columns that were cut.
- *
- * <p>So the phone is in it now. The phone's own rules further down this file still win - they come
- * after this block, and they are the ones that were measured on a 430px phone.
- */
-@media (max-width: 1024px) {
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
     .dashboard-content {
         width: 100%;
         max-width: 100%;
@@ -5463,7 +5451,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .fm-widget-note--pos { color: var(--pos); }
 .fm-widget-note--neg { color: var(--neg); }
 
-@media (min-width: 481px) and (max-width: 1024px) {
+/*
+ * The phone gets the same dashboard as the tablet (owner, 2026-10-20, with the screenshot of how
+ * it looks): one column, the four tiles in two columns, the next-match strip under them and the
+ * recent matches under that - both full width and both swipeable.
+ */
+@media (max-width: 1024px) {
     .fm-dashboard-view {
         grid-template-columns: minmax(0, 1fr);
         grid-template-areas:

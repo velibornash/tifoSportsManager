@@ -870,6 +870,21 @@ html.nav-bottom .desktop-nav {
 }
 .desktop-nav-right .desktop-nav-search:hover { background: rgba(var(--accent-rgb), 0.12); color: var(--text); }
 
+/*
+ * The search glass and the bell, bigger (owner, 2026-10-20: "na desktop view, povecaj ikonice za
+ * search i notification, premale su").
+ *
+ * <p>They were the two smallest things in the desktop's top bar - 18px next to a 64px logo and a
+ * 17px label - and they are the two a manager reaches for most. They are 1.25em now, which is 22px
+ * on the desktop's 18px root, and the phone keeps the size it had.
+ */
+@media (min-width: 1025px) {
+    .desktop-nav-right .desktop-nav-search,
+    .desktop-nav-right .menu-button.notification-bell {
+        font-size: 1.25em;
+    }
+}
+
 .desktop-nav-right .notification-bell-wrap { display: inline-flex; align-items: center; }
 .desktop-nav-right #live-clock,
 .desktop-nav-right .live-clock {
@@ -1052,6 +1067,88 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
 @media (max-width: 480px) {
     .desktop-nav button {
         font-size: 1.0625rem;
+    }
+}
+
+@media (max-width: 480px) {
+    /*
+     * The phone's nav (owner, 2026-10-20, with the screenshot of how it looks): the nav is a **bar at
+     * the bottom** of the phone, with the icon above the word, and every entry still there.
+     *
+     * <p>It used to be a 371px block at the **top** of the screen - forty per cent of a phone - and
+     * it was an accident rather than a decision: the nav is a flex row, the right-hand cluster took
+     * the room it needed, and the item grid was left 167px, which is one column, which is a stack of
+     * seven labels down the screen. The header (the logo, the clock, the bell) then started *below*
+     * it, at 371px.
+     *
+     * <p>The nav is not removed and nothing is lost: it moves to the bottom of the phone, in the same
+     * shape the tablet has had all along.
+     */
+    .desktop-nav {
+        display: flex !important;
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        padding: 6px 8px max(6px, env(safe-area-inset-bottom)) !important;
+        z-index: 60;
+    }
+
+    /* The header has the clock, the bell and the logo - the nav does not need them twice. */
+    .desktop-nav-right {
+        display: none !important;
+    }
+
+    .desktop-nav .bottom-nav-grid {
+        grid-template-columns: repeat(auto-fit, minmax(50px, 1fr)) !important;
+        gap: 2px !important;
+        max-width: none !important;
+    }
+
+    .desktop-nav button {
+        min-height: 46px !important;
+        gap: 1px !important;
+        flex-direction: column !important;
+        padding: 4px 2px !important;
+        line-height: 1.05 !important;
+    }
+
+    /* The word under the icon has to fit the 50px column, or it breaks the word apart. */
+    .desktop-nav button span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        font-size: 0.6rem;
+    }
+
+    .desktop-nav .desktop-nav-icon {
+        font-size: 1.4em;
+    }
+
+    /*
+     * The screen belongs to the header now, and the bar at the bottom takes its own space: the
+     * nav's height is no longer the body's top padding, because the nav is not at the top any more.
+     */
+    html.nav-top body,
+    html.nav-bottom body {
+        padding-top: 68px !important;
+        padding-bottom: 74px !important;
+    }
+
+    /*
+     * And the header starts at the very top of the screen (owner, 2026-10-20: "top bar pocinje od
+     * vrha", and then: "trenutno mob dashboard ti ne pocinje od vrha stranice").
+     *
+     * <p>It was a sticky header under a 68px padding, so it began 68px down the page with a band of
+     * empty background above it. Fixed at the top, it is the first thing on the screen, and the
+     * padding keeps the content below it.
+     */
+    .top-menu {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 50 !important;
     }
 }
 
