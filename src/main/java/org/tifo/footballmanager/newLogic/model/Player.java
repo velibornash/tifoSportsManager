@@ -338,7 +338,13 @@ public class Player {
      * <p>Declared <b>last</b>, for the same reason {@code nationality} is: Lombok builds the all-args
      * constructor in field order, and two tests construct a Player with every argument spelled out
      * positionally.
+     *
+     * <p><b>The default is in the column definition</b>, and it has to be: a plain
+     * {@code ADD COLUMN bot_player boolean NOT NULL} is refused by PostgreSQL on a table that has
+     * rows - "column bot_player of relation player contains null values" - and the world's players
+     * are ten thousand rows long before this column is added. With {@code DEFAULT false} the
+     * existing rows are filled in and the column is not null from the start.
      */
-    @Column(name = "bot_player", nullable = false)
+    @Column(name = "bot_player", nullable = false, columnDefinition = "boolean not null default false")
     private boolean botPlayer = false;
 }
