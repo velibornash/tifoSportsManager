@@ -1027,6 +1027,10 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
  *
  * <p>The buttons keep their size - the same min-height, the same grid, the same padding - and only the
  * type grows. The icon is sized in `em`, so it grows with the label instead of drifting away from it.
+ *
+ * <p>On the desktop the label is 1rem of the desktop's root, and the root went from 17px to 18px with
+ * the wider dashboard - so the label is 18px and the icon 20.7px, which is the point the owner asked
+ * for. On the phone the root stays at 16px, and the nav's label is bumped a point below.
  */
 .desktop-nav .desktop-nav-icon {
     font-size: 1.15em;
@@ -1034,20 +1038,21 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
 }
 
 /*
- * The navbar's icons, a little larger (owner, 2026-10-20: "svuda u navbaru da 'dugmad' ostano tolika
- * kolika su a povecaj svuda malo font i ikonice, cak za 1 pt mozda i na mob verziji ako ne ode u
- * overflow").
+ * The phone's nav, a point larger (owner, 2026-10-20: "cak za 1 pt mozda i na mob verziji ako ne ode
+ * u overflow").
  *
- * <p>The buttons keep their size - the same min-height, the same grid, the same padding - and only the
- * type and the icons grow: the desktop's label goes from 0.92rem to 1rem and the phone's from 0.58rem
- * to 0.66rem. The icon is sized in `em`, so it grows with the label instead of drifting away from it.
+ * <p><b>Measured at 430x932</b>: the nav is one column of 167px with the labels on their own line -
+ * "Community", the longest of them, takes 70px at 16px. At 17px it takes 75px of the 167px, so it
+ * cannot overflow, and the icon goes from 18.4px to 19.55px with it.
  *
- * <p>On the phone the longest label in the nav is "Qualifying", and at 0.66rem it still fits the
- * column it is given - the bar was measured after the change, not before it.
+ * <p>The band between 481px and 1024px is left alone: there the nav is a bottom bar of 56px columns
+ * and "Qualifying" is the longest label that has to survive it. The measure of that bar is in the
+ * rule below, and it was taken at 0.66rem for a reason.
  */
-.desktop-nav .desktop-nav-icon {
-    font-size: 1.15em;
-    line-height: 1;
+@media (max-width: 480px) {
+    .desktop-nav button {
+        font-size: 1.0625rem;
+    }
 }
 
 @media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {

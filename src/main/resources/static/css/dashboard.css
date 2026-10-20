@@ -4660,30 +4660,39 @@ body {
  *
  * <p>There is still a hand's width of empty screen on each side of the dashboard, so the type is what
  * is too small - not the layout. Everything in these stylesheets is sized in `rem`, so **one line moves
- * the whole scale**: the desktop's root goes from 16px to 17px, about 6%, which is the difference
+ * the whole scale**: the desktop's root goes from 16px to 18px, about 12%, which is the difference
  * between "a bit small" and readable at a glance.
+ *
+ * <p><b>Measured at 2560x1440</b>, the desktop the owner writes from: the root was 17px and the
+ * dashboard's measure 1520px, which left **505px - 13.4cm - of empty screen on each side**. The root is
+ * now 18px and the measure 1920px, so the empty space is 320px - 8.5cm - and the type has grown with
+ * the room it was given.
  *
  * <p>The phone keeps 16px. There is no room there, and every phone measurement in this codebase - the
  * tables at 384px, the nav's six columns - was taken at 16.
  */
 @media (min-width: 1025px) {
     html {
-        font-size: 17px;
+        font-size: 18px;
     }
 }
 
 /*
  * The dashboard spreads (owner, 2026-10-20: "da li na desktopu fm-dashboard-view moze malo da se rasiri
- * po recimo 4-5 cm levo i desno da imamo vise korisnog prostora").
+ * po recimo 4-5 cm levo i desno da imamo vise korisnog prostora", and again: "bas nam ostaje po 10ak
+ * cm i vise sa obe strane pa su nam zbog toga fontovi manji i malo nepregledni na desktopu").
  *
- * <p>4-5cm on each side is 150-190px of width on a screen that has it to spare, so the dashboard's
- * measure goes from 1180px to 1520px. **Only the dashboard**: every other page keeps the 1180px
- * measure, which is the width the panels, the tables and the two-column bands were measured at.
+ * <p>The first answer was 1180px to 1520px. **Measured at 2560x1440 that still left 505px - 13.4cm -
+ * on each side**, so the second answer is 1520px to 1920px: 4-5cm more on each side, exactly what was
+ * asked, and the type grows with it.
+ *
+ * <p>Only the dashboard and the match page: every other page keeps the 1180px measure, which is the
+ * width the panels, the tables and the two-column bands were measured at.
  */
 @media (min-width: 1025px) {
     .dashboard-content:has(.fm-dashboard-view),
     .dashboard-content:has(.fm-match-page) {
-        max-width: 1520px;
+        max-width: 1920px;
     }
 
     /*
@@ -5063,44 +5072,48 @@ body {
  * mesta").
  *
  * <p>The font and the icon grow together, so the tile keeps its proportions: the icon was 0.82rem and
- * the value 1.3rem, and they are now 1rem and 1.5rem. Only the desktop, where the rail has room -
+ * the value 1.3rem, and they are now 1.1rem and 1.65rem. Only the desktop, where the rail has room -
  * on a phone the same tiles sit two to a column and there is no space to give away.
+ *
+ * <p><b>Measured at 2560x1440</b> with the dashboard's measure at 1920px: the four tiles are a
+ * four-column grid, so each one is ~470px wide - a tile that is ~370px wide was holding a two-line
+ * club name and a value that had room to spare.
  */
 @media (min-width: 1025px) {
     .fm-dashboard-view [data-widget="position"],
     .fm-dashboard-view [data-widget="stadium"],
     .fm-dashboard-view [data-widget="balance"],
     .fm-dashboard-view [data-widget="condition"] {
-        padding: 13px 16px;
-        gap: 5px;
+        padding: 14px 18px;
+        gap: 6px;
     }
 
     .fm-dashboard-view [data-widget="position"] .fm-widget-icon,
     .fm-dashboard-view [data-widget="stadium"] .fm-widget-icon,
     .fm-dashboard-view [data-widget="balance"] .fm-widget-icon,
     .fm-dashboard-view [data-widget="condition"] .fm-widget-icon {
-        font-size: 1rem;
+        font-size: 1.1rem;
     }
 
     .fm-dashboard-view [data-widget="position"] .fm-widget-label,
     .fm-dashboard-view [data-widget="stadium"] .fm-widget-label,
     .fm-dashboard-view [data-widget="balance"] .fm-widget-label,
     .fm-dashboard-view [data-widget="condition"] .fm-widget-label {
-        font-size: 0.74rem;
+        font-size: 0.8rem;
     }
 
     .fm-dashboard-view [data-widget="position"] .fm-widget-value,
     .fm-dashboard-view [data-widget="stadium"] .fm-widget-value,
     .fm-dashboard-view [data-widget="balance"] .fm-widget-value,
     .fm-dashboard-view [data-widget="condition"] .fm-widget-value {
-        font-size: 1.5rem;
+        font-size: 1.65rem;
     }
 
     .fm-dashboard-view [data-widget="position"] .fm-widget-meta,
     .fm-dashboard-view [data-widget="stadium"] .fm-widget-meta,
     .fm-dashboard-view [data-widget="balance"] .fm-widget-meta,
     .fm-dashboard-view [data-widget="condition"] .fm-widget-meta {
-        font-size: 0.82rem;
+        font-size: 0.88rem;
     }
 }
 
