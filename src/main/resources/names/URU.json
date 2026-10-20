@@ -3,7 +3,7 @@
   "name": "Uruguay",
   "clubs": [
     "Peñarol",
-    "Nacional",
+    "Nacional de Montevideo",
     "Defensor Sporting",
     "Danubio",
     "River Plate Montevideo",
@@ -11,7 +11,7 @@
     "Racing Club Montevideo",
     "Montevideo City Torque",
     "Plaza Colonia",
-    "Boston River",
+    "Deportivo Maldonado",
     "Progreso",
     "Miramar Misiones",
     "Juventud",
@@ -20,7 +20,19 @@
     "Racing de Montevideo",
     "Liverpool Montevideo",
     "Rentistas",
-    "Placense"
+    "Placense",
+    "Liverpool FC",
+    "Cerro Montevideo",
+    "Boston River",
+    "Ramplar",
+    "Young Boys Montevideo",
+    "Union de Montevideo",
+    "Rosenborg de Montevideo",
+    "Sportivo Luqueño",
+    "Club Uruguay de Coronado",
+    "La Luz",
+    "Río Branco",
+    "Central Español"
   ],
   "cities": [
     "Montevideo",
