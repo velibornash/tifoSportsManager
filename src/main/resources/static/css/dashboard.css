@@ -4899,31 +4899,6 @@ body {
     align-content: start;
 }
 
-/*
- * The dashboard on a phone (owner, 2026-10-20: "hocu da ispitas direktno iz browsera jednu po
- * jednu kategoriju iz navbara sa svim podkategorijama za mobile").
- *
- * <p>**There was no rule for it at all.** The grid above is two columns - a 340px rail and the
- * history beside it - and it was the only rule, so a 430px phone got it: the rail took 340px of the
- * 414px and the "Recent matches" column was left 60px, which cut the panel's text off at the right
- * edge. The phone now gets one column, and the tiles two columns of their own - which is what the
- * comment above the grid has been promising since the rail was built.
- */
-@media (max-width: 1024px) {
-    .fm-dashboard-view {
-        grid-template-columns: minmax(0, 1fr);
-        grid-template-areas:
-            "ticker"
-            "rail"
-            "main"
-            "admin";
-    }
-
-    .fm-widget-rail {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
 /* Both columns get the same breathing room at the top: the badge on the right needs a gap to sit
    in, and the two columns have to start on the same line. */
 @media (min-width: 1025px) {
