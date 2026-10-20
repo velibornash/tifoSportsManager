@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -82,7 +84,7 @@ class SeasonServiceCompetitionNameReadTest extends BaseTest {
     @DisplayName("advanceWeek reads the name through that method, not by walking a detached proxy")
     void theRouteDoesNotWalkTheProxy() throws Exception {
         String source = java.nio.file.Files.readString(
-                java.nio.file.Path.of("src/main/java/org/example/footballmanager/newLogic/controller/SimulationController.java"),
+                ProductionSource.file(SimulationController.class),
                 java.nio.charset.StandardCharsets.UTF_8);
         String advanceWeek = source.substring(
                 source.indexOf("@PostMapping(\"/week/advance\")"),

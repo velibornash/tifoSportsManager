@@ -1,5 +1,9 @@
 package org.tifo.footballmanager.newLogic.sim.tactics;
 
+import org.tifo.footballmanager.ProductionSource;
+import org.tifo.footballmanager.newLogic.sim.engine.MatchOrchestrator;
+import org.tifo.footballmanager.newLogic.sim.SimMatchService;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -25,8 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class OrchestratorConsultsTheResolverTest {
 
-    private static final Path ORCHESTRATOR =
-            Path.of("src/main/java/org/example/footballmanager/newLogic/sim/engine/MatchOrchestrator.java");
+    private static final Path ORCHESTRATOR = ProductionSource.file(MatchOrchestrator.class);
 
     @Test
     @DisplayName("the tick loop resolves the tactics in force before the engine that uses them")
@@ -74,7 +77,7 @@ class OrchestratorConsultsTheResolverTest {
         // the runner — and SimMatchService passed `null`, so no saved instruction reached any match. Every
         // behavioural test stayed green, because none of them starts a simulation.
         String source = Files.readString(
-                Path.of("src/main/java/org/example/footballmanager/newLogic/sim/SimMatchService.java"),
+                ProductionSource.file(SimMatchService.class),
                 StandardCharsets.UTF_8);
 
         assertTrue(source.contains("matchTacticsPreparation.forFixture("),

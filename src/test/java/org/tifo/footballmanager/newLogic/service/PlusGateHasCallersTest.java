@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,9 +35,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PlusGateHasCallersTest {
 
-    private static final Path SOURCE_ROOT = Path.of("src/main/java");
-    private static final Path GATE_FILE =
-            SOURCE_ROOT.resolve("org/example/footballmanager/newLogic/service/PlusFeatureService.java");
+    private static final Path GATE_FILE = ProductionSource.file(PlusFeatureService.class);
 
     @Test
     @DisplayName("every public method on the PLUS gate is called from somewhere in the product")
@@ -75,7 +75,7 @@ class PlusGateHasCallersTest {
      */
     private boolean isCalledElsewhere(String methodName) throws IOException {
         String call = methodName + "(";
-        try (Stream<Path> files = Files.walk(SOURCE_ROOT)) {
+        try (Stream<Path> files = Files.walk(ProductionSource.root())) {
             return files
                     .filter(p -> p.toString().endsWith(".java"))
                     .anyMatch(p -> p.equals(GATE_FILE)

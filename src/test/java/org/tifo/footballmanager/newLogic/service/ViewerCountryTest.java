@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.TeamRepository;
@@ -123,7 +125,7 @@ class ViewerCountryTest {
         // expect; the only way to notice is to look for a gate that is not there, and a gate added
         // later is exactly what this catches.
         String service = Files.readString(
-                Path.of("src/main/java/org/example/footballmanager/newLogic/service/TransferService.java"),
+                ProductionSource.file(TransferService.class),
                 StandardCharsets.UTF_8);
 
         // Strip the two read methods, then assert nothing country-related is left in the write paths.

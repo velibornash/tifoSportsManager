@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.BaseTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,8 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DailyRecoveryScopeTest extends BaseTest {
 
-    private static final Path ZONE_LOAD_SERVICE =
-            Path.of("src/main/java/org/example/footballmanager/newLogic/service/ZoneLoadService.java");
+    private static final Path ZONE_LOAD_SERVICE = ProductionSource.file(ZoneLoadService.class);
 
     @Test
     @DisplayName("daily recovery no longer walks every player who ever played")

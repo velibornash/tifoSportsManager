@@ -1,5 +1,8 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+import org.tifo.footballmanager.newLogic.service.ResetService;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.commonmanager.model.User;
 import org.tifo.footballmanager.newLogic.model.Notification;
@@ -103,7 +106,7 @@ class NotificationWriteCannotFailItsCallerTest extends BaseTest {
                 .getDeclaredMethod("alignNotificationKindConstraint");
 
         String source = java.nio.file.Files.readString(
-                java.nio.file.Path.of("src/main/java/org/example/footballmanager/newLogic/service/ResetService.java"),
+                ProductionSource.file(ResetService.class),
                 java.nio.charset.StandardCharsets.UTF_8);
         int from = source.indexOf("public void alignNotificationKindConstraint()");
         int to = source.indexOf("MINUTE is a reserved word", from);

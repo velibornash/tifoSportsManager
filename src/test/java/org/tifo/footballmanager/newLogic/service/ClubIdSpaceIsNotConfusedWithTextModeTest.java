@@ -1,5 +1,11 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+import org.tifo.footballmanager.newLogic.controller.APIController;
+import org.tifo.footballmanager.newLogic.controller.TeamController;
+import org.tifo.footballmanager.newLogic.controller.CountryController;
+import org.tifo.footballmanager.newLogic.service.NationalTeamAppointments;
+
 import org.tifo.commonmanager.model.User;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.TeamRepository;
@@ -97,14 +103,14 @@ class ClubIdSpaceIsNotConfusedWithTextModeTest {
         // The deleted `findDistinctManagedTeamIds` joined on a NAME string, which is how a text-mode row
         // got into a list of graphical-mode ids. Its return, in any form, is the defect this task is
         // about — and unlike a number check, a name-join is visible here.
-        String[] sources = {
-                "src/main/java/org/example/footballmanager/newLogic/controller/APIController.java",
-                "src/main/java/org/example/footballmanager/newLogic/controller/TeamController.java",
-                "src/main/java/org/example/footballmanager/newLogic/controller/CountryController.java",
-                "src/main/java/org/example/footballmanager/newLogic/service/NationalTeamAppointments.java",
+        java.nio.file.Path[] sources = {
+                ProductionSource.file(APIController.class),
+                ProductionSource.file(TeamController.class),
+                ProductionSource.file(CountryController.class),
+                ProductionSource.file(NationalTeamAppointments.class),
         };
 
-        for (String path : sources) {
+        for (java.nio.file.Path path : sources) {
             String body = read(path);
             assertFalse(body.contains("findDistinctManagedTeamIds"),
                     path + " refers to findDistinctManagedTeamIds again. That method joined the graphical "
@@ -134,9 +140,9 @@ class ClubIdSpaceIsNotConfusedWithTextModeTest {
         }
     }
 
-    private static String read(String path) {
+    private static String read(java.nio.file.Path path) {
         try {
-            return java.nio.file.Files.readString(java.nio.file.Path.of(path));
+            return java.nio.file.Files.readString(path);
         } catch (java.io.IOException e) {
             throw new AssertionError("could not read " + path + "; this test is checking the source of a "
                     + "file that is no longer where it was, which is itself a finding.", e);

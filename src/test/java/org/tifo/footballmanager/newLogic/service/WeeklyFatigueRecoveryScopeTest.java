@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.Skills;
@@ -53,8 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class WeeklyFatigueRecoveryScopeTest extends BaseTest {
 
-    private static final Path SEASON_SERVICE =
-            Path.of("src/main/java/org/example/footballmanager/newLogic/service/SeasonService.java");
+    private static final Path SEASON_SERVICE = ProductionSource.file(SeasonService.class);
 
     @Autowired private SeasonService seasons;
     @Autowired private PlayerRepository players;

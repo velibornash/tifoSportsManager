@@ -18,5 +18,13 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/target/*.jar app.jar
+
+# The owner's world default tactic lives in var/tactics-editor-profiles.json - the one copy that
+# survives a Reset DB, because the Reset empties the database and the file is what the rebuild
+# reads. Without it in the image, a Reset on the server rebuilds the world's clubs with no
+# designated tactic, and "Export Default Tactics" writes into the container, where the next
+# deploy throws it away. The path is relative to the working directory, so it must land at /app/var.
+COPY --from=build /app/var ./var
+
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

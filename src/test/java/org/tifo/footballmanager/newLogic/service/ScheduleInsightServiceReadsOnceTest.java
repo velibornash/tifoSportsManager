@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.Lineup;
@@ -237,7 +239,7 @@ class ScheduleInsightServiceReadsOnceTest {
         // Counted through the repositories' own behaviour rather than through a profiler: the shape being
         // protected is "the loops are gone", and this asserts the loops are gone by reading the source
         // for a per-team query inside the snapshot builder.
-        String source = read("src/main/java/org/example/footballmanager/newLogic/service/ScheduleInsightService.java");
+        String source = read(ProductionSource.file(ScheduleInsightService.class).toString());
 
         assertFalse(source.contains("playerRepository.findByTeamId("),
                 "ScheduleInsightService still reads a squad one team at a time. That call is the N+1: "

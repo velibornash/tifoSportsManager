@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TransactionalOnPrivateOrProtectedTest {
 
-    private static final Path JAVA = Path.of("src/main/java/org/example/footballmanager");
+    private static final Path JAVA = ProductionSource.gameDir(TransactionalOnPrivateOrProtectedTest.class);
 
     @Test
     @DisplayName("no @Transactional sits on a private or protected method")

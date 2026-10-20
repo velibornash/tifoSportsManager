@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.sim;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -37,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SimPackageHasNoDeadCodeTest {
 
-    private static final Path SIM = Path.of("src/main/java/org/example/footballmanager/newLogic/sim");
+    private static final Path SIM = ProductionSource.dir(SimPackageHasNoDeadCodeTest.class);
 
     @Test
     @DisplayName("the helper whose rule was removed does not come back")

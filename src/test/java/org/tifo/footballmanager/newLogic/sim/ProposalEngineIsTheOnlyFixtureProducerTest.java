@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.sim;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -70,7 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProposalEngineIsTheOnlyFixtureProducerTest extends BaseTest {
 
-    private static final Path JAVA = Path.of("src/main/java/org/example/footballmanager");
+    private static final Path JAVA = ProductionSource.gameDir(ProposalEngineIsTheOnlyFixtureProducerTest.class);
 
     /**
      * The entry points, by file name.

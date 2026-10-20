@@ -1,5 +1,10 @@
 package org.tifo.footballmanager.newLogic.model;
 
+import org.tifo.footballmanager.ProductionSource;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.tifo.footballmanager.newLogic.service.ResetService;
+import org.tifo.footballmanager.newLogic.util.DatabaseInitializer;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -30,12 +35,11 @@ class MatchTickStateIsGoneTest {
     @Test
     @DisplayName("nothing writes or reads a per-tick state")
     void nothingWritesOrReadsATickState() throws Exception {
-        for (String rel : new String[]{
-                "src/main/java/org/example/footballmanager/newLogic/model/MatchTickState.java",
-                "src/main/java/org/example/footballmanager/newLogic/repository/MatchTickStateRepository.java"}) {
-            Path path = Path.of(rel);
+        for (Path path : new Path[]{
+                ProductionSource.file(MatchTickStateIsGoneTest.class, "MatchTickState"),
+                ProductionSource.file(TeamRepository.class, "MatchTickStateRepository")}) {
             assertFalse(Files.exists(path),
-                    rel + " is back. Nothing wrote a per-tick state and nothing read one - the replay "
+                    path.getFileName() + " is back. Nothing wrote a per-tick state and nothing read one - the replay "
                             + "replays the event log - so the table was dead weight, and the index that "
                             + "was going to be added to it (P1-1) would have been an index on nothing");
         }
@@ -45,14 +49,14 @@ class MatchTickStateIsGoneTest {
     @DisplayName("the schema no longer carries the table")
     void theSchemaNoLongerCarriesTheTable() throws Exception {
         String reset = Files.readString(
-                Path.of("src/main/java/org/example/footballmanager/newLogic/service/ResetService.java"),
+                ProductionSource.file(ResetService.class),
                 StandardCharsets.UTF_8);
         assertFalse(reset.contains("match_tick_states"),
                 "the reset service still names match_tick_states. The table is gone from the code, so "
                         + "the truncation entry and the migration for its renamed column are too");
 
         String initializer = Files.readString(
-                Path.of("src/main/java/org/example/footballmanager/newLogic/util/DatabaseInitializer.java"),
+                ProductionSource.file(DatabaseInitializer.class),
                 StandardCharsets.UTF_8);
         assertFalse(initializer.contains("migrateTickStateMinuteColumn"),
                 "the boot still migrates a table that no longer has an entity");
@@ -64,8 +68,8 @@ class MatchTickStateIsGoneTest {
         // The tripwire listed exactly one entity - the one that was deleted - so the class went with
         // it. This says so, because a tripwire that watches nothing is worse than no tripwire: it
         // reads as a guard and guards nothing.
-        assertFalse(Files.exists(Path.of(
-                "src/test/java/org/example/footballmanager/newLogic/model/ReservedWordColumnTest.java")),
+        assertFalse(Files.exists(ProductionSource.testFile(
+                MatchTickStateIsGoneTest.class, "ReservedWordColumnTest")),
                 "the reserved-word tripwire is back with no entity to watch. If a new entity maps a "
                         + "reserved word, it has to be added to that list - and the list is not empty "
                         + "for its own sake");

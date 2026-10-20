@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -118,14 +119,61 @@ class TacticsBackupIsNotWrittenByTests extends BaseTest {
         // The old DTO has seven properties and the file has eight - `defaultTacticName` among them -
         // so Jackson threw `UnrecognizedPropertyException` and the test never asserted what it means
         // to assert. The file was always right; the reader was stale.
-        var entries = objectMapper.readValue(raw,
-                new com.fasterxml.jackson.core.type.TypeReference<
-                        java.util.List<org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService.ClubBackup>>() {
-                });
+        var entries = readEntries();
         assertTrue(!entries.isEmpty(),
                 "the file parses but holds no profiles, so a Reset would restore nothing and say it did");
         assertTrue(entries.get(0).getTeamName() != null && !entries.get(0).getTeamName().isBlank(),
                 "a profile with no club name cannot be restored to anybody");
+    }
+
+    /**
+     * The other half of "a test must not write the owner's file": the file must not be carrying a
+     * test's club either.
+     *
+     * <p><b>Measured, not hypothetical.</b> The tracked file held <b>60 entries</b>, of which
+     * <b>59 were test fixtures</b> - clubs named {@code "ZZ Lock ..."} by {@code MatchSetupLockTest} -
+     * and one was the owner's own. That is why the file was <b>9.1 MB</b> for a single real profile,
+     * and why it was still 9.1 MB after the tests were pointed away from it: the redirection stops
+     * the next write, it does not undo the last sixty.
+     *
+     * <p>A fixture in this file is not harmless noise. The rebuild reads the file and restores every
+     * entry it holds, so the world's clubs would each be given a tactics profile belonging to a club
+     * that has never existed - and the file would carry 9 MB of somebody else's rubbish into every
+     * image built from it.
+     */
+    @Test
+    @DisplayName("the owner's backup file holds no test fixture")
+    void theOwnersFileHoldsNoTestFixture() throws Exception {
+        var entries = readEntries();
+
+        var fixtures = entries.stream()
+                .map(org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService.ClubBackup::getTeamName)
+                .filter(name -> name != null && name.startsWith(TEST_FIXTURE_PREFIX))
+                .toList();
+
+        assertTrue(fixtures.isEmpty(),
+                "the tracked tactics backup holds " + fixtures.size() + " test fixture(s): " + fixtures
+                        + ". A test wrote to the owner's file; every test that saves tactics must set "
+                        + "app.tactics-backup-path away from var/.");
+    }
+
+    /**
+     * The prefix the suite names its clubs with, so this guard fails on the fixtures that exist
+     * rather than on a rule written after the fact.
+     */
+    private static final String TEST_FIXTURE_PREFIX = "ZZ Lock";
+
+    /** The owner's file, parsed into the production's own shape. */
+    private List<org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService.ClubBackup> readEntries()
+            throws Exception {
+        String raw = readOwnersFile();
+        if ("<absent>".equals(raw)) {
+            return List.of();
+        }
+        return objectMapper.readValue(raw,
+                new com.fasterxml.jackson.core.type.TypeReference<
+                        java.util.List<org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService.ClubBackup>>() {
+                });
     }
 
     private static String readOwnersFile() throws Exception {

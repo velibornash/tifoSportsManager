@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -91,7 +93,7 @@ class RankingPointsHasNoHeadToHeadTest {
     }
 
     private static String read(String className) throws IOException {
-        Path path = Path.of("src/main/java/org/example/footballmanager/newLogic/service", className + ".java");
+        Path path = ProductionSource.file(RankingPointsHasNoHeadToHeadTest.class, className);
         assertTrue(Files.exists(path), "cannot find the source of " + className + " at " + path.toAbsolutePath());
         return stripComments(Files.readString(path, StandardCharsets.UTF_8));
     }

@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -37,8 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class AsyncSimulationRunnerCountsOnlyWhatItPlayedTest {
 
-    private static final Path RUNNER =
-            Path.of("src/main/java/org/example/footballmanager/newLogic/service/AsyncSimulationRunner.java");
+    private static final Path RUNNER = ProductionSource.file(AsyncSimulationRunner.class);
 
     @Test
     @DisplayName("the simulated counter is only reached for a fixture that was simulated")

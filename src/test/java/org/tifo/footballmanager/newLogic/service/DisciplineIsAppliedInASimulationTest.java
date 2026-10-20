@@ -1,5 +1,8 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.ProductionSource;
+import org.tifo.footballmanager.newLogic.sim.SimMatchService;
+
 import org.tifo.footballmanager.newLogic.sim.SimMatchService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,8 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class DisciplineIsAppliedInASimulationTest {
 
-    private static final Path SIM =
-            Path.of("src/main/java/org/example/footballmanager/newLogic/sim/SimMatchService.java");
+    private static final Path SIM = ProductionSource.file(SimMatchService.class);
 
     private static String source() throws IOException {
         assertTrue(Files.exists(SIM), "the simulation service is not where this test looks, so every "

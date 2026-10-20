@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.ProductionSource;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -27,8 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MatchPreviewRouteIsWiredTest {
 
-    private static final Path CONTROLLER = Path.of(
-            "src/main/java/org/example/footballmanager/newLogic/controller/MatchController.java");
+    private static final Path CONTROLLER = ProductionSource.file(MatchController.class);
 
     private static String source() throws Exception {
         return Files.readString(CONTROLLER, StandardCharsets.UTF_8);
