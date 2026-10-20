@@ -5,8 +5,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -114,6 +116,45 @@ class CountryNamePoolCoverageTest {
                     country.code() + " has " + p.clubs().size()
                             + " club names - fewer than one division of ten clubs");
         }
+    }
+
+    /**
+     * A country may only carry its own clubs.
+     *
+     * <p><b>This is the defect the owner found in the pools</b>, and it is invisible to every other
+     * check here: a pool with Lazio in it is complete, has no duplicates and no blank names, and the
+     * seeders use it happily - the world simply grows a club named Lazio in Switzerland, thirty
+     * <em>baseball</em> clubs in the United States, Irish clubs in Northern Ireland and half the
+     * Balkans in Serbia. A pool is the country's own vocabulary; a foreign club in it is a mistake in
+     * the data, not a naming choice.
+     *
+     * <p><b>TIFO Nations is the exception</b>, because it is the merge of every country by design -
+     * it holds every other country's clubs on purpose, and the check above says so.
+     */
+    @Test
+    @DisplayName("no country carries another country's club")
+    void noCountryCarriesAnotherCountrysClub() {
+        Map<String, List<String>> owners = new HashMap<>();
+        for (CountryCatalog country : CountryCatalog.values()) {
+            if (country.code().equals("OTH")) {
+                continue;
+            }
+            for (String club : pool.forCountry(country.code()).orElseThrow().clubs()) {
+                owners.computeIfAbsent(club.trim().toLowerCase(java.util.Locale.ROOT), key -> new ArrayList<>())
+                        .add(country.code());
+            }
+        }
+
+        List<String> shared = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : owners.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                shared.add(entry.getKey() + " in " + entry.getValue());
+            }
+        }
+
+        assertEquals(List.of(), shared,
+                "these clubs are in more than one country's pool, so one of the countries is carrying "
+                        + "another's clubs: " + shared);
     }
 
     private void assertNoDuplicates(String what, List<String> names) {
