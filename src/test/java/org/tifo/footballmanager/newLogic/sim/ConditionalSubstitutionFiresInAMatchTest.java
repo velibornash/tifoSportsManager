@@ -150,7 +150,8 @@ class ConditionalSubstitutionFiresInAMatchTest {
                 1.80, 78.0, 8.0, 60.0, 7, position,
                 0, 0, null, false, 0, null, null, null,
                 null, null, 100.0, null, null,
-                null, null, null);
+                // botPlayer (2026-10-20), appended for the same reason: a real player, not a bot.
+                null, null, null, false);
     }
 
     private static org.tifo.footballmanager.newLogic.model.Lineup lineupWith(List<Player> starters) {

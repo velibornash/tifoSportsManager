@@ -109,7 +109,9 @@ class RealSquadSimulationSmokeTest {
                 // order stable but never avoids touching the call sites, exactly as the notes above
                 // predicted. Null: nobody in a squad-building test has retired.
                 null,
-                null);
+                // botPlayer (2026-10-20): these are club players, not bots.
+                null,
+                false);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.regex.Pattern;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Random;
@@ -81,10 +83,23 @@ public class BotSquadGenerator {
      * players, and a guard that cannot tell the two apart is how 2,400 simulated players ended up
      * starting for sides that had 7,730 real ones on the books.
      */
+    /**
+     * Whether this generator made this player.
+     *
+     * <p>Two answers, because the world has two generations of them. **The flag** is what the
+     * generator writes today; **the name** is what it used to write, and every world built before
+     * the flag existed has its AI squads named the old way. A guard that forgot the old rows would
+     * treat them as real players, and an activated country's national side would go on fielding
+     * stand-ins - which is the exact complaint the flag was added for.
+     */
     public boolean isGenerated(Player player) {
-        return player != null
-                && player.getName() != null
-                && GENERATED_NAME.matcher(player.getName()).matches();
+        if (player == null) {
+            return false;
+        }
+        if (player.isBotPlayer()) {
+            return true;
+        }
+        return player.getName() != null && GENERATED_NAME.matcher(player.getName()).matches();
     }
 
     private static final int MIDFIELDERS = 7;
@@ -93,8 +108,25 @@ public class BotSquadGenerator {
 
     private final PlayerRepository players;
 
-    public BotSquadGenerator(PlayerRepository players) {
+    /** The country's own names, when the country has a pool. Null means "every name is a fallback". */
+    private final org.tifo.footballmanager.newLogic.service.CountryNamePoolService namePool;
+
+    /**
+     * The production constructor: the pool is what makes the AI sides read like people.
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    public BotSquadGenerator(PlayerRepository players,
+                              org.tifo.footballmanager.newLogic.service.CountryNamePoolService namePool) {
         this.players = players;
+        this.namePool = namePool;
+    }
+
+    /**
+     * Without a pool, every name is the code-based fallback - which is what the old rows in the
+     * world are, and what a country with no pool still gets.
+     */
+    public BotSquadGenerator(PlayerRepository players) {
+        this(players, null);
     }
 
     /**
@@ -121,11 +153,14 @@ public class BotSquadGenerator {
         long seed = country.getId() * 31 + (youth ? 7 : 1);
         Random random = new Random(seed);
 
+        // The names already used in this squad, so two players are never called the same thing.
+        Set<String> taken = new HashSet<>();
+
         int made = 0;
         for (int index = 0; index < SQUAD_SIZE; index++) {
             Position position = positionFor(index);
             Player player = new Player();
-            player.setName(name(country, position, index, random));
+            player.setName(name(country, position, index, random, taken));
             player.setAge(ageFor(position, random, youth));
             player.setPosition(position);
             player.setForm(6.0);
@@ -133,6 +168,10 @@ public class BotSquadGenerator {
             player.setNationality(country.getIsoCode());
             player.setTeam(nationalTeam);
             player.setSkills(skillsFor(position, random));
+            // **The flag that says this row is a stand-in.** The name used to say so - "A. SRB-GK02" -
+            // and it cannot any more, because the name is now a person's name. A country that is
+            // activated must be able to tell its real players from these and drop them.
+            player.setBotPlayer(true);
             // After the skills, not before: the rating is derived from them. This was
             // BASE_SKILL * 8, which made every bot in the world read exactly 96 and handed each of
             // them a free +6 of OVR over a human of identical ability.
@@ -203,15 +242,40 @@ public class BotSquadGenerator {
     }
 
     /**
-     * A name, built from the country's own code so it reads as belonging to that country.
+     * A name for a player of a country that has no clubs of its own.
      *
-     * <p>Deliberately not a real name pool. Real club and player names carry licensing exposure, and a
-     * per-country pool is needed anyway - one shared Faker pool gives 48 countries that all sound
-     * identical. A code-based surname is honest about being generated, and the football still works.
+     * <p><b>The country's own people, when the country has a pool</b> (redesign.md R-23, owner
+     * 2026-10-20: "koje seederi koriste za AI timove/igrace jer ovi genericki su objektivno ruzni" -
+     * the seeders are to use them for the AI teams and players, because the generic ones are
+     * objectively ugly). A Croatian bot side is called Modrić and Gvardiol, a Brazilian one
+     * Neymar and Vinícius, and the world reads like a football world instead of a list of codes.
+     *
+     * <p><b>The code-based name is the fallback</b>, and it stays: a country with no pool gets
+     * {@code A. SRB-GK02}, which is honest about being generated and which the old
+     * {@link #GENERATED_NAME} pattern still recognises.
+     *
+     * <p>The name is unique inside the squad. The pool draws a first name and a last name, and
+     * twenty-five players drawn from eighteen of each would collide by the birthday paradox about
+     * half the time, so a name already taken is drawn again and the code-based name is the last
+     * resort.
      */
-    private String name(Country country, Position position, int index, Random random) {
+    private String name(Country country, Position position, int index, Random random,
+                        Set<String> taken) {
+        String iso = country.getIsoCode();
+        if (iso != null && !iso.isBlank() && namePool != null) {
+            String first = namePool.randomFirstName(iso, random);
+            String last = namePool.randomLastName(iso, random);
+            if (first != null && last != null) {
+                String full = first + " " + last;
+                if (taken.add(full)) {
+                    return full;
+                }
+            }
+        }
         String prefix = NAME_PREFIXES.get(random.nextInt(NAME_PREFIXES.size()));
-        String code = country.getIsoCode() == null ? "XXX" : country.getIsoCode();
-        return prefix + " " + code + "-" + position.name() + String.format("%02d", index + 1);
+        String code = iso == null ? "XXX" : iso;
+        String generated = prefix + " " + code + "-" + position.name() + String.format("%02d", index + 1);
+        taken.add(generated);
+        return generated;
     }
 }

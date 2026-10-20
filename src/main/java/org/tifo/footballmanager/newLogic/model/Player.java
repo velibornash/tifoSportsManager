@@ -321,4 +321,24 @@ public class Player {
             case WNG -> (2.0 + 1.5 + 2.0) * maxSkill;
         };
     }
+
+    /**
+     * Whether this player was made by the bot squad generator, and is not a real player.
+     *
+     * <p><b>It used to be the name that said so</b> — {@code A. SRB-GK01} — and the owner's complaint
+     * that the AI sides field "N. SRB-GK01" instead of people (redesign.md R-23) meant the name had
+     * to change. A name that reads like a person's name cannot carry a flag, so the flag moved here:
+     * a column is what it takes to say "this row is a stand-in" without saying it in the name.
+     *
+     * <p>The name pattern is still recognised for the rows that already exist — every world built
+     * before this column was written has its AI squads named the old way, and a guard that forgot
+     * them would treat them as real players and leave an activated country's national side fielding
+     * stand-ins.
+     *
+     * <p>Declared <b>last</b>, for the same reason {@code nationality} is: Lombok builds the all-args
+     * constructor in field order, and two tests construct a Player with every argument spelled out
+     * positionally.
+     */
+    @Column(name = "bot_player", nullable = false)
+    private boolean botPlayer = false;
 }
