@@ -57,12 +57,16 @@ public class BotSquadGenerator {
      * rolled 11 wingers would be unplayable and a manager would be told the world is broken.
      */
     private static final int DEFENDERS = 8;
-    /** The initials {@link #name} draws from. Shared with {@link #isGenerated} so the two cannot drift. */
+    /** The initials the fallback name draws from. Shared with {@link #isGenerated} so the two cannot drift. */
     private static final List<String> NAME_PREFIXES = List.of("A.", "D.", "I.", "L.", "M.", "N.", "S.", "V.");
 
     /**
-     * The exact shape {@link #name} produces - {@code A. SRB-GK02} - built from the same prefix list
-     * and the same {@link Position} values, so it tracks the generator instead of restating it.
+     * The exact shape the <b>fallback</b> name has - {@code A. SRB-GK02} - built from the same prefix
+     * list and the same {@link Position} values, so it tracks the generator instead of restating it.
+     *
+     * <p>It is a fallback now: a country with a name pool gets real names, and only a country
+     * without one gets this. It is still recognised, because it is what every world built before the
+     * pools reached the bot squads is named, and those rows have to stay recognisable.
      *
      * <p>This is how a national side that was filled before its clubs existed gets recognised later,
      * and replaced with real players once they do. See {@code NationalTeamSeeder.squadsFor}.
