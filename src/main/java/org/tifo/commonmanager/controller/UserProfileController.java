@@ -4,7 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.tifo.commonmanager.model.User;
 import org.tifo.commonmanager.model.UserRoles;
 import org.tifo.commonmanager.repository.UserRepository;
+import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.CountryRepository;
 import org.tifo.footballmanager.newLogic.service.ClubOwnershipLinker;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -43,6 +45,22 @@ public class UserProfileController {
 
     private final UserRepository users;
     private final ClubOwnershipLinker ownership;
+    private final CountryRepository countries;
+
+    /**
+     * The name of the country a code stands for.
+     *
+     * @return the world's own name for it, or the code itself when the world has no such country row
+     */
+    private String countryName(String countryCode) {
+        if (countryCode == null || countryCode.isBlank()) {
+            return null;
+        }
+        return countries.findByIsoCode(countryCode)
+                .map(Country::getName)
+                .filter(name -> name != null && !name.isBlank())
+                .orElse(countryCode);
+    }
 
     /**
      * The public profile of one account.
@@ -70,6 +88,12 @@ public class UserProfileController {
 
         profile.put("role", UserRoles.nameOf(subject.getRole()));
         profile.put("countryCode", subject.getCountryCode());
+        // **The country needs its name, not only its code** (owner, 2026-10-20: "nije ucitana drzava"
+        // on the profile page - the tile and the details row both showed a dash). The code was sent
+        // and the page asked for the name, so it never got one and drew "—". The name is the world's
+        // own country row, not a string invented here, so a country that is not in the world yet falls
+        // back to its code rather than to nothing.
+        profile.put("countryName", countryName(subject.getCountryCode()));
         profile.put("plusSubscriber", subject.isPlusSubscriber());
 
         Team club = ownership.clubOf(subject);

@@ -1110,9 +1110,10 @@ html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
 
     /* The word under the icon has to fit the 50px column, or it breaks the word apart. */
     .desktop-nav button span {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: keep-all;
+        text-align: center;
         max-width: 100%;
         font-size: 0.6rem;
     }
@@ -1234,6 +1235,21 @@ html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm
 html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-goals,
 html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-goals { display: none !important; }
 html.is-mobile-nav .club-profile-detail-row strong { overflow-wrap: break-word; }
+
+/*
+ * **The First Team's table keeps its stat columns** (owner, 2026-10-20: "ne treba ispod imena i
+ * slike da stoji Apps- Gls - Ast - to su kolone; tabela mora biti skrolabilna; prve kolone moraju da
+ * budu apps, gls, ast").
+ *
+ * <p>The rule above hides the appearances, the goals and the assists on a phone and the table puts
+ * them under the name as a strip. The First Team asks for the opposite: the numbers are columns, the
+ * table scrolls sideways, and they are the columns the phone shows first. So this table keeps them,
+ * and the strip is not rendered for it.
+ */
+html.is-mobile-nav .fm-squad-wrap .fm-squad.fm-squad--stats-first:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-games,
+html.is-mobile-nav .fm-squad-wrap .fm-squad.fm-squad--stats-first:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-games,
+html.is-mobile-nav .fm-squad-wrap .fm-squad.fm-squad--stats-first:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-goals,
+html.is-mobile-nav .fm-squad-wrap .fm-squad.fm-squad--stats-first:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-goals { display: table-cell !important; }
 
 
 /* Club stat text should break at word boundaries, never mid-word;

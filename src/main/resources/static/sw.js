@@ -48,13 +48,37 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
     const request = event.request;
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return;
+
+    /*
+     * **The maintenance page's own two images are served from the cache when the network is down.**
+     *
+     * <p>They are the picture across the whole page and the badge in the corner (owner, 2026-10-20:
+     * "zasto u lokalu ne prikazuje sliku prekocele strane, logo gore i ovaj text ima?"). The page was
+     * cached and served, but its images went straight to the network like everything else - and the
+     * network was down, which is the whole reason the page was being shown. So the manager got the
+     * sentence and none of the game around it.
+     *
+     * <p>The network is still tried first, so a live app always gets the live file. The rule that
+     * nothing the app needs is cached still holds: these two are the maintenance page's own.
+     */
+    if (request.method === 'GET' && url.pathname !== MAINTENANCE_PAGE && MAINTENANCE_ASSETS.includes(url.pathname)) {
+        event.respondWith((async () => {
+            try {
+                return await fetch(request);
+            } catch (error) {
+                const cached = await caches.match(request);
+                if (cached) return cached;
+                throw error;
+            }
+        })());
+        return;
+    }
 
     // Only a page navigation. Everything else - the app's scripts, its styles, its API calls -
     // goes to the network untouched, so a rebuild is never served a stale file.
     if (request.method !== 'GET' || request.mode !== 'navigate') return;
-
-    const url = new URL(request.url);
-    if (url.origin !== self.location.origin) return;
 
     event.respondWith((async () => {
         try {

@@ -1938,6 +1938,10 @@ async function loadUserProfile() {
      */
     function mainDesktopNavItems() {
         return [
+            // The Sports Lobby is NOT in the nav bar on a phone (owner, 2026-10-20: "opet si vratio
+            // sports lobby u nav bar - a bio si ga skinuo!"). The mobile header carries the game icons
+            // that lead there, and the nav bar is the bottom bar on a phone - the two are not the same
+            // thing, and the header is where the lobby belongs.
             { label: 'Sports Lobby', onclick: "window.location.href='/home.html'", mobileHidden: true },
             { label: 'Club', gotoGroup: 'club', icon: '⚽' },
             { label: 'League', page: 'leagueTable' },

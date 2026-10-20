@@ -57,7 +57,16 @@ public class FantasyController {
                 squads.lockReason(weekOpen), pool.players()));
     }
 
-    /** The manager's own squad for the active season, or 404 when he has not joined. */
+    /**
+     * The manager's own squad for the active season.
+     *
+     * <p>**A manager who has not joined gets an empty squad, not a 404** (owner, 2026-10-20, from the
+     * console: "GET /api/fantasy/SRB/squad 404 (Not Found)"). "Not joined" is a state of the page, not
+     * a missing thing: the Fantasy page opens on the picker for a manager who has never picked a
+     * squad, and the 404 was the browser's red line in the console for a state the page handles
+     * perfectly well. The empty squad says the same thing without the alarm - and the page tells
+     * "joined" by the picks it carries, because a squad that exists always has fifteen of them.
+     */
     @GetMapping("/{isoCode}/squad")
     public ResponseEntity<SquadResponse> mySquad(@AuthenticationPrincipal User user,
                                                  @PathVariable String isoCode) {
@@ -68,9 +77,14 @@ public class FantasyController {
         if (countryId == null) {
             return ResponseEntity.notFound().build();
         }
-        return squads.squad(user.getId(), countryId)
-                .map(squad -> ResponseEntity.ok(SquadResponse.of(squad)))
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        return ResponseEntity.ok(squads.squad(user.getId(), countryId)
+                .map(SquadResponse::of)
+                .orElseGet(() -> SquadResponse.empty(countryId, activeSeasonYear())));
+    }
+
+    /** The season the country's fantasy league is played in. */
+    private int activeSeasonYear() {
+        return seasons.getActiveSeasonYear();
     }
 
     /**
@@ -212,6 +226,18 @@ public class FantasyController {
                     squad.changes(), squad.transferCost(),
                     FantasyTransferRules.FREE_PER_WEEK, FantasyTransferRules.COST_PER_EXTRA,
                     squad.picks());
+        }
+
+        /**
+         * The squad of a manager who has not joined yet: the whole budget, no picks, no changes.
+         *
+         * <p>It is the same answer as an empty one, and the page tells the two apart by the picks.
+         */
+        static SquadResponse empty(Long countryId, int seasonYear) {
+            return new SquadResponse(null, countryId, seasonYear,
+                    FantasyPricing.BUDGET, 0, 0, FantasyPricing.BUDGET, 0, 0,
+                    FantasyTransferRules.FREE_PER_WEEK, FantasyTransferRules.COST_PER_EXTRA,
+                    List.of());
         }
     }
 

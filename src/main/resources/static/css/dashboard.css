@@ -1114,9 +1114,23 @@ html[data-theme="daylight"] {
 
 .training-group-row {
     display: grid;
-    grid-template-columns: 80px 1fr;
+    /*
+     * The second column may shrink.
+     *
+     * <p>A grid track that is `1fr` is `minmax(auto, 1fr)`, and the `auto` minimum is the content's
+     * minimum width - for a select, the widest option it holds. The Match Setup's "Starting XI" and
+     * "Bench" rows are selects whose options are a whole player line ("Aleksandar Negovanović (ATT,
+     * OVR 84)"), so the rows were wider than the block that holds them and the selects ran out past
+     * its background (owner, 2026-10-20: "u Match setup starting XI izlazi u desno izvan backgrounda,
+     * Bench isto").
+     */
+    grid-template-columns: 80px minmax(0, 1fr);
     gap: 10px;
     align-items: center;
+}
+
+.training-group-row select {
+    min-width: 0;
 }
 
 .group-tag {
@@ -1489,8 +1503,16 @@ button.training-week-item {
     gap: 6px;
     padding: 16px;
     border-radius: 14px;
-    background: rgba(var(--wash-rgb), 0.04);
-    border: 1px solid rgba(var(--wash-rgb), 0.08);
+    /*
+     * The four figures on the Finances page are cards like the panels beside them, and they are as
+     * opaque as they are (owner, 2026-10-20: "samo su income to date, costs to date, net to date,
+     * wages vs income su transparent, treba da imaju background kao i ostali na toj strani"). A four
+     * per cent wash over the stadium that sits behind the page is nothing at all, and the numbers
+     * floated on it. The surface gradient is the panels' own background, so the card and the panel
+     * beside it are the same object.
+     */
+    background: var(--surface-grad);
+    border: 1px solid var(--border);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
@@ -2207,6 +2229,16 @@ button.training-week-item {
     color: var(--text);
 }
 
+/*
+ * **The league's name is the green line, and it is a little larger** (owner, 2026-10-20: "u naslovu
+ * lige stoji naziv lige zelenom bojom - to bih zadrzao i malko povecao font"). The white heading under
+ * it said the same thing, so it is gone, and the season is only in the dropdown.
+ */
+.fm-page--league .fm-eyebrow {
+    font-size: 1.02rem;
+    margin-bottom: 0;
+}
+
 /* The list a native select opens is drawn by the browser, not by this sheet - so its colours have
    to be stated as well, or the options come out white-on-white in the light theme. */
 .fm-season-select option,
@@ -2918,11 +2950,112 @@ select option {
     gap: 14px;
     align-content: start;
     text-align: center;
+    /*
+     * The panel's own column may shrink. It is a grid, and a grid's `auto` track takes its content's
+     * **maximum** width: the summary's three tiles side by side are 674px wide, so the panel was
+     * 674px wide inside a 414px phone and its text ran out of the panel and out of the screen
+     * (owner, 2026-10-20: "summary text izlazi malo u desno van svog polja; managed cases polje izlazi
+     * u desno van backgrounda").
+     */
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .fm-medical-panel.is-standalone {
     justify-items: center;
     min-height: 340px;
+}
+
+/*
+ * The name inside a tile is at the tile's left edge, like every other value in it.
+ *
+ * <p>The link buttons (the club, the league, the country - the values a manager can click) are
+ * right-aligned, because in a details row the value belongs at the row's right end. In a tile there
+ * is no row to end: the value sits under its own label, and the label is at the left (owner,
+ * 2026-10-20: "ime kluba treba da bude uz levu ivicu svog polja, liga isto uz levu ivicu (kao sto je
+ * rola lepo npr)").
+ */
+.fm-medical-stat-grid .fm-link-btn,
+.team-summary-grid .fm-link-btn {
+    text-align: left;
+}
+
+/*
+ * A line of a transfer list, as a card (owner, 2026-10-20).
+ *
+ * <p>The incoming offers and the market board were tables whose columns ran past the right edge of a
+ * phone, with the buttons in the last column: the manager scrolled sideways to reach the actions and
+ * sideways again to see what they were about. A card holds the facts on the first row and the
+ * actions on the last, and it fits the width of the phone.
+ */
+.fm-transfer-card {
+    display: grid;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(var(--wash-rgb), 0.04);
+    border: 1px solid rgba(var(--wash-rgb), 0.08);
+}
+
+.fm-transfer-card + .fm-transfer-card {
+    margin-top: 10px;
+}
+
+.fm-transfer-card-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px 14px;
+}
+
+.fm-transfer-fact {
+    min-width: 0;
+}
+
+.fm-transfer-fact-label {
+    display: block;
+    color: #9bb0cc;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.fm-transfer-fact-value {
+    display: block;
+    margin-top: 2px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.fm-transfer-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/*
+ * The Medical page's summary is a widget of its own, and the queue under it is a table
+ * (owner, 2026-10-20: "posle njega treba da ide kao widget medical summary pa ISPOD njega recovery
+ * queue skrolabilna tabela").
+ *
+ * <p>The summary used to live in a side panel beside the queue, which on a phone meant it was the
+ * panel that got squeezed and the queue that got cut off. It is a full-width panel now, and it reads
+ * like the dashboard's tiles: the three figures side by side, the sentences under them.
+ */
+.fm-medical-summary-widget {
+    text-align: left;
+}
+
+.fm-medical-summary-widget .fm-medical-summary-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/*
+ * The queue's table needs a floor, or the seven columns squeeze into the phone's width and the
+ * wrapper beside them has nothing to scroll. The same trick `.fm-jobs-table` uses.
+ */
+.fm-medical-queue-panel .fm-table {
+    min-width: 680px;
 }
 
 .fm-medical-roster {
@@ -3281,6 +3414,17 @@ select option {
 
 .fm-match-action-btn {
     min-width: 140px;
+}
+
+/*
+ * The tab content keeps its height so the page does not jump between the tabs - but an **empty** tab
+ * content must not leave a hole under the date. The Match Setup tab empties the preview area and
+ * mounts its own panels, and the two hundred pixels the empty area kept pushed the whole setup down
+ * the screen (owner, 2026-10-20: "takodje deluje da ceo ovaj deo treba da se podigne jos gore").
+ */
+#match-info:empty {
+    min-height: 0 !important;
+    margin-top: 0 !important;
 }
 
 .top-lists {
@@ -4043,6 +4187,24 @@ select option {
     margin-top: 0;
 }
 
+/*
+ * The league table on a phone (R-24, R-26) - **one page, one rule**.
+ *
+ * <p>The league page's grid is two columns: the table and the "your position" panel on one side, the
+ * fixtures on the other, and the fixtures' column has a 320px floor. On a 414px phone that floor
+ * wins, the table is left **80px** and its columns are unreadable - the table's own wrapper had
+ * nothing to scroll in.
+ *
+ * <p><b>The table's panel takes the whole width</b> and the rest of the page keeps its arrangement:
+ * the "your position" panel and the fixtures stay in their row, exactly as they were. Nothing else on
+ * this page moves, and the other league pages - the schedule, the matches, the top lists - are not
+ * touched at all.
+ */
+@media (max-width: 480px) {
+    .fm-page--league .fm-panel--league-table {
+        grid-column: 1 / -1;
+    }
+}
 @media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
     .dashboard-content {
         width: 100%;
@@ -6449,6 +6611,330 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     }
 }
 
+/*
+ * The phone gets the tablet's layout, page by page (owner, 2026-10-20, the mobile walk).
+ *
+ * <p>**The phone was never in the tablet's block.** The rules that collapse a page's two columns and
+ * that let a wide table scroll sideways live in the tablet's `@media (min-width: 481px) and
+ * (max-width: 1024px)`, so a 430px phone got the desktop's two-column grids and the desktop's `auto`
+ * grid tracks. An `auto` track takes its content's **minimum** width, and a table with a minimum width
+ * is exactly what a phone cannot show: the panel grew past the screen, the columns were cut off at the
+ * right edge, and the scroll wrapper - which was there all along - had nothing to scroll in. The same
+ * `auto` track is why two of the club's columns overlapped each other instead of stacking.
+ *
+ * <p>So each page below gets the tablet's treatment, one page per rule, and nothing else on the page
+ * moves. The club's own layout, the words, the columns and the buttons are all exactly what they were.
+ */
+@media (max-width: 480px) {
+    /*
+     * The rule the pages below all need: the page's own column may shrink, and a panel inside it may
+     * shrink with it.
+     *
+     * <p>Without `min-width: 0` a grid item keeps its content's minimum width, and a table's minimum
+     * width is the one thing a phone cannot show. With it, the panel fits the screen and the table
+     * scrolls inside the wrapper that was written for exactly that.
+     */
+    .fm-page,
+    .fm-page > *,
+    .fm-panel,
+    .fm-club-hero,
+    .fm-grid-top,
+    .fm-grid-bottom,
+    .fm-team-layout,
+    .fm-team-layout.has-side-panel,
+    .fm-player-grid,
+    .fm-ph-banner,
+    .fm-ph-id-cols,
+    .fm-skills-grid,
+    .fm-club-hero-main,
+    .fm-page-toolbar,
+    .club-profile-detail-list {
+        min-width: 0;
+    }
+
+    .fm-page,
+    .fm-club-hero,
+    .fm-grid-top,
+    .fm-grid-bottom,
+    .fm-team-layout,
+    .fm-team-layout.has-side-panel,
+    .fm-player-grid,
+    .fm-ph-banner,
+    .fm-ph-id-cols,
+    .fm-skills-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /*
+     * **Club → Office** (owner, 2026-10-20): the books two by two so every field is visible, the
+     * milestones as tiles rather than one tall card per line, and the inbox scrollable when there is
+     * more of it than fits on the screen.
+     */
+    .fm-page--office .fm-office-figures {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fm-page--office .fm-milestone-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fm-page--office .fm-office-inbox-scroll {
+        max-height: 62vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /*
+     * A count or a name in a panel's head is one line. "0 cases" broken into "0 case s" and a club
+     * name broken into "OFK Omladin ac" both read as a mistake; the head's own sentence is the part
+     * that may wrap.
+     */
+    .fm-panel-action {
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /*
+     * A transfer card's facts are four across on a phone, so the incoming offer is **two rows** - the
+     * facts, then the buttons - and the market board's player is three (owner, 2026-10-20: "treba da
+     * bude iz dva reda offer, prvi red player, pos, bids, listed; drugi red 3 actions dugmeta").
+     */
+    .fm-transfer-card-facts {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .fm-transfer-fact-label {
+        font-size: 0.62rem;
+    }
+
+    .fm-transfer-fact-value {
+        font-size: 0.8rem;
+    }
+
+    /*
+     * **Club → Tactics → Tactic setup** (owner, 2026-10-20: "u style dugmadi smanjiti malo font jer
+     * prelazi po jedno slovo u drugi red"). "POSSESSION" and "HIGH PRESS" did not fit a 121px button
+     * and broke one letter at a time.
+     */
+    .cs-tactics-btn {
+        font-size: 0.82rem;
+        padding: 9px 8px;
+        overflow-wrap: normal;
+        word-break: keep-all;
+    }
+
+    /*
+     * **The match page's tabs are a bar** (owner, 2026-10-20: "kad se otvori bilo koji tab - Preview,
+     * Match setup, Lineups, Stats, Goals, Replay, Match report dugmad izadju prva pa se ne zna odmah
+     * na kojojk smo strani i mora da se skrola, mozes li ih staviti kao tabove u jednim redu npr u vrhu
+     * strane odmah ispod backa").
+     *
+     * <p>One row that scrolls sideways, under the Back button, and the open tab is marked. The row was
+     * seven buttons that wrapped into three rows in the middle of the page, and every one of them
+     * looked the same - so a manager who had opened "Stats" could not tell from the screen which tab
+     * he was on.
+     */
+    .fm-match-actions {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        overflow-x: auto;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -4px 14px;
+        padding: 2px 4px 6px;
+    }
+
+    .fm-match-action-btn {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 0;
+        scroll-snap-align: start;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    /* The open tab says so, in the same vocabulary the player page's own tabs use. */
+    .fm-match-action-btn.is-active {
+        background: rgba(var(--accent-rgb), 0.26);
+        border-color: var(--accent);
+        color: var(--text);
+        font-weight: 700;
+    }
+
+    /*
+     * **The league's season dropdown** (owner, 2026-10-20: "drop doen menu season malo prelazi desno
+     * sece ga malo ga skratiti (i font ako je potrebno)"). The option now says the number and the
+     * label above it says "Season", so the box is short enough to stay inside the screen.
+     */
+    .fm-season-select {
+        min-width: 0;
+        padding: 7px 10px;
+        font-size: 0.85rem;
+    }
+
+    .fm-season-select-wrap {
+        min-width: 0;
+    }
+
+    /*
+     * **Club → Tactics → Tactic Editor**, the shelf's row (owner, 2026-10-20: "formacija prelazi u
+     * drugi red 4-3- u jednom i 3 u drugom, smanji malo font i malko napravi prostor"). The formation
+     * is one word and it may not break.
+     */
+    .te-tactic-row {
+        font-size: 0.86rem;
+        gap: 8px;
+    }
+
+    .te-tactic-name,
+    .te-tactic-shape {
+        white-space: nowrap;
+    }
+
+    /*
+     * **User → Fantasy**: the players table was 485px wide inside a 384px phone, so the Points column
+     * was off the screen and the Add button was with it (owner, 2026-10-20: "krajnja desna kolona
+     * points se ne vidi, ovaj deo gde je dugme Add ga prekriva ... trebalo je samo da deo uz add dugme
+     * malo pomeris u desno ka add dugmetu da bi se videlo points").
+     *
+     * <p>The columns are given their share, so the table reaches the Add button instead of stopping
+     * short of it. **Nothing is cut**: the player's name and the club name wrap over two lines, which
+     * is what they did before - a first attempt that trimmed them with an ellipsis read as "nothing
+     * is visible" and was put back.
+     */
+    .fm-fantasy-table-wrap .fm-table {
+        /* A fixed layout is the only way a table's columns may be given a share: in the automatic
+           layout a cell's `max-width` is a suggestion the table is free to ignore, and it ignored it. */
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    .fm-fantasy-table-wrap .fm-table th,
+    .fm-fantasy-table-wrap .fm-table td {
+        padding-left: 2px;
+        padding-right: 2px;
+        /* `break-word`, not `anywhere`: the name and the club wrap between their words, and a number
+           like 12.5 is never cut in half. */
+        overflow-wrap: break-word;
+    }
+
+    /* The column heading may wrap too: "Rating" over the sort arrow is two lines, and it saves the
+       ten pixels the words in the rows need. */
+    .fm-fantasy-table-wrap .fm-fantasy-sortable button {
+        white-space: normal;
+    }
+
+    /* The player's name is a link, and it keeps the name's own rules. */
+    .fm-fantasy-table-wrap .js-fantasy-open-player {
+        appearance: none;
+        background: none;
+        border: 0;
+        padding: 0;
+        margin: 0;
+        font: inherit;
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(1),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(1) { width: 26%; }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(2),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(2) { width: 22%; }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(3),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(3) { width: 16%; }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(4),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(4) { width: 13%; }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(5),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(5) { width: 12%; }
+
+    .fm-fantasy-table-wrap .fm-table th:nth-child(6),
+    .fm-fantasy-table-wrap .fm-table td:nth-child(6) { width: 11%; }
+
+    .fm-fantasy-table-wrap .fm-action-btn {
+        padding: 6px 8px;
+        font-size: 0.78rem;
+    }
+
+    /*
+     * **Club → Training → Group training** (owner, 2026-10-20: "prosiriti malo u levo padajuci meni
+     * da se vidi puni naziv skilova"). The grid was two columns on a phone, so each group's dropdown
+     * was 68px wide and the skill's name was cut off. One column, and the dropdown has the width.
+     */
+    .training-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /*
+     * **Club → Tactics → Tactic Editor** (owner, 2026-10-20: "ODMAH VRATITI kao sto je bilo").
+     *
+     * <p>The board was two columns - the pitch and the side card - and the phone's 430px left the pitch
+     * about 70px wide, so its heading ran down the screen one word per line and the pitch itself could
+     * not be dragged. The tablet's rule is one column; the phone now gets it, with the tablet's pitch
+     * measurements, so the board is the same size it is on a tablet.
+     */
+    .te-board-layout,
+    .te-sp-grid,
+    .te-info-strip,
+    .te-instruction-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .te-pitch-stage {
+        padding: 106px 0 112px;
+    }
+
+    .te-pitch-board {
+        width: 100%;
+    }
+
+    .te-cell-label {
+        font-size: 0.58rem;
+        max-width: 52px;
+    }
+
+    .te-player-marker {
+        width: 36px;
+        height: 36px;
+    }
+
+    .te-player-marker-label {
+        font-size: 0.58rem;
+    }
+
+    .te-corner-zone {
+        width: calc(50% - 12px);
+        left: auto;
+        right: auto;
+    }
+
+    .te-corner-zone.is-attack-left,
+    .te-corner-zone.is-defend-left {
+        left: 0;
+        right: auto;
+    }
+
+    .te-corner-zone.is-attack-right,
+    .te-corner-zone.is-defend-right {
+        /*
+         * `left` has to be cleared as well: the base rule puts the right-hand corner at
+         * `left: calc(50% + 44px)`, and a corner with both a left and a right edge stands nine pixels
+         * past the board - which is where the "Atk right corner" button was cut off (owner, 2026-10-20:
+         * "dugmad right corner i att i def su malo odseceni s desne strane").
+         */
+        left: auto;
+        right: 0;
+    }
+}
+
 /* ---------------------------------------------------------------------------
    Match preview (the `fm-mpv-*` classes)
    ---------------------------------------------------------------------------
@@ -8408,7 +8894,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .fm-pcard {
     --pcard-tier-colour: var(--pcard-regular);
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
     width: 100%;
     max-width: 340px;
@@ -8433,6 +8919,43 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     background: var(--surface-2-grad);
     border: 1px solid var(--border-faint);
     border-radius: 12px;
+}
+
+/*
+ * **The skills, one block in the middle of the card** (owner, 2026-10-20: "album tj player kartice da
+ * jos malo vise lice na FIFA, malko golden style, skilove stavi po sredini kolona, jedno ispod drugog,
+ * ne ovako rasireno").
+ *
+ * <p>Two columns of four, each number over its own name, under the picture. They were a rail down
+ * each side of the face, spread over its whole height, and the card read as a picture with numbers in
+ * the margins.
+ *
+ * <p>The little gold boxes are the same idea as the attribute boxes on a card of a real set: a number
+ * in a square of its own, and the square is what makes the number look like a number.
+ */
+.fm-pcard-skills {
+    display: grid;
+    /*
+     * **The skills keep the owner's order in two columns** (owner, 2026-10-20: "samo zadrzi raspored
+     * skilova, leva kolona odozgo na dole: STA, PAC, TEC, PAS; desna odozgo na dole: GK, DEF, PLY,
+     * STR"). The grid fills **down a column first** and then across, so the left column is the four
+     * attacking skills and the right column the four defending ones - the same two rails the card had,
+     * side by side in the middle instead of spread around the edges.
+     */
+    grid-template-rows: repeat(4, auto);
+    grid-auto-flow: column;
+    gap: 5px 8px;
+    padding: 8px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(212, 160, 23, 0.10), rgba(212, 160, 23, 0.04));
+    border: 1px solid rgba(212, 160, 23, 0.22);
+}
+
+.fm-pcard-skills .fm-pcard-stat {
+    padding: 3px 4px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(212, 160, 23, 0.16);
 }
 
 .fm-pcard-stat {
@@ -8466,7 +8989,11 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     gap: 6px;
     padding: 10px 10px 8px;
     border-radius: 16px;
-    background: var(--surface-2-grad);
+    /* A card of a real set is printed on warm stock: the face carries a little gold, and the tier's
+       own colour is the frame around it (owner, 2026-10-20: "malko golden style"). */
+    background:
+        linear-gradient(180deg, rgba(212, 160, 23, 0.12), rgba(212, 160, 23, 0.03)),
+        var(--surface-2-grad);
     border: 2px solid var(--pcard-tier-colour);
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
     overflow: hidden;

@@ -573,9 +573,6 @@ export function createTrainingView(deps) {
                                 <h2>${weekLabel(report.seasonNumber, report.weekNumber)}</h2>
                                 <p class="fm-subtle">Week list is hidden while this squad-style report is open. Click any player row for the detailed progress view.</p>
                             </div>
-                            <div>
-                                ${buildTrainingActionsHtml('trainingReports')}
-                            </div>
                         </div>
                         <div class="training-report-actions">
                                 <span class="fm-player-chip secondary">${playerCount} players</span>
@@ -630,9 +627,6 @@ export function createTrainingView(deps) {
             if (points.length === 0) {
                 return `${headerHtml}
                     <section class="fm-panel">
-                        ${buildTrainingActionsHtml('trainingReports')}
-                    </section>
-                    <section class="fm-panel">
                         <div class="fm-empty">No graph data.</div>
                     </section>`;
             }
@@ -671,9 +665,6 @@ export function createTrainingView(deps) {
             const weeks = [...weeksAsc].reverse();
             let html = `<div class="training-player-shell">
                 ${headerHtml}
-                <section class="fm-panel">
-                    ${buildTrainingActionsHtml('trainingReports')}
-                </section>
                 <section class="fm-panel training-player-detail">
                     <div class="fm-panel-head">
                         <h3>Weekly progression</h3>
@@ -759,8 +750,14 @@ export function createTrainingView(deps) {
                                     <h2>Training Reports</h2>
                                     <p class="fm-subtle">Open any week to keep the current report/player drill-down flow, now wrapped in the same page shell as the rest of Training.</p>
                                 </div>
-                                ${buildTrainingActionsHtml('trainingReports')}
                             </div>
+                            <!--
+                                **There is no "Club actions" row on this page any more** (owner,
+                                2026-10-20: "u gornjem delu postoji Club actions - skloniti ga skroz").
+                                The block listed the club's own pages above the report archive, which is
+                                what the nav bar at the foot of a phone is for, and on the page it was a
+                                second set of buttons above the weeks the manager came to read.
+                            -->
                             <div class="fm-medical-stat-grid team-summary-grid">
                                 <div><strong>${summaries.length}</strong><span>Weeks logged</span></div>
                                 <div><strong>${players.length}</strong><span>Players</span></div>

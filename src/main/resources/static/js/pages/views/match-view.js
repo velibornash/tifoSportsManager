@@ -180,6 +180,28 @@ export function createMatchView(deps) {
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
                     <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget || ''}')">&#8592; Back</button>
                 </div>
+                <!--
+                    **The tabs are a tab bar, and they sit under the Back button** (owner, 2026-10-20:
+                    "kad se otvori bilo koji tab - Preview, Match setup, Lineups, Stats, Goals, Replay,
+                    Match report dugmad izadju prva pa se ne zna odmah na kojojk smo strani i mora da se
+                    skrola, mozes li ih staviti kao tabove u jednim redu npr u vrhu strane odmah ispod
+                    backa").
+
+                    <p>They were a row of ordinary buttons in the middle of the page, below the scoreline,
+                    and every one of them looked the same - so a manager who opened "Stats" could not
+                    say from the screen which tab he was on, and on a phone the row was below the fold.
+                    The open tab is marked, and the row is a bar that scrolls sideways when it does not
+                    fit.
+                -->
+                <div id="match-buttons-container" class="fm-match-actions fm-match-tabs" role="tablist">
+                    <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'preview' ? ' is-active' : ''}">Preview</button>
+                    <button type="button" id="view-setup" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'setup' ? ' is-active' : ''}">Match Setup</button>
+                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'lineups' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
+                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'stats' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
+                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'goals' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
+                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'replay' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Available once the match has been played"'}>Replay</button>
+                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'report' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
+                </div>
                 <h2 style="text-align:center;">${played ? 'Match Details' : 'Match Preview'}</h2>
                 ${competitionHeading}
                 <div class="fm-match-scoreline" style="font-size:1.5em; margin:20px 0; font-weight:bold;">
@@ -197,15 +219,6 @@ export function createMatchView(deps) {
                     <span class="fm-match-when">
                         &#128197; ${htmlEscape(formattedDate)}${calendarSuffix ? ` <span class="fm-match-when-calendar">· ${htmlEscape(calendarSuffix)}</span>` : ''}
                     </span>
-                </div>
-                <div id="match-buttons-container" class="fm-match-actions">
-                    <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn">Preview</button>
-                    <button type="button" id="view-setup" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ''}>Match Setup</button>
-                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
-                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
-                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
-                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Available once the match has been played"'}>Replay</button>
-                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn"${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
                 </div>
                 <div id="match-info" style="margin-top:15px; min-height:200px;"></div>
                 <div id="fm-match-setup">
@@ -1012,6 +1025,19 @@ export function createMatchView(deps) {
                     console.warn('Could not load the substitution plan:', error);
                 }
             }
+
+            /**
+             * The open tab is the marked one (owner, 2026-10-20: "pa se ne zna odmah na kojojk smo
+             * strani"). One listener on the bar rather than seven on the buttons: the buttons are
+             * replaced whenever the page is rendered, and a bar that marks itself cannot forget.
+             */
+            const tabBar = document.getElementById('match-buttons-container');
+            tabBar?.addEventListener('click', (event) => {
+                const button = event.target.closest('.fm-match-action-btn');
+                if (!button || button.disabled) return;
+                tabBar.querySelectorAll('.fm-match-action-btn').forEach(other => other.classList.remove('is-active'));
+                button.classList.add('is-active');
+            });
 
             document.getElementById("view-preview").addEventListener("click", () => {
                 // Leaving Match Setup empties its panels, so a preview is a preview and not a preview

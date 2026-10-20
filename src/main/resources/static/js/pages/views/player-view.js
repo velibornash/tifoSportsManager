@@ -763,7 +763,16 @@ export function createPlayerView(deps) {
     // --- Main loadPlayer ---
     async function loadPlayer(playerId, callerPage = _callerPage, options = {}) {
         const pushHistory = options.pushHistory !== false;
-        const teamId = getTeamId();
+        /**
+         * The club the player belongs to, when the caller knows it.
+         *
+         * <p>The read is `/teams/{teamId}/players/{playerId}` and the team id is part of the question:
+         * the endpoint answers for a player only when the player belongs to the team it is asked about.
+         * A manager's own eleven is always read with his own club, but the Fantasy pool is a whole
+         * country's players - and there the player is read with **his** club, or the page answered 404
+         * and showed "Player not found" for a player who plainly exists.
+         */
+        const teamId = options.teamId || getTeamId();
         if (!teamId) return;
         _callerPage = callerPage;
 
@@ -794,7 +803,10 @@ export function createPlayerView(deps) {
         };
         const backLabel = backMap[callerPage] || "Back";
         const backTarget = callerPage || "firstTeam";
-        const teamLabel = callerPage === 'juniors' ? 'Junior Squad' : 'First Team';
+        // The label says whose squad this is. A Fantasy player belongs to no squad of the manager's,
+        // and "First Team" on a stranger's page is simply wrong (owner, 2026-10-20).
+        const teamLabel = callerPage === 'juniors' ? 'Junior Squad'
+            : (callerPage === 'fantasy' ? 'Fantasy pool' : 'First Team');
         mainContent.innerHTML = buildPlayerProfileHtml(player, {
             backLabel, eyebrow: 'Player overview', teamName: teamLabel,
             ratingSummary, transferStatus, revealPayload, showReveal: true,

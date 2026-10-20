@@ -13,7 +13,12 @@ export function createMedicalView(deps) {
             const overview = await response.json();
             const queue = Array.isArray(overview?.recoveryQueue) ? overview.recoveryQueue : [];
 
-            const buildRecoveryCardHtml = (player) => {
+            // The Recovery queue is a table and not a stack of cards any more (owner, 2026-10-20): a
+            // queue of a dozen players was a dozen tall cards the manager had to scroll past, and the
+            // numbers that matter - who is hurt, how tired, how fit - were scattered over the card
+            // instead of standing in columns. Every value the card showed is still here, one per
+            // column, so nothing the manager could read before has been dropped.
+            const buildRecoveryRowHtml = (player) => {
                 const conditionPercent = getPlayerConditionPercent(player);
                 const fatigue = Number(player?.fatigue);
                 const fatigueText = Number.isFinite(fatigue) ? `${Math.round(fatigue)} fatigue` : 'Fatigue n/a';
@@ -22,32 +27,36 @@ export function createMedicalView(deps) {
                     : 'Available \u00B7 managed recovery';
                 const actionLabel = player?.injured ? 'Speed up recovery' : 'Recovery session';
                 return `
-                    <article class="fm-medical-card">
-                        <div class="fm-medical-card-head">
-                            <div>
-                                <h4>${htmlEscape(player?.name || 'Player')}</h4>
-                                <div class="fm-medical-card-subtle">${htmlEscape(player?.position || 'Player')} \u00B7 ${player?.age ?? '-'} years</div>
-                            </div>
+                    <tr>
+                        <td class="sq-name"><strong>${htmlEscape(player?.name || 'Player')}</strong></td>
+                        <td>${htmlEscape(player?.position || 'Player')}</td>
+                        <td>${player?.age ?? '-'}</td>
+                        <td>
                             <div class="fm-badge-deck">
                                 ${player?.injured ? '<span class="fm-badge fm-badge-inj">INJ</span>' : '<span class="fm-badge fm-badge-fit">REC</span>'}
                             </div>
-                        </div>
-                        <div class="fm-medical-chip-row">
-                            <span class="fm-medical-chip">${htmlEscape(injuryText)}</span>
-                            <span class="fm-medical-chip">${htmlEscape(fatigueText)}</span>
-                            <span class="fm-medical-chip">Condition ${conditionPercent}%</span>
-                        </div>
-                        <div class="fm-cond">
-                            <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${conditionPercent}%"></div></div>
-                            <span class="fm-cond-val">${conditionPercent}%</span>
-                        </div>
-                        <div class="fm-medical-actions">
-                            <button type="button" class="fm-action-btn secondary" data-medical-recover-player="${player?.id ?? ''}">${actionLabel}</button>
-                            <button type="button" class="fm-action-btn secondary" data-medical-open-player="${player?.id ?? ''}">Open player</button>
-                        </div>
-                    </article>`;
+                            <div class="fm-medical-card-subtle">${htmlEscape(injuryText)}</div>
+                        </td>
+                        <td>${htmlEscape(fatigueText)}</td>
+                        <td>
+                            <div class="fm-cond">
+                                <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${conditionPercent}%"></div></div>
+                                <span class="fm-cond-val">${conditionPercent}%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="fm-medical-actions">
+                                <button type="button" class="fm-action-btn secondary" data-medical-recover-player="${player?.id ?? ''}">${actionLabel}</button>
+                                <button type="button" class="fm-action-btn secondary" data-medical-open-player="${player?.id ?? ''}">Open player</button>
+                            </div>
+                        </td>
+                    </tr>`;
             };
 
+            // The order the owner asked for on 2026-10-20: the Medical Center hero first, then the
+            // Medical summary as a widget under it, and the Recovery queue under that as a table
+            // that scrolls sideways. The old page put the summary in a side panel beside the queue,
+            // and on a phone that side panel was the part that got cut off.
             mainContent.innerHTML = `
                 <div class="fm-page fm-page--club">
                     <section class="fm-panel fm-club-hero">
@@ -67,34 +76,48 @@ export function createMedicalView(deps) {
                             <div><strong>${overview?.averageConditionPercent ?? 100}%</strong><span>Avg condition</span></div>
                         </div>
                     </section>
-                    <div class="fm-team-layout has-side-panel">
-                        <section class="fm-panel">
-                            <div class="fm-panel-head">
-                                <div>
-                                    <h3>Recovery queue</h3>
-                                    <p class="fm-subtle">Players with injuries or elevated fatigue show up here for treatment planning.</p>
-                                </div>
-                                <span class="fm-panel-action">${queue.length} cases</span>
+                    <section class="fm-panel fm-medical-panel fm-medical-summary-widget">
+                        <div class="fm-panel-head">
+                            <h3>Medical summary</h3>
+                            <span class="fm-panel-action">Club area</span>
+                        </div>
+                        <div class="fm-medical-icon">&#10010; &#129658;</div>
+                        <p class="fm-subtle">Recovery sessions reduce fatigue immediately and, when a player is injured, also cut a few days off the rehab timeline.</p>
+                        <div class="fm-medical-summary-list">
+                            <div><strong>${overview?.injuredCount ?? 0}</strong><span>Current injuries</span></div>
+                            <div><strong>${overview?.rehabCount ?? 0}</strong><span>Managed cases</span></div>
+                            <div><strong>${overview?.totalPlayers ?? 0}</strong><span>Total squad size</span></div>
+                        </div>
+                        <div class="fm-panel-action">Squad condition recovers on its own each week; this page adds active treatment to speed it up.</div>
+                    </section>
+                    <section class="fm-panel fm-medical-queue-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>Recovery queue</h3>
+                                <p class="fm-subtle">Players with injuries or elevated fatigue show up here for treatment planning.</p>
                             </div>
-                            <div class="fm-medical-roster">
-                                ${queue.length ? queue.map(buildRecoveryCardHtml).join('') : '<div class="fm-empty">No players currently need recovery treatment.</div>'}
-                            </div>
-                        </section>
-                        <aside class="fm-panel fm-medical-panel">
-                            <div class="fm-panel-head">
-                                <h3>Medical summary</h3>
-                                <span class="fm-panel-action">Club area</span>
-                            </div>
-                            <div class="fm-medical-icon">&#10010; &#129658;</div>
-                            <p class="fm-subtle">Recovery sessions reduce fatigue immediately and, when a player is injured, also cut a few days off the rehab timeline.</p>
-                            <div class="fm-medical-summary-list">
-                                <div><strong>${overview?.injuredCount ?? 0}</strong><span>Current injuries</span></div>
-                                <div><strong>${overview?.rehabCount ?? 0}</strong><span>Managed cases</span></div>
-                                <div><strong>${overview?.totalPlayers ?? 0}</strong><span>Total squad size</span></div>
-                            </div>
-                            <div class="fm-panel-action">Squad condition recovers on its own each week; this page adds active treatment to speed it up.</div>
-                        </aside>
-                    </div>
+                            <span class="fm-panel-action">${queue.length} cases</span>
+                        </div>
+                        ${queue.length ? `
+                            <div class="fm-squad-wrap">
+                                <table class="fm-table fm-squad">
+                                    <thead>
+                                        <tr>
+                                            <th>Player</th>
+                                            <th>Position</th>
+                                            <th>Age</th>
+                                            <th>Status</th>
+                                            <th>Fatigue</th>
+                                            <th>Condition</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${queue.map(buildRecoveryRowHtml).join('')}
+                                    </tbody>
+                                </table>
+                            </div>` : '<div class="fm-empty">No players currently need recovery treatment.</div>'}
+                    </section>
                 </div>`;
 
             mainContent.querySelectorAll('[data-medical-recover-player]').forEach(button => {

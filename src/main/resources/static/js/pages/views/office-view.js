@@ -366,7 +366,7 @@ export function createOfficeView({ getTeamId, formatBudget }) {
         const weeks = Array.from(byWeek.keys()).sort((a, b) => b - a);
         const season = summary?.seasonYear ?? '';
 
-        return `<section class="fm-panel">
+        return `<section class="fm-panel fm-office-inbox">
             <div class="fm-panel-head">
                 <div>
                     <h3>Inbox</h3>
@@ -374,6 +374,10 @@ export function createOfficeView({ getTeamId, formatBudget }) {
                         season, newest first. Everything the club has been paid and everything it has paid.</p>
                 </div>
             </div>
+            <!-- The inbox is a widget, and it scrolls when there is more of it than fits on the screen
+                 (owner, 2026-10-20: "Inbox - isto widget, ako ne staje sve na stranu da moze da se
+                 skrola"). A season's ledger is a long list, and on a phone it was the whole page. -->
+            <div class="fm-office-inbox-scroll">
             ${weeks.map(week => `
                 <div class="fm-office-week">
                     <div class="fm-office-week-head">Week ${escapeHtml(String(week))}${season ? ` · season ${escapeHtml(String(season))}` : ''}</div>
@@ -387,6 +391,7 @@ export function createOfficeView({ getTeamId, formatBudget }) {
                         </div>`;
                     }).join('')}
                 </div>`).join('')}
+            </div>
         </section>`;
     }
 

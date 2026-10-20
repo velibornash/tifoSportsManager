@@ -66,7 +66,7 @@ export async function loadPublicUserProfile(userId, viewer) {
                     <div><strong>${escapeHtml(role)}</strong><span>Role</span></div>
                     <div><strong><button type="button" class="fm-link-btn js-profile-club" data-club-id="${escapeHtml(profile.clubId)}">${escapeHtml(profile.clubName || '—')}</button></strong><span>Club</span></div>
                     <div><strong><button type="button" class="fm-link-btn js-profile-league" data-league-id="${escapeHtml(profile.leagueId)}">${escapeHtml(profile.leagueName || '—')}</button></strong><span>League</span></div>
-                    <div><strong><button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || '—')}</button></strong><span>Country</span></div>
+                    <div><strong><button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || profile.countryCode || '—')}</button></strong><span>Country</span></div>
                     <div><strong>${profile.plusSubscriber ? 'PLUS' : '—'}</strong><span>Subscription</span></div>
                 </div>
             </section>
@@ -98,7 +98,7 @@ function renderDetails(profile, isSelf) {
             ? `<button type="button" class="fm-link-btn js-profile-league" data-league-id="${escapeHtml(profile.leagueId)}">${escapeHtml(profile.leagueName || '—')}</button>`
             : escapeHtml(profile.leagueName || '—')],
         ['Country', profile.countryCode
-            ? `<button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || '—')}</button>`
+            ? `<button type="button" class="fm-link-btn js-profile-country" data-country-code="${escapeHtml(profile.countryCode)}">${escapeHtml(profile.countryName || profile.countryCode)}</button>`
             : escapeHtml(profile.countryCode || '—')],
     ];
 

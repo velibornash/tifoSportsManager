@@ -434,6 +434,37 @@ export function buildSquadTableHtml(players, options = {}) {
     const emptyText = options.emptyText || 'No players found.';
     const sortable = !!options.sortable;
     const wrapClass = sortable ? ' fm-squad-wrap--sortable' : '';
+    /**
+     * The phone's own column order for the squad table (owner, 2026-10-20: "ne treba ispod imena i
+     * slike da stoji Apps- Gls - Ast - to su kolone; tabela mora biti skrolabilna; prve kolone moraju
+     * da budu apps, gls, ast").
+     *
+     * <p>The appearances, the goals and the assists were a strip under the player's name and the
+     * table's real columns were hidden - so the numbers a manager reads were not columns and the
+     * table had nothing to scroll. They are columns now, and they are the first ones: the table
+     * scrolls sideways, and what the phone shows first is the season's numbers.
+     *
+     * <p>Only the pages that ask for it, and only on a phone. The other squad tables keep the strip,
+     * because their columns are hidden for a reason and the strip is the only place their numbers
+     * are; and the desktop's table is wide enough to show every column where it stands.
+     */
+    const phone = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(max-width: 480px)').matches
+        : false;
+    const statsFirst = options.statsFirst === true && phone;
+    /**
+     * The First Team's own column order (owner, 2026-10-20: "Club - Squad - First team - mora da
+     * pocne imenom igraca tabela pobogu, znaci redosred kolona name, AV rat (i po njoj treba biti
+     * sortabilna), apps, gls, ast, ... name, position, age").
+     *
+     * <p>The table starts with the player's name, and the four columns a manager reads and sorts by
+     * - the average rating, the appearances, the goals and the assists - come straight after it. The
+     * position, the age and the attributes follow.
+     *
+     * <p>It is an option and not the builder's only order, because the other squad tables in the app
+     * were not part of the request.
+     */
+    const ratingFirst = options.ratingFirst === true;
 
     if (!rows.length) {
         return `<div class="fm-empty">${htmlEscape(emptyText)}</div>`;
@@ -455,24 +486,45 @@ export function buildSquadTableHtml(players, options = {}) {
             + `</span>`;
     }
 
+    /**
+     * The column headings, in the order the table shows them.
+     *
+     * <p>Two orders, because there are two tables: the default one, and the First Team's (owner,
+     * 2026-10-20: "mora da pocne imenom igraca tabela pobogu, znaci redosred kolona name, AV rat
+     * (i po njoj treba biti sortabilna), apps, gls, ast, ... name, position, age"), where the name
+     * comes first and the four columns a manager reads and sorts by follow it.
+     */
+    const headCells = ratingFirst
+        ? `<th class="sq-name">Name</th>
+           <th class="sq-inf"></th>
+           <th class="sq-rating sortable" data-sort="rating">Av Rat \u21c5</th>
+           <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
+           <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
+           <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
+           <th>Position</th>
+           <th class="sq-age">Age</th>
+           <th class="sq-ability">Ability</th>
+           <th class="sq-potential">Potential</th>
+           <th class="sq-cond">Condition</th>
+           <th class="sq-morale">Morale</th>`
+        : `<th class="sq-inf"></th>
+           <th class="sq-name">Name</th>
+           <th>Position</th>
+           <th class="sq-age">Age</th>
+           <th class="sq-ability">Ability</th>
+           <th class="sq-potential">Potential</th>
+           <th class="sq-cond">Condition</th>
+           <th class="sq-morale">Morale</th>
+           <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
+           <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
+           <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
+           <th class="sq-rating sortable" data-sort="rating">Av Rat \u21c5</th>`;
+
     return `
         <div class="fm-squad-wrap${sortable ? " fm-squad-wrap--sortable" : ""}">
-            <table class="fm-squad">
+            <table class="fm-squad${statsFirst ? ' fm-squad--stats-first' : ''}">
                 <thead>
-                    <tr>
-                        <th class="sq-inf"></th>
-                        <th class="sq-name">Name</th>
-                        <th>Position</th>
-                        <th class="sq-age">Age</th>
-                        <th class="sq-ability">Ability</th>
-                        <th class="sq-potential">Potential</th>
-                        <th class="sq-cond">Condition</th>
-                        <th class="sq-morale">Morale</th>
-                        <th class="sq-games sortable" data-sort="apps">Apps ⇅</th>
-                        <th class="sq-goals sortable" data-sort="goals">Gls ⇅</th>
-                        <th class="sq-goals sortable" data-sort="assists">Ast ⇅</th>
-                        <th class="sq-rating sortable" data-sort="rating">Av Rat ⇅</th>
-                    </tr>
+                    <tr>${headCells}</tr>
                 </thead>
                 <tbody>
                     ${rows.map(player => {
@@ -484,31 +536,37 @@ export function buildSquadTableHtml(players, options = {}) {
                         const goals = Number(player?.totalGoals ?? player?.goals ?? 0);
                         const assists = Number(player?.totalAssists ?? player?.assists ?? 0);
 
+                        const nameCell = `<td class="sq-name">
+                            <span class="sq-player-cell">
+                                ${playerMiniCardHtml(player)}
+                                <span class="sq-player-link">${htmlEscape(player?.name || 'Unknown')}</span>
+                            </span>
+                            ${statsFirst ? '' : squadStripHtml(appearances, goals, assists)}
+                        </td>`;
+                        const badgeCell = `<td class="sq-inf"><div class="fm-badge-deck">${badgeDeck(player)}</div></td>`;
+                        const ratingCell = `<td class="sq-rating">${Number.isFinite(averageRating) && appearances > 0 ? averageRating.toFixed(1) : '-'}</td>`;
+                        const gamesCell = `<td class="sq-games">${appearances > 0 ? appearances : '-'}</td>`;
+                        const goalsCell = `<td class="sq-goals">${goals > 0 ? goals : '-'}</td>`;
+                        const assistsCell = `<td class="sq-goals">${assists > 0 ? assists : '-'}</td>`;
+                        const attributesCells = `<td class="sq-pos">${htmlEscape(player?.position || '-')}</td>
+                            <td class="sq-age">${player?.age ?? '-'}</td>
+                            <td class="sq-ability">${buildStars(overall)}</td>
+                            <td class="sq-potential">${buildStars(Math.min(99, overall + 6))}</td>
+                            <td class="sq-cond">
+                                <div class="fm-cond">
+                                    <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${condition}%"></div></div>
+                                    <span class="fm-cond-val">${condition}%</span>
+                                </div>
+                            </td>
+                            <td class="sq-morale"><span class="fm-morale fm-morale-${morale.className}">${morale.icon}</span><span class="fm-morale-text">${morale.label}</span></td>`;
+
+                        const cells = ratingFirst
+                            ? `${nameCell}${badgeCell}${ratingCell}${gamesCell}${goalsCell}${assistsCell}${attributesCells}`
+                            : `${badgeCell}${nameCell}${attributesCells}${gamesCell}${goalsCell}${assistsCell}${ratingCell}`;
+
                         return `
                             <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}">
-                                <td class="sq-inf"><div class="fm-badge-deck">${badgeDeck(player)}</div></td>
-                                <td class="sq-name">
-                                    <span class="sq-player-cell">
-                                        ${playerMiniCardHtml(player)}
-                                        <span class="sq-player-link">${htmlEscape(player?.name || 'Unknown')}</span>
-                                    </span>
-                                    ${squadStripHtml(appearances, goals, assists)}
-                                </td>
-                                <td class="sq-pos">${htmlEscape(player?.position || '-')}</td>
-                                <td class="sq-age">${player?.age ?? '-'}</td>
-                                <td class="sq-ability">${buildStars(overall)}</td>
-                                <td class="sq-potential">${buildStars(Math.min(99, overall + 6))}</td>
-                                <td class="sq-cond">
-                                    <div class="fm-cond">
-                                        <div class="fm-cond-bar"><div class="fm-cond-fill" style="width:${condition}%"></div></div>
-                                        <span class="fm-cond-val">${condition}%</span>
-                                    </div>
-                                </td>
-                                <td class="sq-morale"><span class="fm-morale fm-morale-${morale.className}">${morale.icon}</span><span class="fm-morale-text">${morale.label}</span></td>
-                                <td class="sq-games">${appearances > 0 ? appearances : '-'}</td>
-                                <td class="sq-goals">${goals > 0 ? goals : '-'}</td>
-                                <td class="sq-goals">${assists > 0 ? assists : '-'}</td>
-                                <td class="sq-rating">${Number.isFinite(averageRating) && appearances > 0 ? averageRating.toFixed(1) : '-'}</td>
+                                ${cells}
                             </tr>`;
                     }).join('')}
                 </tbody>
@@ -714,7 +772,12 @@ export function renderPlayersView(players, title, options = {}) {
                         teamId,
                         teamName: resolvedTeamName,
                         emptyText: 'No registered players found for this CTeam.',
-                        sortable: true
+                        sortable: true,
+                        // The phone shows the season's numbers as columns (owner, 2026-10-20).
+                        statsFirst: true,
+                        // The table starts with the player's name, and the rating and the three season
+                        // numbers come straight after it (owner, 2026-10-20).
+                        ratingFirst: true
                     })}
                 </section>
             </div>
@@ -1314,14 +1377,23 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
         <div class="fm-page-toolbar">
             ${backButtonHtml('Back', backTarget)}
             <div class="fm-page-title-block">
+                <!--
+                    **The league's name is the green line and nothing else** (owner, 2026-10-20: "u
+                    naslovu lige stoji naziv lige zelenom bojom - to bih zadrzao i malko povecao font,
+                    imamo naziv lige belom bojom - to je visak i imamo Season 1 sto je visak jer ima mo
+                    desno padajuci meni; verujem i na mob i na desktop").
+
+                    <p>The name was printed twice - once in green above and once in white under it - and
+                    the season was printed a third time, next to the dropdown that already holds it. The
+                    green line is the title now, and it is a little larger.
+                -->
                 <div class="fm-eyebrow">${leagueTitle}</div>
-                <h2 class="league-table-title">${leagueTitle}${data.selectedSeasonNumber ? ` · Season ${data.selectedSeasonNumber}` : ''}</h2>
             </div>
             ${seasons.length ? `
             <label class="fm-season-select-wrap">
                 <span>Season</span>
                 <select id="league-overview-season-select" class="fm-season-select">
-                    ${seasons.map(season => `<option value="${season.seasonYear}" ${season.seasonYear === data.selectedSeason ? 'selected' : ''}>Season ${season.seasonNumber}</option>`).join('')}
+                    ${seasons.map(season => `<option value="${season.seasonYear}" ${season.seasonYear === data.selectedSeason ? 'selected' : ''}>${season.seasonNumber}</option>`).join('')}
                 </select>
             </label>` : ''}
         </div>
@@ -1330,7 +1402,6 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             <section class="fm-panel fm-panel--league-table">
                 <div class="fm-panel-head">
                     <h3>League Table</h3>
-                    <span class="fm-panel-action">Clubs clickable</span>
                 </div>
                 ${ownPositionLineHtml()}
                 <!--

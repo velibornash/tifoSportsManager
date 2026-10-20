@@ -76,6 +76,8 @@ export function createFantasyView() {
         // Sorted by rating, dearest first, which is the order a manager scans a list of players in. The
         // sort survives a filter change and a re-render because it is state, not a DOM artefact.
         sort: { key: 'rating', dir: -1 },
+        /** True when the manager has a squad of his own - the picks are what say so. */
+        joined: false,
         menuFor: null,
         swapFor: null,
         standings: null,
@@ -132,6 +134,11 @@ export function createFantasyView() {
         } catch (err) {
             state.squad = null;
         }
+        // A manager who has not joined has an **empty** squad, not a missing one: the endpoint used to
+        // answer 404 for that state and the browser's console carried a red line for a page that was
+        // working exactly as it should (owner, 2026-10-20). "Joined" is the picks - a squad that exists
+        // always has fifteen of them.
+        state.joined = !!(state.squad && (state.squad.picks || []).length);
         state.picks = (state.squad?.picks || []).map(p => ({
             playerId: p.player.playerId,
             starter: !!p.starter,
@@ -157,7 +164,7 @@ export function createFantasyView() {
 
     /** True when a squad that already exists cannot be changed right now. */
     function lockedOut() {
-        return !!state.pool && !state.pool.weekOpen && !!state.squad;
+        return !!state.pool && !state.pool.weekOpen && state.joined;
     }
 
     function renderSetupTab() {
@@ -286,7 +293,7 @@ export function createFantasyView() {
         if (!state.pool || state.pool.weekOpen) {
             return '';
         }
-        if (!state.squad) {
+        if (!state.joined) {
             return `<section class="fm-panel fm-fantasy-msg"><p class="fm-subtle">
                 This gameweek has already kicked off, so a new squad starts scoring <strong>next</strong> week.
                 You can still pick one now.</p></section>`;
@@ -321,7 +328,7 @@ export function createFantasyView() {
      * be the one he is charged.
      */
     function transferPanel() {
-        const saved = state.squad;
+        const saved = state.joined ? state.squad : null;
         if (!saved) {
             return `<section class="fm-panel"><div class="fm-panel-head">Changes this gameweek</div>
                 <p class="fm-subtle">Joining is free — your first squad costs nothing.</p></section>`;
@@ -601,9 +608,7 @@ export function createFantasyView() {
                     <table class="fm-table">
                 <thead><tr>
                     ${sortableTh('name', 'Player')}
-                    ${sortableTh('position', 'Pos')}
                     ${sortableTh('club', 'Club')}
-                    ${sortableTh('tier', 'Tier')}
                     ${sortableTh('rating', 'Rating')}
                     ${sortableTh('price', 'Price')}
                     ${sortableTh('points', 'Points')}
@@ -614,10 +619,8 @@ export function createFantasyView() {
                         const picked = chosen.has(p.playerId);
                         const colour = TIER_COLOUR[p.tier] || '#94a3b8';
                         return `<tr class="${picked ? 'fm-fantasy-picked' : ''}">
-                            <td>${escapeHtml(p.name)}</td>
-                            <td>${escapeHtml(p.fantasyPosition)}</td>
+                            <td><button type="button" class="cs-clickable js-fantasy-open-player" data-player-id="${p.playerId}" data-club-id="${p.clubId ?? ''}" style="color:${colour}">${escapeHtml(p.name)}</button></td>
                             <td>${escapeHtml(p.clubName)}</td>
-                            <td><span class="fm-fantasy-tier-dot" style="background:${colour}"></span>${escapeHtml(String(p.tier))}</td>
                             <td>${escapeHtml(String(p.rating))}</td>
                             <td>${fmt(p.price)}</td>
                             <td>${escapeHtml(String(p.points ?? 0))}</td>
@@ -674,6 +677,23 @@ export function createFantasyView() {
             el.addEventListener('click', () => addPlayer(Number(el.dataset.playerId))));
         document.querySelectorAll('.js-fantasy-remove').forEach(el =>
             el.addEventListener('click', () => removePlayer(Number(el.dataset.playerId))));
+
+        /**
+         * The player's name opens the player's own page (owner, 2026-10-20: "igraci bi trebalo da su
+         * klikabilni"). A manager reading the pool wants to know who a player is before he spends the
+         * budget on him, and the player's page is where that is written down.
+         */
+        document.querySelectorAll('.js-fantasy-open-player').forEach(el =>
+            el.addEventListener('click', () => {
+                const playerId = Number(el.dataset.playerId || 0);
+                const clubId = Number(el.dataset.clubId || 0);
+                if (playerId && typeof window.loadPlayer === 'function') {
+                    // The pool is a whole country's players, so the page is read with the player's own
+                    // club: the endpoint answers for a player only when the team it is asked about is
+                    // the player's team.
+                    window.loadPlayer(playerId, 'fantasy', clubId ? { teamId: clubId } : {});
+                }
+            }));
 
         document.querySelectorAll('.js-fantasy-pitch-card').forEach(el =>
             el.addEventListener('click', () => onPitchCardClick(Number(el.dataset.playerId))));
@@ -983,6 +1003,7 @@ export function createFantasyView() {
             });
             const payload = await res.json();
             state.squad = payload;
+            state.joined = true;
             state.message = `Saved. ${fmt(payload.currentPrice)} spent, ${fmt(payload.remaining)} left.`;
         } catch (err) {
             // authFetch throws on every non-2xx, so a refusal arrives here and not as a response. The

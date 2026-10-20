@@ -164,13 +164,6 @@ export function playerCardHtml(player, options = {}) {
 
     return `
         <article class="fm-pcard fm-pcard--${tier.key}${tier.foil ? ' fm-pcard--foil' : ''}" data-player-id="${htmlEscape(String(player?.id ?? ''))}" data-player-name="${htmlEscape(name)}">
-            <div class="fm-pcard-rail fm-pcard-rail--left">
-                ${RAIL_LEFT.map(entry => `
-                    <span class="fm-pcard-stat" title="${htmlEscape(entry.full)}">
-                        <b${skillId(entry.key)}>${htmlEscape(skillValue(player, entry.key))}</b>
-                        <i>${htmlEscape(entry.label)}</i>
-                    </span>`).join('')}
-            </div>
             <div class="fm-pcard-core">
                 <div class="fm-pcard-top">
                     <span class="fm-pcard-ovr">${Number.isFinite(overall) ? overall : '—'}</span>
@@ -181,18 +174,34 @@ export function playerCardHtml(player, options = {}) {
                     <img src="${htmlEscape(playerPhotoUrl(player))}" onerror="this.src='/images/player.jpg'"
                          alt="${htmlEscape(name)}">
                 </div>
+                <!--
+                    **The skills are one block in the middle of the card**, two columns of four, each
+                    number over its own name (owner, 2026-10-20: "album tj player kartice da jos malo
+                    vise lice na FIFA, malko golden style, skilove stavi po sredini kolona, jedno ispod
+                    drugog, ne ovako rasireno").
+
+                    <p>They were a rail down each side of the face, spread over its whole height, and a
+                    manager read the card as a picture with numbers in the margins. They are a block of
+                    their own now, under the picture, in the card's middle - the same eight numbers, in
+                    the same order, with the same ids.
+                -->
+                <div class="fm-pcard-skills">
+                    ${RAIL_LEFT.map(entry => `
+                        <span class="fm-pcard-stat" title="${htmlEscape(entry.full)}">
+                            <b${skillId(entry.key)}>${htmlEscape(skillValue(player, entry.key))}</b>
+                            <i>${htmlEscape(entry.label)}</i>
+                        </span>`).join('')}
+                    ${RAIL_RIGHT.map(entry => `
+                        <span class="fm-pcard-stat" title="${htmlEscape(entry.full)}">
+                            <b${skillId(entry.key)}>${htmlEscape(skillValue(player, entry.key))}</b>
+                            <i>${htmlEscape(entry.label)}</i>
+                        </span>`).join('')}
+                </div>
                 <div class="fm-pcard-name">${htmlEscape(name)}</div>
                 <div class="fm-pcard-foot">
                     <span class="fm-pcard-tier">${htmlEscape(tier.label)}</span>
                     ${number ? `<span class="fm-pcard-num">${htmlEscape(number)}</span>` : ''}
                 </div>
-            </div>
-            <div class="fm-pcard-rail fm-pcard-rail--right">
-                ${RAIL_RIGHT.map(entry => `
-                    <span class="fm-pcard-stat" title="${htmlEscape(entry.full)}">
-                        <b${skillId(entry.key)}>${htmlEscape(skillValue(player, entry.key))}</b>
-                        <i>${htmlEscape(entry.label)}</i>
-                    </span>`).join('')}
             </div>
         </article>`;
 }
