@@ -111,6 +111,13 @@ public class PyramidBuilder {
      */
     @Transactional
     public Result build(Country country, int seasonYear) {
+        // **The country's names go into the tables before its clubs are named**, so that the pool
+        // the clubs are named from is the same pool the owner sees in the admin panel and can
+        // change. The file is the shipped default; the rows are the working copy. Without this the
+        // panel showed "No names set for this country yet" for every country in the world, and the
+        // owner's own names were only ever in a file he never opened.
+        namePool.seedFromFile(country.getIsoCode());
+
         List<Competition> existing = competitions
                 .findByCountryIsoCodeAndType(country.getIsoCode(), CompetitionType.LEAGUE);
         if (!existing.isEmpty()) {

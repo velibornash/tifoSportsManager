@@ -109,8 +109,15 @@ public class CountryNamePoolService {
     /**
      * Loads a country's file pool into the tables.
      *
-     * <p>Called when a country is activated, so that the names the owner set for it survive the
-     * world the activation builds.
+     * <p>Called when a country is built or activated, so that the names the owner set for it are in
+     * the tables the seeders read - and so that the admin panel has something to show and something
+     * to change.
+     *
+     * <p><b>The owner's saved names win.</b> The file is the shipped default; the rows are the
+     * working copy, and what the owner typed into the admin panel must survive a rebuild of the
+     * world. So the file is written only into a country that has <em>no</em> rows yet - the old
+     * behaviour deleted them and wrote the file's names over the top, which meant that every
+     * activation threw away the owner's edits.
      */
     @Transactional
     public int seedFromFile(String isoCode) {
@@ -119,7 +126,10 @@ public class CountryNamePoolService {
         if (country == null) return 0;
         CountryNamePool.Pool pool = files.forCountry(code).orElse(CountryNamePool.Pool.empty());
         if (pool.isEmpty()) return 0;
-        entries.deleteByCountryId(country.getId());
+        // **The rows already there are the owner's.** Nothing is written over them.
+        if (!entries.findByCountryIdOrderByCategoryAscValueAsc(country.getId()).isEmpty()) {
+            return 0;
+        }
         int written = 0;
         written += write(country, CountryNamePoolEntry.Category.CLUB, pool.clubs());
         written += write(country, CountryNamePoolEntry.Category.CITY, pool.cities());

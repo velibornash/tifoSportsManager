@@ -104,6 +104,9 @@ public class DatabaseInitializer {
     private final SimulatedWorldSeeder simulatedWorldSeeder;
     private final org.tifo.footballmanager.newLogic.service.NationalRatingService nationalRatingService;
     private final WorldCatalogSeeder worldCatalogSeeder;
+
+    /** The country's own club, city and player names - the working copy the admin panel edits. */
+    private final org.tifo.footballmanager.newLogic.service.CountryNamePoolService countryNamePoolService;
     private final org.tifo.footballmanager.newLogic.service.WorldIntegrityService worldIntegrity;
     private final org.springframework.transaction.PlatformTransactionManager seedingTransactionManager;
 
@@ -231,6 +234,30 @@ public class DatabaseInitializer {
     private void seedWorldBeforePyramid() {
         worldCatalogSeeder.seedAll();
         nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
+        seedTheNamePools();
+    }
+
+    /**
+     * Puts every country's names into the tables the admin panel edits.
+     *
+     * <p>The name pools live in two places: the files under {@code src/main/resources/names/} are
+     * the shipped defaults, and the {@code country_name_pool} table is the working copy the owner
+     * edits. The seeders read the table and fall back to the file, so a country with nothing in
+     * the table still works - but the admin panel showed <em>"No names set for this country
+     * yet"</em> for every country in the world, because nothing ever wrote the defaults into the
+     * working copy. The owner asked for defaults he can change; a default he cannot see is not one.
+     *
+     * <p>Nothing is written over a country that already has rows, so the names the owner has
+     * changed are the ones that stay.
+     */
+    private void seedTheNamePools() {
+        try {
+            for (Country country : countryRepository.findAll()) {
+                countryNamePoolService.seedFromFile(country.getIsoCode());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not seed the name pools: {}", e.getMessage());
+        }
     }
 
     /**
