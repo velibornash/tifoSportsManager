@@ -1885,14 +1885,23 @@ button.fm-cup-tie-sep {
     flex-shrink: 0;
 }
 
-@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
-    .fm-page--country .fm-nt-summary-grid { grid-template-columns: 1fr; }
-    .fm-page--country .fm-cup-ties { grid-template-columns: 1fr; }
-    .fm-page--country .fm-country-link-row { grid-template-columns: 1fr; gap: 4px; }
+/*
+ * The country's own tables on a narrow screen (owner, 2026-10-20: "hocu da ispitas direktno iz
+ * browsera jednu po jednu kategoriju iz navbara sa svim podkategorijama za mobile").
+ *
+ * <p>**The phone was not in this block** - it started at 481px - so a 430px phone kept the seven
+ * fixed columns of a national-team row (34 + 46 + 160 + 56 + 84px) and the "Release" button sat
+ * 98px past the right edge of the screen: a manager could not release a player from his own
+ * national side. The phone is in it now.
+ */
+@media (max-width: 1024px) {
+    .fm-page--country .fm-nt-summary-grid { grid-template-columns: minmax(0, 1fr); }
+    .fm-page--country .fm-cup-ties { grid-template-columns: minmax(0, 1fr); }
+    .fm-page--country .fm-country-link-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
     .fm-page--country .fm-country-link-go { display: none; }
     .fm-page--country .fm-squad-row:has(.fm-squad-add),
     .fm-page--country .fm-squad-row:has(.fm-squad-remove) {
-        grid-template-columns: 28px 40px 1fr auto;
+        grid-template-columns: 28px 40px minmax(0, 1fr) auto;
     }
     .fm-page--country .fm-squad-club { display: none; }
 }

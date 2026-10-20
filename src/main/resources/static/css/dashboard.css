@@ -2112,6 +2112,13 @@ button.training-week-item {
 .fm-club-hero {
     display: grid;
     gap: 14px;
+    /* **The column has to be allowed to shrink.** A grid track that is `auto` takes its content's
+       minimum width, so a table with a `min-width` inside a scroll wrapper (the transfer market's
+       three tables are 675-705px wide) made this panel 735px wide inside a 414px phone - and the
+       panel is not scrollable, so the columns were simply cut off and unreachable.
+       `minmax(0, 1fr)` lets the panel shrink to the screen and the wrapper do the scrolling it was
+       written for. This is the phone's whole width question in one line. */
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .fm-club-actions {
@@ -4043,7 +4050,19 @@ select option {
     margin-top: 0;
 }
 
-@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+/*
+ * The layout collapses here (owner, 2026-10-20: "hocu da ispitas direktno iz browsera jednu po
+ * jednu kategoriju iz navbara sa svim podkategorijama za mobile").
+ *
+ * <p>**The phone was not in this block.** It started at 481px, so a 430px phone got the desktop's
+ * two-column grids: the league table's sidebar was squeezed into 80px and its heading ran down the
+ * screen one letter at a time, and the club hero could not shrink, so the transfer market's tables
+ * were cut off at the right edge with no way to reach the columns that were cut.
+ *
+ * <p>So the phone is in it now. The phone's own rules further down this file still win - they come
+ * after this block, and they are the ones that were measured on a 430px phone.
+ */
+@media (max-width: 1024px) {
     .dashboard-content {
         width: 100%;
         max-width: 100%;
@@ -4084,7 +4103,7 @@ select option {
     .fm-ph-banner,
     .fm-ph-id-cols,
     .fm-skills-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-page-toolbar,
@@ -4142,15 +4161,15 @@ select option {
     }
 
     .fm-grid-top--club-profile {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-grid-top--fixture-preview {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-match-lineups-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-page-title-block {
@@ -4158,7 +4177,7 @@ select option {
     }
 
     .fx-main {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         text-align: left;
     }
 
@@ -4174,7 +4193,7 @@ select option {
     }
 
     .fx-insights {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-fixtures-scroll {
@@ -4234,7 +4253,7 @@ select option {
     .training-grid-setup,
     .training-side-grid,
     .training-pools {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .training-report-item,
@@ -4244,7 +4263,7 @@ select option {
 
     .finance-bottom-grid,
     .finance-chart-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .training-report-main,
@@ -4287,7 +4306,7 @@ select option {
     }
 
     .training-graph-row {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
         gap: 6px;
         padding: 10px;
         border: 1px solid rgba(var(--wash-rgb), 0.08);
@@ -4314,7 +4333,7 @@ select option {
     }
 
     .fm-ph-banner {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .fm-ph-photo-frame {
@@ -4878,6 +4897,31 @@ body {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     align-content: start;
+}
+
+/*
+ * The dashboard on a phone (owner, 2026-10-20: "hocu da ispitas direktno iz browsera jednu po
+ * jednu kategoriju iz navbara sa svim podkategorijama za mobile").
+ *
+ * <p>**There was no rule for it at all.** The grid above is two columns - a 340px rail and the
+ * history beside it - and it was the only rule, so a 430px phone got it: the rail took 340px of the
+ * 414px and the "Recent matches" column was left 60px, which cut the panel's text off at the right
+ * edge. The phone now gets one column, and the tiles two columns of their own - which is what the
+ * comment above the grid has been promising since the rail was built.
+ */
+@media (max-width: 1024px) {
+    .fm-dashboard-view {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "ticker"
+            "rail"
+            "main"
+            "admin";
+    }
+
+    .fm-widget-rail {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 /* Both columns get the same breathing room at the top: the badge on the right needs a gap to sit
