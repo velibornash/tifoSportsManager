@@ -1,0 +1,19 @@
+# TIFO Sports Manager - robots policy (Layer 1 SEO, 2026-10-17)
+#
+# The game itself (dashboard, match sim, club management) is behind a login and must not be
+# indexed: it has no public value to a crawler and would only burn crawl budget. Only the
+# marketing pages, the login/register flow and the public club/league pages (Layer 3) are
+# allowed. Everything under /api/ and /auth/ is never crawled.
+User-agent: *
+Disallow: /dashboard.html
+Disallow: /tifo.html
+Disallow: /simulateAllResults.html
+Disallow: /zox-match-preview.html
+Disallow: /api/
+Disallow: /auth/
+
+Allow: /
+
+Sitemap: http://158.180.22.180:8080/sitemap.xml
+
+# TODO(domain): replace the host above with the real domain once it is live.

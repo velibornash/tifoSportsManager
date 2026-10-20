@@ -1,0 +1,179 @@
+// pages/views/stats-view.js
+import { htmlEscape, readJsonOr, readJsonOrThrow } from './utils.js';
+
+export function createStatsView(deps) {
+    const {
+        authFetch, getTeamId, ensureCurrentLeagueId,
+        getLeagueSeasonYear, getSeasonYear,
+        goBackSmart, renderPlayers, loadLeagueTeam, loadLeagueTeamPlayer,
+        // The league area had no navigation of its own, so this page was a route with no way in and
+        // no way onward. Passed in rather than imported, like every other action row.
+        buildLeagueActionsHtml
+    } = deps;
+
+    function renderTopListsError(message) {
+        const mainContent = document.getElementById("main-content");
+        if (!mainContent) return;
+        mainContent.innerHTML = `
+            <div class="fm-page fm-page--league">
+                <section class="fm-panel fm-club-hero">
+                    <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                    <div class="fm-club-hero-main">
+                        <div>
+                            <div class="fm-eyebrow">League stats</div>
+                            <h2>Top Lists</h2>
+                            <p class="fm-subtle">${htmlEscape(message)}</p>
+                        </div>
+                        ${buildLeagueActionsHtml('topScorers')}
+                    </div>
+                </section>
+            </div>`;
+    }
+
+    /**
+     * The club's players.
+     *
+     * <p>Was two `console.log` lines and an unguarded `await response.json()`. `authFetch` throws on every
+     * non-2xx, so a 403 escaped to the router and replaced the page with the two-word **"API Error"** card.
+     */
+    async function loadPlayerStats() {
+        const teamId = getTeamId();
+        if (!teamId) return;
+        try {
+            const response = await authFetch(`/teams/${teamId}/players`);
+            const players = await readJsonOrThrow(response, 'The squad');
+            renderPlayers(players, "Player Stats");
+        } catch (err) {
+            renderPlayers([], "Player Stats", { error: err.message });
+        }
+    }
+
+    async function loadTopScorersAndAssists(mode = "both") {
+        try {
+            getTeamId();
+            const leagueId = await ensureCurrentLeagueId();
+            if (!leagueId) {
+                // This returned with the page untouched, so a menu entry into it produced a blank
+                // screen with no explanation and no way out.
+                renderTopListsError('This club is not in a league yet, so there are no league stats to show.');
+                return;
+            }
+            const seasonParam = getLeagueSeasonYear() || getSeasonYear()
+                ? `?seasonYear=${getLeagueSeasonYear() || getSeasonYear()}`
+                : '';
+            const [scorersRes, assistsRes, leagueTeamsRes] = await Promise.all([
+                authFetch(`/stats/leagues/${leagueId}/topscorers${seasonParam}`),
+                authFetch(`/stats/leagues/${leagueId}/topassists${seasonParam}`),
+                authFetch(`/countries/leagues/${leagueId}/teams${seasonParam}`)
+            ]);
+            // The three were inconsistent: the team directory was guarded and the two leaderboards
+            // were not, in one `Promise.all`. A 403 on the scorers threw and took the assists table,
+            // the team directory and the page heading with it.
+            const scorers = await readJsonOr(scorersRes, [], 'Top scorers');
+            const assists = await readJsonOr(assistsRes, [], 'Top assists');
+            const leagueTeams = await readJsonOr(leagueTeamsRes, [], 'The league club list');
+            const teamIdByName = new Map();
+            leagueTeams.forEach(t => teamIdByName.set(t.name, t.id));
+            const playerIdByKey = new Map();
+            // The empty catch is the guard. There was an `if (directoryRes.ok)` inside it that could
+            // never be false, because authFetch throws on every non-2xx — so a missing player
+            // directory threw rather than being skipped, and the line claimed otherwise. A club with
+            // no directory listed simply has no ids to map, which is what leaving the map empty means.
+            try {
+                const directory = await (await authFetch(
+                    `/countries/leagues/${leagueId}/player-directory${seasonParam}`)).json();
+                directory.forEach(player => {
+                    playerIdByKey.set(`${player.teamName}|${player.name}`, player.id);
+                });
+            } catch (e) {}
+
+            const mainContent = document.getElementById("main-content");
+
+            let html = `
+            <div class="manager-card" style="padding: 25px;">
+                <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                <h2 class="top-list-page-title">League Stats - Top Lists</h2>
+
+                <div class="top-lists">
+
+                    ${mode !== "assists" ? `
+                    <div class="top-scorers top-list-panel">
+                        <h3 class="top-list-heading top-list-heading--gold">Top Scorers</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">` : ""}`;
+
+            if (mode !== "assists") {
+                scorers.forEach((s, i) => {
+                    // The rank's colour used to be an inline gold or grey, which is invisible on a
+                    // cream page. It is a class now, and the class is the palette's business.
+                    const rankClass = i < 3 ? 'top-list-rank--gold' : 'top-list-rank--muted';
+                    html += `
+                    <li class="top-list-entry">
+                        <span class="top-list-rank ${rankClass}">${i+1}.</span>
+                        <span class="top-list-player">
+                            ${playerIdByKey.get(`${s.teamName}|${s.playerName}`) && teamIdByName.get(s.teamName)
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${s.teamName}|${s.playerName}`)}, ${teamIdByName.get(s.teamName)}, '${htmlEscape(s.teamName)}')">${s.playerName}</span>`
+                                : s.playerName}
+                            <small class="top-list-team">(${teamIdByName.get(s.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(s.teamName)}, '${htmlEscape(s.teamName)}')">${s.teamName}</span>` : s.teamName})</small>
+                        </span>
+                        <span class="top-list-value">
+                            ${s.goals}&nbsp;<span class="league-stat-icon league-stat-icon--goal">&#9917;</span>
+                        </span>
+                    </li>`;
+                });
+            }
+
+            if (mode !== "assists") {
+                html += `</ul></div>`;
+            }
+
+            if (mode !== "scorers") {
+                html += `<div class="top-assists top-list-panel">
+                        <h3 class="top-list-heading top-list-heading--red">Top Assists</h3>
+                        <ul style="list-style: none; padding: 0; margin: 0;">`;
+            }
+
+            if (mode !== "scorers") {
+                assists.forEach((a, i) => {
+                    const rankClass = i < 3 ? 'top-list-rank--accent' : 'top-list-rank--muted';
+                    html += `
+                    <li class="top-list-entry">
+                        <span class="top-list-rank ${rankClass}">${i+1}.</span>
+                        <span class="top-list-player">
+                            ${playerIdByKey.get(`${a.teamName}|${a.playerName}`) && teamIdByName.get(a.teamName)
+                                ? `<span class="cs-clickable" onclick="loadLeagueTeamPlayer(${playerIdByKey.get(`${a.teamName}|${a.playerName}`)}, ${teamIdByName.get(a.teamName)}, '${htmlEscape(a.teamName)}')">${a.playerName}</span>`
+                                : a.playerName}
+                            <small class="top-list-team">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${htmlEscape(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
+                        </span>
+                        <span class="top-list-value top-list-value--accent">
+                            ${a.assists}&nbsp;<span class="league-stat-icon league-stat-icon--assist">&#127984;</span>
+                        </span>
+                    </li>`;
+                });
+            }
+
+            if (mode !== "scorers") {
+                html += `</ul></div>`;
+            }
+            html += `</div></div>`;
+
+            mainContent.innerHTML = html;
+
+            document.querySelectorAll('.top-lists li').forEach(li => {
+                li.addEventListener('mouseenter', () => {
+                    li.style.background = 'rgba(157, 78, 221, 0.15)';
+                    li.style.transform = 'translateX(5px)';
+                });
+                li.addEventListener('mouseleave', () => {
+                    li.style.background = li.style.background.includes('0.05') ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.1)';
+                    li.style.transform = 'translateX(0)';
+                });
+            });
+
+        } catch (err) {
+            console.error("Error loading top lists:", err);
+            renderTopListsError(`Could not load the top lists: ${err.message}`);
+        }
+    }
+
+    return { loadTopScorersAndAssists, loadPlayerStats };
+}

@@ -1,0 +1,329 @@
+/* =============================================================
+   SHARED LAYER FOR THE OTHER SPORTS (basketball, American football)
+
+   Football owns the design system (/css/dashboard.css). This file does
+   not try to be a second, plainer stylesheet that drifts away from it —
+   it is loaded AFTER that system and supplies only the three things the
+   system does not have:
+
+     1. the theme variables, so a sport page is "football, in another
+        colour" by setting six custom properties;
+     2. the handful of components only the sport pages use (stats grid,
+        player table, skill bar, back button, form badge, …);
+     3. the accent re-theme, because the football system writes its blue
+        accent as literal rgba() in a few dozen rules rather than as a
+        variable, so it cannot be recoloured from the outside.
+
+   Load order matters: /css/dashboard.css, then this file, then the
+   sport's own file. Do not reorder the links in the sport's dashboard.html.
+   ============================================================= */
+
+:root {
+    /* Surfaces, straight from the football system, so the two look like one product. */
+    --cm-surface: linear-gradient(180deg, rgba(17, 23, 37, 0.96), rgba(11, 16, 26, 0.94));
+    --cm-border: rgba(255, 255, 255, 0.08);
+    --cm-text: #eef4ff;
+    --cm-muted: #99a6bb;
+
+    /* Accent. Defaults to football's blue; each sport overrides all six. */
+    --cm-accent: #8fd3ff;
+    --cm-accent-deep: #4f8fdc;
+    --cm-accent-bright: #6fcf97;
+    --cm-accent-soft: rgba(143, 211, 255, 0.14);
+    --cm-accent-faint: rgba(143, 211, 255, 0.08);
+    --cm-accent-line: rgba(143, 211, 255, 0.28);
+}
+
+/* ─── BASE ─────────────────────────────────────────────────── */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Same stack as football. The old Roboto/Bebas webfont import made these two
+   products look like different games and cost a blocking round trip. */
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--cm-text);
+}
+
+h1 { font-size: 1.8rem; font-weight: 900; }
+h2 { font-size: 1.4rem; font-weight: 700; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+h4 { font-size: 0.95rem; font-weight: 700; }
+
+a { color: var(--cm-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.clickable { cursor: pointer; }
+
+.empty-badge-wrap { display: flex; justify-content: center; margin: 8px 0 10px; }
+
+/* The background photo is shared with football; only the glow on top of it changes. */
+.background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at top, var(--cm-accent-soft), transparent 34%),
+        linear-gradient(180deg, rgba(7, 11, 18, 0.18), rgba(7, 11, 18, 0.86));
+}
+
+/* ─── CHROME RE-THEME ────────────────────────────────────────
+   The football system hardcodes its blue accent, so these restate the
+   same rules in the sport colour. */
+
+.top-menu { border-bottom-color: var(--cm-accent-line); }
+
+.menu-button:hover { background: var(--cm-accent-soft); border-color: var(--cm-accent-line); }
+
+.sidebar,
+#mobileSidebar { border-right-color: var(--cm-accent-line); }
+
+.sidebar-content div:hover,
+.accordion-content div:hover,
+.accordion-header:hover { background: var(--cm-accent-soft) !important; }
+
+.live-clock { border-color: var(--cm-accent-line); }
+
+.corner-logo,
+.mobile-logo-wrapper .corner-logo { border-color: var(--cm-accent-line); }
+
+.fm-eyebrow { color: var(--cm-accent); }
+
+#loading-popup > div { border-color: var(--cm-accent-line); }
+
+/* Football paints every button inside a card with its blue→green gradient. That
+   selector is (0,1,1), so it out-ranks a sport's own single-class button rule —
+   which is how the basketball and American football dashboards ended up with
+   green "Play All Round" buttons in an orange game. Re-tint it here; the sport
+   files then only have to out-rank this one. */
+.team-card button {
+    background: linear-gradient(135deg, var(--cm-accent-deep), var(--cm-accent-bright));
+    border-color: var(--cm-accent-line);
+    border-radius: 12px;
+    color: #f7fbff;
+}
+
+/* ─── TABLES AND ROWS ──────────────────────────────────────── */
+
+.league-table th {
+    background: var(--cm-accent-soft);
+    color: #fff;
+}
+
+.league-table tr:hover { background: var(--cm-accent-faint) !important; }
+
+.league-table .team-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    text-align: left;
+}
+
+.league-table .pos-num { color: var(--cm-accent); font-weight: 900; width: 24px; }
+
+.league-table .pts-col { color: var(--cm-text); font-weight: 900; font-size: 1rem; }
+
+.league-table .highlight-row td { background: var(--cm-accent-faint); }
+
+.match-row:hover {
+    background: var(--cm-accent-faint);
+    border-color: var(--cm-accent-line);
+}
+
+.player-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.player-table th {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 2px solid var(--cm-accent-line);
+    color: var(--cm-accent);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.player-table th:first-child,
+.player-table td:first-child { text-align: left; padding-left: 10px; }
+
+.player-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--cm-border);
+    white-space: nowrap;
+}
+
+.player-table tr:hover td { background: var(--cm-accent-faint); }
+
+.player-table .player-name-cell { font-weight: 600; cursor: pointer; }
+.player-table .player-name-cell:hover { color: var(--cm-accent); }
+
+.player-table .highlight-row td { background: var(--cm-accent-faint); }
+
+/* The box-score table in the live match viewer. */
+.stats-table th { font-size: 0.6rem; padding: 6px 4px; }
+.stats-table td { font-size: 0.72rem; padding: 6px 4px; }
+
+/* ─── STATS GRID ───────────────────────────────────────────── */
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.stat-item {
+    min-width: 0;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    text-align: center;
+}
+
+.stat-value { font-size: 1.4rem; font-weight: 900; color: var(--cm-text); }
+
+.stat-label {
+    font-size: 0.72rem;
+    color: var(--cm-muted);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* ─── SKILL BARS ───────────────────────────────────────────── */
+
+.skill-bar {
+    display: inline-block;
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.skill-bar-fill {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--cm-accent);
+}
+
+.skill-value { font-weight: 700; font-size: 0.78rem; }
+
+/* ─── BUTTONS ──────────────────────────────────────────────── */
+
+.back-button,
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    margin-bottom: 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: #b9c7da;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+
+.back-button:hover,
+.back-btn:hover { background: rgba(255, 255, 255, 0.12); color: var(--cm-text); }
+
+/* ─── FORM ELEMENTS ────────────────────────────────────────── */
+
+select,
+input {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--cm-text);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.85rem;
+    outline: none;
+    transition: all 0.2s;
+}
+
+select:focus,
+input:focus {
+    border-color: var(--cm-accent);
+    box-shadow: 0 0 0 2px var(--cm-accent-soft);
+}
+
+select option { background: #1a2235; color: var(--cm-text); }
+
+/* ─── SPORT-ONLY COMPONENTS ────────────────────────────────── */
+
+/* Win/loss/draw chips in the league table's form column. */
+.form-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    margin: 1px;
+    border-radius: 6px;
+    font-size: 0.68rem;
+    font-weight: 800;
+}
+
+.form-badge.win { background: rgba(111, 207, 151, 0.18); color: #a6e7be; }
+.form-badge.loss { background: rgba(239, 83, 80, 0.16); color: #ffb0ae; }
+.form-badge.draw { background: rgba(255, 213, 79, 0.16); color: #ffe9a4; }
+
+/* Dashboard headline tiles. */
+.dash-tile {
+    text-align: center;
+    padding: 14px 8px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.dash-tile .dash-tile-value { font-size: 1.6rem; font-weight: 900; }
+
+.dash-tile .dash-tile-label {
+    margin-top: 2px;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--cm-muted);
+    letter-spacing: 1px;
+}
+
+/* ─── MOBILE ───────────────────────────────────────────────── */
+
+.mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 10, 17, 0.58);
+    z-index: 1190;
+    display: none;
+}
+
+.mobile-overlay.active { display: block; }
+
+@media (max-width: 768px) {
+    .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .league-table { font-size: 0.72rem; }
+    .league-table th, .league-table td { padding: 6px 4px; }
+    .match-teams { flex-wrap: wrap; justify-content: center; }
+}

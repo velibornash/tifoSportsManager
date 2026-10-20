@@ -1,0 +1,1994 @@
+﻿
+.accordion-header:hover {
+    background: rgba(var(--accent-rgb), 0.14);
+    transform: translateX(4px);
+}
+
+/*
+ * A collapsed accordion must be 0px tall, not an 18px empty strip.
+ *
+ * <p>`.sidebar-content div` (layout.css) gives every div inside the drawer 8px of padding, and
+ * `.accordion-content` is one of those divs. Padding survives `max-height: 0`, so every collapsed
+ * section rendered as an empty bar with a visible border under "Club" and "Community" — it read
+ * as a rendering fault, and the audit named it (designAnalysis.md P1-7).
+ *
+ * <p>Two rules fight over that padding: the drawer's blanket one (`.sidebar-content div`, two
+ * selectors) and the accordion's own (`.accordion-content`, one). The blanket rule has the higher
+ * specificity, so it wins even though it loads first — which is why the accordion's own padding
+ * never took effect. The exemption is stated here explicitly, with the specificity to win.
+ */
+.sidebar-content .accordion-content {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease-out;
+    background: var(--surface-flat);   /* the panel surface of the active palette */
+    border-radius: 0 0 8px 8px;
+    padding: 0 0 0 20px;       /* collapsed accordion hides its 10px bottom gap as well */
+}
+
+.accordion-content div {
+    padding: 12px 0;              /* manji padding da ne preliva */
+    border-bottom: 1px solid rgba(var(--wash-rgb), 0.12);
+    cursor: pointer;
+    color: var(--text);
+    transition: background 0.2s, color 0.2s;
+    background: transparent;      /* eksplicitno bez boje po default-u */
+}
+
+.accordion-content div:hover {
+    background: rgba(var(--accent-rgb), 0.14) !important;   /* !important da pregazi bilo Å¡ta drugo */
+    color: var(--text);
+    border-radius: 6px;           /* zaobljeno da izgleda kao poseban item */
+    margin: 2px 0;                /* mali razmak izmeÄ‘u stavki da se vidi granica */
+}
+
+.accordion-content div:last-child {
+    border-bottom: none;
+}
+
+
+/* MOBILE SIDEBAR â€“ popravke za skrol i accordion */
+#mobileSidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    transform: translateX(-100%);
+    width: 260px;
+    height: 100vh;               /* puna visina ekrana */
+    background: #1a3c1a;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.6);
+    transition: transform 0.3s ease;
+    z-index: 1200;
+    overflow-y: auto;            /* â† omoguÄ‡ava skrol unutar menija */
+    -webkit-overflow-scrolling: touch; /* glatko skrolovanje na iOS */
+}
+
+#mobileSidebar.active {
+    transform: translateX(0);
+}
+
+#mobileOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 10, 17, 0.58);
+    z-index: 1190;
+}
+
+/* Overlay blokira pozadinu */
+.mobile-overlay.active {
+    display: block;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .player-detail-card {
+        display: flex !important;
+        flex-direction: row !important;  /* slika levo, info desno */
+        gap: 16px;
+        padding: 10px !important;
+    }
+
+    .player-detail-image img {
+        max-width: 120px !important;     /* smanjena slika */
+        height: auto !important;
+        object-fit: cover;
+        border-radius: 16px;
+    }
+
+    .player-detail-stats {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+        font-size: 0.70em !important;    /* manji font za skillove */
+        line-height: 1.3;
+    }
+
+    .player-detail-stats div {
+        padding: 8px 10px;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        hyphens: none;
+    }
+
+    /* Lista igraÄa â€“ vrati na staro, 2 kolone */
+    .manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important;
+        gap: 12px !important;
+    }
+
+    .manager-player-card img {
+        height: 180px !important;        /* originalna visina, proporcionalno */
+        object-fit: cover !important;
+    }
+}
+@media (max-width: 480px) {
+    /* Osnovni kontejner â€“ spreÄi bekstvo */
+    .player-detail-card,
+    .dashboard-content,
+    .manager-card,
+    .club-profile-card {
+        max-width: 100% !important;
+        padding: 8px !important;
+        box-sizing: border-box;
+        overflow-x: hidden;
+    }
+
+    /* Detalj igraÄa â€“ slika levo, info desno, ali manje */
+    .player-detail-card {
+        flex-direction: row !important;
+        gap: 12px !important;
+        padding: 8px !important;
+    }
+
+    .player-detail-image img {
+        max-width: 110px !important;     /* joÅ¡ manje za S23 */
+        height: auto !important;
+        object-fit: cover;
+        border-radius: 12px;
+    }
+
+    .player-detail-info h2 {
+        font-size: 1.3em !important;     /* manji naslov */
+        margin: 0 0 8px 0;
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .player-detail-stats {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px !important;
+        font-size: 0.65em !important;    /* jako mali font za skillove */
+        line-height: 1.25;
+    }
+
+    .player-detail-stats div {
+        padding: 6px 8px !important;
+        background: rgba(40,40,40,0.8);
+        border-radius: 6px;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        word-wrap: break-word !important;
+        hyphens: none;
+        font-size: 0.9em;                /* joÅ¡ malo manje ako treba */
+    }
+
+    /* Lista igraÄa â€“ joÅ¡ manje kartice za male ekrane */
+    .manager-grid {
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) !important;
+        gap: 10px !important;
+    }
+
+    .manager-player-card img {
+        height: 160px !important;        /* manje slike */
+        object-fit: cover !important;
+    }
+
+    .manager-player-card {
+        padding: 8px !important;
+    }
+    p, div, span, h1, h2, h3 {
+        overflow-wrap: break-word;
+        word-wrap: break-word;
+        hyphens: none;
+    }
+}
+#loading-popup {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+#loading-popup > div {
+    background: white;
+    padding: 2.5rem 4rem;
+    border-radius: 1rem;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    text-align: center;
+    min-width: 320px;
+}
+
+#loading-popup h2 {
+    margin: 0 0 1rem;
+    color: #2c3e50;
+    font-size: 1.6rem;
+}
+.logo-corner {
+    position: fixed;
+    top: 20px;
+    right: 30px;
+    z-index: 10;
+}
+
+.corner-logo {
+    width: 160px;
+    height: auto;
+    border-radius: 50%;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+    border: 4px solid rgba(138, 43, 226, 0.6); /* ljubicasto-bordo border za logo */
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.corner-logo:hover {
+    transform: scale(1.12) rotate(8deg);
+    box-shadow: 0 20px 60px rgba(138, 43, 226, 0.4);
+}
+.menu-button.mobile-only {
+    font-size: 1.8rem;
+    cursor: pointer;
+    padding: 8px;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1300;
+}
+
+.mobile-logo-wrapper {
+    margin-left: auto;
+}
+
+.mobile-logo-wrapper .corner-logo {
+    width: 64px;
+    height: auto;
+    border-radius: 50%;
+    border: 2px solid rgba(138, 43, 226, 0.7);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    transition: transform 0.3s ease;
+}
+
+.mobile-logo-wrapper .corner-logo:active {
+    transform: scale(1.15) rotate(10deg);
+}
+
+
+.logo-corner {
+    display: none;
+}
+
+
+@media (min-width: 1025px) {
+    /* **No `margin-left: auto` here any more** (2026-10-16). It pushed the logo away from the clock and
+       left the two with a gap between them, which is the opposite of the corner the owner asked for: the
+       clock, the S/W/D line and the logo belong together at the right edge. The auto margin now sits on
+       the account menu, which is the only thing on the left of this row. */
+    .logo-corner {
+        display: block;
+        position: static;
+        align-self: center;
+        z-index: auto;
+    }
+
+    .corner-logo {
+        width: 146px;
+        border: 4px solid rgba(138, 43, 226, 0.6);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    }
+
+    .corner-logo:hover {
+        transform: scale(1.12) rotate(8deg);
+        box-shadow: 0 20px 60px rgba(138, 43, 226, 0.4);
+    }
+
+
+    .mobile-logo-wrapper {
+        display: none;
+    }
+
+
+    .menu-button.mobile-only {
+        display: none;
+    }
+}
+
+
+@media (max-width: 480px) {
+    .mobile-logo-wrapper .corner-logo {
+        width: 36px;
+        border-width: 2px;
+    }
+}
+.league-table tr {
+    transition: all 0.2s ease;
+}
+
+.league-table tr:hover {
+    background: rgba(157, 78, 221, 0.15) !important;
+    transform: scale(1.01);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.league-table th {
+    background: rgba(157, 78, 221, 0.25);
+    color: #fff;
+    font-weight: bold;
+}
+
+.league-table td {
+    border-bottom: 1px solid rgba(var(--wash-rgb), 0.08);
+}
+.clean-sheet-btn {
+    background: linear-gradient(45deg, #4CAF50, #8BC34A);
+    color: white;
+    font-weight: bold;
+}
+.clean-sheet-mobile .accordion-header {
+    background: #1e3a1e;
+    color: #aaffaa;
+    font-weight: bold;
+}
+
+.league-table-title {
+    text-align: center;
+    margin: 20px 0 16px;
+    color: var(--text);
+}
+
+.league-table-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 0 0 18px;
+}
+
+.table-view-btn {
+    min-width: 90px;
+    margin-top: 0;
+    background: #1f2c1f;
+    border: 1px solid #2f4f2f;
+}
+
+.table-view-btn.active {
+    background: var(--pos-deep);
+    border-color: var(--pos-deep);
+}
+
+.league-table-updated {
+    text-align: center;
+    color: #888;
+    margin-top: 16px;
+    font-size: 0.9rem;
+}
+
+.clickable-team-row {
+    cursor: pointer;
+}
+
+.clickable-team-row:hover {
+    background: rgba(42, 140, 74, 0.16) !important;
+}
+
+.league-player-card {
+    cursor: pointer;
+}
+
+.big-button {
+    padding: 10px 22px;
+    background: linear-gradient(90deg, var(--pos-deep), var(--pos-mid));
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-weight: bold;
+    font-size: 1em;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.big-button:hover {
+    transform: scale(1.03);
+    background: linear-gradient(90deg, var(--pos-mid), #4caf50);
+}
+
+.cs-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.cs-stat-card {
+    background: rgba(var(--wash-rgb), 0.06);
+    padding: 16px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.cs-stat-card .val {
+    font-size: 1.25em;
+    font-weight: bold;
+}
+
+.cs-stat-card .icon {
+    font-size: 1.6em;
+    margin-bottom: 6px;
+}
+
+.cs-stat-card .lbl {
+    font-size: 0.82em;
+    color: #aaa;
+    margin-top: 4px;
+}
+
+
+/* Global mobile tightening */
+/* Tablet: items may overflow, add wrapping */
+/* **Removed 2026-10-16.** This reserved a 190px hole in the top bar for a logo that was
+   `position: fixed` out of the flow, and it gave the clock `margin-left: auto` to push it there. Both
+   were true when the bar also carried eight destination buttons. The logo is now a normal flex child
+   (`designAnalysis.md` P0-1, the overlap fix) and the destinations are the navigation bar below, so
+   the hole is a 190px gap with nothing in it - and the clock was stranded in the middle of the row
+   instead of sitting in the corner with the logo, which is where the owner asked for it. The auto
+   margin now belongs to the account menu in `dashboard.css`, which is the only thing on the left. */
+
+@media (min-width: 481px) and (max-width: 1024px) {
+    .top-menu {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px 8px;
+    }
+    .top-menu > .live-clock {
+        min-width: 0;
+        font-size: 0.78em;
+        padding: 4px 8px;
+    }
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    /* Responsive utilities must win over component display rules.
+       components.css is imported after layout.css, so any component that
+       sets `display` (e.g. .user-menu) would otherwise defeat
+       .desktop-only { display: none } declared in layout.css. */
+    .desktop-only {
+        display: none !important;
+    }
+
+    .mobile-only {
+        display: block !important;
+    }
+
+    .top-menu > .mobile-only {
+        display: inline-flex !important;
+    }
+
+    /* The scrim is the one .mobile-only element that must stay hidden until it is active.
+       It carries the class, so the utility above force-showed it on every phone: a full-viewport
+       div at z-index 1190, permanently on top, swallowing every tap - including the hamburger,
+       which is only z-index 10 inside the bar. The mobile menu could not be opened at all.
+       ID selectors so these win against the .mobile-only utility above, which is !important. */
+    #mobileOverlay {
+        display: none !important;
+    }
+
+    #mobileOverlay.active {
+        display: block !important;
+    }
+
+    .top-menu {
+        gap: 4px;
+        padding: 6px 8px;
+        flex-wrap: nowrap;
+    }
+
+    .menu-button {
+        padding: 8px 10px;
+        font-size: 0.92rem;
+    }
+
+    .dashboard-content {
+        max-width: 100%;
+        margin: 12px auto;
+        padding: 0 8px;
+    }
+
+    .team-card,
+    .manager-card,
+    .club-profile-card {
+        padding: 12px !important;
+        margin: 10px auto !important;
+    }
+
+    .team-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .match-info {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .team-away-home {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+        flex-wrap: wrap;
+    }
+
+    .match-row {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .match-teams {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .dashboard-actions button {
+        width: 100%;
+        max-width: 340px;
+        margin: 6px auto;
+    }
+
+    .club-header {
+        justify-content: flex-start;
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+
+    .club-logo {
+        width: 120px;
+        height: 120px;
+    }
+
+    .club-title h1 {
+        font-size: 1.7rem;
+    }
+
+    .club-title .club-subtitle {
+        font-size: 0.95rem;
+    }
+
+    .club-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .stadium-button {
+        height: 150px;
+    }
+
+    .top-lists {
+        flex-direction: column !important;
+        gap: 14px !important;
+    }
+
+    .top-scorers,
+    .top-assists {
+        min-width: 0 !important;
+        width: 100% !important;
+    }
+
+    .cs-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .cs-stat-card {
+        padding: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .stats-grid,
+    .cs-stat-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ── Account corner on small screens ───────────────────────────────
+   The panel becomes a full-width sheet pinned under the top bar
+   rather than a right-aligned popup. A popup anchored to the right
+   edge is the first thing to fall off a 360px-wide phone, and the
+   signout is the one control on this menu that must never be
+   unreachable. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px){
+    .user-menu-panel{
+        position:fixed;
+        top:auto;
+        left:8px;
+        right:8px;
+        min-width:0;
+        max-width:none;
+        max-height:60vh;
+    }
+    /* The desktop account corner is hidden on mobile, but the identity is
+       still worth one line: it is the answer to "which account am I in?"
+       without opening a menu. */
+    .user-menu-trigger .user-menu-name{ max-width:96px; }
+}
+
+/* Identity block at the foot of the mobile drawer. */
+.mobile-user-block{ margin-top:14px; }
+.mobile-user-identity{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 12px;
+    margin-bottom:6px;
+    border-radius:9px;
+    background:rgba(255,255,255,.05);
+}
+.mobile-user-identity strong{ display:block; font-size:.95rem; color:var(--text); }
+.mobile-user-identity small{ display:block; margin-top:2px; font-size:.75rem; color:var(--text-muted); overflow-wrap:anywhere; }
+
+/* ── Stadium page on small screens ────────────────────────────────
+   The plan is 3:4 and fixed at 320px tall, which is taller than a
+   phone viewport once the toolbar and legend are on screen. It is
+   allowed to shrink rather than scroll, and the colour grid drops
+   to one column because eight colour inputs in two columns are
+   each about 90px wide and stop being tappable. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px){
+    .stadium-plan-pitch{ max-height:52vh; aspect-ratio:auto; height:52vh; }
+    .stadium-colour-grid{ grid-template-columns:1fr; }
+    .stadium-picture img{ height:140px; }
+    .stadium-plan-legend{ grid-template-columns:1fr 1fr; }
+}
+
+/* The PLUS badge on the user profile. Green when the account has actually paid, so the profile cannot
+   be mistaken for saying an owner is a subscriber because his role bypasses the check. */
+.profile-plus--on {
+    color: #6fcf97;
+    letter-spacing: 0.08em;
+}
+
+/* ── Destructive action ────────────────────────────────────────────────────────────
+   There was no danger variant, so every irreversible action in the game was styled the same as
+   every harmless one. Closing a junior school graduates and lists the entire intake, permanently;
+   it should not look like "Book a friendly". */
+.fm-action-btn.danger {
+    background: rgba(255, 107, 107, 0.14);
+    border-color: rgba(255, 107, 107, 0.55);
+    color: #ff8f8f;
+}
+
+.fm-action-btn.danger:hover:not(:disabled) {
+    background: rgba(255, 107, 107, 0.24);
+    border-color: #ff6b6b;
+}
+
+.fm-action-btn.danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ── The junior school (Sprint 5.3a) ──────────────────────────────────────────────
+   Sits above the prospect tables because the school is what produces them: a manager looking at
+   an empty academy needs to see the price before he wonders why it is empty. */
+.academy-school-panel {
+    border-left: 3px solid rgba(111, 207, 151, 0.5);
+    /* border-box, unlike the .fm-panel base. Every panel is content-box with 14px of padding, so on a
+       390px phone the panel's total box is ~30px wider than its parent and the action button runs off
+       the right edge — where `overflow-x: hidden` on html makes it unreachable rather than obvious.
+       That is a project-wide .fm-panel problem (see the backlog); this panel is fixed on its own
+       because a button you cannot tap is not a cosmetic issue. */
+    box-sizing: border-box;
+}
+
+.academy-school-off {
+    border-left: 3px solid rgba(var(--wash-rgb), 0.16);
+}
+
+.academy-school-grid {
+    margin-bottom: 14px;
+}
+
+.academy-school-on {
+    color: #6fcf97;
+}
+
+.academy-school-off {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* The week window, stated. A disabled button with no reason is indistinguishable from a bug, and
+   the window is the rule rather than a rendering artefact. */
+.academy-window-note {
+    align-self: center;
+    margin-left: 4px;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    /* On a phone the price grid is four tiles of money; it needs to stay readable rather than
+       shrinking, and the action row has to wrap so the window note is never pushed off-screen. */
+    /* !important because @import statements are hoisted to the top of dashboard.css, which puts every
+       one of its own ~2,600 rules AFTER overrides.css. A plain rule here loses to
+       `.fm-medical-stat-grid { grid-template-columns: repeat(auto-fit, ...) }` on source order alone.
+       Same reason the responsive utilities above need it. */
+    .academy-school-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .academy-school-panel .fm-club-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .academy-window-note {
+        margin-left: 0;
+        margin-top: 6px;
+        text-align: center;
+    }
+}
+
+/* The academy's quality line (Sprint 5.3). Sits under the summary grid, not inside it: it is a
+   sentence explaining a number, and a sentence in a stat tile reads as a label that failed to load. */
+.academy-quality-line {
+    margin-top: 10px;
+    font-size: 0.9rem;
+}
+
+.academy-quality-line strong {
+    color: #6fcf97;
+}
+
+/* The revealed talent on the promotion screen. Green because it is the one number the whole academy
+   was withheld until this moment, and it should read as an arrival rather than another stat. */
+.fm-reveal-talent {
+    margin: 6px 0;
+}
+
+.fm-reveal-talent strong {
+    color: #6fcf97;
+    font-size: 1.1em;
+}
+
+/* ── Two parallel columns of four skills (owner, 2026-09-27) ─────────────────────────────────
+   Replaces three headed sections in one column. The headers went because with two columns side by
+   side the grouping is self-evident, and a heading above four skills that are not related to each
+   other was noise. The grid is explicit rather than auto-fit so the columns stay parallel on every
+   width, including a 390px phone — which is the whole point of "two parallel columns". */
+.fm-skills-grid {
+    display: grid;
+    /* !important for the same reason as the academy grid above: @import hoists the imported sheets to
+       the top of dashboard.css, so its own `.fm-skills-grid { repeat(3, ...) }` at line 2915 comes
+       AFTER this file and wins on source order. Two parallel columns is an explicit owner decision,
+       and it has to hold on a 390px phone as well as a desktop. */
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px 18px;
+    align-items: start;
+}
+
+.fm-skills-grid .fm-skill-col {
+    width: 100%;
+}
+
+.fm-skills-grid .fm-skill-col td:last-child {
+    text-align: right;
+}
+
+.fm-panel-action #player-overall {
+    color: #6fcf97;
+    font-size: 1.15em;
+}
+
+@media (max-width: 480px) {
+    .fm-skills-grid {
+        gap: 8px 10px;
+    }
+
+    .fm-skills-grid .fm-skill-col td {
+        font-size: 0.92em;
+    }
+}
+
+/* The prospect character strip: effort, temperament, foot and body in one cell. */
+.academy-character {
+    font-size: 0.86rem;
+    opacity: 0.9;
+    white-space: nowrap;
+}
+
+/* The sort control (Sprint 5.3). A manager should be able to rank an academy by effort. */
+.academy-sortbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 12px 0 4px;
+    flex-wrap: wrap;
+}
+
+.academy-sortbar label {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .academy-sortbar {
+        gap: 6px;
+    }
+}
+
+/* ── Stadium picture upload (owner, 2026-09-28) ──────────────────────────────────────
+   The input is styled, not hidden: an invisible file input cannot be reached with a keyboard and
+   gives the manager nothing to click. The label is the button. */
+.stadium-picture-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.stadium-upload {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(var(--wash-rgb), 0.14);
+    background: rgba(var(--wash-rgb), 0.06);
+    color: var(--fm-legacy-text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.stadium-upload:hover {
+    background: rgba(var(--accent-rgb), 0.14);
+}
+
+.stadium-upload input[type='file'] {
+    /* Kept in the layout and 1px, rather than display:none, so it stays focusable and the label
+       is a real control rather than a decoration. */
+    width: 1px;
+    height: 1px;
+    opacity: 0.01;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--fm-muted-text, #9aa0a6);
+}
+
+.stadium-upload input[type='file']::file-selector-button {
+    display: none;
+}
+
+.stadium-upload-note {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Transfer market filter (owner, 2026-09-28) ─────────────────────────────────────
+   The market is a FILTER: which country's clubs you are browsing. Signing anyone is
+   still allowed, and the hint above it says so, because a dropdown on a transfer page
+   otherwise reads as a restriction. */
+.fm-market-filter {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 170px;
+}
+
+.fm-market-filter select {
+    background: rgba(var(--wash-rgb), 0.06);
+    border: 1px solid rgba(var(--wash-rgb), 0.14);
+    border-radius: 10px;
+    color: var(--fm-legacy-text);
+    padding: 7px 10px;
+    font-size: 13px;
+}
+
+.fm-market-hint {
+    margin-bottom: 14px;
+    font-size: 12px;
+}
+
+/* ── Country page: the four stat cards (owner, 2026-09-28) ─────────────────────────
+   Complaint that is fair and specific: four cards with one number each, stretched
+   across the full width of the hero, so each became a large empty box around "50"
+   or "RSD".
+
+   The cause is not a margin. `.fm-medical-stat-grid` is `repeat(auto-fit,
+   minmax(110px, 1fr))`, and auto-fit expands its columns to fill whatever width it
+   is given. With four items in a wide hero that is a quarter of the page each.
+   Capping the column width and hugging the left is the whole fix - the cards then
+   take the width their content needs, which is what a stat card is for. */
+/* Scoped through .fm-country-hero on purpose. A bare `.fm-country-stat-grid` has the SAME specificity
+   as `.fm-medical-stat-grid`, and dashboard.css's own rules come AFTER the imported sheets - so the
+   override lost on source order and the cards kept stretching. That is the exact trap documented a few
+   hundred lines above in this file, and this selector is the fix for having walked into it. */
+.fm-country-hero .fm-country-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 132px));
+    justify-content: start;
+}
+
+@media (max-width: 480px) {
+    .fm-country-hero .fm-country-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* The page title. .fm-page-toolbar is `justify-content: space-between`, which is right for
+   "Back on the left, an action on the right" and wrong for a title - it left the country name jammed
+   against the right edge with a void next to Back. The title block is allowed to grow and sit next to
+   the button instead. */
+.fm-page--country .fm-page-toolbar {
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 16px;
+}
+
+.fm-page--country .fm-page-title-block {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* ── The week grid ─────────────────────────────────────────────────────────────────
+   Seven columns on a desktop, scrolling on a phone. Day 1, 3, 5 and 7 are match
+   days and are marked, because a manager reading this needs to know at a glance
+   which days can be taken by something else. */
+.fm-week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fm-week-day {
+    padding: 10px 9px;
+    border-radius: 12px;
+    background: rgba(var(--wash-rgb), 0.03);
+    border: 1px solid rgba(var(--wash-rgb), 0.06);
+    min-width: 0;
+}
+
+.fm-week-day.is-match {
+    background: rgba(var(--accent-rgb), 0.07);
+    border-color: rgba(var(--accent-rgb), 0.2);
+}
+
+.fm-week-day-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.fm-week-day-number {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.fm-week-day-time {
+    font-size: 0.72rem;
+    color: rgba(var(--accent-rgb), 0.9);
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-week-day-kind {
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.25;
+}
+
+.fm-week-day-event {
+    margin-top: 5px;
+    font-size: 0.72rem;
+    color: #ffd479;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    /* Seven columns on a phone makes seven unreadable slivers, so the week scrolls instead. */
+    .fm-week-grid {
+        grid-template-columns: repeat(7, minmax(96px, 1fr));
+        overflow-x: auto;
+        padding-bottom: 6px;
+    }
+}
+
+/* ── Season grid (owner, 2026-09-28) ────────────────────────────────────────────────
+   Twelve weeks in three columns. Week 6 and week 12 are marked: both have no
+   league football at all, and a manager who does not know that reads them as a
+   bug rather than as a design. */
+.fm-season-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.fm-season-week {
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(var(--wash-rgb), 0.03);
+    border: 1px solid rgba(var(--wash-rgb), 0.06);
+}
+
+.fm-season-week.is-current {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.09);
+}
+
+.fm-season-week.is-special {
+    border-left: 3px solid rgba(255, 212, 121, 0.55);
+}
+
+.fm-season-week-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.fm-season-week-number {
+    font-size: 0.82rem;
+    color: var(--text);
+}
+
+.fm-season-week-now {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(var(--accent-rgb), 0.9);
+}
+
+/*
+ * Today, in the week's strip (owner, 2026-10-20: "dodaj u calendar da se danasnji dan obelezi na
+ * isti nacin kako je ispod obelezena trenutna nedelja, samo umesto bedza now stavi today").
+ *
+ * <p>The same mark as the current week below it, with the badge saying **today** instead of **now**.
+ */
+.fm-week-day.is-today {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.09);
+}
+
+.fm-week-day-today {
+    font-size: 0.66rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(var(--accent-rgb), 0.95);
+}
+
+.fm-season-week-rounds {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.74rem;
+    color: rgba(255, 255, 255, 0.62);
+}
+
+.fm-season-week-note {
+    margin-top: 6px;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    color: #ffd479;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-season-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ============================================================================
+   Country page (owner, 2026-09-28)
+
+   Rebuilt as one full-width page of stacked segments. The previous layout was a
+   two-column grid: a Federation panel with ~250px of dead space above a row of
+   four tall stat cards, next to a leagues panel with an orphaned action label.
+   The dead space came from stretching cards to match the tallest sibling, and
+   the cards held three values already visible elsewhere on the page.
+
+   Specificity is raised deliberately. These sheets are @import-ed by
+   dashboard.css, so equal-specificity rules in that file win on order alone.
+   ========================================================================== */
+
+.fm-page--country,
+.fm-page--national-team {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 1240px;
+    margin: 0 auto;
+}
+
+/* Stacked segments: the page is a column of full-width bands, not a mosaic. */
+.fm-country-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.fm-country-stack > .fm-panel,
+.fm-country-stack > .fm-nt-card {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+/* Title left, Back hard right on the same row, facts on one line underneath.
+   Previously Back sat in its own first column, which pushed the flag and title sideways and
+   left the header reading as two unrelated blocks. */
+/* Scoped to the class, not to the pages that use it. This header is now shared by three pages —
+   Country, National Team and World — and the owner asked for the World page to look like the
+   Country tab, which is only true if they are the same component rather than two copies. The
+   page-specific rules below stay scoped: a season grid is not part of this header. */
+.fm-country-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 14px 20px;
+    padding: 20px 24px;
+    border-radius: 14px;
+    background: var(--surface-grad);
+    border: 1px solid var(--border);
+}
+
+.fm-country-header-back {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+}
+
+.fm-country-header-main {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.fm-country-header-title {
+    margin: 2px 0 0;
+    font-size: 30px;
+    line-height: 1.15;
+    text-align: left;
+}
+
+/* Facts as a definition list running along the header. Compact, one line, and
+   they wrap instead of stretching to fill whatever height the title needs. */
+.fm-country-facts {
+    /* Spans under both columns. The facts stay on ONE line and each label/value pair stays on one
+       line: as a bare <dl> the browser put every dt and dd on its own row, which read as a column
+       of ten loose words. */
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 26px;
+    margin: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--border-faint);
+}
+
+.fm-country-fact {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: nowrap;
+    gap: 7px;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.fm-country-fact dt {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+.fm-world-fact dt,
+.fm-world-fact dd {
+    font-size: 15px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text);
+}
+
+.fm-world-fact-number {
+    color: var(--pos);
+    font-weight: 700;
+}
+
+.fm-country-fact dd {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+/* --- National teams ------------------------------------------------------ */
+
+.fm-page--country .fm-nt-card,
+.fm-page--national-team .fm-nt-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.fm-page--country .fm-nt-card .fm-panel-head,
+.fm-page--national-team .fm-nt-card .fm-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 16px 20px;
+    margin: 0;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.16);
+}
+
+.fm-page--country .fm-panel-head-actions,
+.fm-page--national-team .fm-panel-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.fm-page--country .fm-nt-squad-count,
+.fm-page--national-team .fm-nt-squad-count {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-nt-provisional,
+.fm-page--national-team .fm-nt-provisional {
+    font-size: 11px;
+    color: #e5b567;
+    white-space: nowrap;
+}
+
+/* A 25-player squad is a list. Rows, not cards: 25 boxes with card padding
+   pushed the page past 4000px and gave every row 150px of nothing.
+ *
+ * <p>On the **body**, not on the table. This rule used to say `.fm-squad`, which turned the whole
+ * `<table>` into a flex column: the head and the body became independent flex items, and the column
+ * headings stopped sitting over their columns (owner, 2026-10-20: "da nazivi kolona budu iznad
+ * kolona" - measured: the headings at x 71/139/198/278/331 and the cells at 71/139/371/553/585).
+ * The table keeps its table layout; the rows stack inside it. */
+.fm-page--country .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) tbody,
+.fm-page--national-team .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) tbody {
+    display: flex;
+    flex-direction: column;
+}
+
+/*
+ * The heading row of a table whose rows are grids has to be a grid of the same shape.
+ *
+ * <p>The squad rows are grids (`display: grid` with their own column template), so the table's own
+ * columns do not apply to them - and the headings, which are ordinary table cells, had no idea where
+ * the columns were (owner, 2026-10-20: "da nazivi kolona budu iznad kolona"). The same template on
+ * the heading row puts every name over the column it names.
+ */
+.fm-page--country .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) thead tr,
+.fm-page--national-team .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table) thead tr {
+    display: grid;
+    grid-template-columns: 34px 46px 1fr auto 56px;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 20px;
+}
+
+.fm-page--country .fm-squad-row,
+.fm-page--national-team .fm-squad-row {
+    display: grid;
+    grid-template-columns: 34px 46px 1fr auto 56px;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 20px;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+}
+
+.fm-page--country .fm-squad-row:last-child,
+.fm-page--national-team .fm-squad-row:last-child {
+    border-bottom: none;
+}
+
+.fm-page--country .fm-squad-row:nth-child(even),
+.fm-page--national-team .fm-squad-row:nth-child(even) {
+    background: rgba(120, 150, 210, 0.04);
+}
+
+.fm-page--country .fm-squad-rank,
+.fm-page--national-team .fm-squad-rank {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.fm-page--country .fm-squad-pos,
+.fm-page--national-team .fm-squad-pos {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #8fd0ff;
+}
+
+.fm-page--country .fm-squad-name,
+.fm-page--national-team .fm-squad-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #eef3ff;
+    font-weight: 600;
+}
+
+.fm-page--country .fm-squad-meta,
+.fm-page--national-team .fm-squad-meta {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-rating,
+.fm-page--national-team .fm-squad-rating {
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+    color: #9fe6b0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Leagues ------------------------------------------------------------- */
+
+.fm-page--country .fm-league-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-page--country .fm-league-row {
+    display: grid;
+    grid-template-columns: 96px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 12px 20px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+    transition: background 120ms ease;
+}
+
+.fm-page--country .fm-league-row:last-child { border-bottom: none; }
+
+.fm-page--country .fm-league-row:hover,
+.fm-page--country .fm-league-row:focus-visible {
+    background: rgba(120, 160, 230, 0.1);
+    outline: none;
+}
+
+.fm-page--country .fm-league-row-tier {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+.fm-page--country .fm-league-row-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #eef3ff;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-league-row-go {
+    font-size: 12px;
+    color: #8fd0ff;
+    white-space: nowrap;
+}
+
+/* --- Week strip ---------------------------------------------------------- */
+
+.fm-page--country .fm-week-strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-week-day {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(120, 150, 210, 0.06);
+    border: 1px solid transparent;
+    min-width: 0;
+}
+
+.fm-page--country .fm-week-day.is-match {
+    border-color: rgba(143, 208, 255, 0.4);
+    background: rgba(90, 150, 220, 0.12);
+}
+
+.fm-page--country .fm-week-day-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fm-page--country .fm-week-day-number {
+    font-size: 12px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+.fm-page--country .fm-week-day-time {
+    font-size: 11px;
+    color: #8fd0ff;
+}
+
+.fm-page--country .fm-week-day-kind {
+    font-size: 12px;
+    font-weight: 600;
+    color: #cfd9ee;
+}
+
+.fm-page--country .fm-week-day-event {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+/* --- Season grid --------------------------------------------------------- */
+
+.fm-page--country .fm-season-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-season-week {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(120, 150, 210, 0.06);
+    border: 1px solid transparent;
+}
+
+.fm-page--country .fm-season-week.is-current {
+    border-color: rgba(159, 230, 176, 0.45);
+    background: rgba(80, 170, 120, 0.12);
+}
+
+.fm-page--country .fm-season-week.is-special {
+    border-color: rgba(229, 181, 103, 0.4);
+}
+
+.fm-page--country .fm-season-week-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fm-page--country .fm-season-week-number {
+    font-size: 13px;
+    font-weight: 700;
+    color: #eef3ff;
+}
+
+.fm-page--country .fm-season-week-now {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9fe6b0;
+}
+
+.fm-page--country .fm-season-week-rounds {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+.fm-page--country .fm-season-week-note {
+    font-size: 11px;
+    color: #e5b567;
+}
+
+/* --- Narrow screens ------------------------------------------------------ */
+
+@media (min-width: 481px) and (max-width: 1024px) {
+    .fm-page--country .fm-season-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .fm-page--country .fm-week-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-country-header {
+        grid-template-columns: 1fr;
+        padding: 16px;
+    }
+
+    .fm-country-facts { grid-column: 1; }
+
+    .fm-country-header-title { font-size: 24px; }
+
+    .fm-page--country .fm-season-grid,
+    .fm-page--country .fm-week-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .fm-page--country .fm-squad-row,
+    .fm-page--national-team .fm-squad-row {
+        grid-template-columns: 28px 40px 1fr auto;
+        gap: 8px;
+        padding: 9px 14px;
+        font-size: 13px;
+    }
+
+    .fm-page--country .fm-squad-meta,
+    .fm-page--national-team .fm-squad-meta { display: none; }
+
+    .fm-page--country .fm-league-row { grid-template-columns: 1fr; gap: 4px; }
+    .fm-page--country .fm-league-row-go { display: none; }
+}
+
+/* ============================================================================
+   Country tabs (owner, 2026-09-28)
+   Reuses the existing fm-player-tabs bar so the country page matches the club
+   screens rather than inventing a second tab style.
+   ========================================================================== */
+
+.fm-page--country .fm-country-tabs {
+    margin: 0;
+    padding: 4px;
+    border-radius: 12px;
+    /* A surface of its own, not a wash: this strip sits directly on the stadium photograph, and a
+       transparent strip put dark text on a dark background - the tabs simply disappeared. */
+    background: var(--surface-2-grad);
+    border: 1px solid var(--border-faint);
+}
+
+/* Link rows: Cup, Playoffs. */
+.fm-page--country .fm-country-links {
+    display: flex;
+    flex-direction: column;
+}
+
+.fm-page--country .fm-country-link-row {
+    display: grid;
+    grid-template-columns: 130px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 13px 20px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(120, 150, 210, 0.08);
+    transition: background 120ms ease;
+}
+
+.fm-page--country .fm-country-link-row:hover,
+.fm-page--country .fm-country-link-row:focus-visible {
+    background: rgba(120, 160, 230, 0.1);
+    outline: none;
+}
+
+.fm-page--country .fm-country-link-label {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.fm-page--country .fm-country-link-sub {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-country-link-go {
+    font-size: 12px;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-country-select-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 16px 20px 20px;
+}
+
+.fm-page--country .fm-country-select-control {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+/* National-team summary: ranking, last match, next match. */
+.fm-page--country .fm-nt-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(120, 150, 210, 0.12);
+}
+
+.fm-page--country .fm-nt-summary-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 20px;
+    background: var(--surface-flat);
+    min-width: 0;
+}
+
+.fm-page--country .fm-nt-summary-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+.fm-page--country .fm-nt-summary-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #eef3ff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-nt-summary-note {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+/* Elections: always visible, disabled when nothing is running. */
+.fm-page--country .fm-nt-election {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 16px 20px 20px;
+    opacity: 0.62;
+}
+
+.fm-page--country .fm-nt-election.is-open {
+    opacity: 1;
+    border-top: 1px solid rgba(159, 230, 176, 0.3);
+}
+
+.fm-page--country .fm-nt-election-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.fm-page--country .fm-nt-election-state {
+    font-size: 12px;
+    color: #e5b567;
+}
+
+.fm-page--country .fm-nt-election.is-open .fm-nt-election-state {
+    color: #9fe6b0;
+}
+
+.fm-page--country .fm-country-inline-link {
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: #8fd0ff;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+/* Squad and pool rows, with the call-up / release control. */
+.fm-page--country .fm-squad-club {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-row:has(.fm-squad-add),
+.fm-page--country .fm-squad-row:has(.fm-squad-remove) {
+    grid-template-columns: 34px 46px 1fr 160px auto 56px 84px;
+}
+
+.fm-page--country .fm-squad-add,
+.fm-page--country .fm-squad-remove {
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-squad-add {
+    color: #0d1a12;
+    background: #7fd79b;
+    border: 1px solid #7fd79b;
+}
+
+.fm-page--country .fm-squad-remove {
+    color: #f0b4b4;
+    background: rgba(200, 80, 80, 0.16);
+    border: 1px solid rgba(220, 110, 110, 0.4);
+}
+
+.fm-page--country .fm-squad-add:disabled,
+.fm-page--country .fm-squad-remove:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Cup bracket. */
+.fm-page--country .fm-cup-round {
+    border-bottom: 1px solid rgba(120, 150, 210, 0.1);
+}
+
+.fm-page--country .fm-cup-round:last-child {
+    border-bottom: none;
+}
+
+.fm-page--country .fm-cup-round-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px 8px;
+}
+
+.fm-page--country .fm-cup-round-count {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+}
+
+.fm-page--country .fm-cup-ties {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(120, 150, 210, 0.1);
+    padding-bottom: 1px;
+}
+
+.fm-page--country .fm-cup-tie {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    background: var(--surface-flat);
+    font-size: 13px;
+    color: var(--text);
+    min-width: 0;
+}
+
+.fm-page--country .fm-cup-tie span:not(.fm-cup-tie-sep) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * The "v" between two teams on an international fixture (owner 2026-10-14: *"na svim international
+ * mecevima timovi imaju nesto kao belo dugme oko svog naziva - to skloni, ruzno je"*).
+ *
+ * It is a `<button>`, and nothing cancelled the browser's default: measured `background-color:
+ * rgb(239,239,239)` at 23×21px, a near-white slab sitting on a dark card. It read as a broken widget
+ * next to every team name.
+ *
+ * The old rule below only set `color` and `font-size`, and only under `.fm-page--country` — so the
+ * national tournament page, which is not that page, got no rule at all and showed the raw default.
+ * The button appearance is cancelled here **unscoped**, because a default button background has no
+ * business surviving anywhere in this design, and the country-page selector is kept only for the
+ * ellipsis behaviour above.
+ */
+.fm-cup-tie-sep,
+button.fm-cup-tie-sep {
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(var(--accent-rgb), 0.10);
+    border: 1px solid rgba(var(--accent-rgb), 0.18);
+    border-radius: 999px;
+    color: #cfe0f5;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 9px;
+    min-width: 26px;
+    cursor: pointer;
+    flex-shrink: 0;
+    box-shadow: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.fm-cup-tie-sep:hover {
+    background: rgba(var(--accent-rgb), 0.2);
+    border-color: rgba(var(--accent-rgb), 0.34);
+}
+
+.fm-cup-tie-sep:focus-visible {
+    outline: 2px solid rgba(var(--accent-rgb), 0.7);
+    outline-offset: 2px;
+}
+
+/* Played ties show a score rather than a "v", and it should read a little stronger. */
+.fm-cup-tie-sep:has(strong),
+.fm-cup-tie-sep.is-score {
+    color: var(--text);
+    font-weight: 700;
+    background: rgba(var(--accent-rgb), 0.16);
+}
+
+.fm-page--country .fm-cup-tie-sep {
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-page--country .fm-nt-summary-grid { grid-template-columns: 1fr; }
+    .fm-page--country .fm-cup-ties { grid-template-columns: 1fr; }
+    .fm-page--country .fm-country-link-row { grid-template-columns: 1fr; gap: 4px; }
+    .fm-page--country .fm-country-link-go { display: none; }
+    .fm-page--country .fm-squad-row:has(.fm-squad-add),
+    .fm-page--country .fm-squad-row:has(.fm-squad-remove) {
+        grid-template-columns: 28px 40px 1fr auto;
+    }
+    .fm-page--country .fm-squad-club { display: none; }
+}
+
+/* Election candidates on the national-team panel. */
+.fm-page--country .fm-nt-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.fm-page--country .fm-nt-candidate {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: rgba(120, 150, 210, 0.07);
+    border: 1px solid transparent;
+}
+
+.fm-page--country .fm-nt-candidate.is-chosen {
+    border-color: rgba(159, 230, 176, 0.45);
+    background: rgba(80, 170, 120, 0.14);
+}
+
+.fm-page--country .fm-nt-candidate-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #eef3ff;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-nt-candidate-votes {
+    font-size: 12px;
+    color: var(--fm-subtle, var(--text-muted));
+    white-space: nowrap;
+}
+
+/* Cup ties as buttons opening the pre-match state (owner, 2026-09-29). */
+.fm-page--country .fm-cup-tie {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 20px;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    color: var(--text);
+    background: var(--surface-flat);
+    border: none;
+    border-bottom: 1px solid var(--border-faint);
+    transition: background 120ms ease;
+}
+
+.fm-page--country .fm-cup-tie:hover,
+.fm-page--country .fm-cup-tie:focus-visible {
+    background: rgba(120, 160, 230, 0.12);
+    outline: none;
+}
+
+.fm-page--country .fm-cup-final-score {
+    font-size: 22px;
+    font-weight: 700;
+    color: #9fe6b0;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.fm-page--country .fm-cup-sides {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.fm-page--country .fm-cup-side-head h3 {
+    margin: 0 0 2px;
+    font-size: 16px;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-page--country .fm-cup-sides { grid-template-columns: 1fr; }
+}
+
+/* Bottom mobile navigation must win against the mobile-only utility. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .mobile-bottom-nav.mobile-only,
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+}

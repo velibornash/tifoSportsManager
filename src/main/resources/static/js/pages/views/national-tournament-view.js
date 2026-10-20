@@ -1,0 +1,224 @@
+export const NATIONAL_COMPETITIONS = [
+    { level: 'senior', stage: 'QUALIFYING', label: 'NT Qualifiers' },
+    { level: 'senior', stage: 'WORLD_CUP', label: 'World Cup' },
+    { level: 'u21', stage: 'QUALIFYING', label: 'U-21 Qualifiers' },
+    { level: 'u21', stage: 'WORLD_CUP', label: 'U-21 World Cup' }
+];
+
+export function createNationalTournamentView({ authFetch, escapeHtml, loadMatch, currentCountryIso }) {
+    async function readJson(path) {
+        const response = await authFetch(path);
+        return response.json();
+    }
+
+    /**
+     * A team name, as a link to that country.
+     *
+     * <p>The owner asked for this: a qualifying table is six countries, and a manager who wants to know
+     * who is in the group should be able to click one and land on that country. A name with no country
+     * behind it renders as plain text rather than a link that goes nowhere — which is also why the
+     * server sends the ISO code beside every name.
+     */
+    function teamLink(name, iso) {
+        const label = escapeHtml(name || 'Unknown team');
+        if (!iso) return label;
+        return `<button type="button" class="fm-link-btn js-country" data-country-iso="${escapeHtml(iso)}">${label}</button>`;
+    }
+
+    /**
+     * The score, as the thing that opens the tie (owner, 2026-10-07).
+     *
+     * <p>These ties used to render as plain text and nothing on them was clickable, so a senior
+     * international could not be opened at all — not to see a prediction before it, and not to see
+     * lineups, stats, goals or a report after it.
+     *
+     * <p>The score is the target rather than the country names, because those are already links to the
+     * country page and turning them into match links would take away where they already go.
+     */
+    function scoreButton(tie) {
+        const label = tie.played
+            ? `${escapeHtml(tie.homeGoals ?? '')} – ${escapeHtml(tie.awayGoals ?? '')}`
+            : 'v';
+        return `<button type="button" class="fm-cup-tie-sep js-open-tie"
+                    data-tie-fixture="${escapeHtml(tie.id ?? '')}"
+                    data-tie-played="${tie.played ? 'true' : 'false'}"
+                    data-tie-match-id="${escapeHtml(tie.matchId ?? '')}"
+                    title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">${label}</button>`;
+    }
+
+    /**
+     * Is this country the reader's own?
+     *
+     * <p>By ISO code, never by name: a country and its U-21 side share a family of names and two sides
+     * can be spelled the same way. The owner reads national qualifying groups looking for one row, and
+     * the row was not marked at all — not here and not on the country's own page, which is the same fact
+     * asked in two places.
+     *
+     * <p>The viewer is whoever is looking at the competition, which may be any of them, so this is
+     * genuinely "the country this page is about" rather than "a country the manager owns" — a manager
+     * whose country is not in this group simply gets no row marked, which is the honest answer.
+     */
+    function isOwnCountry(iso) {
+        if (!iso || typeof currentCountryIso !== 'function') return false;
+        const mine = String(currentCountryIso() || '').toUpperCase();
+        return mine !== '' && mine === String(iso).toUpperCase();
+    }
+
+    function table(rows) {
+        if (!rows.length) return '<p class="fm-empty">No standings yet.</p>';
+        return `<div class="fm-squad-wrap"><table class="fm-squad fm-league-table">
+            <thead><tr><th>#</th><th>Team</th><th>P</th><th>GD</th><th>Pts</th></tr></thead>
+            <tbody>${rows.map(row => `<tr${isOwnCountry(row.countryIso) ? ' class="is-own"' : ''}>
+                <td>${escapeHtml(row.position)}</td>
+                <td>${teamLink(row.teamName, row.countryIso)}</td>
+                <td>${escapeHtml(row.played)}</td><td>${escapeHtml(row.goalDifference)}</td>
+                <td><strong>${escapeHtml(row.points)}</strong></td>
+            </tr>`).join('')}</tbody></table></div>`;
+    }
+
+    /** One group's matchdays, with the day each falls on. */
+    function groupSchedule(group) {
+        const matchdays = Array.isArray(group.fixtures) ? group.fixtures : [];
+        if (!matchdays.length) return '';
+        return matchdays.map(day => `<div class="fm-cup-round">
+            <div class="fm-cup-round-head">
+                <span>Matchday ${escapeHtml(day.round)}</span>
+                <span>Week ${escapeHtml(group.week ?? '')} · day ${escapeHtml(day.day)}</span>
+            </div>
+            <div class="fm-squad-wrap">
+                <table class="fm-squad">
+                    <thead><tr><th>Home</th><th>Score</th><th>Away</th></tr></thead>
+                    <tbody>
+                        ${(day.fixtures || []).map(tie => {
+                            const mine = isOwnCountry(tie.homeIso) || isOwnCountry(tie.awayIso);
+                            return `<tr${mine ? ' class="is-own"' : ''}>
+                                <td>${teamLink(tie.homeName, tie.homeIso)}</td>
+                                <td class="fm-cup-final-score">${scoreButton(tie)}</td>
+                                <td>${teamLink(tie.awayName, tie.awayIso)}</td>
+                            </tr>`;
+                        }).join('') || '<tr><td colspan="3" class="fm-empty">No ties.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>`).join('');
+    }
+
+    /**
+     * One group: its table, and the whole qualifying schedule behind the group name.
+     *
+     * <p>The schedule is rendered but hidden, and the group name opens it. A rendered-then-hidden
+     * schedule rather than a separate page because a manager comparing two groups wants both on screen,
+     * and fetching on click would make the first open a spinner where a schedule should be.
+     */
+    function groupSection(group) {
+        const code = escapeHtml(group.code);
+        const hasSchedule = Array.isArray(group.fixtures) && group.fixtures.length > 0;
+        return `<section class="fm-panel fm-nt-group" data-group="${code}">
+            <div class="fm-panel-head"><div>
+                ${hasSchedule
+                    ? `<button type="button" class="fm-link-btn js-toggle-group" data-group="${code}">Group ${code}</button>`
+                    : `<h3>Group ${code}</h3>`}
+                <p class="fm-subtle">${group.table?.length || 0} teams</p>
+            </div></div>
+            ${table(Array.isArray(group.table) ? group.table : [])}
+            <div class="fm-nt-group-schedule" hidden>${groupSchedule(group)}</div>
+        </section>`;
+    }
+
+    function competitionBody(data) {
+        const groups = Array.isArray(data.groups) ? data.groups : [];
+        const rounds = Array.isArray(data.rounds) ? data.rounds : [];
+        return `${groups.map(group => groupSection({ ...group, week: data.week })).join('')}
+        ${rounds.length ? `<section class="fm-panel"><div class="fm-panel-head"><div>
+            <h3>Results and bracket</h3><p class="fm-subtle">${rounds.length} rounds</p></div></div>
+            ${rounds.map(round => `<div class="fm-cup-round"><div class="fm-cup-round-head">
+                <span>${escapeHtml(round.name || `Round ${round.round}`)}</span>
+                <span>${round.ties?.length || 0} ties</span></div>
+                <div class="fm-squad-wrap">
+                <table class="fm-squad">
+                    <thead><tr><th>Home</th><th>Score</th><th>Away</th></tr></thead>
+                    <tbody>
+                        ${(round.ties || []).map(tie => {
+                            const mine = isOwnCountry(tie.homeIso) || isOwnCountry(tie.awayIso);
+                            return `<tr${mine ? ' class="is-own"' : ''}>
+                                <td>${teamLink(tie.homeName, tie.homeIso)}</td>
+                                <td class="fm-cup-final-score">${scoreButton(tie)}</td>
+                                <td>${teamLink(tie.awayName, tie.awayIso)}</td>
+                            </tr>`;
+                        }).join('') || '<tr><td colspan="3" class="fm-empty">No ties.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+            </div>`).join('')}
+        </section>` : ''}
+        ${!groups.length && !rounds.length ? '<section class="fm-panel"><p class="fm-empty">This competition has not been drawn yet.</p></section>' : ''}`;
+    }
+
+    /** Opens a group on its country page, or tells the caller to go back if it cannot. */
+    function openCountry(iso) {
+        const code = String(iso || '').toUpperCase();
+        if (!code) return;
+        if (typeof window.loadPage === 'function') {
+            window.loadPage('country', { simulatedCountry: code });
+            return;
+        }
+        if (typeof window.openCountryPage === 'function') {
+            window.openCountryPage(code);
+        }
+    }
+
+    function wire(mainContent) {
+        mainContent.querySelectorAll('.js-toggle-group').forEach(button => {
+            button.addEventListener('click', () => {
+                const panel = mainContent.querySelector(`[data-group="${button.dataset.group}"]`);
+                const schedule = panel?.querySelector('.fm-nt-group-schedule');
+                if (!schedule) return;
+                schedule.hidden = !schedule.hidden;
+            });
+        });
+        mainContent.querySelectorAll('.js-country').forEach(button => {
+            button.addEventListener('click', () => openCountry(button.dataset.countryIso));
+        });
+        // A played tie opens the MATCH, because lineups, stats, goals and the report are keyed by match
+        // id. An unplayed one opens the fixture, and is told so explicitly rather than inferred —
+        // fixture ids and match ids are both small integers over separate tables.
+        mainContent.querySelectorAll('.js-open-tie').forEach(button => {
+            button.addEventListener('click', () => {
+                if (typeof loadMatch !== 'function') {
+                    return;
+                }
+                const fixtureId = Number(button.dataset.tieFixture);
+                const matchId = Number(button.dataset.tieMatchId);
+                if (!fixtureId) {
+                    return;
+                }
+                if (button.dataset.tiePlayed === 'true' && matchId) {
+                    loadMatch(matchId, 'nationalTournament', { initialTab: 'preview' });
+                } else {
+                    loadMatch(fixtureId, 'nationalTournament', { initialTab: 'preview', fixture: true });
+                }
+            });
+        });
+    }
+
+    async function load(level, stage) {
+        const mainContent = document.getElementById('main-content');
+        const definition = NATIONAL_COMPETITIONS.find(item => item.level === level && item.stage === stage)
+            || NATIONAL_COMPETITIONS[0];
+        try {
+            const data = await readJson(`/api/national-tournaments/${definition.level}/${definition.stage}`);
+            mainContent.innerHTML = `<div class="fm-page"><div class="fm-page-head">
+                <button type="button" class="back-to-dashboard" data-nav-back>Back</button>
+                <div><h2>${escapeHtml(data.name || definition.label)}</h2>
+                <p class="fm-subtle">Season ${escapeHtml(data.season)} · week ${escapeHtml(data.week)}</p></div>
+            </div>${data.exists ? competitionBody(data) : `<section class="fm-panel"><p class="fm-empty">
+                ${escapeHtml(data.note || 'This competition has not been drawn yet.')}</p></section>`}</div>`;
+            wire(mainContent);
+        } catch (error) {
+            console.error('Failed to load national tournament:', error);
+            mainContent.innerHTML = '<div class="manager-card"><h2>Error</h2><p>Could not load this national competition.</p></div>';
+        }
+    }
+
+    return { load };
+}

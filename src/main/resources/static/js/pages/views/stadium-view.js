@@ -1,0 +1,887 @@
+import { htmlEscape, formatPercent } from './utils.js';
+import { apiErrorMessage } from '../../auth.js';
+
+/**
+ * The stadium page: the eight sections a ground is built from, each with its own seating type, capacity,
+ * roof and ticket price; plus the pitch maintenance programme, the colours, and the ground's own picture.
+ *
+ * <p>None of this existed. The club profile had an "Open Stadium View" button that opened a
+ * hard-coded image of somebody else's ground in a new tab, and the endpoints that could tell a
+ * manager what their ground cost to run were never called from the frontend at all.
+ *
+ * <p>The plan is drawn rather than described: a pitch with the four sides and four corners coloured in
+ * place, so what you set is what you see. It is the same idea as a tactics board and it costs one
+ * <code>conic-gradient</code>.
+ *
+ * <p>Building is two clicks, never one (owner, 2026-10-07): <b>quote</b> answers what the work costs and
+ * how many weeks that one section takes no fans, and only <b>yes</b> spends anything. The old page took the
+ * whole budget on the click and reported the closure afterwards, which is the one order in which a manager
+ * cannot do anything about it.
+ */
+
+const SIDES = [
+    ['north', 'North stand'],
+    ['east', 'East stand'],
+    ['south', 'South stand'],
+    ['west', 'West stand'],
+];
+const CORNERS = [
+    ['northWest', 'North-west corner'],
+    ['northEast', 'North-east corner'],
+    ['southWest', 'South-west corner'],
+    ['southEast', 'South-east corner'],
+];
+// Owner report, 2026-10-12: the unbuilt parts of the ground were invisible. #26303f sits so close to
+// the panel behind it that an unpainted stand and an empty gap read the same, so a freshly seeded club
+// showed a pitch floating in the dark with nothing around it. Lifted enough to read as a stand that has
+// not been painted yet, without pretending to be a colour the manager chose.
+const NEUTRAL = '#3b4a5f';
+
+/** Kept in step with StadiumImageService.DEFAULT_STADIUM_IMAGE on the server. */
+const DEFAULT_STADIUM_IMAGE = '/images/dunjareal.png';
+
+export function createStadiumView(deps) {
+    const { authFetch, getTeamId, formatBudget } = deps;
+    let esc = typeof htmlEscape === 'function' ? htmlEscape : (v) => String(v ?? '');
+
+    /** Which section's build form is open, if any. One at a time: this is a money decision. */
+    let openPosition = null;
+
+    /** The server's own list of seating types, so a new one cannot need a change here. */
+    let seatingTypes = [];
+
+    /**
+     * The last thing that happened, kept across the reload.
+     *
+     * <p>Writing it into the panel and then reloading the panel threw the message away, so a build
+     * finished and the page said nothing at all. Found in the browser, not by a test.
+     */
+    let lastMessage = null;
+
+    async function loadStadium() {
+        const teamId = getTeamId();
+        const main = document.getElementById('main-content');
+        if (!main) return;
+        if (!teamId) {
+            main.innerHTML = emptyState('No club is loaded, so there is no ground to look at.');
+            return;
+        }
+
+        main.innerHTML = loadingState();
+        let data;
+        try {
+            const res = await authFetch(`/api/teams/${teamId}/stadium`);
+            data = await res.json();
+        } catch (err) {
+            main.innerHTML = emptyState(`The stadium could not be loaded. ${esc(err.message || '')}`);
+            return;
+        }
+
+        const s = data.stadium;
+        if (!s) {
+            main.innerHTML = emptyState(`${esc(data.teamName || 'This club')} does not have a ground yet.`);
+            return;
+        }
+
+        lastPayload = data;
+        openPosition = null;
+        main.innerHTML = render(data, s);
+        wire(main, teamId);
+    }
+
+    // --- rendering ---
+
+    function render(data, s) {
+        const cap = s.capacity ?? 0;
+        const seats = s.seatQuality ?? 10;
+        const sectionList = s.sections || [];
+        const prices = s.prices || {};
+        seatingTypes = s.seatingTypes || [];
+
+        return `
+        <div class="fm-page fm-page--stadium">
+            <section class="fm-panel fm-club-hero">
+                <button class="back-to-dashboard" data-nav-back="profile">Back</button>
+                <div class="fm-club-hero-main">
+                    <div>
+                        <div class="fm-eyebrow">${esc(data.teamName || 'Club')}</div>
+                        <h2>
+                            ${stadiumNameCellHtml(s.name || 'Stadium')}
+                        </h2>
+                        <p class="fm-subtle" data-stadium-name-status></p>
+                    </div>
+                </div>
+                <div class="fm-medical-stat-grid team-summary-grid">
+                    <div><strong>${cap.toLocaleString()}</strong><span>Capacity</span></div>
+                    <div><strong>${seats}/20</strong><span>Seat quality</span></div>
+                    <div><strong>${esc(roofedOf(sectionList))}</strong><span>Roofed</span></div>
+                    <div><strong class="fm-money${s.budget != null && Number(s.budget) < 0 ? ' fm-money--neg' : ''}">${esc(s.budget != null ? formatBudget(s.budget) : '—')}</strong><span>Budget</span></div>
+                </div>
+            </section>
+
+            <div class="fm-grid-top fm-grid-top--stadium">
+                <section class="fm-panel stadium-plan-panel">
+                    <div class="fm-panel-head">The ground</div>
+                    ${plan(s)}
+                    ${picture(s)}
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">Build out</div>
+                    <p class="fm-subtle">
+                        Eight sections: four sides and four corners. Capacity ${cap.toLocaleString()}${
+                            s.expandableTo ? ` of ${Number(s.expandableTo).toLocaleString()}` : ''
+                        } is the sum of what you have built.
+                    </p>
+                    <div class="club-profile-detail-list">
+                        <div class="club-profile-detail-row">
+                            <span>Built sections</span>
+                            <strong>${builtOf(sectionList)} of 8</strong>
+                        </div>
+                        <div class="club-profile-detail-row">
+                            <span>Roofed sections</span>
+                            <strong>${esc(roofedOf(sectionList))}</strong>
+                        </div>
+                        <div class="club-profile-detail-row">
+                            <span>Seat quality</span>
+                            <strong>${seats}/20 — what is actually built</strong>
+                        </div>
+                    </div>
+                    <p class="fm-subtle">Choose a section under each stand to build it out or price it.</p>
+                </section>
+            </div>
+
+            <section class="fm-panel">
+                <div class="fm-panel-head">The eight sections</div>
+                <p class="fm-subtle">
+                    Four sides and four corners, each built on its own: a seating type, seats to add, and a
+                    roof over that section only. Each one is priced separately, with a recommendation.
+                </p>
+                <div class="stadium-section-list">
+                    ${sectionList.map(section => sectionRow(section, prices)).join('')
+                        || '<p class="fm-subtle">No sections yet.</p>'}
+                </div>
+                <p class="fm-subtle" data-section-note>${esc(lastMessage || '')}</p>
+            </section>
+
+            <div class="fm-grid-bottom fm-grid-bottom--stadium">
+                <section class="fm-panel">
+                    <div class="fm-panel-head">Colours</div>
+                    <p class="fm-subtle">Four sides and four corners. Free — the expensive part was building the thing.</p>
+                    <div class="stadium-colour-grid">
+                        ${SIDES.map(([key, label]) => colourField(key, label, s[key + 'Colour'])).join('')}
+                        ${CORNERS.map(([key, label]) => colourField(key, label, s[key + 'CornerColour'])).join('')}
+                    </div>
+                    <div class="fm-club-actions">
+                        <button type="button" class="fm-action-btn" data-paint>Save colours</button>
+                    </div>
+                    <p class="fm-subtle" data-paint-note></p>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">Prices and upkeep</div>
+                    <div class="club-profile-detail-list">
+                        ${Object.entries(prices).map(([tier, price]) => `
+                            <div class="club-profile-detail-row">
+                                <span>${esc(String(tier).replace(/_/g, ' ').toLowerCase())}</span>
+                                <strong>${esc(formatMoney(price))}</strong>
+                            </div>`).join('') || '<div class="club-profile-detail-row"><span>Prices</span><strong>—</strong></div>'}
+                        <div class="club-profile-detail-row">
+                            <span>Projected gate</span>
+                            <strong>${esc(formatMoney(s.projectedGateRevenue))}</strong>
+                        </div>
+                        <div class="club-profile-detail-row">
+                            <span>Home ground upkeep</span>
+                            <strong>${esc(s.upkeepCategory || 'Facility upkeep')}</strong>
+                        </div>
+                    </div>
+                    <div class="stadium-sponsor-field">
+                        <label class="stadium-sponsor-label" for="stadium-sponsor-input">
+                            Sponsor on the boards
+                        </label>
+                        <div class="stadium-sponsor-row">
+                            <img class="stadium-sponsor-preview" src="/images/logoside.jpg" alt="">
+                            <input id="stadium-sponsor-input" class="fm-input" type="text" maxlength="120"
+                                   value="${esc(s.sponsor || '')}" placeholder="TIFO Ltd.">
+                            <button type="button" class="fm-action-btn secondary" data-stadium-save-sponsor>
+                                Save sponsor
+                            </button>
+                        </div>
+                        <p class="fm-subtle">
+                            Painted around the pitch, and named against the sponsorship income on the
+                            Finance page.
+                        </p>
+                    </div>
+                </section>
+            </div>
+
+            <section class="fm-panel">
+                <div class="fm-panel-head">The pitch</div>
+                <div class="fm-medical-stat-grid team-summary-grid">
+                    <div><strong>${esc(s.pitchStatus || '—')}</strong><span>Condition</span></div>
+                    <div><strong>${esc(formatPercent(s.maintenanceRemaining, 0))}</strong><span>Programme funded</span></div>
+                    <div><strong>${esc(formatPercent(s.pitchQuality))}</strong><span>Surface quality</span></div>
+                    <div><strong>${s.awaySectorCapacity ? s.awaySectorCapacity.toLocaleString() : '—'}</strong><span>Away fans</span></div>
+                </div>
+                <div class="fm-club-actions">
+                    <input type="number" class="fm-season-select" id="stadium-maintenance-budget"
+                           min="0" step="100" value="500" aria-label="Weekly pitch maintenance budget"
+                           style="max-width:140px">
+                    <button type="button" class="fm-action-btn secondary" data-maintenance>Fund pitch work</button>
+                </div>
+                <p class="fm-subtle" data-maintenance-note></p>
+            </section>
+
+            <section class="fm-panel">
+                <div class="fm-panel-head">Training facilities</div>
+                <div class="fm-medical-stat-grid team-summary-grid">
+                    ${Object.entries(data.trainingFacilities || {}).map(([k, v]) => `
+                        <div><strong>${esc(v)}/20</strong><span>${esc(String(k).toLowerCase())}</span></div>`).join('')}
+                </div>
+                <p class="fm-subtle">Weekly upkeep ${esc(formatMoney(data.weeklyTrainingUpkeep))} · ${esc(data.upkeepCategory || '')}</p>
+            </section>
+        </div>`;
+    }
+
+
+    /** How many of the eight sections hold seats. */
+    function builtOf(list) {
+        return list.filter(s => Number(s.capacity) > 0).length;
+    }
+
+    /** "3 of 8" — a roof is one section's, so a single number is no longer the answer. */
+    function roofedOf(list) {
+        return `${list.filter(s => s.roof).length} of ${list.length || 8}`;
+    }
+
+    /**
+     * One section: what it is, what it charges, and the button that opens its build form.
+     *
+     * <p>The price sits next to the recommendation rather than in a settings screen, because the owner's
+     * decision is eight prices, not one. A section with no seats has no price to sell and says so.
+     */
+    function sectionRow(section, prices) {
+        const built = Number(section.capacity) > 0;
+        const standard = Number(prices?.STANDARD ?? 0);
+        // A section nobody has priced sells at the ground's own standard price, so that is what the box
+        // shows. An empty box beside "Recommended 20" reads as "nothing to sell here", which is a lie.
+        const charged = section.ticketPrice != null ? section.ticketPrice : standard;
+        const state = [
+            built ? `${Number(section.capacity).toLocaleString()} seats` : 'not built',
+            section.seatingLabel || '—',
+            section.roof ? 'roofed' : 'no roof',
+        ].join(' · ');
+        const closed = section.closedUntilWeek != null
+            ? ` · closed until week ${section.closedUntilWeek}`
+            : '';
+        const recommended = section.recommendedPrice != null
+            ? esc(formatMoney(section.recommendedPrice))
+            : '—';
+        return `
+        <div class="stadium-section" data-section="${esc(section.position)}">
+            <div class="stadium-section-head">
+                <strong>${esc(section.label)}</strong>
+                <span class="fm-subtle">${esc(state)}${esc(closed)}</span>
+            </div>
+            <div class="stadium-section-controls">
+                <label class="stadium-section-price">
+                    <span>Price</span>
+                    <input type="number" min="0" step="0.5" data-price-input="${esc(section.position)}"
+                           value="${built ? esc(charged) : ''}"
+                           ${built ? '' : 'disabled'} aria-label="Ticket price for the ${esc(section.label)}">
+                </label>
+                <span class="fm-subtle">Recommended ${recommended}${
+                    built && section.ticketPrice == null ? ' · not set, so the standard price applies' : ''}</span>
+                <button type="button" class="fm-action-btn secondary" data-price-save="${esc(section.position)}"
+                        ${built ? '' : 'disabled'}>Save price</button>
+                <button type="button" class="fm-action-btn" data-section-open="${esc(section.position)}">
+                    ${built ? 'Extend' : 'Build'}</button>
+            </div>
+            ${openPosition === section.position ? buildForm(section) : ''}
+        </div>`;
+    }
+
+    /**
+     * The three choices for one section, and then the quote before the money.
+     *
+     * <p>Two steps, deliberately. The owner's question is what it costs and how long that stand is out,
+     * and a single button cannot answer the second one — it can only tell you afterwards.
+     */
+    function buildForm(section) {
+        const types = seatingTypes.length ? seatingTypes : [{ name: 'SEATS', label: 'Seats' }];
+        const selected = section.seatingType || 'SEATS';
+        return `
+        <div class="stadium-section-form">
+            <label class="stadium-section-field">
+                <span>Seating</span>
+                <select data-seating-input="${esc(section.position)}">
+                    ${types.map(t => `
+                        <option value="${esc(t.name)}"${t.name === selected ? ' selected' : ''}>${esc(t.label)}</option>
+                    `).join('')}
+                </select>
+            </label>
+            <label class="stadium-section-field">
+                <span>Seats to add</span>
+                <input type="number" min="0" step="250" value="1000"
+                       data-capacity-input="${esc(section.position)}"
+                       aria-label="Seats to add to the ${esc(section.label)}">
+            </label>
+            <label class="stadium-section-field stadium-section-field--check">
+                <input type="checkbox" data-roof-input="${esc(section.position)}"${section.roof ? ' checked' : ''}>
+                <span>Roof this section only</span>
+            </label>
+            <div class="fm-club-actions">
+                <button type="button" class="fm-action-btn" data-section-quote="${esc(section.position)}">Quote it</button>
+                <button type="button" class="fm-action-btn secondary" data-section-close>Cancel</button>
+            </div>
+            <div class="stadium-section-quote" data-quote-for="${esc(section.position)}"></div>
+        </div>`;
+    }
+
+    /**
+     * The sponsor's boards, on all four touchlines.
+     *
+     * <p><b>Owner request, 2026-10-12:</b> *"na tribinama stadiona dodaj negde mesto kao da se upise
+     * sponzor (stavi za pocetka TIFO Ltd.)"* — a place on the stands to put a sponsor, starting at
+     * TIFO Ltd. so there is something to see before a sponsor is found.
+     *
+     * <p>Escaped, because the name is a manager's own text and it lands in four {@code title} attributes
+     * and four labels. A sponsor called {@code "><img onerror=...>} is a stored-XSS hole and this is
+     * exactly the field someone types arbitrary text into.
+     */
+    /** The section object for a given position, so the plan can show capacity and type in place. */
+    function sectionFor(s, position) {
+        const list = Array.isArray(s.sections) ? s.sections : [];
+        return list.find(x => String(x.position || '').toUpperCase() === position) || null;
+    }
+
+    /** Capacity and seating type for one stand, read from its section. */
+    function standMeta(s, position) {
+        const sec = sectionFor(s, position);
+        if (!sec || !Number(sec.capacity)) return 'not built';
+        const cap = Number(sec.capacity).toLocaleString();
+        const type = sec.seatingLabel || sec.seatingType || 'seats';
+        const roof = sec.roof ? ' · roofed' : '';
+        return `${type} · ${cap}${roof}`;
+    }
+
+    /** A top-down plan of the ground: pitch with real markings, eight stands with capacity and type,
+     *  sponsor boards on every side, floodlights at the corners, and a legend. */
+    function plan(s) {
+        const c = (v) => v || NEUTRAL;
+        const sponsor = (s.sponsor || '').trim() || 'TIFO Ltd.';
+        return `
+        <div class="stadium-plan" role="img"
+             aria-label="Plan of ${esc(s.name || 'the ground')}, ${s.capacity ?? 0} seats">
+            <div class="stadium-plan-venue">
+                <div class="stadium-floodlight stadium-floodlight--nw" aria-hidden="true"></div>
+                <div class="stadium-floodlight stadium-floodlight--ne" aria-hidden="true"></div>
+                <div class="stadium-floodlight stadium-floodlight--sw" aria-hidden="true"></div>
+                <div class="stadium-floodlight stadium-floodlight--se" aria-hidden="true"></div>
+                <div class="stadium-plan-pitch">
+                    <div class="stadium-corner stadium-corner--nw" style="background:${c(s.northWestCornerColour)}"
+                         title="North-west corner · ${esc(standMeta(s, 'NORTH_WEST'))}">
+                        <div class="stadium-corner-label">NW</div>
+                        <div class="stadium-corner-meta">${esc(standMeta(s, 'NORTH_WEST'))}</div>
+                    </div>
+                    <div class="stadium-stand stadium-stand--north" style="background:${c(s.northColour)}"
+                         title="North stand · ${esc(standMeta(s, 'NORTH'))}">
+                        <div class="stadium-stand-name">North</div>
+                        <div class="stadium-stand-meta">${esc(standMeta(s, 'NORTH'))}</div>
+                    </div>
+                    <div class="stadium-corner stadium-corner--ne" style="background:${c(s.northEastCornerColour)}"
+                         title="North-east corner · ${esc(standMeta(s, 'NORTH_EAST'))}">
+                        <div class="stadium-corner-label">NE</div>
+                        <div class="stadium-corner-meta">${esc(standMeta(s, 'NORTH_EAST'))}</div>
+                    </div>
+                    <div class="stadium-stand stadium-stand--west" style="background:${c(s.westColour)}"
+                         title="West stand · ${esc(standMeta(s, 'WEST'))}">
+                        <div class="stadium-stand-name">West</div>
+                        <div class="stadium-stand-meta">${esc(standMeta(s, 'WEST'))}</div>
+                    </div>
+                    <div class="stadium-turf">
+                        <div class="stadium-pitch-markings" aria-hidden="true">
+                            <div class="pitch-halfway"></div>
+                            <div class="pitch-center-circle"></div>
+                            <div class="pitch-center-spot"></div>
+                            <div class="pitch-penalty pitch-penalty--top"></div>
+                            <div class="pitch-penalty pitch-penalty--bottom"></div>
+                            <div class="pitch-goal pitch-goal--top"></div>
+                            <div class="pitch-goal pitch-goal--bottom"></div>
+                            <div class="pitch-spot pitch-spot--top"></div>
+                            <div class="pitch-spot pitch-spot--bottom"></div>
+                            <div class="pitch-corner-arc pitch-corner-arc--tl"></div>
+                            <div class="pitch-corner-arc pitch-corner-arc--tr"></div>
+                            <div class="pitch-corner-arc pitch-corner-arc--bl"></div>
+                            <div class="pitch-corner-arc pitch-corner-arc--br"></div>
+                        </div>
+                    </div>
+                    <div class="stadium-stand stadium-stand--east" style="background:${c(s.eastColour)}"
+                         title="East stand · ${esc(standMeta(s, 'EAST'))}">
+                        <div class="stadium-stand-name">East</div>
+                        <div class="stadium-stand-meta">${esc(standMeta(s, 'EAST'))}</div>
+                    </div>
+                    <div class="stadium-corner stadium-corner--sw" style="background:${c(s.southWestCornerColour)}"
+                         title="South-west corner · ${esc(standMeta(s, 'SOUTH_WEST'))}">
+                        <div class="stadium-corner-label">SW</div>
+                        <div class="stadium-corner-meta">${esc(standMeta(s, 'SOUTH_WEST'))}</div>
+                    </div>
+                    <div class="stadium-stand stadium-stand--south" style="background:${c(s.southColour)}"
+                         title="South stand · ${esc(standMeta(s, 'SOUTH'))}">
+                        <div class="stadium-stand-name">South</div>
+                        <div class="stadium-stand-meta">${esc(standMeta(s, 'SOUTH'))}</div>
+                    </div>
+                    <div class="stadium-corner stadium-corner--se" style="background:${c(s.southEastCornerColour)}"
+                         title="South-east corner · ${esc(standMeta(s, 'SOUTH_EAST'))}">
+                        <div class="stadium-corner-label">SE</div>
+                        <div class="stadium-corner-meta">${esc(standMeta(s, 'SOUTH_EAST'))}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="stadium-sponsor-bar">
+                <img class="stadium-sponsor-bar-logo" src="/images/logoside.jpg" alt="">
+                <span class="stadium-sponsor-bar-name">${esc(sponsor)}</span>
+                <span class="stadium-sponsor-bar-tag">Stadium sponsor</span>
+            </div>
+            <div class="stadium-plan-legend">
+                ${SIDES.concat(CORNERS).map(([key, label]) => `
+                    <span class="stadium-legend-item">
+                        <i style="background:${c(s[key + 'Colour'] || s[key + 'CornerColour'])}"></i>${esc(label)}
+                    </span>`).join('')}
+            </div>
+        </div>`;
+    }
+
+    function picture(s) {
+        const src = s.image || DEFAULT_STADIUM_IMAGE;
+        return `
+        <div class="stadium-picture">
+            <img src="${esc(src)}" alt="${esc(s.name || 'Stadium')}"
+                 onerror="this.src='${DEFAULT_STADIUM_IMAGE}'">
+            <div class="stadium-picture-actions">
+                <label class="stadium-upload">
+                    <span>Change picture</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif"
+                           data-stadium-image-input>
+                </label>
+                <span class="stadium-upload-note" data-stadium-image-note>PNG, JPEG, WEBP or GIF, up to 4&nbsp;MB.</span>
+            </div>
+        </div>`;
+    }
+
+    function colourField(key, label, value) {
+        return `
+        <label class="stadium-colour">
+            <span>${esc(label)}</span>
+            <input type="color" data-colour="${key}" value="${esc(normaliseHex(value))}">
+        </label>`;
+    }
+
+    /** A colour input only accepts #rrggbb, so an unset part needs a real value to start from. */
+    function normaliseHex(value) {
+        if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) return value;
+        if (typeof value === 'string' && /^#[0-9a-fA-F]{3}$/.test(value)) {
+            return '#' + value.slice(1).split('').map((c) => c + c).join('');
+        }
+        return NEUTRAL;
+    }
+
+    // --- behaviour ---
+
+    function wire(main, teamId) {
+        wireSections(main, teamId);
+        wireColours(main, teamId);
+        wireSponsor(main, teamId);
+        wirePicture(main, teamId);
+        wireMaintenance(main, teamId);
+        wireStadiumName(main, teamId);
+    }
+
+    /**
+     * The ground's name, edited exactly the way a manager edits their own name on their profile.
+     *
+     * <p>Owner, 2026-10-20: *"stavi da se izmena naziva stadiona radi isto kao u user profilu izmena
+     * imena korisnika jer je mnogo lepsi nacin, bukvalno isto"*. So it is literally the same
+     * markup and the same behaviour - a pencil beside the name, an inline field, a cross to cancel
+     * and a tick to save - and the same classes, so it looks like the profile editor because it
+     * *is* the profile editor.
+     */
+    function stadiumNameCellHtml(currentName) {
+        return `
+            <span class="user-name-view js-stadium-name-view">
+                <span class="js-stadium-name-value">${esc(currentName)}</span>
+                <button type="button" class="fm-icon-btn js-stadium-name-edit" title="Edit the name of your ground"
+                        aria-label="Edit the stadium name">&#9998;</button>
+            </span>
+            <span class="user-name-edit js-stadium-name-edit-cell" hidden>
+                <input type="text" class="js-stadium-name-input" maxlength="60"
+                       value="${esc(currentName)}" placeholder="Name your ground"
+                       aria-label="Stadium name" />
+                <button type="button" class="fm-icon-btn js-stadium-name-cancel" title="Cancel"
+                        aria-label="Cancel">&#215;</button>
+                <button type="button" class="fm-icon-btn fm-icon-btn--ok js-stadium-name-save" title="Save"
+                        aria-label="Save">&#10003;</button>
+            </span>`;
+    }
+
+    /**
+     * Renaming the ground (owner, 2026-10-19).
+     *
+     * <p>The name is a plain text field that saves on Enter or on the button, and the page re-renders
+     * afterwards so every other mention of the ground - the plan, the sections, the match list - reads
+     * the new name. The server owns the name: this sends it and takes the server's answer, including
+     * its refusal, which is printed where the manager is looking.
+     */
+    function wireStadiumName(main, teamId) {
+        const view = main.querySelector('.js-stadium-name-view');
+        const editCell = main.querySelector('.js-stadium-name-edit-cell');
+        const input = main.querySelector('.js-stadium-name-input');
+        const value = main.querySelector('.js-stadium-name-value');
+        const status = main.querySelector('[data-stadium-name-status]');
+        if (!input) return;
+
+        // The profile's editor, behaviour for behaviour: the pencil swaps the name for a field, the
+        // cross puts the field back to the name the server last accepted, and the tick saves.
+        const showEditing = (editing) => {
+            if (view) view.hidden = editing;
+            if (editCell) editCell.hidden = !editing;
+            if (editing && input) {
+                input.value = value ? value.textContent.trim() : '';
+                input.focus();
+                input.select();
+            }
+        };
+
+        main.querySelector('.js-stadium-name-edit')?.addEventListener('click', () => showEditing(true));
+        main.querySelector('.js-stadium-name-cancel')?.addEventListener('click', () => showEditing(false));
+
+        const save = async () => {
+            const name = (input.value || '').trim();
+            if (!name) {
+                if (status) status.textContent = 'A ground needs a name.';
+                return;
+            }
+            const button = main.querySelector('.js-stadium-name-save');
+            if (button) button.disabled = true;
+            if (status) status.textContent = 'Saving…';
+            try {
+                await authFetch(`/api/teams/${teamId}/stadium/name`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `name=${encodeURIComponent(name)}`
+                });
+                // Re-render from the payload the server just confirmed, so the heading, the plan and
+                // every other mention of the ground change together. The confirmation is written
+                // *after* the re-render, because the re-render replaces the status line the manager
+                // was reading - saying "saved" into a node that is no longer on the page says nothing.
+                lastPayload = null;
+                await loadStadium();
+                const fresh = document.querySelector('[data-stadium-name-status]');
+                if (fresh) fresh.textContent = 'Saved.';
+            } catch (err) {
+                // The server's own refusal is the useful message ("You can only rename the stadium of
+                // your own club"), and authFetch throws with that text inside it. A generic "it did
+                // not work" hides the one thing the manager can act on.
+                if (status) {
+                    status.textContent = apiErrorMessage(err, 'The name could not be saved.');
+                }
+                console.error('Stadium rename failed:', err);
+            } finally {
+                if (button) button.disabled = false;
+            }
+        };
+
+        main.querySelectorAll('.js-stadium-name-save').forEach(button => {
+            button.addEventListener('click', () => save());
+        });
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                save();
+            }
+        });
+    }
+
+    /** The three choices per section, the quote, the yes/no, and the eight prices. */
+    function wireSections(main, teamId) {
+        const note = main.querySelector('[data-section-note]');
+        const say = (text) => {
+            lastMessage = text || null;
+            if (note) note.textContent = text || '';
+        };
+
+        main.querySelectorAll('[data-section-open]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                openPosition = openPosition === btn.dataset.sectionOpen ? null : btn.dataset.sectionOpen;
+                lastMessage = null;
+                rerender();
+            });
+        });
+
+        const close = main.querySelector('[data-section-close]');
+        if (close) {
+            close.addEventListener('click', () => {
+                openPosition = null;
+                lastMessage = null;
+                rerender();
+            });
+        }
+
+        main.querySelectorAll('[data-price-save]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const position = btn.dataset.priceSave;
+                const input = main.querySelector(`[data-price-input="${position}"]`);
+                const price = Number(input?.value);
+                if (!Number.isFinite(price) || price < 0) {
+                    say('A ticket price cannot be negative.');
+                    return;
+                }
+                say('Saving the price…');
+                const body = await postJson(`/api/teams/${teamId}/stadium/sections/price`, { position, price });
+                if (body.error) return say(body.error);
+                if (body.ok === false) return say(body.reason);
+                say(`The ${body.section || position} section now charges ${formatMoney(body.price)}.`);
+                await loadStadium();
+            });
+        });
+
+        main.querySelectorAll('[data-section-quote]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const position = btn.dataset.sectionQuote;
+                const out = main.querySelector(`[data-quote-for="${position}"]`);
+                out.innerHTML = '<p class="fm-subtle">Working out the price…</p>';
+                const quote = await postJson(`/api/teams/${teamId}/stadium/sections/quote`, choice(main, position));
+                // A refusal belongs where the reader is looking. It used to go to a note at the bottom
+                // of the panel, which left the form looking like nothing had happened.
+                if (quote.error) {
+                    out.innerHTML = `<p class="fm-subtle">${esc(quote.error)}</p>`;
+                    return say(quote.error);
+                }
+                if (quote.ok === false) {
+                    out.innerHTML = `<p class="fm-subtle">${esc(quote.reason || 'That cannot be quoted.')}</p>`;
+                    return say(quote.reason || 'That cannot be quoted.');
+                }
+                // The quote, and then an explicit yes or no. Nothing is spent on the first click.
+                out.innerHTML = quoteHtml(quote) + `
+                    <div class="fm-club-actions">
+                        <button type="button" class="fm-action-btn" data-section-confirm="${esc(position)}">Yes, build it</button>
+                        <button type="button" class="fm-action-btn secondary" data-section-close>No</button>
+                    </div>`;
+                const confirm = out.querySelector('[data-section-confirm]');
+                confirm.addEventListener('click', async () => {
+                    confirm.disabled = true;
+                    confirm.textContent = 'Building…';
+                    const built = await postJson(`/api/teams/${teamId}/stadium/sections/build`, choice(main, position));
+                    const result = built.result || {};
+                    if (built.error || result.ok === false || result.refused) {
+                        const why = built.error || result.reason || result.error || 'That could not be built.';
+                        out.innerHTML = `<p class="fm-subtle">${esc(why)}</p>`;
+                        confirm.disabled = false;
+                        confirm.textContent = 'Yes, build it';
+                        return say(why);
+                    }
+                    say(`${result.section} is closed for ${result.weeksClosed} week(s) and the ground `
+                        + `now holds ${Number(result.newCapacity || 0).toLocaleString()} seats.`);
+                    openPosition = null;
+                    await loadStadium();
+                });
+            });
+        });
+    }
+
+    /** The three choices currently shown for one section, as the server wants them. */
+    function choice(main, position) {
+        return {
+            position,
+            seatingType: main.querySelector(`[data-seating-input="${position}"]`)?.value || 'SEATS',
+            capacityToAdd: Number(main.querySelector(`[data-capacity-input="${position}"]`)?.value || 0),
+            roof: !!main.querySelector(`[data-roof-input="${position}"]`)?.checked,
+        };
+    }
+
+    /** The owner's two answers, before any money moves. */
+    function quoteHtml(quote) {
+        const lines = [];
+        if (quote.changingType) {
+            lines.push(['Removal of existing seats', formatBudget(quote.removalCost || 0)]);
+        }
+        lines.push(
+            ['New seats', formatBudget(quote.workCost || 0)],
+            ['Seats to add', Number(quote.capacityToAdd || 0).toLocaleString()],
+        );
+        if (quote.roofCost > 0) lines.push(['Roof', formatBudget(quote.roofCost)]);
+        lines.push(
+            ['Total', formatBudget(quote.cost || 0)],
+            ['Closed to fans', `${quote.weeksClosed} week(s), back in week ${quote.closedUntilWeek}`],
+            ['Ground afterwards', Number(quote.totalCapacityAfter || 0).toLocaleString()],
+            ['This section afterwards', Number(quote.sectionCapacityAfter || 0).toLocaleString()],
+            ['Recommended price', formatMoney(quote.recommendedPrice)],
+        );
+        return `
+
+        <div class="club-profile-detail-list">
+            ${lines.map(([k, v]) => `
+                <div class="club-profile-detail-row"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>
+            `).join('')}
+        </div>
+        <p class="fm-subtle">${esc(quote.note || '')}</p>`;
+    }
+
+    /**
+     * Naming the sponsor on the boards.
+     *
+     * <p>Its own wiring, beside the colour one rather than inside it, for the same reason the picture
+     * upload was moved out: a handler that shares a block with another cannot be attached on its own,
+     * and {@code response.ok} is checked before the body is read so a refusal is reported as a refusal
+     * instead of as a parse error.
+     */
+    function wireSponsor(main, teamId) {
+        const btn = main.querySelector('[data-stadium-save-sponsor]');
+        const input = main.querySelector('#stadium-sponsor-input');
+        if (!btn || !input) return;
+        btn.addEventListener('click', async () => {
+            const name = input.value.trim();
+            const restore = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+            try {
+                await authFetch(`/api/teams/${teamId}/stadium/sponsor`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sponsor: name }),
+                });
+                await loadStadium();
+            } catch (err) {
+                btn.textContent = `Not saved. ${apiErrorMessage(err, '')}`;
+            } finally {
+                btn.disabled = false;
+                if (btn.textContent === 'Saving…') btn.textContent = restore;
+            }
+        });
+    }
+
+    function wireColours(main, teamId) {
+        const btn = main.querySelector('[data-paint]');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            const note = main.querySelector('[data-paint-note]');
+            const colours = {};
+            main.querySelectorAll('[data-colour]').forEach(input => {
+                colours[input.dataset.colour] = input.value;
+            });
+            note.textContent = 'Saving…';
+            try {
+                const res = await authFetch(`/api/teams/${teamId}/stadium/paint`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(colours),
+                });
+                const body = await res.json();
+                const result = body.result || {};
+                note.textContent = result.refused ? result.error : `Saved ${result.coloursApplied} colour(s).`;
+                if (!result.refused) await loadStadium();
+            } catch (err) {
+                note.textContent = `Those colours did not save. ${err.message || ''}`;
+            }
+        });
+    }
+
+    /**
+     * The ground's picture upload.
+     *
+     * <p>Its own wiring rather than a block inside the colour handler, where it used to sit: it read a
+     * variable that does not exist in this module, so saving a colour threw a ReferenceError before the
+     * colours were ever sent, and the picture control was never attached at all.
+     */
+    function wirePicture(main, teamId) {
+        const input = main.querySelector('[data-stadium-image-input]');
+        if (!input) return;
+        input.addEventListener('change', async () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const note = main.querySelector('[data-stadium-image-note]');
+            // FormData, not JSON: the file has to go as multipart so the browser streams it and the
+            // server can check its type. Setting Content-Type by hand here would omit the multipart
+            // boundary and the request would arrive unparseable.
+            const body = new FormData();
+            body.append('file', file);
+            if (note) note.textContent = 'Uploading…';
+            try {
+                const res = await authFetch(`/api/teams/${teamId}/stadium/image`, { method: 'POST', body });
+                const payload = await res.json().catch(() => ({}));
+                if (note) note.textContent = res.ok ? 'Saved.' : (payload.error || 'That picture did not upload.');
+                if (res.ok) await loadStadium();
+            } catch (err) {
+                if (note) note.textContent = `That picture did not upload. ${err.message || ''}`;
+            } finally {
+                input.value = '';
+            }
+        });
+    }
+
+    function wireMaintenance(main, teamId) {
+        const btn = main.querySelector('[data-maintenance]');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            const note = main.querySelector('[data-maintenance-note]');
+            const budget = main.querySelector('#stadium-maintenance-budget')?.value;
+            note.textContent = 'Working…';
+            try {
+                const res = await authFetch(`/api/teams/${teamId}/stadium/maintenance`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weeklyBudget: Number(budget || 0) }),
+                });
+                const body = await res.json();
+                note.textContent = body.pitchStatus
+                    ? `Pitch work: ${esc(body.pitchStatus)}`
+                    : 'The pitch work was accepted.';
+                await loadStadium();
+            } catch (err) {
+                note.textContent = `That did not work. ${err.message || ''}`;
+            }
+        });
+    }
+
+    /** One POST as JSON. A refusal is a message, not a crash: the server's own sentence is returned. */
+    async function postJson(url, payload) {
+        try {
+            const res = await authFetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            return await res.json();
+        } catch (err) {
+            return { error: apiErrorMessage(err, 'That did not work.') };
+        }
+    }
+
+    /** The payload this page last loaded, so a re-render does not need another request. */
+    let lastPayload = null;
+
+    /** Re-renders the ground from the payload in hand, keeping the open build form open. */
+    function rerender() {
+        const main = document.getElementById('main-content');
+        if (!main || !lastPayload) return;
+        main.innerHTML = render(lastPayload, lastPayload.stadium);
+        wire(main, getTeamId());
+    }
+
+
+    function loadingState() {
+        return `<div class="fm-page fm-page--stadium"><section class="fm-panel"><p class="fm-subtle">Loading the ground…</p></section></div>`;
+    }
+
+    function emptyState(message) {
+        return `<div class="fm-page fm-page--stadium"><section class="fm-panel"><div class="fm-empty">${esc(message)}</div></section></div>`;
+    }
+
+    return { loadStadium };
+}
+
+function formatMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}

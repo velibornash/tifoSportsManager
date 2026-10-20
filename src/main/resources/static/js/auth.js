@@ -1,0 +1,465 @@
+// auth.js
+const LAST_APP_ERROR_KEY = 'tifo:last-app-error';
+const AUTH_TOKEN_KEY = 'token';
+
+function isAuthPage() {
+    const path = window.location.pathname || '';
+    return path === '/' || path.endsWith('/login.html') || path.endsWith('/register.html') || path.endsWith('/login.html') || path.endsWith('/register.html');
+}
+
+export class AuthFetchError extends Error {
+    constructor(message, { status = null, code = null, isAuthError = false, shouldLogout = false, details = null, url = null } = {}) {
+        super(message);
+        this.name = 'AuthFetchError';
+        this.status = status;
+        this.code = code;
+        this.isAuthError = isAuthError;
+        this.shouldLogout = shouldLogout;
+        this.details = details;
+        this.url = url;
+    }
+}
+
+export function getAuthToken() {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setAuthToken(token) {
+    if (token) {
+        sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+        sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export function clearAuthToken() {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function cloneDetails(details) {
+    if (details == null || typeof details !== 'object') {
+        return details;
+    }
+
+    try {
+        return JSON.parse(JSON.stringify(details));
+    } catch (error) {
+        return {
+            message: String(details?.message || error?.message || 'Unserializable error details'),
+            name: details?.name || 'Error'
+        };
+    }
+}
+
+function storeLastAppError(reason, details = {}, scope = 'app') {
+    try {
+        sessionStorage.setItem(LAST_APP_ERROR_KEY, JSON.stringify({
+            scope,
+            reason,
+            details: cloneDetails(details),
+            url: window.location.href,
+            path: window.location.pathname,
+            timestamp: new Date().toISOString()
+        }));
+    } catch (storageError) {
+        console.warn('Failed to persist last app error:', storageError);
+    }
+}
+
+export function readLastAppError() {
+    try {
+        const raw = sessionStorage.getItem(LAST_APP_ERROR_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (error) {
+        console.warn('Failed to read last app error:', error);
+        return null;
+    }
+}
+
+export function clearLastAppError() {
+    try {
+        sessionStorage.removeItem(LAST_APP_ERROR_KEY);
+    } catch (error) {
+        console.warn('Failed to clear last app error:', error);
+    }
+}
+
+function showErrorOverlay(message, details = {}) {
+    const overlay = document.createElement('div');
+    overlay.id = 'auth-error-overlay';
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        color: #ff4444;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 99999;
+        font-family: monospace;
+        padding: 20px;
+        box-sizing: border-box;
+    `;
+    
+    const title = document.createElement('h1');
+    title.textContent = '⚠️ Authentication Error';
+    title.style.cssText = 'font-size: 24px; margin-bottom: 20px; color: #ff6666;';
+    
+    const messageEl = document.createElement('div');
+    messageEl.textContent = message;
+    messageEl.style.cssText = 'font-size: 16px; margin-bottom: 20px; text-align: center;';
+    
+    const detailsEl = document.createElement('pre');
+    detailsEl.textContent = JSON.stringify(details, null, 2);
+    detailsEl.style.cssText = 'font-size: 12px; color: #aaa; max-width: 80%; overflow: auto;';
+    
+    const countdown = document.createElement('div');
+    countdown.style.cssText = 'margin-top: 20px; color: #888;';
+    countdown.textContent = 'Redirecting to login in 3 seconds...';
+    
+    overlay.appendChild(title);
+    overlay.appendChild(messageEl);
+    overlay.appendChild(detailsEl);
+    overlay.appendChild(countdown);
+    
+    document.body.appendChild(overlay);
+    
+    let seconds = 3;
+    const interval = setInterval(() => {
+        seconds--;
+        if (seconds > 0) {
+            countdown.textContent = `Redirecting to login in ${seconds} seconds...`;
+        } else {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
+function redirectToLogin(reason, errorDetails = {}) {
+    storeLastAppError(reason, errorDetails, 'auth');
+    console.error('=== AUTH REDIRECT ===');
+    console.error('Reason:', reason);
+    console.error('Current URL:', window.location.href);
+    console.error('Error Details:', errorDetails);
+    console.error('Token exists:', !!getAuthToken());
+    console.error('Token preview:', getAuthToken()?.substring(0, 20) + '...');
+    console.error('===================');
+    
+    if (!isAuthPage()) {
+        showErrorOverlay(reason, errorDetails);
+        setTimeout(() => {
+            clearAuthToken();
+            window.location.replace('/login.html');
+        }, 3000);
+    } else {
+        clearAuthToken();
+    }
+}
+
+export function isAuthFailure(error) {
+    return Boolean(error?.isAuthError);
+}
+
+export function handleAuthFailure(error, reason = 'Authentication required') {
+    if (!isAuthFailure(error)) return false;
+    if (error?.shouldLogout !== false) {
+        redirectToLogin(reason, {
+            status: error.status,
+            code: error.code,
+            url: error.url,
+            details: error.details
+        });
+    }
+    return true;
+}
+
+/**
+ * The sentence an API failure should show the manager.
+ *
+ * <p>{@link authFetch} **throws** on a non-2xx response, carrying the server's own message. A caller
+ * written as {@code const res = await authFetch(...); if (!res.ok) {...}} therefore never reaches
+ * its own error branch: the promise rejects first, the browser logs "Uncaught (in promise)", and
+ * the manager sees nothing at all. The server usually explains itself perfectly - "Opening the
+ * junior school costs 17466 and the club has 2537" - and that sentence is the whole point of the
+ * click.
+ *
+ * @param {*} error the thrown error
+ * @param {string} [fallback] what to say when there is no message
+ * @returns {string} a message for the UI
+ */
+export function apiErrorMessage(error, fallback = 'Something went wrong.') {
+    // The thrown message first (authFetch already prefers the server's own "message"), then the
+    // fields the server used instead: Spring's `detail` for a validation failure, and `error` for
+    // the endpoints that answer with that name.
+    const details = error?.details;
+    // **The server's own fields first.** A 400 carries the whole body in the thrown message
+    // ("HTTP 400: {json}") because that response had no `message` field, so preferring the thrown
+    // message showed the manager a wall of JSON. The fields are what the server wrote for him to read.
+    const fromDetails = String(
+        details?.message || details?.error || details?.detail || ''
+    ).trim();
+    const thrown = String(error?.message || '').trim();
+    const message = fromDetails || thrown;
+    if (!message) return fallback;
+    // The thrown message can be "HTTP 400: {json}" when the server sent no message field.
+    return message.replace(/^HTTP \d+:\s*/, '').slice(0, 240) || fallback;
+}
+
+/**
+ * A fetch that reports instead of throwing.
+ *
+ * <p>The companion to {@link apiErrorMessage}: the caller gets the response when there is one, and
+ * the server's sentence when there is not, with no unhandled rejection in between.
+ *
+ * @param {string} url the URL
+ * @param {object} [options] fetch options
+ * @returns {Promise<{response: Response|null, error: Error|null, message: string|null}>}
+ */
+export async function authFetchQuiet(url, options = {}) {
+    try {
+        const response = await authFetch(url, options);
+        return { response, error: null, message: null };
+    } catch (error) {
+        return { response: null, error, message: apiErrorMessage(error) };
+    }
+}
+
+export async function authFetch(url, options = {}) {
+    const token = getAuthToken();
+    if (!token) {
+        const error = new AuthFetchError('No active session.', {
+            status: 401,
+            code: 'NO_TOKEN',
+            isAuthError: true,
+            shouldLogout: true,
+            url: url
+        });
+        redirectToLogin('No token found - redirecting to login', { url, code: 'NO_TOKEN' });
+        throw error;
+    }
+
+    const headers = {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+        'X-Requested-With': 'XMLHttpRequest'
+    };
+
+    const hasBody = options.body != null && !(options.body instanceof FormData);
+    if (hasBody && headers['Content-Type'] == null && headers['content-type'] == null) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    let response;
+    try {
+        response = await fetch(url, { ...options, headers });
+    } catch (networkError) {
+        console.error('Network error during authFetch:', networkError);
+        storeLastAppError('Network error during authenticated request', {
+            url,
+            message: networkError.message,
+            stack: networkError.stack
+        }, 'network');
+        throw new AuthFetchError(`Network error: ${networkError.message}`, {
+            status: 0,
+            code: 'NETWORK_ERROR',
+            isAuthError: false,
+            url: url
+        });
+    }
+    
+    const contentType = response.headers.get('content-type') || '';
+
+    if (response.redirected && (response.url.includes('/login.html') || response.url.includes('/login.html'))) {
+        const error = new AuthFetchError('Authentication required.', {
+            status: 401,
+            code: 'LOGIN_REDIRECT',
+            isAuthError: true,
+            shouldLogout: true,
+            url: url
+        });
+        redirectToLogin('Session expired - redirecting to login', {
+            url,
+            redirectedTo: response.url,
+            code: 'LOGIN_REDIRECT'
+        });
+        throw error;
+    }
+
+    if (response.ok && contentType.includes('text/html')) {
+        storeLastAppError('Server returned HTML instead of API payload', {
+            url,
+            status: response.status,
+            contentType
+        }, 'response');
+        throw new AuthFetchError(`Server returned HTML instead of API payload: ${response.status}`, {
+            status: response.status,
+            code: 'INVALID_RESPONSE',
+            url: url
+        });
+    }
+
+    if (!response.ok) {
+        const text = await response.text();
+        let json = null;
+
+        if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+            storeLastAppError('Server returned HTML instead of JSON', {
+                url,
+                status: response.status,
+                responseText: text.substring(0, 500)
+            }, 'response');
+            throw new AuthFetchError(`Server returned HTML instead of JSON: ${response.status}`, {
+                status: response.status,
+                code: 'INVALID_RESPONSE',
+                url: url
+            });
+        }
+
+        try {
+            json = JSON.parse(text);
+        } catch {
+            json = null;
+        }
+
+        if (response.status === 401) {
+            const error = new AuthFetchError(json?.message || 'Authentication required.', {
+                status: response.status,
+                code: json?.code || 'UNAUTHORIZED',
+                isAuthError: true,
+                shouldLogout: true,
+                details: json,
+                url: url
+            });
+            storeLastAppError(`Auth error ${response.status}`, {
+                url,
+                status: response.status,
+                code: json?.code || 'UNAUTHORIZED',
+                message: json?.message,
+                responseText: text.substring(0, 500)
+            }, 'auth');
+            redirectToLogin(`Auth error ${response.status} - logging out`, {
+                url,
+                status: response.status,
+                code: json?.code || 'UNAUTHORIZED',
+                message: json?.message,
+                responseText: text.substring(0, 500)
+            });
+            throw error;
+        }
+
+        if (response.status === 403) {
+            storeLastAppError(`Forbidden ${response.status}`, {
+                url,
+                status: response.status,
+                code: json?.code || 'FORBIDDEN',
+                message: json?.message
+            }, 'auth');
+            throw new AuthFetchError(json?.message || 'Access denied.', {
+                status: response.status,
+                code: json?.code || 'FORBIDDEN',
+                isAuthError: false,
+                shouldLogout: false,
+                details: json,
+                url: url
+            });
+        }
+
+        storeLastAppError(`HTTP ${response.status} for authenticated request`, {
+            url,
+            status: response.status,
+            code: json?.code || 'HTTP_ERROR',
+            message: json?.message,
+            responseText: text.substring(0, 500)
+        }, 'response');
+        throw new AuthFetchError(
+            json?.message || `HTTP ${response.status}: ${text.substring(0, 200)}`,
+            {
+                status: response.status,
+                code: json?.code || 'HTTP_ERROR',
+                details: json,
+                url: url
+            }
+        );
+    }
+
+    return response;
+}
+
+// ---------------------------------------------------------------------------
+// Session role (single source of truth for "is this user an admin?")
+// ---------------------------------------------------------------------------
+// Previously three separate implementations existed: dashboard.js isAdminUser(),
+// community.js isAdminViewer() (both deleted with the chat, P2-20 Phase 6), and a
+// private currentUserRole in each of pages.js and dashboard.js. They could
+// disagree. Everything now goes through here.
+//
+// NOTE: this is the STAFF set, matching SecurityConfig's /admin/** matcher. It is
+// not the MODERATOR set. A forum moderator can delete posts and apply a forum ban
+// through /admin/users/** endpoints the server gates on mayModerate, but does not
+// reach the Admin tab — deliberately, so a moderator cannot reset the database or
+// appoint himself ADMIN.
+//
+// The role set matches the backend gate in SecurityConfig
+// (hasAnyRole("ADMIN", "OWNER", "DEV")) on /admin/**. DEV is included so the
+// developer account can still reach DB tools while testing.
+
+const ADMIN_ROLES = new Set(['ADMIN', 'OWNER', 'DEV']);
+
+let sessionRole = '';
+
+function normalizeRole(role) {
+    return String(role ?? '')
+        .trim()
+        .toUpperCase()
+        .replace(/^ROLE_/, '');
+}
+
+/** Record the role returned by /auth/me. Notifies listeners so menus can reveal themselves. */
+export function setSessionRole(role) {
+    const normalized = normalizeRole(role);
+    if (normalized === sessionRole) return;
+    sessionRole = normalized;
+    document.dispatchEvent(new CustomEvent('tifo:role-changed', {
+        detail: { role: sessionRole, isAdmin: isAdminSession() }
+    }));
+}
+
+export function getSessionRole() {
+    return sessionRole;
+}
+
+export function isAdminSession() {
+    return ADMIN_ROLES.has(sessionRole);
+}
+
+/**
+ * Reveal every [data-admin-only] element for admins and hide it for everyone else.
+ * Elements must start out `hidden` in the markup so a non-admin never sees a flash
+ * of the admin tab while /auth/me is still in flight.
+ */
+export function applyAdminVisibility(root = document) {
+    const isAdmin = isAdminSession();
+    root.querySelectorAll('[data-admin-only]').forEach((el) => {
+        el.hidden = !isAdmin;
+        if (isAdmin) {
+            el.removeAttribute('aria-hidden');
+        } else {
+            el.setAttribute('aria-hidden', 'true');
+        }
+    });
+    return isAdmin;
+}
+
+// Inline onclick handlers in the static markup need window scope.
+window.setSessionRole = setSessionRole;
+window.getSessionRole = getSessionRole;
+window.isAdminSession = isAdminSession;
+window.applyAdminVisibility = applyAdminVisibility;

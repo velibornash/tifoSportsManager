@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Tifo Sports Manager</title>
+    <meta name="description" content="Log in to TIFO Sports Manager, the free online football manager game. Run your club across 48 countries and 14,880 clubs.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="http://158.180.22.180:8080/login.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="TIFO Sports Manager">
+    <meta property="og:title" content="Login - Tifo Sports Manager">
+    <meta property="og:description" content="Log in to TIFO Sports Manager and continue running your football club.">
+    <meta property="og:url" content="http://158.180.22.180:8080/login.html">
+    <meta property="og:image" content="http://158.180.22.180:8080/images/logomain.jpg">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/login.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="background">
+</div>
+<div class="logo-corner">
+    <img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo">
+</div>
+<div class="login-wrapper">
+    <div class="login-card glass">
+        <h1 class="title">Tifo Sports Manager</h1>
+
+        <p class="invite">
+            Welcome to the place where tactics are<br>
+            made in tavern with beer in your hand.<br>
+            <strong>Are you that coach?</strong><br>
+        </p>
+
+        <form id="loginForm">
+            <div class="input-group">
+                <input type="email" placeholder=" " name="email" required value="kecko@example.com">
+                <label>Email</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder=" " name="password" required value="Kecko123!">
+                <label>Password</label>
+            </div>
+            <button id="loginBtn" type="submit">Enter Tifo</button>
+        </form>
+
+        <p class="register-link">
+	            Still not having a club? <a href="/register.html">Get one here</a>
+        </p>
+    </div>
+</div>
+
+<script type="module"  src="/js/auth.js"></script>
+<script type="module" src="/js/login.js"></script>
+
+
+<!--
+    The maintenance worker (redesign.md R-22). It only answers a navigation that the network
+    could not reach - which is what a rebuild looks like from a browser - and it keeps the
+    application's own files out of its cache, so a rebuild is never served a stale script.
+-->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js').catch(function () { /* no worker, no page */ });
+        });
+    }
+</script>
+</body>
+</html>

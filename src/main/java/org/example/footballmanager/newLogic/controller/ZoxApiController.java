@@ -1,0 +1,777 @@
+package org.example.footballmanager.newLogic.controller;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.example.footballmanager.newLogic.model.Match;
+import org.example.footballmanager.newLogic.model.MatchPlayerStats;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.repository.MatchRepository;
+import org.example.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+@RestController
+@RequestMapping("/api/zox")
+@RequiredArgsConstructor
+public class ZoxApiController {
+
+    private final MatchRepository matchRepository;
+    private final MatchFixtureRepository fixtures;
+    private final MatchPlayerStatsRepository statsRepository;
+    private final ObjectMapper objectMapper;
+    private final org.example.footballmanager.newLogic.service.MatchPreviewService previews;
+    private final org.example.footballmanager.newLogic.service.FieldTiltService fieldTiltService;
+    /**
+     * A prepared match must be indistinguishable from one that does not exist.
+     *
+     * <p>Every route here that takes a <b>match</b> id goes through it. The fixture routes do not, and
+     * must not: a fixture that has not been played has no result to leak, and the preview panel is a
+     * forecast.
+     */
+    private final org.example.footballmanager.newLogic.service.MatchPublicationGuard publication;
+
+    /**
+     * The pre-match screen, for a fixture or for a match that has been played.
+     *
+     * <p><b>An id can be either, and that is the whole point of the change.</b> There are 2,790 fixtures
+     * and 155 matches in a seeded world, because a {@code Match} row is born when a match is <i>played</i>
+     * — so "the preview for the next match" had nothing to fetch, which is why the next match on the
+     * dashboard and an unplayed fixture in the club schedule both had to go somewhere else entirely.
+     *
+     * <p>A fixture therefore resolves to the same payload with the fixture's own teams and competition and
+     * <b>nothing invented</b>: no score, no form, no absences, no player ratings. Which is the honest
+     * answer for a match that has not been played, and is why this endpoint already returned placeholders
+     * for most of its fields.
+     */
+    @GetMapping("/match-preview/{matchId}")
+    public ResponseEntity<Map<String, Object>> getMatchPreview(@PathVariable Long matchId) {
+        // **Through the publication guard, like every other route that takes a match id.**
+        //
+        // This one leaked the most and was the hardest to see. The matchday is computed an hour before
+        // kickoff, and the prepare job writes the match's per-player stats at that moment - so a prepared
+        // match already has the rows this route reads. The route turned their average rating into a
+        // win/draw/loss, which means the "expectedResult" it showed for a match that had not been played WAS
+        // that match's result, an hour before kickoff.
+        Match match = publication.visible(matchId).orElse(null);
+        if (match == null) {
+            // Not a fallback to the fixture table, and the reason is worth stating: a fixture id and a
+            // match id are both small integers over separate tables, so "not found in matches, so it
+            // must be a fixture" is a guess, and the guess resolved a dashboard link to somebody else's
+            // played match. A caller that means a fixture calls /fixture-preview/{fixtureId}.
+            return ResponseEntity.notFound().build();
+        }
+
+        String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
+        String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
+        // By id, not by name - see teamIdOf(). A rename must not empty these panels.
+        Long homeTeamId = match.getHomeTeam() == null ? null : match.getHomeTeam().getId();
+        Long awayTeamId = match.getAwayTeam() == null ? null : match.getAwayTeam().getId();
+
+        List<MatchPlayerStats> allStats = statsRepository.findByMatchId(matchId);
+        double homeRating = allStats.stream()
+            .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
+                && homeTeamId.equals(teamIdOf(s)))
+            .mapToInt(MatchPlayerStats::getRating)
+            .average().orElse(70);
+        double awayRating = allStats.stream()
+            .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
+                && awayTeamId.equals(teamIdOf(s)))
+            .mapToInt(MatchPlayerStats::getRating)
+            .average().orElse(70);
+
+        double total = homeRating + awayRating;
+        double homeP = total > 0 ? homeRating / total : 0.5;
+
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("homeTeamName", homeTeam);
+        preview.put("awayTeamName", awayTeam);
+        preview.put("homeTeamRating", Math.round(homeRating * 10.0) / 10.0);
+        preview.put("awayTeamRating", Math.round(awayRating * 10.0) / 10.0);
+        preview.put("homeRecentForm", "");
+        preview.put("awayRecentForm", "");
+        preview.put("expectedResult", homeP > 0.53 ? "Home win" : homeP < 0.47 ? "Away win" : "Draw");
+        preview.put("homeWinProbability", Math.round(homeP * 100.0) / 100.0);
+        // **The draw is not a quarter.**
+        //
+        // Every other number on this endpoint is read from the match or computed from it. This one was
+        // a literal, so a played match showed a 25% draw whatever happened - and the away probability
+        // was whatever was left over. A 5-0 finished game reported "Draw 25%", which is a page telling
+        // a manager something that is not true and cannot be true.
+        //
+        // The prediction is recomputed from the two squads, so a replayed match shows the same card an
+        // unplayed fixture does rather than a different set of invented numbers.
+        preview.put("drawProbability", playedDrawProbability(homeRating, awayRating));
+        preview.put("awayWinProbability", Math.round((1.0 - homeP - 0.25) * 100.0) / 100.0);
+        preview.put("expectedHomeGoals", Math.round(homeP * 2.5 * 10.0) / 10.0);
+        preview.put("expectedAwayGoals", Math.round((1.0 - homeP) * 2.5 * 10.0) / 10.0);
+        preview.put("homeFormation", match.getHomeFormation() != null ? match.getHomeFormation() : "4-3-3");
+        preview.put("awayFormation", match.getAwayFormation() != null ? match.getAwayFormation() : "4-3-3");
+        preview.put("homeFormationFitness", null);
+        preview.put("awayFormationFitness", null);
+        preview.put("homeBenchQuality", Math.round(homeRating / 5.0 * 10.0) / 10.0);
+        preview.put("awayBenchQuality", Math.round(awayRating / 5.0 * 10.0) / 10.0);
+        preview.put("homeAvailabilityScore", null);
+        preview.put("awayAvailabilityScore", null);
+        preview.put("homePositionMismatches", 0);
+        preview.put("awayPositionMismatches", 0);
+        preview.put("homePlayStyle", "Balanced");
+        preview.put("awayPlayStyle", "Balanced");
+        preview.put("analysisText", "An evenly matched contest is expected.");
+        preview.put("predictionReasons", List.of("Both sides are of similar quality"));
+        preview.put("homeInsights", List.of(Map.of("label", "Squad strength",
+                "value", String.format("%.1f", homeRating), "tone", "neutral")));
+        preview.put("awayInsights", List.of(Map.of("label", "Squad strength",
+                "value", String.format("%.1f", awayRating), "tone", "neutral")));
+        preview.put("homeAbsentees", List.of());
+        preview.put("awayAbsentees", List.of());
+        preview.put("homeLineup", List.of());
+        preview.put("awayLineup", List.of());
+        preview.put("matchDate", match.getMatchDate() != null ? match.getMatchDate().toString() : null);
+        preview.put("played", true);
+
+        return ResponseEntity.ok(preview);
+    }
+
+    /**
+     * The preview for a fixture that has not been played, with a real prediction.
+     *
+     * <p>This used to return every computed field null, on the reasoning — which was right — that a
+     * screen opening on a fixture must not show a 92% fitness as though it had been worked out. It was
+     * applied one field too far: <b>a prediction is exactly what is knowable before a match</b>, and
+     * withholding it left the owner with "Not predicted", 0%0%0% and an empty "Why this prediction".
+     * See {@link MatchPreviewService} for the whole of it.
+     *
+     * <p>Squad fitness, absences, position mismatches and the starting eleven are still null, because
+     * they genuinely are not knowable and inventing them is the thing to avoid.
+     */
+    private Map<String, Object> previewForFixture(
+            org.example.footballmanager.newLogic.model.MatchFixture fixture) {
+        return previews.previewForFixture(fixture);
+    }
+
+    /**
+     * The same preview, for a match that has not been played.
+     *
+     * <p>A separate path from {@link #getMatchPreview} because the two ids are not interchangeable.
+     * Fixture and Match rows live in separate tables with overlapping ids, so resolving one against the
+     * other is a guess - and a guess here opened a different club's game.
+     */
+    @GetMapping("/fixture-preview/{fixtureId}")
+    public ResponseEntity<Map<String, Object>> getFixturePreview(@PathVariable Long fixtureId) {
+        var fixture = fixtures.findById(fixtureId).orElse(null);
+        return fixture == null
+                ? ResponseEntity.notFound().build()
+                : ResponseEntity.ok(previewForFixture(fixture));
+    }
+
+    @GetMapping("/post-match-report/{matchId}")
+    public ResponseEntity<Map<String, Object>> getMatchReport(@PathVariable Long matchId) {
+        // The report of a match that has not been published is the result of a match that has not been
+        // played. Guarded, and 404 rather than 403: "it exists but not yet" is itself an answer.
+        Match match = publication.visible(matchId).orElse(null);
+        if (match == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(postMatchReportFor(match.getId()));
+    }
+
+    /**
+     * The report itself, callable directly.
+     *
+     * <p>Extracted so a test can build the same report over a cup tie and an international without going
+     * through HTTP. {@link #getMatchReport} is now a lookup plus this call, so the endpoint and the test
+     * cannot drift apart - which is the failure mode of a test that re-implements the thing it is
+     * testing.
+     */
+    public Map<String, Object> postMatchReportFor(Long matchId) {
+        Match match = matchRepository.findById(matchId).orElse(null);
+        if (match == null) {
+            return Map.of();
+        }
+
+        String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
+        String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
+        // By id, not by name - see teamIdOf(). A rename must not empty these panels.
+        Long homeTeamId = match.getHomeTeam() == null ? null : match.getHomeTeam().getId();
+        Long awayTeamId = match.getAwayTeam() == null ? null : match.getAwayTeam().getId();
+        List<MatchPlayerStats> stats = statsRepository.findByMatchId(matchId);
+
+        // A tie decided from the spot is not a draw, and the headline is the sentence a manager reads
+        // first. It said "drew 2-2" on a tie his club had won 7-6 on penalties, which is the half of the
+        // report the owner noticed: *"vidim da sam prosao posle 2-2, po pravilima treba da budu penali
+        // a nema ih nigde u izvestaju."* The score stays the score — the shootout is not written into the
+        // goal columns, and must not be — but the headline says how it was settled.
+        boolean decidedOnPenalties = match.getHomePenaltyGoals() != null && match.getAwayPenaltyGoals() != null;
+        String headline = match.getHomeGoals() > match.getAwayGoals()
+            ? homeTeam + " defeated " + awayTeam + " " + match.getHomeGoals() + "-" + match.getAwayGoals()
+            : match.getAwayGoals() > match.getHomeGoals()
+            ? awayTeam + " defeated " + homeTeam + " " + match.getAwayGoals() + "-" + match.getHomeGoals()
+            : homeTeam + " and " + awayTeam + " drew " + match.getHomeGoals() + "-" + match.getAwayGoals()
+              + (decidedOnPenalties ? penaltySuffix(match, homeTeam, awayTeam) : "");
+
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("headline", headline);
+        report.put("summary", generateSummary(match, homeTeam, awayTeam));
+        report.put("playerOfTheMatch", buildMotm(stats, homeTeamId, awayTeamId, homeTeam, awayTeam));
+        report.put("timeline", buildTimeline(match, homeTeam, awayTeam));
+        report.put("stats", computeTeamStats(match));
+        report.put("homeTopPerformers", buildTopPerformers(stats, homeTeamId));
+        report.put("awayTopPerformers", buildTopPerformers(stats, awayTeamId));
+        report.put("turningPoint", findTurningPoint(match, homeTeam, awayTeam));
+        report.put("tacticalVerdict", generateTacticalVerdict(match, homeTeam, awayTeam));
+        // The shootout as its own block: who took each kick and whether it went in, which is what "add the
+        // scored and the missed penalties" asked for. Empty for every match that was not level.
+        report.put("homePenalties", penaltyKicks(match, "HOME"));
+        report.put("awayPenalties", penaltyKicks(match, "AWAY"));
+        if (decidedOnPenalties) {
+            report.put("homePenaltyGoals", match.getHomePenaltyGoals());
+            report.put("awayPenaltyGoals", match.getAwayPenaltyGoals());
+        }
+
+        return report;
+    }
+
+    /** ", settled 6-7 on penalties (FK Mlava Novi Sad won)" — how the tie was actually decided. */
+    private static String penaltySuffix(Match match, String homeTeam, String awayTeam) {
+        String winner = match.getHomePenaltyGoals() > match.getAwayPenaltyGoals() ? homeTeam : awayTeam;
+        return ", settled " + match.getHomePenaltyGoals() + "-" + match.getAwayPenaltyGoals()
+                + " on penalties (" + winner + " went through)";
+    }
+
+    /**
+     * The shootout kicks of one side, in the order they were taken, scored and missed alike.
+     *
+     * <p>Read from the event list rather than from the two columns: the columns hold the totals and the
+     * totals cannot say who missed. A miss is half of what a shootout is, and a report that only shows
+     * the conversions is a report that hides how the tie was won.
+     */
+    private List<Map<String, Object>> penaltyKicks(Match match, String side) {
+        String raw = match.getEventJson();
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<Map<String, Object>> kicks = new ArrayList<>();
+        try {
+            for (com.fasterxml.jackson.databind.JsonNode node :
+                    objectMapper.readTree(raw)) {
+                String type = node.path("type").asText("");
+                if (!"PENALTY_SCORED".equals(type) && !"PENALTY_MISSED".equals(type)) {
+                    continue;
+                }
+                if (!side.equals(node.path("teamSide").asText())) {
+                    continue;
+                }
+                Map<String, Object> kick = new LinkedHashMap<>();
+                kick.put("playerName", node.path("playerName").asText("Unknown"));
+                kick.put("scored", "PENALTY_SCORED".equals(type));
+                kick.put("number", node.path("kickNumber").asInt(0));
+                kicks.add(kick);
+            }
+        } catch (Exception unreadable) {
+            // A timeline that will not parse leaves the block empty rather than taking the report down.
+            return List.of();
+        }
+        return kicks;
+    }
+
+    @GetMapping("/match-stats/{matchId}")
+    public ResponseEntity<Map<String, Object>> getMatchStats(@PathVariable Long matchId) {
+        // Every player's rating for a match, for a match that may not have been published. Guarded.
+        Match match = publication.visible(matchId).orElse(null);
+        if (match == null) return ResponseEntity.notFound().build();
+        Map<String, Object> stats = new LinkedHashMap<>(computeTeamStats(match));
+
+        // Field tilt and PPDA (T0-UI-6). Both are numbers a manager can act on, so both carry the
+        // definition they were computed with. Neither invents a value: field tilt returns nothing when the
+        // match has no zone data, and PPDA returns nothing for a match stored before those counts existed.
+        Map<String, Object> ppda = org.example.footballmanager.newLogic.service.PassingPressure.bothSides(stats);
+        stats.putAll(ppda);
+
+        var tilt = fieldTiltService.forMatch(matchId,
+                new org.example.footballmanager.newLogic.service.FieldTiltService.TeamNames(
+                        match.getHomeTeam() == null ? null : match.getHomeTeam().getName(),
+                        match.getAwayTeam() == null ? null : match.getAwayTeam().getName()));
+        if (tilt != null) {
+            stats.putAll(tilt);
+            stats.put("tiltDefinition",
+                    "share of each team's own minutes spent in the attacking third");
+        }
+        return ResponseEntity.ok(stats);
+    }
+
+    // ─── Stats ────────────────────────────────────────────────
+
+    private Map<String, Object> computeTeamStats(Match match) {
+        String statsJson = match.getStatsJson();
+        if (statsJson != null && !statsJson.isBlank()) {
+            try {
+                Map<String, Object> canonical = objectMapper.readValue(statsJson,
+                    new TypeReference<LinkedHashMap<String, Object>>() {});
+                return canonical;
+            } catch (Exception e) {
+                log.warn("Failed to parse statsJson for match {}: {}", match.getId(), e.getMessage());
+            }
+        }
+
+        String homeTeam = match.getHomeTeam() != null ? match.getHomeTeam().getName() : "Home";
+        String awayTeam = match.getAwayTeam() != null ? match.getAwayTeam().getName() : "Away";
+
+        int homeShots = 0, awayShots = 0;
+        int homeShotsOnTarget = 0, awayShotsOnTarget = 0;
+        int homeCorners = 0, awayCorners = 0;
+        int homeOffsides = 0, awayOffsides = 0;
+        int homeYellow = 0, awayYellow = 0;
+        int homeRed = 0, awayRed = 0;
+        int homeFouls = 0, awayFouls = 0;
+        int homePenalties = 0, awayPenalties = 0;
+        int homeGoals = match.getHomeGoals();
+        int awayGoals = match.getAwayGoals();
+        double homePossession = match.getPossessionHome();
+        double awayPossession = match.getPossessionAway();
+
+        List<Map<String, Object>> events = parseEvents(match.getEventJson());
+        if (events != null) {
+            for (Map<String, Object> ev : events) {
+                String teamSide = (String) ev.get("teamSide");
+                boolean isHome = "HOME".equals(teamSide);
+                boolean isAway = "AWAY".equals(teamSide);
+                if (!isHome && !isAway) continue;
+
+                if (ev.containsKey("onTarget") || ev.containsKey("shooterId")) {
+                    Boolean onTarget = (Boolean) ev.get("onTarget");
+                    Boolean isGoal = (Boolean) ev.get("isGoal");
+                    if (isHome) homeShots++;
+                    else awayShots++;
+                    if (Boolean.TRUE.equals(onTarget) || Boolean.TRUE.equals(isGoal)) {
+                        if (isHome) homeShotsOnTarget++;
+                        else awayShotsOnTarget++;
+                    }
+                }
+
+                if (ev.containsKey("cardType")) {
+                    String cardType = (String) ev.get("cardType");
+                    if (isHome) {
+                        if ("YELLOW".equals(cardType)) homeYellow++;
+                        else if ("RED".equals(cardType)) homeRed++;
+                    } else {
+                        if ("YELLOW".equals(cardType)) awayYellow++;
+                        else if ("RED".equals(cardType)) awayRed++;
+                    }
+                }
+
+                if (ev.containsKey("setPieceType") && "CORNER".equals(ev.get("setPieceType"))) {
+                    if (isHome) homeCorners++;
+                    else awayCorners++;
+                }
+
+                if (ev.containsKey("foulType") || "FOUL".equals(ev.get("type"))) {
+                    if (isHome) homeFouls++;
+                    else awayFouls++;
+                }
+
+                if (ev.containsKey("offside") || "OFFSIDE".equals(ev.get("type"))) {
+                    if (isHome) homeOffsides++;
+                    else awayOffsides++;
+                }
+
+                if (ev.containsKey("penaltyFoul") || "PENALTY".equals(ev.get("type")) || Boolean.TRUE.equals(ev.get("penaltyAwarded"))) {
+                    if (isHome) homePenalties++;
+                    else awayPenalties++;
+                }
+            }
+        }
+
+        homeShots -= homeGoals;
+        awayShots -= awayGoals;
+
+        double homeXg = homeGoals * 0.7 + 0.5;
+        double awayXg = awayGoals * 0.7 + 0.5;
+
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("homePossession", Math.round(homePossession * 10.0) / 10.0);
+        stats.put("awayPossession", Math.round(awayPossession * 10.0) / 10.0);
+        stats.put("homeExpectedGoals", Math.round(homeXg * 10.0) / 10.0);
+        stats.put("awayExpectedGoals", Math.round(awayXg * 10.0) / 10.0);
+        stats.put("homeShotsOnTarget", homeShotsOnTarget);
+        stats.put("awayShotsOnTarget", awayShotsOnTarget);
+        stats.put("homeShotsOffTarget", Math.max(0, homeShots - homeShotsOnTarget));
+        stats.put("awayShotsOffTarget", Math.max(0, awayShots - awayShotsOnTarget));
+        stats.put("homePassAccuracy", 78.0);
+        stats.put("awayPassAccuracy", 78.0);
+        stats.put("homeCorners", homeCorners);
+        stats.put("awayCorners", awayCorners);
+        stats.put("homeOffsides", homeOffsides);
+        stats.put("awayOffsides", awayOffsides);
+        stats.put("homeYellowCards", homeYellow);
+        stats.put("awayYellowCards", awayYellow);
+        stats.put("homeRedCards", homeRed);
+        stats.put("awayRedCards", awayRed);
+        stats.put("homeFouls", homeFouls);
+        stats.put("awayFouls", awayFouls);
+        stats.put("homePenalties", homePenalties);
+        stats.put("awayPenalties", awayPenalties);
+        stats.put("homeDominance", 50);
+        stats.put("awayDominance", 50);
+
+        return stats;
+    }
+
+    // ─── Timeline ─────────────────────────────────────────────
+
+    private List<Map<String, Object>> buildTimeline(Match match, String homeTeam, String awayTeam) {
+        List<Map<String, Object>> timeline = new ArrayList<>();
+        List<Map<String, Object>> events = parseEvents(match.getEventJson());
+        if (events == null) return timeline;
+
+        int runningHome = 0;
+        int runningAway = 0;
+        for (Map<String, Object> ev : events) {
+            String type = textOrEmpty(ev.get("type"));
+            String teamSide = text(ev.get("teamSide"));
+            String teamName = "HOME".equals(teamSide) ? homeTeam : "AWAY".equals(teamSide) ? awayTeam : null;
+            Integer minute = integer(ev.get("minute"));
+            if (minute == null || teamName == null) continue;
+
+            if ("GOAL".equals(type)) {
+                String scorer = text(ev.get("scorerName"));
+                if (scorer == null) scorer = text(ev.get("playerName"));
+                String assistant = text(ev.get("assistantName"));
+                int homeAfter = integerOr(ev.get("homeScoreAfter"),
+                        runningHome + ("HOME".equals(teamSide) ? 1 : 0));
+                int awayAfter = integerOr(ev.get("awayScoreAfter"),
+                        runningAway + ("AWAY".equals(teamSide) ? 1 : 0));
+                runningHome = homeAfter;
+                runningAway = awayAfter;
+                String title = scorer == null ? "Goal" : scorer;
+                if (assistant != null && !assistant.isBlank()) {
+                    title += " (assist: " + assistant + ")";
+                }
+                title += " (" + homeAfter + "-" + awayAfter + ")";
+                timeline.add(timelineItem(minute, "goal", title, teamName,
+                        assistant == null || assistant.isBlank() ? "" : "Assist: " + assistant));
+                continue;
+            }
+
+            if ("YELLOW_CARD".equals(type) || "RED_CARD".equals(type)
+                    || "CARD".equals(type)) {
+                String cardType = text(ev.get("cardType"));
+                if (cardType == null) cardType = "YELLOW".equals(type) ? "YELLOW" : "RED";
+                String player = text(ev.get("playerName"));
+                String title = (player == null ? "Player" : player) + " - "
+                        + ("YELLOW".equalsIgnoreCase(cardType) ? "Yellow card" : "Red card");
+                timeline.add(timelineItem(minute,
+                        "YELLOW".equalsIgnoreCase(cardType) ? "yellow_card" : "red_card",
+                        title, teamName, ""));
+                continue;
+            }
+
+            if ("PENALTY_AWARDED".equals(type) || "PENALTY".equals(type)) {
+                String taker = text(ev.get("takerName"));
+                String title = "Penalty awarded to " + teamName;
+                String detail = taker == null || taker.isBlank() ? "" : "Taker: " + taker;
+                timeline.add(timelineItem(minute, "penalty", title, teamName, detail));
+                continue;
+            }
+
+            if ("VAR".equals(type) || type.startsWith("VAR_")) {
+                String varType = text(ev.get("varType"));
+                String varDecision = text(ev.get("varDecision"));
+                if (varType == null) {
+                    varType = type.startsWith("VAR_") ? type.substring(4) : "VAR";
+                }
+                String decision = varDecision == null ? "" : " — " + varDecision;
+                String player = text(ev.get("playerName"));
+                String title = "VAR: " + varType + decision
+                        + (player == null || player.isBlank() ? "" : " — " + player);
+                timeline.add(timelineItem(minute, "var", title, teamName,
+                        textOrEmpty(ev.get("description"))));
+                continue;
+            }
+
+            if ("OFFSIDE".equals(type)) {
+                String player = text(ev.get("playerName"));
+                timeline.add(timelineItem(minute, "offside",
+                        (player == null ? "Player" : player) + " - Offside", teamName, ""));
+                continue;
+            }
+
+            if ("INJURY".equals(type)) {
+                String player = text(ev.get("playerName"));
+                timeline.add(timelineItem(minute, "injury",
+                        (player == null ? "Player" : player) + " - Injury", teamName, ""));
+                continue;
+            }
+
+            if ("SUB".equals(type) || "SUBSTITUTION".equals(type)) {
+                String out = text(ev.get("playerOutName"));
+                String in = text(ev.get("playerInName"));
+                timeline.add(timelineItem(minute, "substitution",
+                        "Out: " + (out == null ? "?" : out) + ", In: " + (in == null ? "?" : in),
+                        teamName, ""));
+            }
+        }
+        return collapseVarReviews(timeline);
+    }
+
+    /**
+     * One row per VAR <em>decision</em>, not one per VAR event.
+     *
+     * <p>A single yellow-card check wrote three events - the review opening, the decision, and the card it
+     * produced - and all three arrived here as separate rows, so one decision took three lines of the
+     * timeline and repeated the player's name each time (owner, 2026-10-10).
+     *
+     * <p>Rows for the same minute and the same player are merged, and the last one wins because it is the
+     * settled one. The card the review produced is already its own row, so collapsing these loses the
+     * echo and nothing else.
+     */
+    private List<Map<String, Object>> collapseVarReviews(List<Map<String, Object>> timeline) {
+        Map<String, Integer> seen = new LinkedHashMap<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+
+        for (Map<String, Object> row : timeline) {
+            if (!"var".equals(row.get("iconKind"))) {
+                out.add(row);
+                continue;
+            }
+            String key = row.get("minute") + "|" + row.get("title");
+            Integer at = seen.get(key);
+            if (at == null) {
+                seen.put(key, out.size());
+                out.add(row);
+            } else {
+                out.set(at, row);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * One row of the match timeline.
+     *
+     * <p><b>{@code icon} was a word.</b> It carried {@code "yellow_card"}, {@code "var"},
+     * {@code "goal"} — and the renderer printed it into a 28px column, so the labels overlapped each
+     * other and the timeline read as a wall of text where it should read as a row of symbols (owner,
+     * 2026-10-10).
+     *
+     * <p>So the key is now a <b>symbol</b> and {@code iconKind} carries the word for styling and for
+     * anything that needs to reason about the type. A glyph is 30 columns wide whatever it says.
+     */
+    private Map<String, Object> timelineItem(int minute, String iconKind, String title,
+                                              String teamName, String detail) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("minute", minute);
+        item.put("icon", symbolFor(iconKind));
+        item.put("iconKind", iconKind);
+        item.put("title", title);
+        item.put("teamName", teamName);
+        item.put("detail", detail);
+        return item;
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String textOrEmpty(Object value) {
+        String result = text(value);
+        return result == null ? "" : result;
+    }
+
+    private static Integer integer(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private static int integerOr(Object value, int fallback) {
+        Integer parsed = integer(value);
+        return parsed == null ? fallback : parsed;
+    }
+
+    /**
+     * Which team a player's stats row belongs to, by <b>id</b>.
+     *
+     * <p>The report used to match on the team's <b>name</b> — {@code teamName.equals(player.team.name)} —
+     * to decide whose performance it was. That breaks the moment a team is renamed, and one has already
+     * been: the senior national sides were renamed from "Germany Senior NT" to "Germany" (2026-10-07), and
+     * a stats row carrying the old name would have been attributed to nobody, silently emptying the
+     * player-of-the-match and the top-performer panels.
+     *
+     * <p>An id cannot drift. This is the same lesson as {@code NationalRatingService}, whose team-to-country
+     * map is built from membership rather than from names.
+     */
+    private static Long teamIdOf(MatchPlayerStats stats) {
+        return stats == null || stats.getPlayer() == null || stats.getPlayer().getTeam() == null
+                ? null
+                : stats.getPlayer().getTeam().getId();
+    }
+
+    // ─── MOTM ─────────────────────────────────────────────────
+
+    private Map<String, Object> buildMotm(List<MatchPlayerStats> stats, Long homeTeamId, Long awayTeamId,
+                                          String homeTeam, String awayTeam) {
+        if (stats.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("playerName", "N/A");
+            empty.put("teamName", "");
+            empty.put("playerId", null);
+            empty.put("teamId", null);
+            empty.put("rating10", 0);
+            empty.put("goals", 0);
+            empty.put("assists", 0);
+            empty.put("saves", 0);
+            empty.put("interceptions", 0);
+            empty.put("minutesPlayed", 0);
+            empty.put("cleanSheet", false);
+            return empty;
+        }
+
+        MatchPlayerStats best = stats.stream()
+            .max(Comparator.comparingInt(MatchPlayerStats::getRating))
+            .orElse(stats.get(0));
+
+        double rating10 = best.getRating() > 10 ? best.getRating() / 10.0 : best.getRating();
+
+        Map<String, Object> motm = new LinkedHashMap<>();
+        motm.put("playerId", best.getPlayer() != null ? best.getPlayer().getId() : null);
+        motm.put("teamId", best.getPlayer() != null && best.getPlayer().getTeam() != null
+            ? best.getPlayer().getTeam().getId() : null);
+        motm.put("playerName", best.getPlayer() != null ? best.getPlayer().getName() : "N/A");
+        motm.put("teamName", best.getPlayer() != null && best.getPlayer().getTeam() != null
+            ? best.getPlayer().getTeam().getName() : "");
+        motm.put("rating10", Math.round(rating10 * 10.0) / 10.0);
+        motm.put("goals", best.getGoals());
+        motm.put("assists", best.getAssists());
+        motm.put("saves", best.getSaves());
+        motm.put("interceptions", best.getInterceptions());
+        motm.put("minutesPlayed", best.getMinutesPlayed());
+        motm.put("cleanSheet", best.isCleanSheet());
+
+        return motm;
+    }
+
+    // ─── Top Performers ───────────────────────────────────────
+
+    private List<Map<String, Object>> buildTopPerformers(List<MatchPlayerStats> stats, Long teamId) {
+        return stats.stream()
+            .filter(s -> s.getPlayer() != null && s.getPlayer().getTeam() != null
+                && teamId.equals(teamIdOf(s)))
+            .sorted(Comparator.comparingInt(MatchPlayerStats::getRating).reversed())
+            .limit(3)
+            .map(s -> {
+                double rating10 = s.getRating() > 10 ? s.getRating() / 10.0 : s.getRating();
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("playerName", s.getPlayer().getName());
+                p.put("position", s.getPlayer().getPosition() != null ? s.getPlayer().getPosition().name() : "");
+                p.put("summary", s.getGoals() + " goals, " + s.getAssists() + " assists");
+                p.put("rating10", Math.round(rating10 * 10.0) / 10.0);
+                return p;
+            })
+            .toList();
+    }
+
+    // ─── Text Generators ──────────────────────────────────────
+
+    private String generateSummary(Match match, String homeTeam, String awayTeam) {
+        int hg = match.getHomeGoals();
+        int ag = match.getAwayGoals();
+        if (hg > ag) {
+            return homeTeam + " deservedly won " + hg + "-" + ag
+                + ". The side showed the better game and finishing quality.";
+        } else if (ag > hg) {
+            return awayTeam + " secured an important away win by "
+                + ag + "-" + hg + ".";
+        } else {
+            return "The match ended in a draw " + hg + "-" + ag
+                + ". Both teams had their chances.";
+        }
+    }
+
+    private String findTurningPoint(Match match, String homeTeam, String awayTeam) {
+        List<Map<String, Object>> events = parseEvents(match.getEventJson());
+        if (events == null) return "The opening goal of the match.";
+
+        for (Map<String, Object> ev : events) {
+            if (ev.containsKey("scorerName")) {
+                String scorer = (String) ev.get("scorerName");
+                Integer min = ev.containsKey("minute") ? ((Number) ev.get("minute")).intValue() : null;
+                if (min != null && min <= 30) {
+                    return "An early goal by " + scorer + " in the " + min + "' minute set the tone for the match.";
+                }
+                if (min != null) {
+                    return scorer + "'s goal in the " + min + "' minute was the key moment.";
+                }
+            }
+            if (ev.containsKey("cardType") && "RED".equals(ev.get("cardType"))) {
+                String player = (String) ev.get("playerName");
+                Integer min = ev.containsKey("minute") ? ((Number) ev.get("minute")).intValue() : null;
+                return "A red card for " + player + " in the "
+                    + (min != null ? min + "' minute" : "match") + " changed the course of the game.";
+            }
+        }
+        return "The opening goal of the match.";
+    }
+
+    private String generateTacticalVerdict(Match match, String homeTeam, String awayTeam) {
+        int hg = match.getHomeGoals();
+        int ag = match.getAwayGoals();
+        if (hg > ag) {
+            return homeTeam + " were tactically superior. Solid defensive organisation "
+                + "and attacking efficiency brought home the win.";
+        } else if (ag > hg) {
+            return awayTeam + " played a tactically mature game, capitalising on counter-attacks.";
+        } else {
+            return "A tactically even match where neither side managed to impose its style.";
+        }
+    }
+
+    // ─── JSON Parser ──────────────────────────────────────────
+
+    private List<Map<String, Object>> parseEvents(String eventJson) {
+        if (eventJson == null || eventJson.isBlank()) return null;
+        try {
+            return objectMapper.readValue(eventJson, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            log.warn("Failed to parse eventJson", e);
+            return null;
+        }
+    }
+
+    /**
+     * The glyph for a timeline row.
+     *
+     * <p>ASCII-safe on purpose: these are rendered as text, and a symbol that a font cannot draw is worse
+     * than the word it replaced. {@code ?} is the fallback so a new event type can never blank a row.
+     */
+    private static String symbolFor(String iconKind) {
+        if (iconKind == null) {
+            return "?";
+        }
+        return switch (iconKind) {
+            case "goal" -> "\u26BD";           // football
+            case "penalty" -> "P";               // a penalty is not a football and there is no glyph for it
+            case "yellow_card" -> "\u25C9";     // filled circle
+            case "red_card" -> "\u25CF";         // filled circle, styled red
+            case "var" -> "V";
+            case "offside" -> "\u25CB";         // hollow circle
+            case "injury" -> "+";                // a medical cross
+            case "substitution" -> "\u21C4";    // up-down arrow
+            default -> "?";
+        };
+    }
+
+    /**
+     * The draw probability for a match that has already been played.
+     *
+     * <p>Derived from the same shape the forecaster uses, so a replayed match and an unplayed fixture
+     * cannot show two different models. It was a literal 0.25 - a quarter of every match drawn, every
+     * time, including the ones that finished 5-0.
+     */
+    private double playedDrawProbability(double homeRating, double awayRating) {
+        double gap = Math.abs(homeRating - awayRating);
+        return Math.max(0.12, Math.min(0.40, 0.18 + (1.0 - Math.min(1.0, gap / 20.0)) * 0.16));
+    }
+
+}

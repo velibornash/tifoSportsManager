@@ -1,0 +1,283 @@
+package org.example.footballmanager.newLogic.sim.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.example.footballmanager.newLogic.model.MatchFixture;
+import org.example.footballmanager.newLogic.model.SubstitutionPlan;
+import org.example.footballmanager.newLogic.model.Team;
+import org.example.footballmanager.newLogic.repository.MatchFixtureRepository;
+import org.example.footballmanager.newLogic.repository.SubstitutionPlanRepository;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Manager's conditional substitution plan, per fixture.
+ *
+ * <p>Server-side so the plan survives a page reload, and keyed by <b>fixture</b> so it can be written
+ * before the match exists. The owner's rule is that substitution decisions close an hour before kickoff —
+ * a key of {@code matchId} would have made that impossible, because a {@code Match} row is written by the
+ * simulation that consumes the plan.
+ *
+ * <p><b>Which club may write it.</b> The fixture's <b>home</b> club only. A club cannot set conditions
+ * for a game it is not playing, and the plan is the home club's instruction — which is also the only side
+ * whose bench the rule may name.
+ *
+ * <p><b>Closed one hour before kickoff.</b> After that the plan is refused with a reason rather than
+ * ignored. A rule set at minute 55 of a match that is already simulated does nothing at all, and a
+ * button that accepts input which cannot have an effect is worse than one that refuses.
+ */
+@RestController
+@RequestMapping("/api/sim")
+@RequiredArgsConstructor
+public class SubstitutionPlanController {
+
+    /** The owner: substitution decisions close an hour before kickoff. */
+    static final java.time.Duration CUTOFF = java.time.Duration.ofHours(1);
+
+    private final SubstitutionPlanRepository plans;
+    private final MatchFixtureRepository fixtures;
+    private final org.example.footballmanager.newLogic.service.SubstitutionRuleValidator validator;
+
+    /**
+     * The plan for a played match, reached from the match rather than from the fixture.
+     *
+     * <p><b>Why this route exists at all.</b> The plan is keyed by fixture, and after the whistle a
+     * manager is standing on the match view — where the report, the lineups and the goals are — with no
+     * fixture id in hand. `MatchDTO` carries `playedMatchId` and not `fixtureId`, so the match could not
+     * ask for its own plan; it had to be made to ask. The link back is
+     * {@code MatchFixture.playedMatch}, which is unique, so this is an exact answer.
+     *
+     * <p>A match with no fixture — an exhibition, simulated inline — has no plan and is refused rather
+     * than answered with an empty one, because an empty plan is what a manager with no conditions looks
+     * like, and those are different situations that must not look the same.
+     */
+    @GetMapping("/matches/{matchId}/substitution-plan")
+    public ResponseEntity<Map<String, Object>> byMatch(@PathVariable Long matchId) {
+        Optional<MatchFixture> found = fixtures.findByPlayedMatchId(matchId);
+        if (found.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        MatchFixture fixture = found.get();
+        return ResponseEntity.ok(planView(fixture, findOrCreate(fixture)));
+    }
+
+    @GetMapping("/fixtures/{fixtureId}/substitution-plan")
+    public ResponseEntity<Map<String, Object>> get(@PathVariable Long fixtureId) {
+        Optional<MatchFixture> found = fixtures.findById(fixtureId);
+        if (found.isEmpty()) return ResponseEntity.notFound().build();
+        MatchFixture fixture = found.get();
+        return ResponseEntity.ok(planView(fixture, findOrCreate(fixture)));
+    }
+
+    /**
+     * Replaces the plan wholesale. A put rather than a patch on purpose: the rules are always edited
+     * and submitted as a set, and a merge would leave rules the manager believes they deleted still
+     * queued to fire.
+     */
+    @PutMapping("/fixtures/{fixtureId}/substitution-plan")
+    public ResponseEntity<Map<String, Object>> save(
+            @PathVariable Long fixtureId,
+            @RequestBody Map<String, Object> body) {
+
+        Optional<MatchFixture> found = fixtures.findById(fixtureId);
+        if (found.isEmpty()) return ResponseEntity.notFound().build();
+        MatchFixture fixture = found.get();
+
+        if (!isStillEditable(fixture)) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.LOCKED)
+                    .body(Map.of("error", "PLAN_CLOSED", "message", whyClosed(fixture)));
+        }
+
+        // Parse, validate, and refuse — in that order. (T1-16.)
+        //
+        // This used to be `String.valueOf(rules == null ? "[]" : rules)` and nothing else: whatever the
+        // API was sent became the plan. The screen's dropdowns stop the UI naming somebody who is not in
+        // the squad, but the API never could, so a typo became a rule the engine marked VOID *during the
+        // match* — where nothing reads voidReason back, so it was a silently dead instruction,
+        // discovered never.
+        //
+        // Refusing here is the cheapest possible moment to say so: the manager is still on the screen
+        // that produced the mistake.
+        Object rules = body.get("rules");
+        String json = String.valueOf(rules == null ? "[]" : rules);
+
+        List<?> parsed;
+        try {
+            parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, List.class);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "PLAN_UNREADABLE",
+                    "message", "The plan could not be read as a list of substitution rules."));
+        }
+
+        List<org.example.footballmanager.newLogic.service.SubstitutionRuleValidator.Rejection> rejections =
+                validator.validate(parsed, fixture);
+        if (!rejections.isEmpty()) {
+            // Every rejection, not just the first. A manager fixing one typo at a time through a form
+            // that accepted it is the experience this task exists to end.
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "RULE_CANNOT_FIRE",
+                    "message", rejections.size() == 1
+                            ? rejections.get(0).message()
+                            : rejections.size() + " of your " + parsed.size() + " rules cannot fire.",
+                    "rejections", rejections.stream()
+                            .map(r -> Map.of(
+                                    "index", r.index(),
+                                    "code", r.code(),
+                                    "message", r.message()))
+                            .toList()));
+        }
+
+        SubstitutionPlan plan = plans.findByFixtureId(fixtureId).orElseGet(() -> new SubstitutionPlan(
+                fixtureId, nameOf(fixture.getHomeTeam()), nameOf(fixture.getAwayTeam()), json));
+        plan.setRulesJson(json);
+        plan.setUpdatedAt(Instant.now());
+        plans.save(plan);
+
+        return ResponseEntity.ok(planView(fixture, plan));
+    }
+
+    /**
+     * Clears the plan for a fixture.
+     *
+     * <p><b>This route was always a 500.</b> {@code deleteByFixtureId} is a derived delete, so it needs a
+     * transaction, and the controller had none — {@code InvalidDataAccessApiUsageException: No
+     * EntityManager with actual transaction available for current thread}. It survived because the four
+     * tests that existed for this controller tested an unknown id, a round trip, a replace and an empty
+     * plan, and <b>none of them deleted anything</b>. A route with no test is a route that was never
+     * pressed.
+     *
+     * <p>Refused inside the window for the same reason a save is: clearing a plan an hour before kickoff
+     * cannot change the match either, and accepting it would look like it had.
+     */
+    @DeleteMapping("/fixtures/{fixtureId}/substitution-plan")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> clear(@PathVariable Long fixtureId) {
+        Optional<MatchFixture> found = fixtures.findById(fixtureId);
+        if (found.isEmpty()) return ResponseEntity.notFound().build();
+        if (!isStillEditable(found.get())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "PLAN_CLOSED",
+                    "message", "Substitutions closed an hour before kickoff. The team is already picked."));
+        }
+        plans.deleteByFixtureId(fixtureId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private static String nameOf(Team team) {
+        return team == null ? "Unknown" : team.getName();
+    }
+
+    private SubstitutionPlan findOrCreate(MatchFixture fixture) {
+        return plans.findByFixtureId(fixture.getId()).orElseGet(() -> new SubstitutionPlan(
+                fixture.getId(), nameOf(fixture.getHomeTeam()), nameOf(fixture.getAwayTeam()), "[]"));
+    }
+
+    private Map<String, Object> planView(MatchFixture fixture, SubstitutionPlan plan) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("fixtureId", fixture.getId());
+        view.put("homeTeam", plan.getHomeTeam());
+        view.put("awayTeam", plan.getAwayTeam());
+        view.put("rulesJson", plan.getRulesJson());
+        // How the rules actually went, once there has been a match for them to have gone in. (T1-16)
+        // Null before kickoff, which is honest: nothing is known about how an instruction went until
+        // there is a match for it. The screen shows fired / void per rule from this.
+        view.put("outcomeJson", plan.getOutcomeJson());
+        view.put("updatedAt", plan.getUpdatedAt());
+        // Whether the plan can still be changed, so the screen disables itself instead of offering a
+        // button the server will refuse.
+        view.put("editable", isStillEditable(fixture));
+        return view;
+    }
+
+    /**
+     * How close to kickoff the plan closes, in minutes.
+     *
+     * <p>The owner asked for an hour (T-MATCH-2, 2026-10-11) and it is one hour here. The matchday job
+     * normally does the closing itself by preparing the fixture; this is the backstop for when it has
+     * not run.
+     */
+    static final int LOCK_WINDOW_MINUTES = 60;
+
+    private boolean isStillEditable(MatchFixture fixture) {
+        // A fixture that has been played is never editable, whatever its clock says.
+        //
+        // The cutoff alone answers this correctly in the normal case, because a played fixture's kickoff
+        // is in the past. It is not correct on its own: a fixture played ahead of its slot — an early
+        // kickoff decided by the competition, or a date moved forward after the game — would still report
+        // itself open, and the screen would offer to edit an instruction for a match already in the
+        // record. Writing it would be accepted and would change nothing, which is the worst of the three
+        // outcomes: it looks like it worked.
+        if (fixture.isPlayed()) return false;
+
+        // **The same lock as the tactic editor and the squad page, asked at the fixture.**
+        //
+        // The cutoff below was the only deadline here, and it is the wrong one on its own: a matchday is
+        // computed an hour before kickoff and this is the one page where a manager writes instructions
+        // about the coming minutes. A fixture that has been decided and is merely not yet played still
+        // has its kickoff in the future, so the cutoff said "open" through the exact hour the owner
+        // closed, and the rule a manager wrote could not have reached the match.
+        if (fixture.isPrepared()) return false;
+
+        /*
+         * The backstop, kept — but narrowed to what it is for.
+         *
+         * <p><b>Owner report, 2026-10-12.</b> This panel was closed on a match four game-days away and
+         * told the manager the team was picked. The cause: fixture dates are stamped once from the
+         * calendar and never move, and the calendar advances in real time, so a later game day carries an
+         * <em>earlier</em> wall-clock time. His was week 1 day 7 stamped at 16:00 on a clock reading 23:11.
+         * A wall-clock comparison therefore closed a match that had not happened.
+         *
+         * <p>Removing the cutoff outright was too blunt and broke a better answer:
+         * {@code SubstitutionPlanFixtureKeyTest.closesAnHourBeforeKickoff} builds a fixture 30 minutes out
+         * without running the scheduler, and expects the plan closed. That backstop is worth keeping — the
+         * matchday job normally sets the prepared flag an hour out, but a job that has not run yet should
+         * not leave the panel open.
+         *
+         * <p>So the backstop now answers the question it was written for — <em>is the kickoff imminent?</em>
+         * — and only in the future. Thirty minutes out closes. Seven hours in the past does not: that is a
+         * stale stamp on a match the game has not reached, and the prepared flag is what closes it, when it
+         * is genuinely decided.
+         */
+        if (fixture.getMatchDate() == null) {
+            return true;
+        }
+        java.time.Duration untilKickoff = java.time.Duration.between(
+                java.time.LocalDateTime.now(), fixture.getMatchDate());
+        return untilKickoff.isNegative() || untilKickoff.toMinutes() > LOCK_WINDOW_MINUTES;
+
+        /* Kept for the record — this is what answered "is there time left", and it is the wrong question:
+        return fixture.getMatchDate() == null || java.time.Duration.between(
+                java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes() > CUTOFF.toMinutes(); */
+    }
+
+    /**
+     * Why the plan cannot be written, in the manager's words.
+     *
+     * <p>The old message always spoke in minutes to kickoff, which is the wrong arithmetic for a match
+     * that was computed early: it would have said "open for another 45 minutes" about a match decided an
+     * hour ago. Each reason now names itself.
+     */
+    private String whyClosed(MatchFixture fixture) {
+        if (fixture.isPrepared()) {
+            return "This match has already been decided, so its substitutions and orders are closed. "
+                    + "They can be set again after kick-off.";
+        }
+        long minutesToKickoff = fixture.getMatchDate() == null ? CUTOFF.toMinutes()
+                : java.time.Duration.between(java.time.LocalDateTime.now(), fixture.getMatchDate()).toMinutes();
+        return "Substitutions closed " + Math.max(0, minutesToKickoff)
+                + " minute(s) before kickoff. The team is already picked.";
+    }
+}

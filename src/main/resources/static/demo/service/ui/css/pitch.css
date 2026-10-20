@@ -1,0 +1,401 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e1117;--surface:#161b22;--border:#30363d;
+  --text:#e6edf3;--dim:#8b949e;--accent:#58a6ff;
+  --green:#2ea043;--gold:#f0b429;--red:#f85149;--orange:#db6d28;
+  --pitch:#3a7d44;--pitch-dark:#2d6a35;--pitch-line:rgba(255,255,255,.7);
+  --home:#539bf5;--away:#f97583;--ball:#fff;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+
+/* ─── LED Scoreboard ─── */
+.led{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  background:linear-gradient(180deg,#1a1e24 0%,#111519 100%);
+  border-bottom:1px solid var(--border);padding:8px 16px;
+  min-height:56px;user-select:none;
+}
+.led .team{display:flex;align-items:center;gap:8px;min-width:160px}
+.led .team.home{justify-content:flex-end}
+.led .team.away{justify-content:flex-start}
+.led .team .name{font-size:14px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
+.led .team.home .name{color:var(--home)}
+.led .team.away .name{color:var(--away)}
+.led .team .score{
+  font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;
+  min-width:36px;text-align:center;
+}
+.led .team.home .score{color:var(--home)}
+.led .team.away .score{color:var(--away)}
+.led .clock{
+  font-size:18px;font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;
+  padding:0 16px;min-width:70px;text-align:center;
+  border-left:1px solid var(--border);border-right:1px solid var(--border);
+}
+.led .meta{display:flex;gap:10px;margin-left:8px}
+.led .label{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.3px}
+.led .label.dim{opacity:.6}
+
+/* ─── Main layout ─── */
+.app{display:flex;flex-direction:column;height:100vh}
+.main{display:flex;flex:1;overflow:hidden}
+
+/* ─── Pitch ─── */
+.pitch-wrap{
+  flex:1;display:flex;
+  padding:4px;min-width:0;
+}
+.pitch-wrap3d{
+  flex:1;position:relative;min-width:0;min-height:0;
+}
+canvas#pitch{
+  width:100%;height:100%;
+  border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.4);
+  max-width:100%;max-height:100%;
+}
+
+/* ─── Sidebar ─── */
+.sidebar{
+  width:320px;min-width:260px;max-width:400px;
+  background:var(--surface);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sidebar h3{
+  font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);
+  padding:12px 14px 8px;border-bottom:1px solid var(--border);
+}
+
+/* ─── Event timeline ─── */
+.timeline{flex:1;overflow-y:auto;padding:0 0 8px}
+.timeline::-webkit-scrollbar{width:5px}
+.timeline::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.event{
+  display:flex;align-items:flex-start;gap:8px;
+  padding:6px 14px;border-bottom:1px solid rgba(48,54,61,.5);
+  font-size:13px;line-height:1.35;animation:fadeIn .25s ease;
+}
+.event:hover{background:rgba(88,166,255,.06)}
+.event .min{color:var(--gold);font-weight:700;white-space:nowrap;min-width:44px;font-variant-numeric:tabular-nums;font-size:12px}
+.event .icon{font-size:15px;min-width:20px;text-align:center}
+.event .desc{color:var(--text);flex:1}
+.event .desc .team-home{color:var(--home);font-weight:600}
+.event .desc .team-away{color:var(--away);font-weight:600}
+.event.minor{opacity:.55;font-size:12px;padding:3px 14px}
+.event.minor:hover{opacity:1}
+.event.goal{background:rgba(240,180,41,.08)}
+.event.card-y{background:rgba(240,180,41,.05)}
+.event.card-r{background:rgba(248,81,73,.08)}
+.event.shot{background:rgba(88,166,255,.05)}
+.event.var-ev{background:rgba(139,148,158,.06)}
+.event.foul{background:rgba(219,109,40,.06)}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+/* ─── Controls ─── */
+.controls{
+  display:flex;flex-direction:column;gap:8px;
+  padding:10px 14px;border-top:1px solid var(--border);
+  background:var(--surface);
+}
+.controls-row{display:flex;align-items:center;gap:8px}
+.controls button{
+  background:var(--bg);border:1px solid var(--border);color:var(--text);
+  padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px;
+  transition:background .15s;
+}
+.controls button:hover{background:var(--border)}
+.controls button.active{background:var(--accent);color:#000;border-color:var(--accent)}
+.controls input[type=range]{flex:1;accent-color:var(--accent);height:4px}
+.controls .speed{font-size:11px;color:var(--dim);min-width:32px;text-align:center}
+.controls .file-hint{font-size:11px;color:var(--dim);margin-top:2px}
+.controls input[type=file]{display:none}
+
+/* ─── Loading ─── */
+.loading-overlay{
+  position:fixed;inset:0;background:rgba(14,17,23,.85);
+  display:flex;align-items:center;justify-content:center;
+  z-index:100;font-size:16px;color:var(--dim);
+}
+.loading-overlay.hidden{display:none}
+.spinner{
+  width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .7s linear infinite;margin-right:12px;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── Empty state ─── */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  flex:1;color:var(--dim);gap:12px;text-align:center;padding:24px;
+}
+.empty-state h2{color:var(--text);font-size:18px}
+.empty-state p{font-size:13px;max-width:320px}
+.empty-state button{
+  background:var(--accent);color:#000;border:none;padding:8px 20px;
+  border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:4px;
+}
+
+/* ─── Overlay system (Halftime / Fulltime / VAR / Goal) ─── */
+.overlay{
+  position:fixed;inset:0;z-index:200;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;opacity:0;
+  transition:opacity .4s ease;
+}
+.overlay.visible{
+  /* Overlay stays clickable for early dismissal, but controls underneath
+     remain usable because the overlay is only `pointer-events:auto` on the
+     inner content (text + skip button). The dim backdrop uses
+     `pointer-events:none` so clicks fall through to buttons. This fixes
+     the "Firefox freezes and I can't click pause" bug — the pause button
+     stays live throughout the review. */
+  opacity:1;
+  cursor:pointer;
+}
+.overlay.visible::before{pointer-events:none}
+.overlay.visible .overlay-inner{pointer-events:auto;cursor:pointer}
+/* Dismiss hint — small click/ESC hint below the message so the user
+   knows they can skip long VAR reviews. */
+.overlay .skip-hint{
+  position:absolute;bottom:24px;left:50%;transform:translateX(-50%);
+  font-size:12px;color:var(--dim);letter-spacing:.4px;
+  text-transform:uppercase;opacity:.6;
+  pointer-events:none;
+}
+.overlay::before{
+  content:'';position:absolute;inset:0;
+  background:rgba(14,17,23,.88);
+}
+.overlay-inner{
+  position:relative;z-index:1;text-align:center;
+  animation:overlayPulse 1s ease infinite alternate;
+}
+.overlay-text{
+  font-size:56px;font-weight:900;letter-spacing:2px;
+  text-transform:uppercase;color:#fff;
+  text-shadow:0 0 30px rgba(255,255,255,.3);
+}
+.overlay-sub{
+  font-size:22px;font-weight:600;margin-top:12px;
+  color:var(--dim);letter-spacing:.5px;
+}
+
+/* Halftime — gold accent */
+.overlay.halftime .overlay-text{color:var(--gold);text-shadow:0 0 40px rgba(240,180,41,.4)}
+.overlay.halftime::before{background:rgba(14,17,23,.92)}
+
+/* Fulltime — white */
+.overlay.fulltime .overlay-text{color:#fff;text-shadow:0 0 40px rgba(255,255,255,.3)}
+.overlay.fulltime::before{background:rgba(14,17,23,.92)}
+
+/* VAR — blue pulsing */
+.overlay.var-review .overlay-text{
+  color:var(--accent);text-shadow:0 0 40px rgba(88,166,255,.5);
+  animation:varPulse 1.5s ease infinite;
+}
+.overlay.var-review::before{background:rgba(14,17,23,.90)}
+
+/* VAR Decision (confirmed/overturned) */
+.overlay.var-decision .overlay-text{
+  font-size:52px;color:#4fc3f7;
+  text-shadow:0 0 40px rgba(79,195,247,.5);
+  animation:varPulse 1s ease infinite alternate;
+}
+.overlay.var-decision::before{background:rgba(14,17,23,.92)}
+
+/* Offside — yellow flag style */
+.overlay.offside .overlay-text{
+  font-size:56px;color:#ffca28;
+  text-shadow:0 0 50px rgba(255,202,40,.5);
+}
+.overlay.offside::before{background:rgba(14,17,23,.90)}
+.overlay.offside .overlay-sub{
+  color:var(--text);font-size:22px;font-weight:600;margin-top:12px;
+}
+
+/* Goal — gold, big celebration */
+.overlay.goal .overlay-text{
+  font-size:80px;color:var(--gold);
+  text-shadow:0 0 60px rgba(240,180,41,.6);
+  animation:goalBounce .5s ease;
+}
+.overlay.goal::before{background:rgba(14,17,23,.88)}
+.overlay.goal .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+
+/* Kickoff — green, match start */
+.overlay.kickoff .overlay-text{
+  font-size:72px;color:#5aeb7a;
+  text-shadow:0 0 40px rgba(90,235,122,.5);
+  animation:kickoffSlide .4s ease;
+}
+.overlay.kickoff::before{background:rgba(14,17,23,.88)}
+.overlay.kickoff .overlay-sub{
+  color:var(--text);font-size:28px;font-weight:700;margin-top:12px;
+}
+@keyframes kickoffSlide{
+  from{transform:translateY(-20px);opacity:0}
+  to{transform:translateY(0);opacity:1}
+}
+
+@keyframes overlayPulse{
+  from{transform:scale(1)}to{transform:scale(1.02)}
+}
+@keyframes varPulse{
+  0%,100%{opacity:1}50%{opacity:.7}
+}
+/* ─── Card overlay (Yellow / Red) ─── */
+.overlay.yellow-card .overlay-text{
+  font-size:64px;color:var(--gold);
+  text-shadow:0 0 50px rgba(240,180,41,.6);
+  animation:cardPulse .8s ease infinite alternate;
+}
+.overlay.yellow-card .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+.overlay.yellow-card::before{
+  background:linear-gradient(135deg,rgba(240,180,41,.15) 0%,rgba(14,17,23,.92) 100%);
+}
+
+.overlay.red-card .overlay-text{
+  font-size:64px;color:var(--red);
+  text-shadow:0 0 50px rgba(248,81,73,.7);
+  animation:redCardPulse 1s ease infinite;
+}
+.overlay.red-card .overlay-sub{
+  color:var(--text);font-size:26px;font-weight:700;margin-top:16px;
+}
+.overlay.red-card::before{
+  background:linear-gradient(135deg,rgba(248,81,73,.15) 0%,rgba(14,17,23,.92) 100%);
+}
+
+@keyframes cardPulse{
+  from{transform:scale(1)}to{transform:scale(1.03)}
+}
+@keyframes redCardPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.08)}
+}
+
+/* Goal Disallowed */
+.overlay.goal-disallowed .overlay-text{
+  font-size:56px;color:var(--accent);
+  text-shadow:0 0 50px rgba(88,166,255,.5);
+  animation:disallowFlash .6s ease infinite alternate;
+}
+.overlay.goal-disallowed::before{background:rgba(14,17,23,.88)}
+
+@keyframes disallowFlash{
+  from{opacity:.8}to{opacity:1}
+}
+
+@keyframes goalBounce{
+  0%{transform:scale(0.3);opacity:0}
+  50%{transform:scale(1.15)}
+  100%{transform:scale(1);opacity:1}
+}
+
+/* ───────────────────────────────────────────────────────────────
+   MOBILE / iPHONE-14-PRO LANDSCAPE — pitch fills screen, log
+   collapses into a single horizontal ticker above the pitch.
+
+   Targets portrait ≤ 900 px wide and landscape ≤ 1100 px tall
+   (iPhone 14 Pro landscape is 932×430 px logical). We don't try to
+   make the layout responsive per device — only landscape phones are
+   the "real" mobile mode. Portrait phones keep the original
+   stacked layout (sidebar below the pitch) so logs are readable.
+   ─────────────────────────────────────────────────────────────── */
+
+/* Portrait phones — log collapses BELOW the pitch (default stacked) */
+@media (max-width: 700px) and (orientation: portrait) {
+  .app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+  .main{display:flex;flex:1;flex-direction:column;overflow:hidden}
+  .pitch-wrap{flex:1;min-height:0;padding:6px}
+  canvas#pitch{width:100%;height:100%;max-width:100%;max-height:100%}
+  .sidebar{
+    width:100%;max-width:none;min-width:0;
+    border-left:none;border-top:1px solid var(--border);
+    max-height:34vh;overflow:hidden;
+  }
+  .led{padding:6px 10px;min-height:48px;gap:6px}
+  .led .team{min-width:auto}
+  .led .team .name{font-size:11px}
+  .led .team .score{font-size:22px}
+  .led .clock{font-size:14px;padding:0 8px;min-width:56px}
+  .controls-row{flex-wrap:wrap}
+  .controls button{font-size:11px;padding:4px 8px}
+}
+
+/* Landscape phones — pitch fills the entire screen, log becomes a
+   single horizontal ticker at the top edge. Controls collapse into
+   an overlay strip that fades in on tap. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+  .main{display:flex;flex:1;flex-direction:column;overflow:hidden}
+
+  /* LED scoreboard — slim, single line */
+  .led{padding:4px 12px;min-height:36px;gap:8px}
+  .led .team{min-width:auto}
+  .led .team .name{font-size:11px}
+  .led .team .score{font-size:20px;min-width:24px}
+  .led .clock{font-size:14px;padding:0 8px;min-width:48px}
+
+  /* Live event ticker — slim horizontal line just under the scoreboard.
+     Shows the last event with icon + minute + description; updates as
+     new events fire. The full timeline lives behind a tap-to-expand
+     toggle on the right. */
+  .live-ticker{
+    display:flex;align-items:center;gap:10px;
+    background:var(--surface);border-bottom:1px solid var(--border);
+    padding:4px 12px;font-size:12px;color:var(--text);
+    overflow:hidden;height:28px;flex-shrink:0;
+  }
+  .live-ticker .ticker-icon{font-size:13px;flex-shrink:0}
+  .live-ticker .ticker-min{
+    color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;
+    flex-shrink:0;min-width:38px;
+  }
+  .live-ticker .ticker-desc{
+    flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .live-ticker .ticker-toggle{
+    background:none;border:none;color:var(--accent);
+    font-size:11px;cursor:pointer;flex-shrink:0;padding:0 4px;
+  }
+
+  /* Pitch — fills the rest of the screen */
+  .pitch-wrap{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    padding:4px;min-width:0;min-height:0;
+  }
+  canvas#pitch{
+    width:100%;height:100%;max-width:100%;max-height:100%;
+  }
+
+  /* Sidebar — hidden by default in landscape; revealed by tapping the
+     "LOG" toggle. Slides up from the bottom over the pitch. */
+  .sidebar{
+    position:fixed;left:0;right:0;bottom:0;
+    width:100%;max-width:none;min-width:0;height:60vh;
+    border-left:none;border-top:1px solid var(--border);
+    transform:translateY(calc(100% - 36px));
+    transition:transform .25s ease;
+    z-index:50;
+  }
+  .sidebar.expanded{transform:translateY(0)}
+
+  /* When the sidebar is collapsed (default), the visible "LOG" tab shows
+     events but the full timeline scrolls inside the 36px header. */
+  .sidebar:not(.expanded) .timeline{
+    overflow:hidden;flex:none;
+  }
+  .sidebar:not(.expanded) h3{
+    padding:6px 14px;font-size:11px;
+  }
+
+  /* Controls compact */
+  .controls{padding:6px 10px;gap:4px}
+  .controls-row{gap:4px}
+  .controls button{padding:4px 8px;font-size:11px}
+}

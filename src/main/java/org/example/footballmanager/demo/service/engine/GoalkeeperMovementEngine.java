@@ -1,0 +1,139 @@
+package org.example.footballmanager.demo.service.engine;
+
+import org.example.footballmanager.demo.service.MatchState;
+import org.example.footballmanager.demo.service.model.Player;
+import org.example.footballmanager.demo.service.model.Position;
+
+/**
+ * Goalkeeper reactive positioning — an override of the tactical-editor target for
+ * BOTH goalkeepers. Uses the exact continuous pitch position of the ball, the
+ * shooter and the goal (the 7-row x 6-col grid maps to 98m x 60m, so a full cell
+ * is ~14m x 10m — nowhere near fine enough to decide a goalkeeper's footwork).
+ *
+ * Positioning rules (from the user):
+ *  1. Base: goal line, column 3.5 (centre of the goal).
+ *  2. As the ball moves left/right of 3.5, the keeper shifts slightly toward the
+ *     ball's side to cut the angle (laterally).
+ *  3. When an opponent attacker can / is preparing to shoot, the keeper edges
+ *     slightly toward them and lines up BETWEEN the ball and the goal.
+ *  4. Right after a save the keeper is on a short cooldown (3-4 ticks) — they
+ *     cannot save twice within ~2 seconds, and they hold position rather than
+ *     lunging again.
+ */
+public class GoalkeeperMovementEngine {
+
+    private static final double GOAL_CENTRE_COL = 3.5;
+    // Lateral band the keeper may roam (never leaves the near goal area).
+    private static final double COL_MIN = 1.8;
+    private static final double COL_MAX = 5.2;
+    // Row band around the goal line per team.
+    // The keeper must stay right in front of his own goal (user rule: even
+    // ~20 m is too much). HOME goal = row 1.0, AWAY goal = row 8.0.
+    // The keeper may only step up to a MAX_ADVANCE of 0.5 cells (~7 m) off the
+    // line — typical non-threat positioning stays well within 0.3 cells (~4 m).
+    private static final double HOME_ROW_MIN = 0.9;
+    private static final double HOME_ROW_MAX = 1.45;   // within ~6 m of the goal line
+    private static final double AWAY_ROW_MIN = 7.55;    // ~6 m from the AWAY goal at row 8.0
+    private static final double AWAY_ROW_MAX = 7.9;     // just inside own six-yard box
+    // Reaction: how close the ball must be to our goal for the keeper to move.
+    private static final double REACT_DIST = 4.0;
+    // Max distance off the goal line the keeper advances toward a shooter.
+    // 0.5 cell = ~7 m — the keeper steps off the line only to narrow the angle
+    // and is otherwise right in front of the goal.
+    private static final double MAX_ADVANCE = 0.5;
+
+    // Public defensive-zone bounds so OTHER engines (DuelEngine, MovementEngine,
+    // RestartManager) can clamp a goalkeeper back to its own goal area. A keeper
+    // is NEVER allowed to wander upfield — not by duel snaps, not by chases, not
+    // by any restart repositioning.
+    public static final double GK_HOME_ROW_MAX = HOME_ROW_MAX;
+    public static final double GK_AWAY_ROW_MIN = AWAY_ROW_MIN;
+
+    /** Clamp a player's row into the defensive zone of their own goal (GK only). */
+    public static double clampGkToZone(Player gk, double row) {
+        if (!"GK".equals(gk.getRole())) return row;
+        if ("HOME".equals(gk.getTeam())) return Math.min(row, GK_HOME_ROW_MAX);
+        if ("AWAY".equals(gk.getTeam())) return Math.max(row, GK_AWAY_ROW_MIN);
+        return row;
+    }
+    // GK cannot save twice within this many ticks (~2 seconds at 1 tick = 1.5s).
+    public static final int SAVE_COOLDOWN_TICKS = 4;
+
+    private final MatchState state;
+
+    public GoalkeeperMovementEngine(MatchState state) {
+        this.state = state;
+    }
+
+    /**
+     * Reactive target for the given goalkeeper, overriding the tactical editor.
+     *
+     * Strategy (exact continuous coordinates — the grid is 14m/cell, far too
+     * coarse for a keeper's footwork):
+     *  1. Home position: on the goal line at column 3.5 (centre of goal).
+     *  2. As the ball approaches our goal, the keeper slides along the line that
+     *     runs from the BALL to the GOAL CENTRE, i.e. it positions itself between
+     *     ball and goal to cut the angle. This maximises lane coverage.
+     *  3. How far off the line the keeper steps depends on how close and how much
+     *     of an immediate shooting threat the ball is.
+     *  4. After a save the keeper is on a short cooldown (3-4 ticks) and holds a
+     *     conservative centre position rather than lunging again.
+     */
+    public Position goalkeeperTarget(Player gk) {
+        boolean home = "HOME".equals(gk.getTeam());
+        double goalLineRow = home ? 1.0 : 8.0;
+        Position goalCentre = new Position(goalLineRow, GOAL_CENTRE_COL);
+        Position ball = state.getBall().getPosition();
+        int tick = state.getMatchTicks();
+
+        // The ball is a threat only when it is on our side of the pitch.
+        boolean ballOnOurSide = home ? ball.getRow() <= 5.5 : ball.getRow() >= 2.5;
+
+        double row = goalLineRow;
+        double col = GOAL_CENTRE_COL;
+
+        if (ballOnOurSide) {
+            double ballDistGoal = SimUtils.distance(ball, goalCentre);
+            // closeness: 1 when the ball is at our goal line, ~0 beyond REACT_DIST.
+            double closeness = SimUtils.clamp(1.0 - ballDistGoal / REACT_DIST, 0, 1);
+            // An opponent actually carrying the ball within REACT_DIST of our goal
+            // is an immediate shooting threat -> keeper steps further off the line.
+            Player carrier = state.getBall().getCarrier();
+            boolean shooterThreat = carrier != null
+                    && !carrier.getTeam().equals(gk.getTeam())
+                    && !carrier.isSentOff() && !carrier.isInjured()
+                    && ballDistGoal <= REACT_DIST;
+
+            // Pull the keeper onto the ball->goal segment toward the ball.
+            //  - general play: tiny pull (0.05..0.30 cells ≈ 0.7-4.2 m) — keeper
+            //    stays within the typical 0.5-cell (7 m) band from the goal line;
+            //  - immediate shooter threat: bigger pull (0.25..1.00 cells ≈ 3.5-
+            //    14 m) — comes out to narrow the angle only when a shot is
+            //    genuinely imminent.
+            double pull;
+            if (shooterThreat) {
+                pull = 0.25 + 0.75 * closeness;
+            } else {
+                pull = 0.05 + 0.25 * closeness;
+            }
+            pull = Math.min(pull, MAX_ADVANCE);   // never run past the box (14 m)
+
+            double dr = ball.getRow() - goalLineRow;
+            double dc = ball.getColumn() - GOAL_CENTRE_COL;
+            row = goalLineRow + dr * pull;
+            col = GOAL_CENTRE_COL + dc * pull;
+        }
+
+        // ----- 4) Save cooldown: after a save, hold a conservative centre. -----
+        if (tick - gk.getLastSaveTick() < SAVE_COOLDOWN_TICKS) {
+            row = goalLineRow;
+            col = GOAL_CENTRE_COL;
+        }
+
+        double rowMin = home ? HOME_ROW_MIN : AWAY_ROW_MIN;
+        double rowMax = home ? HOME_ROW_MAX : AWAY_ROW_MAX;
+        return new Position(
+                SimUtils.clamp(row, rowMin, rowMax),
+                SimUtils.clamp(col, COL_MIN, COL_MAX));
+    }
+}

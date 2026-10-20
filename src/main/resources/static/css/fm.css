@@ -1,0 +1,138 @@
+
+/* ---- World page (owner, 2026-09-29) --------------------------------------
+   Built from the classes the rest of the app already uses - fm-panel,
+   fm-squad, fm-badge - so the world page looks like the squad and country
+   tables rather than a page of its own. */
+.fm-world-flag {
+    width: 20px;
+    height: 14px;
+    object-fit: cover;
+    margin-right: 8px;
+    vertical-align: -2px;
+    border-radius: 2px;
+}
+.fm-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--fm-accent, #4da3ff);
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+.fm-link:hover { text-decoration: underline; }
+.fm-world-row--active { background: rgba(77, 163, 255, 0.07); }
+
+/* The admin activation list. Its own classes rather than .fm-world-row, because that one is a table
+   row on the World page and only the modifier was ever defined for it. */
+.fm-activation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 420px;
+    overflow-y: auto;
+    margin-top: 12px;
+}
+.fm-activation-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 60px 110px auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+}
+.fm-activation-row.is-active { background: rgba(77, 163, 255, 0.07); }
+.fm-activation-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/*
+ * The account list's name is a link to that manager's profile (owner, 2026-10-20).
+ *
+ * <p>It is a button, so it has to look like the name it replaced rather than like a button: the
+ * list's own typography, no border, no background, and the usual underline on hover.
+ */
+button.fm-activation-name {
+    font: inherit;
+    color: var(--text);
+    background: none;
+    border: none;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+}
+
+button.fm-activation-name:hover {
+    text-decoration: underline;
+}
+@media (max-width: 480px) {
+    .fm-activation-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .fm-activation-row .fm-subtle { display: none; }
+}
+.fm-stats {
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    padding: 14px 0 4px;
+}
+.fm-stat { display: flex; flex-direction: column; gap: 4px; }
+.fm-stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.6;
+}
+.fm-stat-value { font-size: 24px; font-weight: 600; }
+.fm-world-competitions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    padding: 12px 0;
+}
+.fm-world-competitions-table-wrap { margin-top: 12px; }
+.fm-world-competitions-table { width: 100%; }
+.fm-world-competition-row[data-club-cup],
+.fm-world-competition-row[data-national-level] { cursor: pointer; }
+.fm-world-competition-row[data-club-cup]:hover,
+.fm-world-competition-row[data-club-cup]:focus-visible,
+.fm-world-competition-row[data-national-level]:hover,
+.fm-world-competition-row[data-national-level]:focus-visible {
+    background: rgba(77, 163, 255, 0.09);
+    outline: none;
+}
+.fm-world-competition-row.is-disabled { opacity: 0.65; }
+.fm-world-competition-action {
+    color: var(--fm-accent, #4da3ff);
+    text-align: right;
+    white-space: nowrap;
+}
+.fm-competition {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--fm-border, rgba(255, 255, 255, 0.1));
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.fm-competition:disabled { cursor: not-allowed; opacity: 0.65; }
+.fm-competition-name { font-weight: 500; }
+.fm-hint {
+    font-size: 12px;
+    opacity: 0.6;
+    margin: 8px 0 0;
+}
+.fm-callout--warn {
+    border-left: 3px solid #e0a33a;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: rgba(224, 163, 58, 0.08);
+    border-radius: 0 6px 6px 0;
+}

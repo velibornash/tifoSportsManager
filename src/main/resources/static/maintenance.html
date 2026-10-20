@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TIFO — Maintenance in progress</title>
+<meta name="robots" content="noindex">
+<style>
+    /*
+     * The maintenance screen (redesign.md R-22).
+     *
+     * <p>It exists because the app is most often down when the owner is rebuilding it, and a dead
+     * server answers a browser with "This site can't be reached" - which tells the manager nothing
+     * and looks like a broken product. This page says what is happening, in the app's own stadium,
+     * and puts the manager back into the game the moment it is up again.
+     *
+     * <p>The picture is the owner's own (the ground at dusk, the message already written on it), so
+     * **nothing is written over it**: the only things on the page are the badge in the corner and
+     * the line at the bottom that says whether the app is back yet.
+     */
+    :root {
+        --gold: #e3c46a;
+        --ink: #f6f1e6;
+        --night: #150e20;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+        height: 100%;
+        margin: 0;
+        background: var(--night);
+        color: var(--ink);
+        font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+        overflow: hidden;
+    }
+
+    .stage {
+        position: relative;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        isolation: isolate;
+        text-align: center;
+        padding: 24px;
+    }
+
+    /*
+     * The picture, whole.
+     *
+     * <p>Anchored so that the **sky** gives up a little and the **ground** stays (owner,
+     * 2026-10-20: "mnogo dole odsekao sliku, bolje je iseci odozgo malo a povuci je na gore").
+     * On a wide screen the picture is scaled by its width and the overflow comes off the bottom -
+     * the feet of the cheerleaders and the near touchline - and 85% moves the crop up into the
+     * empty sky above the message instead.
+     */
+    .stage::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+        background-image: url('/images/maintenance-bg.jpg');
+        background-size: cover;
+        /* The crop moved down again: at 85% the big M of the headline was cut off at the top
+           (owner, 2026-10-20: "spusti sliku za 1,5 cm ... veliko slovo M u textu na slici
+           odozgo"). 65% keeps the whole headline and the ground, and gives up a little more of the
+           empty sky. */
+        background-position: center 65%;
+        background-repeat: no-repeat;
+    }
+
+    /* Just enough of a scrim at the very bottom for the status line to read on the grass. */
+    .stage::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 26%;
+        z-index: -1;
+        background: linear-gradient(180deg, transparent, rgba(14, 9, 20, 0.62));
+        pointer-events: none;
+    }
+
+    .corner {
+        position: absolute;
+        top: clamp(14px, 3vw, 30px);
+        right: clamp(14px, 3vw, 30px);
+        width: clamp(58px, 8vw, 92px);
+        height: clamp(58px, 8vw, 92px);
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(227, 196, 106, 0.6);
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+        background: #12121a;
+    }
+
+    .corner img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: 50% 30%;
+        display: block;
+    }
+
+    .status {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: clamp(16px, 3vw, 30px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        font-size: 0.76rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: rgba(246, 241, 230, 0.78);
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+    }
+
+    .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--gold);
+        box-shadow: 0 0 0 0 rgba(227, 196, 106, 0.55);
+        animation: pulse 2.1s ease-out infinite;
+    }
+
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(227, 196, 106, 0.5); }
+        70% { box-shadow: 0 0 0 12px rgba(227, 196, 106, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(227, 196, 106, 0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .dot { animation: none; }
+    }
+</style>
+</head>
+<body>
+<main class="stage">
+    <div class="corner">
+        <img src="/images/logomain.jpg" alt="TIFO Football Manager">
+    </div>
+
+    <div class="status">
+        <span class="dot"></span>
+        <span id="status-text">Checking for the app…</span>
+    </div>
+</main>
+
+<script>
+    /*
+     * The ping.
+     *
+     * <p>The page is served by the service worker when the server is down, so it cannot know when
+     * the server is back. It asks: a HEAD to the login page, with the cache bypassed, every eight
+     * seconds. A response of any kind means the app is up - it is the *server* being up that
+     * matters, not whether this browser has a session - and the manager goes straight back to where
+     * they were.
+     */
+    (function () {
+        const statusText = document.getElementById('status-text');
+
+        // ?preview=1 looks at the page without the ping sending the manager back into the app -
+        // for the owner to see what it looks like while the app is still up.
+        const preview = new URLSearchParams(window.location.search).has('preview');
+        if (preview) {
+            statusText.textContent = 'Preview — the ping is off';
+            return;
+        }
+
+        const backTarget = window.__FM_BACK_TARGET || '/dashboard.html';
+
+        async function ping() {
+            try {
+                const response = await fetch('/login.html?ping=' + Date.now(), {
+                    method: 'HEAD',
+                    cache: 'no-store'
+                });
+                if (response) {
+                    statusText.textContent = 'The app is back — taking you there…';
+                    window.location.replace(backTarget);
+                    return true;
+                }
+            } catch (error) {
+                statusText.textContent = 'Still rebuilding — we will keep trying.';
+            }
+            return false;
+        }
+
+        // The first check waits a moment: the page is usually shown because the app has just gone.
+        window.setTimeout(ping, 2500);
+        window.setInterval(ping, 8000);
+    })();
+</script>
+</body>
+</html>

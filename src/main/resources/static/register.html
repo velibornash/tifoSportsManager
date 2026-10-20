@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Register - Tifo Sports Manager</title>
+    <meta name="description" content="Create a free manager account in TIFO Sports Manager, the online football manager game. Pick a country and get a club in under a minute.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="http://158.180.22.180:8080/register.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="TIFO Sports Manager">
+    <meta property="og:title" content="Register - Tifo Sports Manager">
+    <meta property="og:description" content="Create a free manager account and run your own football club across 48 countries.">
+    <meta property="og:url" content="http://158.180.22.180:8080/register.html">
+    <meta property="og:image" content="http://158.180.22.180:8080/images/logomain.jpg">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/css/login.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="background"></div>
+<div class="logo-corner">
+    <img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo">
+</div>
+<div class="login-wrapper">
+    <div class="login-card glass">
+        <h1 class="title">Claim a Club</h1>
+
+        <p class="invite">
+            Register your manager profile.<br>
+            A free AI club will be reserved for you.<br>
+            <strong>Owner approval is required before login.</strong>
+        </p>
+
+        <form id="registerForm">
+            <div class="input-group">
+                <input type="text" placeholder=" " name="username" required minlength="3" maxlength="30">
+                <label>Username</label>
+            </div>
+            <div class="input-group">
+                <input type="email" placeholder=" " name="email" required>
+                <label>Email</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder=" " name="password" required minlength="6">
+                <label>Password</label>
+            </div>
+            <div class="input-group">
+                <input type="password" placeholder=" " name="confirmPassword" required minlength="6">
+                <label>Confirm password</label>
+            </div>
+
+            <!--
+                The country decides which league system this account sees, so it is chosen first and
+                before anything else exists (owner, 2026-09-28). Populated from /countries/catalog, which
+                is served from the server's own list rather than a hand-typed set of options here - the
+                two used to be maintained separately, and had already drifted.
+            -->
+            <div class="input-group">
+                <select name="countryCode" id="countrySelect" required>
+                    <option value="" disabled selected>Loading countries...</option>
+                </select>
+                <label>Country you play in</label>
+            </div>
+            <p class="auth-note" id="countryNote" hidden></p>
+
+            <p class="auth-note">
+                A club in your country is reserved when you apply. Countries without a league system
+                yet are listed but not selectable, so you can see what is coming.
+            </p>
+            <div id="registerStatus" class="auth-status info" hidden></div>
+            <button id="registerBtn" type="submit">Send registration request</button>
+        </form>
+
+        <p class="register-link">
+            Already approved? <a href="/login.html">Back to login</a>
+        </p>
+    </div>
+</div>
+
+<script type="module" src="/js/auth.js"></script>
+<script type="module" src="/js/register.js"></script>
+
+</body>
+</html>

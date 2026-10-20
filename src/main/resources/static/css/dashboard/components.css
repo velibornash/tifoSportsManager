@@ -1,0 +1,1029 @@
+
+.match-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: rgba(var(--wash-rgb), 0.05);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.match-row:hover {
+    background: rgba(42,140,74,0.2);
+}
+
+.score {
+    font-weight: bold;
+    color: var(--pos-deep);
+}
+
+.league-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.league-table th,
+.league-table td {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid rgba(var(--wash-rgb), 0.12);
+}
+
+.league-table tr:hover {
+    background: rgba(42,140,74,0.15);
+}
+/* ─── CLUB PROFILE ─── */
+.profile-card {
+    background: rgba(30,30,30,0.95);
+    padding: 25px;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+    max-width: 900px;
+    margin: 20px auto;
+    display: flex;
+    gap: 30px;
+    color: var(--text);
+    flex-wrap: wrap;
+}
+
+.profile-avatar {
+    flex: 0 0 180px;
+    height: 180px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid var(--pos-deep);
+}
+
+.profile-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.profile-info h2 {
+    margin: 0;
+    font-size: 28px;
+    color: var(--pos-deep);
+}
+
+.profile-info p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.profile-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.profile-stats div {
+    background: rgba(40,40,40,0.9);
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.profile-stats div span {
+    display: block;
+    font-weight: bold;
+    font-size: 16px;
+    color: var(--pos-deep);
+}
+
+.profile-stats div label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.back-to-dashboard {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--pos-deep);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 1em;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.back-to-dashboard:hover {
+    background: var(--pos-mid);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.back-to-dashboard:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+/* Club Profile - FM/FIFA stil */
+.club-profile-card {
+    background: linear-gradient(145deg, rgba(20,20,20,0.95), rgba(30,30,30,0.95));
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+    max-width: 1000px;
+    margin: 20px auto;
+    color: var(--text);
+    position: relative;
+}
+
+.club-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.club-logo-container {
+    flex-shrink: 0;
+}
+
+.club-logo {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    border: 5px solid var(--pos-deep);
+    box-shadow: 0 6px 20px rgba(42,140,74,0.4);
+    object-fit: cover;
+    background: var(--panel-opaque);
+}
+
+.club-title h1 {
+    margin: 0;
+    font-size: 2.8rem;
+    color: var(--pos-deep);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+}
+
+.club-title .club-subtitle {
+    margin: 8px 0 0 0;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+}
+
+/* Statistike u karticama */
+.club-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+}
+
+.stat-card {
+    background: rgba(40,40,40,0.9);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid rgba(var(--wash-rgb), 0.14);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 12px 30px rgba(42,140,74,0.3);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: var(--pos-deep);
+}
+
+.stat-value {
+    font-size: 2.2rem;
+    font-weight: bold;
+    color: white;
+}
+
+.stat-label {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.back-to-dashboard-profile {
+    position: absolute;
+    bottom: 20px;          /* dole */
+    right: 20px;           /* desno */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(42, 140, 74, 0.9);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    z-index: 10;
+}
+
+.back-to-dashboard-profile:hover {
+    background: var(--pos-mid);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+}
+
+.back-to-dashboard-profile:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+/* Recent Matches sekcija */
+.recent-matches-section {
+    margin: 30px 0;
+}
+
+.recent-matches-section h3 {
+    margin-bottom: 15px;
+    color: var(--pos-deep);
+    border-left: 4px solid var(--pos-deep);
+    padding-left: 12px;
+}
+
+.recent-match {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    background: rgba(var(--wash-rgb), 0.04);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recent-match {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    /* A surface, not a wash: on a phone this row sits on the stadium photograph, and a 4% wash
+       left it transparent (owner, 2026-10-19: "recent matches ne treba da bude transparent"). */
+    background: var(--surface-2-grad);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    /* The same face as the next-match widget (owner, 2026-10-19: "recent matches treba da ima
+       background isti kao i next match") - surface, hairline and shadow, so the dashboard reads as
+       one set of cards rather than two. */
+    border: 1px solid var(--border-faint);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.recent-match:hover {
+    background: rgba(42,140,74,0.08);  /* vrlo lagani zeleni hover, ne dreči */
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Badge (W/D/L) - sada glavni fokus */
+.result-badge {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    line-height: 32px;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 1.1em;
+    text-align: center;
+    margin: 0 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    transition: transform 0.2s;
+}
+
+.win  { background: #4CAF50; color: white; }
+.draw { background: #ff9800; color: white; }
+.loss { background: #f44336; color: white; }
+
+.form-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.82em;
+    line-height: 1.2;
+}
+
+.form-badge.hot {
+    color: #ff7043;
+    background: rgba(255, 112, 67, 0.14);
+}
+
+.form-badge.cold {
+    color: #64b5f6;
+    background: rgba(100, 181, 246, 0.14);
+}
+
+.form-badge.neutral {
+    color: #cfd8dc;
+    background: rgba(207, 216, 220, 0.12);
+}
+
+recent-match:hover .result-badge {
+    transform: scale(1.15);
+}
+
+
+/* Score - neka bude neutralan, badge nosi boju */
+.score {
+    font-weight: bold;
+    min-width: 60px;
+    text-align: center;
+    color: var(--text);  /* neutralno sivo-belo, ne preuzima boju */
+}
+.match-info.clickable {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.match-info.clickable:hover {
+    transform: scale(1.03);
+    background: rgba(42,140,74,0.1);
+    border-radius: 10px;
+    padding: 10px;
+}
+.clickable-stadium {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.clickable-stadium:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 20px rgba(42,140,74,0.4);
+    background: rgba(42,140,74,0.15);
+}
+.stadium-button {
+    width: 100%;
+    height: 180px;                    /* visina kartice */
+    background: url('/images/dunjareal.png') center/cover no-repeat;  /* slika u pozadini */
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transition: all 0.25s ease;
+}
+
+.stadium-button:hover {
+    transform: scale(1.04);
+    box-shadow: 0 10px 30px rgba(42,140,74,0.5);
+}
+
+.stadium-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);     /* poluprovidna tama preko slike */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-align: center;
+    padding: 15px;
+    transition: background 0.3s;
+}
+
+.stadium-button:hover .stadium-overlay {
+    background: rgba(0,0,0,0.35);     /* svetlije na hover */
+}
+
+.stadium-overlay .stat-icon {
+    font-size: 3rem;
+    margin-bottom: 8px;
+}
+
+.stadium-overlay .stat-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+}
+
+.stadium-overlay .stat-label {
+    font-size: 1rem;
+    opacity: 0.9;
+}
+
+/* ─── ACCORDION (univerzalni, radi na desktopu i mobilnom) ─── */
+.accordion,
+.mobile-accordion {
+    margin-bottom: 8px;
+}
+
+.accordion-header {
+    background: var(--chip-bg);
+    padding: 16px 20px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.25s, transform 0.15s;
+    user-select: none;
+    color: var(--text);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   ACCOUNT CORNER — who is signed in, and the way out
+   Signout used to exist only on the lobby page, so inside the SPA there
+   was no way to end a session at all, and none at all on a phone.
+   ══════════════════════════════════════════════════════════════════ */
+.user-menu{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+}
+
+.user-menu-trigger{
+    gap:8px;
+    padding:6px 12px 6px 6px;
+    white-space:nowrap;
+}
+
+.user-menu-avatar{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:26px;height:26px;
+    flex:0 0 26px;
+    border-radius:50%;
+    background:linear-gradient(180deg,var(--accent),var(--accent-strong));
+    color:#07121f;
+    font-weight:700;
+    font-size:.82rem;
+    line-height:1;
+    text-transform:uppercase;
+}
+.user-menu-avatar--lg{ width:38px;height:38px;flex:0 0 38px;font-size:1.1rem; }
+
+.user-menu-name{
+    max-width:130px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    font-size:.9rem;
+}
+.user-menu-caret{ font-size:.7rem; opacity:.7; }
+
+/* The panel is a real popup: right-aligned so it never runs off the edge
+   of a wide screen, and with a max-height + scroll so a very long club or
+   league name cannot make it taller than the viewport on a laptop. */
+.user-menu-panel{
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    z-index:260;
+    min-width:250px;
+    max-width:min(320px,88vw);
+    max-height:min(70vh,420px);
+    overflow-y:auto;
+    display:flex;
+    flex-direction:column;
+    padding:8px;
+    border-radius:12px;
+    background:linear-gradient(180deg,rgba(20,27,43,.98),rgba(12,18,30,.98));
+    border:1px solid rgba(var(--accent-rgb), .22);
+    box-shadow:0 16px 38px rgba(0,0,0,.4);
+}
+.user-menu-panel[hidden]{ display:none; }
+
+.user-menu-identity{ padding:8px 10px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
+.user-menu-identity-name{ font-weight:700; color:var(--text); }
+.user-menu-identity-meta{
+    margin-top:3px;
+    font-size:.78rem;
+    color:var(--text-muted);
+    /* Club · League · Country · Role can be long on a small club. Wrap rather than
+       overflow, so nothing is silently cut off. */
+    overflow-wrap:anywhere;
+}
+
+.user-menu-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    width:100%;
+    margin-top:4px;
+    padding:10px 12px;
+    border:0;
+    border-radius:9px;
+    background:transparent;
+    color:var(--text);
+    font:inherit;
+    font-size:.9rem;
+    text-align:left;
+    cursor:pointer;
+    transition:background .18s;
+}
+.user-menu-item:hover,.user-menu-item:focus-visible{ background:rgba(var(--accent-rgb), .14); outline:none; }
+.user-menu-item--danger{ color:#ff9d9d; }
+.user-menu-item--danger:hover,.user-menu-item--danger:focus-visible{ background:rgba(255,120,120,.16); }
+.user-menu-item-icon{ font-size:1rem; line-height:1; }
+
+.user-menu-sep{ height:1px; margin:6px 4px; background:rgba(255,255,255,.08); }
+
+/* ══════════════════════════════════════════════════════════════════
+   STADIUM PAGE
+   A plan of the ground drawn from the eight colours the manager set,
+   so what you choose is what you see. Same idea as a tactics board.
+   ══════════════════════════════════════════════════════════════════ */
+.stadium-plan{ margin-bottom:18px; }
+
+/*
+ * The ground, top-down.
+ *
+ * Eight sections (four sides, four corners) around a real pitch: halfway line, center circle,
+ * penalty and goal areas, penalty spots, corner arcs and goals. Each stand carries its name, its
+ * seating type and its capacity, and the sponsor's boards sit on all four touchlines. Floodlights at
+ * the corners. The whole thing is one grid so the stands and the pitch never drift apart.
+ */
+.stadium-plan-venue{
+    position:relative;
+    padding:14px;
+    border-radius:20px;
+    background:
+        radial-gradient(ellipse at 50% 0%, rgba(56,189,248,0.06), transparent 60%),
+        linear-gradient(180deg, #0b1624 0%, #07101a 100%);
+    border:1px solid rgba(var(--accent-rgb), 0.12);
+    box-shadow:inset 0 1px 0 rgba(var(--wash-rgb), 0.04);
+    margin-bottom:12px;
+}
+
+.stadium-floodlight{
+    position:absolute;
+    width:10px; height:10px;
+    border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, #fff7d6, #ffd27a 40%, #b8862a 100%);
+    box-shadow:0 0 12px 2px rgba(255,210,122,0.55), 0 0 2px 1px rgba(0,0,0,0.6);
+    z-index:3;
+}
+.stadium-floodlight--nw{ top:6px; left:6px; }
+.stadium-floodlight--ne{ top:6px; right:6px; }
+.stadium-floodlight--sw{ bottom:6px; left:6px; }
+.stadium-floodlight--se{ bottom:6px; right:6px; }
+
+.stadium-plan-pitch{
+    display:grid;
+    grid-template-columns:20% 1fr 20%;
+    grid-template-rows:20% 1fr 20%;
+    grid-template-areas:
+        "nw north ne"
+        "west turf east"
+        "sw south se";
+    gap:0;
+    aspect-ratio:3/4;
+    max-height:400px;
+    margin:0 auto;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(var(--wash-rgb), 0.06);
+}
+
+/* --- stands: coloured blocks with depth and a label --- */
+.stadium-stand{
+    position:relative;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-width:0; min-height:0;
+    background:linear-gradient(180deg, rgba(var(--wash-rgb), 0.10) 0%, rgba(0,0,0,0.18) 100%);
+    box-shadow:inset 0 1px 0 rgba(var(--wash-rgb), 0.18), inset 0 -2px 0 rgba(0,0,0,0.25);
+    transition:filter .18s ease, transform .18s ease;
+    overflow:hidden;
+}
+.stadium-stand:hover{ filter:brightness(1.12); }
+.stadium-stand--north{ grid-area:north; border-radius:12px 12px 0 0; }
+.stadium-stand--south{ grid-area:south; border-radius:0 0 12px 12px; }
+.stadium-stand--west{ grid-area:west; border-radius:12px 0 0 12px; flex-direction:column; }
+.stadium-stand--east{ grid-area:east; border-radius:0 12px 12px 0; flex-direction:column; }
+
+.stadium-stand-body{
+    position:relative;
+    z-index:2;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    padding:4px 6px;
+    text-align:center;
+    text-shadow:0 1px 2px rgba(0,0,0,0.55);
+    pointer-events:none;
+}
+.stadium-stand--west .stadium-stand-body,
+.stadium-stand--east .stadium-stand-body{ gap:1px; }
+.stadium-stand-name{
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color:#f2f7ff;
+    line-height:1;
+}
+.stadium-stand-meta{
+    font-size:10px;
+    font-weight:600;
+    color:rgba(242,247,255,0.82);
+    line-height:1.15;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:100%;
+}
+
+/* --- corners --- */
+.stadium-plan-middle{ display:contents; }
+.stadium-corner{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:1px;
+    min-width:0; min-height:0;
+    background:linear-gradient(135deg, rgba(var(--wash-rgb), 0.08), rgba(0,0,0,0.22));
+    box-shadow:inset 0 1px 0 rgba(var(--wash-rgb), 0.14);
+    transition:filter .18s ease;
+    overflow:hidden;
+    text-shadow:0 1px 2px rgba(0,0,0,0.55);
+}
+.stadium-corner:hover{ filter:brightness(1.12); }
+.stadium-corner--nw{ grid-area:nw; border-radius:12px 0 0 0; }
+.stadium-corner--ne{ grid-area:ne; border-radius:0 12px 0 0; }
+.stadium-corner--sw{ grid-area:sw; border-radius:0 0 0 12px; }
+.stadium-corner--se{ grid-area:se; border-radius:0 0 12px 0; }
+.stadium-corner-label{
+    font-size:10px;
+    font-weight:800;
+    letter-spacing:0.08em;
+    color:#f2f7ff;
+    line-height:1;
+}
+.stadium-corner-meta{
+    font-size:8px;
+    font-weight:600;
+    color:rgba(242,247,255,0.78);
+    line-height:1.1;
+    text-align:center;
+    padding:0 2px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    max-width:100%;
+}
+
+/* --- turf with real pitch markings --- */
+.stadium-turf{
+    grid-area:turf;
+    position:relative;
+    border-radius:2px;
+    background:
+        repeating-linear-gradient(180deg, #2f7d46 0 6.25%, #2a7240 6.25% 12.5%);
+    box-shadow:inset 0 0 0 1px rgba(var(--wash-rgb), 0.14);
+    overflow:hidden;
+}
+.stadium-pitch-markings{ position:absolute; inset:0; pointer-events:none; }
+.pitch-halfway{
+    position:absolute; left:0; right:0; top:50%; height:1px;
+    background:rgba(255,255,255,0.75);
+    transform:translateY(-0.5px);
+}
+.pitch-center-circle{
+    position:absolute; left:50%; top:50%;
+    width:18%; height:18%;
+    transform:translate(-50%,-50%);
+    border:1px solid rgba(255,255,255,0.75);
+    border-radius:50%;
+}
+.pitch-center-spot{
+    position:absolute; left:50%; top:50%;
+    width:3px; height:3px; border-radius:50%;
+    background:#fff; transform:translate(-50%,-50%);
+}
+.pitch-penalty{
+    position:absolute; left:50%; width:52%; height:14%;
+    transform:translateX(-50%);
+    border:1px solid rgba(255,255,255,0.75);
+    border-top:none;
+}
+.pitch-penalty--top{ top:0; border-radius:0 0 4px 4px; }
+.pitch-penalty--bottom{ bottom:0; border-top:1px solid rgba(255,255,255,0.75); border-bottom:none; border-radius:4px 4px 0 0; }
+.pitch-goal{
+    position:absolute; left:50%; width:22%; height:4%;
+    transform:translateX(-50%);
+    border:1px solid rgba(255,255,255,0.75);
+}
+.pitch-goal--top{ top:0; border-top:none; border-radius:0 0 3px 3px; }
+.pitch-goal--bottom{ bottom:0; border-bottom:none; border-radius:3px 3px 0 0; }
+.pitch-spot{
+    position:absolute; left:50%; width:3px; height:3px; border-radius:50%;
+    background:#fff; transform:translateX(-50%);
+}
+.pitch-spot--top{ top:9%; }
+.pitch-spot--bottom{ bottom:9%; }
+.pitch-corner-arc{
+    position:absolute; width:5%; height:5%;
+    border:1px solid rgba(255,255,255,0.55);
+}
+.pitch-corner-arc--tl{ top:0; left:0; border-top:none; border-left:none; border-radius:0 0 100% 0; }
+.pitch-corner-arc--tr{ top:0; right:0; border-top:none; border-right:none; border-radius:0 0 0 100%; }
+.pitch-corner-arc--bl{ bottom:0; left:0; border-bottom:none; border-left:none; border-radius:0 100% 0 0; }
+.pitch-corner-arc--br{ bottom:0; right:0; border-bottom:none; border-right:none; border-radius:100% 0 0 0; }
+
+/* --- sponsor boards on the touchlines --- */
+.stadium-ad-board{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:0 10px; margin:0; min-width:0;
+    background:linear-gradient(180deg, #1a2740 0%, #0d1620 100%);
+    border:1px solid rgba(var(--accent-rgb), 0.35);
+    border-radius:5px;
+    color:#eaf6ff;
+    font-size:11px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;
+    white-space:nowrap; overflow:hidden;
+    pointer-events:auto;
+    box-shadow:0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(var(--wash-rgb), 0.08);
+    z-index:2;
+}
+.stadium-ad-logo{ height:16px; width:16px; object-fit:contain; flex:0 0 auto; border-radius:3px; }
+.stadium-ad-board span{ overflow:hidden; text-overflow:ellipsis; }
+
+.stadium-ad-board--north,
+.stadium-ad-board--south{ justify-self:center; align-self:stretch; width:58%; }
+.stadium-ad-board--north{ grid-row:1; grid-column:1 / 4; }
+.stadium-ad-board--south{ grid-row:3; grid-column:1 / 4; }
+.stadium-ad-board--west,
+.stadium-ad-board--east{ align-self:center; justify-self:stretch; height:50%; flex-direction:column; gap:4px; padding:8px 0; }
+.stadium-ad-board--west{ grid-row:2; grid-column:1; }
+.stadium-ad-board--east{ grid-row:2; grid-column:3; }
+
+/* --- sponsor bar, beside the plan rather than on the stands --- */
+.stadium-sponsor-bar{
+    display:flex; align-items:center; gap:12px;
+    padding:12px 16px;
+    margin:12px 0 14px;
+    border-radius:12px;
+    background:linear-gradient(135deg, rgba(var(--accent-rgb), 0.08) 0%, rgba(20,30,50,0.6) 100%);
+    border:1px solid rgba(var(--accent-rgb), 0.22);
+    box-shadow:inset 0 1px 0 rgba(var(--wash-rgb), 0.06);
+}
+.stadium-sponsor-bar-logo{
+    height:34px; width:auto; border-radius:6px;
+    border:1px solid rgba(var(--accent-rgb), 0.28);
+    background:#0d1620;
+    padding:2px;
+}
+.stadium-sponsor-bar-name{
+    font-size:1rem; font-weight:800; letter-spacing:0.04em;
+    color:#eaf6ff; text-transform:uppercase;
+}
+.stadium-sponsor-bar-tag{
+    margin-left:auto;
+    font-size:0.7rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--text-muted);
+}
+
+/* --- stands: depth, seat-row texture, prominent capacity --- */
+.stadium-stand{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    min-width:0; min-height:0;
+    background:
+        repeating-linear-gradient(180deg,
+            rgba(var(--wash-rgb), 0.06) 0 2px,
+            transparent 2px 6px),
+        linear-gradient(180deg, rgba(var(--wash-rgb), 0.14) 0%, rgba(0,0,0,0.22) 100%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -3px 0 rgba(0,0,0,0.3);
+    transition:filter .18s ease;
+    overflow:hidden;
+    padding:4px;
+}
+.stadium-stand:hover{ filter:brightness(1.15); }
+.stadium-stand-name{
+    font-size:11px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase;
+    color:#f2f7ff; line-height:1; text-shadow:0 1px 3px rgba(0,0,0,0.7);
+}
+.stadium-stand-meta{
+    font-size:9px; font-weight:600; color:rgba(242,247,255,0.88);
+    line-height:1.2; text-align:center;
+    text-shadow:0 1px 2px rgba(0,0,0,0.6);
+}
+
+.stadium-corner{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:1px;
+    min-width:0; min-height:0;
+    background:
+        repeating-linear-gradient(135deg,
+            rgba(var(--wash-rgb), 0.05) 0 2px,
+            transparent 2px 5px),
+        linear-gradient(135deg, rgba(var(--wash-rgb), 0.10) 0%, rgba(0,0,0,0.28) 100%);
+    box-shadow:inset 0 1px 0 rgba(var(--wash-rgb), 0.18), inset 0 -2px 0 rgba(0,0,0,0.25);
+    transition:filter .18s ease;
+    overflow:hidden;
+    padding:2px;
+    text-shadow:0 1px 2px rgba(0,0,0,0.6);
+}
+.stadium-corner:hover{ filter:brightness(1.15); }
+.stadium-corner-label{
+    font-size:10px; font-weight:800; letter-spacing:0.08em; color:#f2f7ff; line-height:1;
+}
+.stadium-corner-meta{
+    font-size:8px; font-weight:600; color:rgba(242,247,255,0.82);
+    line-height:1.1; text-align:center;
+}
+
+/* --- legend --- */
+.stadium-plan-legend{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:6px 14px;
+    margin-top:14px;
+    font-size:.78rem;
+    color:var(--text-muted);
+}
+.stadium-legend-item{ display:flex; align-items:center; gap:7px; }
+.stadium-legend-item i{ width:12px; height:12px; flex:0 0 12px; border-radius:3px; box-shadow:inset 0 1px 0 rgba(255,255,255,0.2); }
+
+/* The field that names the sponsor, beside the colours. */
+.stadium-sponsor-field{ margin-top:16px; padding-top:14px; border-top:1px solid rgba(var(--wash-rgb), 0.08); }
+.stadium-sponsor-label{ display:block; margin-bottom:7px; font-size:12px; font-weight:700;
+    letter-spacing:0.05em; text-transform:uppercase; color:var(--fm-subtle-text,var(--text-muted)); }
+.stadium-sponsor-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.stadium-sponsor-preview{ height:30px; width:auto; border-radius:5px; border:1px solid rgba(var(--accent-rgb), 0.22); }
+
+.stadium-plan-legend{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:4px 12px;
+    margin-top:12px;
+    font-size:.75rem;
+    color:var(--text-muted);
+}
+.stadium-legend-item{ display:flex; align-items:center; gap:6px; }
+.stadium-legend-item i{ width:11px; height:11px; flex:0 0 11px; border-radius:3px; }
+
+.stadium-picture{ margin-top:14px; border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,.08); }
+.stadium-picture img{ display:block; width:100%; height:170px; object-fit:cover; }
+
+.stadium-colour-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    gap:10px 14px;
+}
+.stadium-colour{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.85rem; color:#c7d2e4; }
+.stadium-colour input[type="color"]{
+    width:38px;height:26px;padding:0;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px;
+    background:transparent;
+    cursor:pointer;
+}
+
+/* The eight sections: one row per stand, with its own price and its own build form. */
+.stadium-section-list{ display:flex; flex-direction:column; gap:10px; margin-top:12px; }
+.stadium-section{
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;
+    padding:10px 12px;
+}
+.stadium-section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.stadium-section-head strong{ font-size:.95rem; color:#e8eefb; }
+.stadium-section-controls{ display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:8px; }
+.stadium-section-price{ display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:#c7d2e4; }
+.stadium-section-price input{
+    width:96px; padding:6px 8px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px; background:transparent; color:#e8eefb;
+}
+.stadium-section-form{
+    margin-top:10px; padding-top:10px;
+    border-top:1px solid rgba(255,255,255,.08);
+    display:flex; flex-direction:column; gap:10px;
+}
+.stadium-section-field{ display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:#c7d2e4; }
+.stadium-section-field select,
+.stadium-section-field input[type="number"]{
+    padding:6px 8px; max-width:220px;
+    border:1px solid rgba(255,255,255,.18);
+    border-radius:6px; background:transparent; color:#e8eefb;
+}
+.stadium-section-field--check{ flex-direction:row; align-items:center; gap:8px; }
+.stadium-section-quote{ margin-top:4px; }
+
+/* Honours: a medal, the competition it was won in, and the season. */
+.fm-honours{ list-style:none; margin:6px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.fm-honour{ display:flex; align-items:center; gap:8px; font-size:.85rem; color:#c7d2e4; }
+.fm-honour-medal{
+    width:14px; height:14px; flex:0 0 14px; border-radius:50%;
+    box-shadow:inset 0 -2px 3px rgba(0,0,0,.35);
+}
+.fm-honour--gold .fm-honour-medal{ background:linear-gradient(145deg,#f7e08a,#c9992b); }
+.fm-honour--silver .fm-honour-medal{ background:linear-gradient(145deg,#eef1f5,#9aa4b2); }
+.fm-honour--bronze .fm-honour-medal{ background:linear-gradient(145deg,#e0a877,#96603a); }
+.fm-honour-name{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fm-honour-season{ color:#8b98ad; font-size:.78rem; }
+
+/* The season, week and day at the top of the Preview tab, beside the kickoff time. */
+.fm-match-calendar{
+    text-align:center; font-size:0.95em; font-weight:700; letter-spacing:0.04em;
+    color:var(--fm-subtle-text,var(--text-muted)); margin:0 0 14px;
+}
+
+/* One section per thing a manager sets, so a panel that fails is visible as a failed panel. */
+.fm-setup-section{ margin-bottom:14px; }
+.fm-setup-error{ color:#ffb3b3; margin:0; }
+
+/* The kickoff and the season/week/day, on one line, as the owner asked. */
+.fm-match-when-calendar {
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+/* The tactic orders (T-MATCH-6). */
+.fm-tactic-order {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 0; border-bottom: 1px solid rgba(var(--wash-rgb), 0.06);
+}
+.fm-tactic-order-text { font-size: 0.95em; }
+
+.fm-tactic-order-add {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid rgba(var(--wash-rgb), 0.08);
+}
+.fm-tactic-order-add .fm-input[type="number"] { width: 92px; }
+.fm-tactic-order-add .fm-input { flex: 1 1 150px; min-width: 130px; }
+
+/* The Paste picker (T-MATCH-3c): another club's tactics, to bring one in. */
+.te-paste-panel {
+    margin-top: 12px; padding: 12px;
+    border: 1px solid rgba(var(--accent-rgb), 0.22);
+    border-radius: 10px;
+    background: rgba(var(--wash-rgb), 0.03);
+    display: flex; flex-direction: column; gap: 10px;
+}
+.te-paste-results { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.te-paste-result {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    padding: 7px 10px; text-align: left; cursor: pointer;
+    background: rgba(var(--wash-rgb), 0.05);
+    border: 1px solid rgba(var(--wash-rgb), 0.1);
+    border-radius: 8px; color: inherit; font: inherit;
+}
+.te-paste-result:hover { background: rgba(var(--accent-rgb), 0.12); }
+.te-paste-result.is-chosen {
+    border-color: rgba(var(--accent-rgb), 0.85);
+    background: rgba(var(--accent-rgb), 0.18);
+}
+
+/* Sortable column headings on the admin jobs table (owner, 2026-10-13). */
+th.fm-sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+th.fm-sortable:hover { color: var(--fm-accent, var(--accent)); }
+th.fm-sortable:focus-visible { outline: 2px solid rgba(var(--accent-rgb), 0.7); outline-offset: 2px; }
+th.fm-sortable.is-sorted { color: var(--accent); }
+
+/* The manager's own club in a cup tie. A background as well as a weight, because the owner asked for
+   it to be obvious at a glance down a column of 54 ties, and a bold name alone does not read as a
+   highlight from the bottom of the list. */
+.fm-cup-tie-side--own {
+    background: rgba(56, 189, 248, 0.16);
+    border-radius: 3px;
+    padding: 1px 4px;
+    box-shadow: inset 2px 0 0 rgb(56, 189, 248);
+    font-weight: 600;
+}
+
+[data-competition-filter-row] {
+    margin-top: 6px;
+}
+

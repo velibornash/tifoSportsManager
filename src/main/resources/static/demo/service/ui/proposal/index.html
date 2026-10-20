@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TIFO — Proposal Match Viewer</title>
+  <link rel="stylesheet" href="css/pitch.css?v=4">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─── LED Scoreboard ─── -->
+  <header class="led">
+    <div class="team home">
+      <span class="name" id="homeName">HOME</span>
+      <span class="score" id="homeScore">0</span>
+    </div>
+    <div class="clock" id="clock">00:00</div>
+    <div class="team away">
+      <span class="score" id="awayScore">0</span>
+      <span class="name" id="awayName">AWAY</span>
+    </div>
+    <div class="meta">
+      <span class="label" id="statusLabel"></span>
+      <!-- Match identity: the seed + matchId currently loaded. The engine log
+           prints the same pair, so the replay on screen can be verified against
+           the log line at any moment (a stale match used to be invisible). -->
+      <span class="label dim" id="matchIdLabel" title="seed / matchId of the loaded replay"></span>
+    </div>
+  </header>
+
+  <!-- ─── Main ─── -->
+  <div class="main">
+
+    <!-- Empty state -->
+    <div class="empty-state" id="emptyState">
+      <h2>Proposal Match Viewer</h2>
+      <p>Generate a new match using the proposal engine, then play the replay.</p>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap;">
+        <button id="simBtn" style="background:#2ea043;">⚽ Generate Match</button>
+        <button id="playMatchBtn" style="background:#58a6ff;">▶ Play Match</button>
+        <button id="playMatch2dBtn" style="background:#8b949e;">🏹 3D Replay</button>
+        <label style="font-size:12px;color:#8b949e;">Seed
+          <input id="seedInput" type="number" min="0" step="1" placeholder="random" style="width:110px;margin-left:5px;padding:5px 7px;">
+        </label>
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:#8b949e;">
+        Generate simulates a match with the proposal engine and saves it. Play loads the last generated match.
+      </p>
+    </div>
+
+    <!-- Live ticker — landscape phones only -->
+    <div class="live-ticker" id="liveTicker" style="display:none">
+      <span class="ticker-icon" id="tickerIcon">⚽</span>
+      <span class="ticker-min" id="tickerMin">00:00</span>
+      <span class="ticker-desc" id="tickerDesc">Match not loaded</span>
+      <button class="ticker-toggle" id="tickerToggle">LOG ▼</button>
+    </div>
+
+    <!-- Pitch -->
+    <div class="pitch-wrap" style="display:none">
+      <canvas id="pitch" width="1200" height="520"></canvas>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" style="display:none">
+      <div class="player-card" id="playerCard" style="display:none">
+        <div class="pc-head">
+          <span class="pc-num" id="pcNum">-</span>
+          <div class="pc-id">
+            <span class="pc-name" id="pcName">-</span>
+            <span class="pc-meta" id="pcMeta"></span>
+          </div>
+          <span class="pc-rating" id="pcRating"></span>
+        </div>
+        <div class="pc-grid" id="pcGrid"></div>
+        <button class="pc-close" id="pcClose">✕ close</button>
+      </div>
+
+      <h3>Events</h3>
+      <ul class="timeline" id="timeline"></ul>
+
+      <div class="controls">
+        <div class="controls-row">
+          <button id="backBtn" style="font-size:11px;padding:3px 8px;">← Back</button>
+          <button id="playBtn">▶ Play</button>
+          <button id="pauseBtn" class="active">⏸ Pause</button>
+          <label class="speed-label" for="speedSelect">Speed</label>
+          <!-- A dropdown, not a bare slider with a dim 11px readout: the owner
+               could not see WHICH speed was selected. The value is now always
+               spelled out and clickable. -->
+          <!-- Default is 0.5x (owner, 2026-10-19: "stavi default brzinu za gledanje meca 0.5x").
+               The constructor in viewer.js already sets this.speed = 0.5, but the change handler
+               below reads the dropdown on init and overwrites it with whatever is marked selected here
+               — so the `selected` attribute is what actually decides the default, not the field. -->
+          <select id="speedSelect" class="speed-select">
+            <option value="0.25">0.25x</option>
+            <option value="0.5" selected>0.5x</option>
+            <option value="1">1x</option>
+            <option value="2">2x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+          </select>
+        </div>
+        <div class="controls-row">
+          <input type="range" id="seek" min="0" max="100" value="0">
+        </div>
+        <div class="controls-row">
+          <button id="simBtn2" style="font-size:11px;padding:3px 8px;">⚽ New Match</button>
+          <button id="fileBtn" style="font-size:11px;padding:3px 8px;">Load JSON</button>
+          <input id="fileInput" type="file" accept="*.json">
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ─── Overlay (Halftime / Fulltime / VAR / Goal) ─── -->
+<div class="overlay" id="overlay">
+  <div class="overlay-inner">
+    <div class="overlay-text" id="overlayText"></div>
+    <div class="overlay-sub" id="overlaySub"></div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay hidden" id="loading">
+  <div class="spinner"></div>
+  <span id="loadingText">Simulating match...</span>
+</div>
+
+<script src="js/viewer.js?v=5"></script>
+
+</body>
+</html>

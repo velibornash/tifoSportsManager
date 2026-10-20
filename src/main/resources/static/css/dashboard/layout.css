@@ -1,0 +1,1116 @@
+        body { margin:0; font-family: Arial, Helvetica, sans-serif; background:#111; color:#eee; }
+        .background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('/images/background.png');
+            background-size: cover;          /* popunjava ceo ekran */
+            background-position: center;     /* centrirano */
+            background-repeat: no-repeat;    /* bez ponavljanja */
+            background-color: #1e7d32;       /* zelena pozadina ako slika ne učita */
+            z-index: -1;
+        }
+        /* ─── TOP RIBBON ─── */
+        .top-menu { display:flex; justify-content:flex-start; gap:15px; background: rgba(20,20,20,0.95); padding:10px 20px; position:sticky; top:0; z-index:10; box-shadow:0 2px 8px rgba(0,0,0,0.6);}
+        .top-menu .menu-item { position:relative; }
+        .top-menu button { background:#222; color:#eee; border:none; padding:10px 16px; cursor:pointer; border-radius:6px; font-weight:bold; display:flex; align-items:center; gap:6px; }
+        .top-menu button i { font-style:normal; font-weight:bold; color:var(--pos-deep); }
+        .top-menu button:hover { background:var(--pos-deep); }
+        .top-menu .dropdown { display:none; position:absolute; top:42px; left:0; background: rgba(30,30,30,0.95); border-radius:6px; min-width:220px; box-shadow:0 4px 12px rgba(0,0,0,0.6); z-index:15; flex-direction:column; }
+        .top-menu .dropdown button { width:100%; padding:10px 14px; background:none; text-align:left; border-radius:0; }
+        .top-menu .dropdown .separator { height:1px; background:#444; margin:6px 0; }
+        /* ─── Submenu ─── */
+        .top-menu .submenu { display:none; flex-direction:column; padding-left:12px; }
+        .top-menu .dropdown .has-submenu:hover > .submenu { display:flex; }
+        .top-menu .menu-item:hover > .dropdown { display:flex; }
+
+        /* ─── DASHBOARD CONTENT ─── */
+        .dashboard-content { max-width:950px; margin:20px auto; padding:0 15px; }
+        .team-card { background: rgba(20,20,20,0.85); padding:20px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.6); }
+        .team-header { display:flex; align-items:center; gap:20px; margin-bottom:20px; }
+        .team-logo { width:80px; height:80px; border-radius:50%; }
+        .team-name-wrapper h1 { margin:0; font-size:28px; }
+        .team-name-wrapper p { margin:4px 0 0 0; font-size:14px; color:#ccc; }
+        .stats-grid { display:flex; gap:20px; margin-bottom:20px; flex-wrap:wrap; }
+        .stat-item { flex:1; min-width:120px; background: rgba(var(--wash-rgb), 0.05); padding:8px; border-radius:4px; text-align:center; }
+        .stat-value { font-size:16px; font-weight:bold; }
+        .stat-label { font-size:12px; color:#aaa; }
+        .next-match { margin-bottom:20px; }
+        .match-info { display:flex; align-items:center; justify-content:center; gap:10px; }
+        .team-away-home { display:flex; align-items:center; gap:6px; }
+        .match-team-logo.small { width:40px; height:40px; border-radius:50%; }
+        .vs { font-weight:bold; font-size:12px; }
+        .match-date { margin-top:12px; font-size:12px; color:#ccc; }
+        .quick-stats { display:flex; justify-content:space-between; font-size:14px; flex-wrap:wrap; gap:10px; }
+        .form-good { color:var(--pos-deep); font-weight:bold; }
+        .dashboard-actions {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .dashboard-actions button {
+            padding: 12px 24px;
+            font-size: 15px;
+            border: none;
+            border-radius: 6px;
+            background-color: var(--pos-deep);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .dashboard-actions button:hover {
+            background-color: var(--pos-mid);
+        }
+        .team-card button {
+            margin-top: 20px;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 6px;
+            background-color: var(--pos-deep);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .team-card button:hover {
+            background-color: var(--pos-mid);
+}
+.next-match h3 {
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.match-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+}
+
+.match-team-logo.small {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+}
+
+.match-date {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 12px;
+    color: #ccc;
+}
+
+.vs {
+    font-weight: bold;
+    font-size: 18px;
+    color: var(--pos-deep);
+}
+/* TOP BAR BUTTONS */
+.menu-button {
+    background: #222;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.menu-button:hover {
+    background: var(--pos-deep);
+}
+
+/* SIDEBAR */
+.sidebar {
+    position: fixed;
+    top: 50px;
+    left: -260px;
+    width: 250px;
+    height: 100%;
+    background: rgba(20,20,20,0.98);
+    box-shadow: 4px 0 12px rgba(0,0,0,0.6);
+    transition: left 0.3s ease;
+    z-index: 20;
+}
+
+.sidebar.active {
+    left: 0;
+}
+
+.sidebar-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sidebar-content h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #444;
+    padding-bottom: 5px;
+}
+
+.sidebar-content div {
+    padding: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.sidebar-content div:hover {
+    background: var(--pos-deep);
+}
+
+/* MOBILE-ONLY elementi – po defaultu skriveni */
+.mobile-only {
+    display: none;
+}
+
+/* DESKTOP-ONLY elementi – po defaultu vidljivi (možeš i ovo eksplicitno staviti) */
+.desktop-only {
+    display: inline-flex;   /* ili flex, block... zavisi šta ti treba */
+}
+.live-clock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 170px;
+    padding: 6px 10px;
+    line-height: 1.25;
+    font-size: 0.92em;
+    background: #1a3c1a;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.live-clock strong {
+    font-size: 1.15em;
+}
+
+.live-clock small {
+    opacity: 0.85;
+    font-size: 0.82em;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .desktop-only { display: none; }
+    .mobile-only { display: block; }
+    .top-menu > .mobile-only { display: inline-flex; }
+    /* Mobile header clock keeps the time on the first row and the compact S/W/D form below it. */
+    .top-menu > .live-clock.mobile-only { flex-direction: column; align-items: center; gap: 0; white-space: nowrap; }
+    .live-clock-mobile small { line-height: 1.15; }
+
+    /* Club summary stats can share one compact row instead of a 2x2 block on a phone. */
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid,
+    .fm-page--club .fm-club-hero .team-summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 6px;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid > div,
+    .fm-page--club .fm-club-hero .team-summary-grid > div {
+        padding: 8px 4px;
+        font-size: 0.82rem;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid strong,
+    .fm-page--club .fm-club-hero .team-summary-grid strong {
+        font-size: 1.0rem;
+    }
+
+    .fm-page--club .fm-club-hero .fm-medical-stat-grid span,
+    .fm-page--club .fm-club-hero .team-summary-grid span {
+        font-size: 0.72rem;
+    }
+
+    /* Dashboard club summary: one compact row instead of four separate cards. */
+    .team-header + .stats-grid,
+    .stats-grid.clickable {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        margin-top: 8px;
+    }
+
+    .stats-grid .stat-item {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+        background: none;
+        border: none;
+        padding: 0;
+        min-width: 0;
+    }
+
+    .stats-grid .stat-value {
+        min-width: 0;
+        margin-right: 2px;
+    }
+
+    .stats-grid .stat-label {
+        margin-left: 0;
+        text-transform: none;
+    }
+
+}
+}
+
+/* Lista igrača */
+.player-card {
+    width: 180px;
+    background: linear-gradient(145deg, #1e1e1e, #2c2c2c);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.player-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+}
+
+.player-card-image img {
+    width: 100%;
+    height: 180px;
+    object-fit: contain;
+    background: #111;
+}
+
+.player-card-info {
+    padding: 8px;
+    text-align: center;
+}
+
+.player-card-info h3 {
+    margin: 4px 0;
+    font-size: 16px;
+    color: #fff;
+}
+
+.player-card-info p {
+    font-size: 13px;
+    color: #ccc;
+}
+
+.player-card-stats {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #eee;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+
+/* Pojedinačni igrač */
+.player-card-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 80vh;
+    padding: 20px;
+    background: linear-gradient(to bottom, #0a0f1a, #1a2a3a);
+}
+
+.player-card {
+    position: relative;
+    width: 300px;
+    height: 480px;
+    background: linear-gradient(135deg, #ffd700 0%, #d4af37 100%); /* Zlatna za visok rating; možeš dinamički promeniti po overall-u */
+    border-radius: 20px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+    color: #000;
+    font-family: 'Arial', sans-serif;
+    text-align: center;
+    transition: transform 0.3s ease;
+}
+
+.player-card:hover {
+    transform: scale(1.05);
+}
+
+.card-header {
+    position: relative;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.overall-rating {
+    background: #fff;
+    color: #000;
+    font-size: 1.8rem;
+    font-weight: bold;
+    width: 50px;
+    height: 50px;
+    line-height: 50px;
+    border-radius: 50%;
+    border: 2px solid #000;
+    margin-left: 15px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.position {
+    background: #000;
+    color: #fff;
+    font-size: 1.2rem;
+    padding: 5px 15px;
+    border-radius: 20px;
+    margin-right: 15px;
+}
+
+.player-image {
+    position: relative;
+    width: 100%;
+    height: 140px;
+    overflow: hidden;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px 12px 0 0;
+}
+
+.player-image img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    object-position: center;
+    transition: transform 0.4s ease;
+}
+
+.player-name {
+    font-size: 1.3rem;
+    font-weight: bold;
+    margin: 10px 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.player-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 0 15px;
+    font-size: 0.95rem;
+}
+
+.stat {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(var(--wash-rgb), 0.15);
+    border-radius: 8px;
+    font-weight: 600;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.stat span:first-child {
+    color: #000;
+}
+
+.stat span:last-child {
+    color: #ff4500; /* Crveno za stats; možeš dinamički promeniti po vrednosti (zeleno >80, žuto 60-80, crveno <60) */
+}
+.manager-card {
+    background: rgba(15,15,15,0.95);
+    padding: 25px;
+    border-radius: 14px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+    max-width: 1100px;
+    margin: 20px auto;
+}
+
+.manager-card h2 {
+    margin-bottom: 20px;
+    border-left: 4px solid var(--pos-deep);
+    padding-left: 10px;
+}
+
+.manager-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+}
+
+.manager-player-card {
+    background: linear-gradient(160deg,#1b1b1b,#2a2a2a);
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-align: center;
+}
+
+.manager-player-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 20px rgba(0,0,0,0.8);
+}
+
+.manager-player-card img {
+    width: 100%;
+    height: 200px;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.player-name {
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+.player-meta {
+    font-size: 13px;
+    color: #aaa;
+}
+
+.player-rating {
+    margin-top: 6px;
+    font-weight: bold;
+    color: var(--pos-deep);
+}
+
+
+/* Bottom navigation for phone shell. */
+.mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1300;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr) !important;
+    gap: 4px;
+    padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+    background: var(--rail-grad);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+}
+
+.mobile-bottom-nav button {
+    display: grid;
+    align-items: center;
+    justify-items: center;
+    min-height: 44px;
+    gap: 1px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--chrome-label);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+}
+
+.mobile-bottom-nav button:active {
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--text);
+}
+
+.mobile-bottom-nav button span {
+    white-space: nowrap;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    body {
+        padding-bottom: 72px;
+    }
+}
+
+@media (min-width: 1025px) {
+    .mobile-bottom-nav {
+        display: none;
+    }
+}
+
+
+/* Keep the fixed bottom navigation strictly phone-only; it otherwise leaked onto desktop
+   because display:grid is more specific than .mobile-only's utility. */
+@media (min-width: 1025px) {
+    .mobile-bottom-nav.mobile-only,
+    .mobile-bottom-nav {
+        display: none !important;
+        visibility: hidden !important;
+    }
+}
+
+/* Keep the mobile header's bell/clock/logo arrangement fixed: hamburger first, notification, clock,
+   logo (search removed 2026-10-16, it already lives in the five-icon bottom bar). */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .mobile-hamburger-btn { order: 0; }
+    .notification-bell-wrap { order: 1; flex-direction: row; align-items: center; margin-left: auto; }
+    .live-clock-mobile { order: 2; flex-direction: column !important; align-items: center; }
+    .mobile-logo-wrapper { order: 3; margin-left: 0; }
+}
+
+/* Distinct colors for the phone clock, so the hour is read as an hour rather than as one line of
+   grey print (owner, 2026-10-16). */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .live-clock-mobile .live-clock-time-mobile {
+        color: var(--chrome-time);
+        font-weight: 800;
+        font-size: 1.05rem;
+        letter-spacing: 0.02em;
+    }
+    .live-clock-mobile .live-clock-date-mobile {
+        color: var(--chrome-date);
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+    }
+}
+
+/* Desktop ordering on the same row. */
+.notification-bell-wrap { order: 95; }
+/* World and country ranking tables on a phone: keep the rating visible and let the table scroll
+   horizontally, because the rating column is the whole point of the list. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-page--world .fm-squad-wrap,
+    .fm-clubs-ranking .fm-squad-wrap,
+    .fm-page--country .fm-squad-wrap {
+        max-height: 60vh;
+        overflow-x: auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .fm-page--world .fm-world-table thead th,
+    .fm-clubs-ranking .fm-world-table thead th {
+        position: sticky;
+        top: 0;
+        background: #0b101a;
+        z-index: 2;
+    }
+
+    /* **A floor width, and it is the whole fix.** `.fm-squad` is `width: 100%` with no minimum, so on a
+       phone these tables shrank to the width of the screen instead of overflowing: every column was
+       squeezed to a few pixels, the rating and the points became invisible, and the wrap had nothing to
+       scroll because nothing was wider than it. `overflow-x: auto` was already correct and did nothing,
+       which is why the last attempt at this looked fixed and was not. */
+    .fm-page--world .fm-world-table,
+    .fm-clubs-ranking .fm-world-table,
+    .fm-page--country .fm-world-table,
+    .fm-page--country .fm-qualifying-table,
+    .fm-clubs-ranking .fm-clubs-ranking-table {
+        min-width: 540px;
+    }
+    /* The World page's competitions list. It has three columns and the last one carries a status
+       sentence ("120 fixtures . week 5 . season 1"), which is what pushed it off the right edge.
+       *
+       * <p>It used to be given a `min-width: 520px` and a sideways scroller - which guarantees the
+       overflow it was meant to solve, and leaves the column nobody can reach on a phone (owner,
+       * 2026-10-20: "ne moze da se skroluje u desno da se vidi kolona da li je zreb bio ili ne").
+       * The table now fits: the status wraps, and the scroller stays as a safety net for a screen
+       * narrower than this. */
+    .fm-world-competitions-table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .fm-world-competitions-table-wrap thead th {
+        white-space: nowrap;
+    }
+    /* A header that wraps sets the column width from the longest word in it, which is how "Rating"
+       became a two-line column two characters wide. */
+    .fm-page--world .fm-world-table thead th,
+    .fm-clubs-ranking .fm-world-table thead th,
+    .fm-page--country .fm-qualifying-table thead th {
+        white-space: nowrap;
+    }
+}
+
+/* **Hard mobile ordering** (owner, tired of it). On mobile, flex order alone + a long-standing margin
+   rule on the logo produced a Hamburger → Sat → Logo → Notification visual order. Setting flex: 1
+   on bell and the explicit order values below handles any leftover rule. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .top-menu { display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important; justify-content: flex-start !important; gap: 10px !important; align-items: center !important; }
+    .mobile-hamburger-btn { order: 0 !important; flex: 0 0 auto !important; }
+    .notification-bell-wrap { order: 1 !important; flex: 0 0 auto !important; margin-left: auto !important; }
+    .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; margin-left: 0 !important; }
+    .live-clock-mobile { order: 2 !important; flex: 0 0 auto !important; }
+    .mobile-logo-wrapper { order: 3 !important; flex: 0 0 auto !important; }
+    /* **Only ONE auto margin.** Two of them split the free space between the items (flexbox rule), which
+       is what put the cluster in the middle of the bar with the hamburger glued to the left edge instead
+       of the trinity at the right. The bell wrapper carries it, so hamburger stays left and notification,
+       the clock and the logo travel together to the far right. (owner, persistent.) */
+}
+#admin-menu-button { order: 96; }
+.user-menu { order: 97; }
+.desktop-only.live-clock { order: 98; }
+.desktop-only.logo-corner { order: 99; }
+
+/* The compact clock stays on two lines inside the top bar. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .top-menu > .live-clock.mobile-only,
+    .live-clock-mobile {
+        display:block !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 0 !important;
+        white-space: nowrap !important;
+    }
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+}
+
+
+/* Orthographic encoder: flex direction override needs to override .mobile-only and utility
+   !important below 769px so the time and short season form never sit on one line. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .top-menu > .live-clock-mobile,
+    .live-clock-mobile {
+        display:block !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0 !important;
+    }
+}
+
+/* Mobile bottom nav is retired: the desktop nav bar doubles as the mobile bottom bar now, so the
+   phone gets the same six groups and drill-down as the desktop. */
+.mobile-bottom-nav { display:none !important; }
+
+
+/* Touch devices can report unusual viewport widths in the tooling used here, so the phone shell is
+   also keyed on a coarse pointer. That keeps the bottom nav horizontal and the clock two-row. */
+@media (hover: none) and (pointer: coarse) {
+    .mobile-bottom-nav {
+        display: grid !important;
+    }
+    .top-menu > .live-clock-mobile,
+    .live-clock-mobile,
+    .live-clock-mobile-header {
+        display:block !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 0 !important;
+    }
+}
+
+/* Clock is two stacked physical lines on phones. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+ .live-clock-mobile, .live-clock-mobile-header { display:block !important; }
+ .live-clock-time-mobile, .live-clock-date-mobile { display:block !important; width:100%; text-align:center; }
+
+}
+
+
+/* JS-detected mobile shell: the desktop nav bar IS the mobile bottom bar. */
+html.is-mobile-nav .mobile-bottom-nav {
+    display: none !important;
+}
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px), (hover: none) and (pointer: coarse) {
+    html.is-mobile-nav .desktop-nav {
+        display: flex !important;
+    }
+}
+html.is-mobile-nav .live-clock-mobile,
+html.is-mobile-nav .live-clock-mobile-header {
+    display: block !important;
+}
+html.is-mobile-nav .live-clock-time-mobile,
+html.is-mobile-nav .live-clock-date-mobile {
+    display: block !important;
+    width: 100%;
+    text-align: center;
+}
+
+
+/* Mobile club profile/details should not split one word per line. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-page--club .fm-club-hero,
+    .club-profile-detail-card,
+    .fm-country-hero,
+    .mobile-user-identity {
+        hyphens: auto;
+        overflow-wrap: normal !important;
+        word-break: auto !important;
+    }
+    .fm-page--club .fm-club-hero h2,
+    .fm-page--club .fm-club-hero h3 {
+        font-size: clamp(1.05rem, 4.5vw, 1.45rem);
+        line-height: 1.12;
+    }
+    .fm-page--club .club-profile-detail-row strong,
+    .fm-page--club .team-summary-inline {
+        overflow-wrap: anywhere;
+    }
+    /* First Team table on a phone (redesign.md R-9).
+     *
+       The row keeps the columns that say WHO this is - the shirt number, the name, the position, the
+       age and the average rating - and the ones that say how he has done (the ability, the potential,
+       the condition, the morale, the appearances, the goals, the assists) move under the name as a
+       strip, so nothing is lost and the row still fits a 384px frame.
+
+       Only for a squad table. A ranking or a qualifying table is read FOR its later columns - the
+       rating, the points, the goal difference - so hiding them leaves a list with nothing in it. */
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-ability,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-ability,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-potential,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-potential,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-cond,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-cond,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-morale,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-morale,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-games,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-games,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) th.sq-goals,
+    .fm-squad-wrap .fm-squad:not(.fm-world-table):not(.fm-clubs-ranking-table):not(.fm-qualifying-table) td.sq-goals {
+        display: none !important;
+    }
+}
+
+
+/* The desktop navigation: one bar, two positions (owner, 2026-10-16).
+ *
+ * It replaced the row of destination buttons that used to sit in the top header, and it is the same
+ * component the bottom position already used - one element, one set of buttons, so the two positions
+ * cannot drift apart. `html.nav-top` / `html.nav-bottom` decide where it sits; the clock, the S/W/D
+ * line and the logo stay in the top bar in both.
+ *
+ * The clock is what fixes the top offset. It is measured, not guessed: at the standard desktop width
+ * the top bar is 86px tall, so a sticky bar offset of 84 leaves the navigation clear of it without a
+ * visible seam. `--fm-topbar-h` is written by the same measurement in `pages.js`, so the two agree
+ * when the bar grows a line.
+ */
+.desktop-nav {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 1240;
+    padding: 8px 12px;
+    background: var(--rail-grad);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+/* A desktop bar at the top sits where the header used to be. No measured offset any more: the header
+   is gone and the bar is the first thing on screen, which is what the owner asked for when he said
+   "pin it to the top, the way you pinned it to the bottom". */
+html.nav-bottom .desktop-nav {
+    top: auto;
+    bottom: 0;
+    border-bottom: 0;
+    border-top: 1px solid var(--border);
+}
+
+.desktop-nav .bottom-nav-grid {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 6px;
+    max-width: 1320px;
+    margin: 0 auto;
+}
+
+/* The nav's right-hand cluster deliberately spans three sizes of screen without stealing the grid's
+   space; on a narrow desktop it shrinks and the grid still gets the room. */
+.desktop-nav-right {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 12px;
+    max-width: 50vw;
+    overflow: hidden;
+}
+
+/* **The right cluster must read like the nav, not like the old header buttons** (owner, 2026-10-16:
+   "I don't want the white background on the text"). The rest of the nav is `background: transparent`,
+   grid cells with an icon and a label, so a button with `#222` over it -- the old `.menu-button` look
+   - stands out wrong. Strip the card, keep the icon. */
+.desktop-nav-right .menu-button,
+.desktop-nav-right .menu-button.notification-bell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+    border: 0;
+    background: transparent;
+    color: var(--chrome-label);
+    padding: 6px 8px;
+    border-radius: 8px;
+    gap: 6px;
+    line-height: 1;
+    font-family: inherit;
+}
+
+.desktop-nav-right .menu-button:hover,
+.desktop-nav-right .menu-button:focus-visible {
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--text);
+}
+
+/* Bell stays a square, clock and logo get their own size. */
+.desktop-nav-right .desktop-nav-search {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    color: var(--chrome-label);
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+.desktop-nav-right .desktop-nav-search:hover { background: rgba(var(--accent-rgb), 0.12); color: var(--text); }
+
+.desktop-nav-right .notification-bell-wrap { display: inline-flex; align-items: center; }
+.desktop-nav-right #live-clock,
+.desktop-nav-right .live-clock {
+    margin: 0;
+    padding: 0 4px;
+    color: var(--chrome-label);
+    text-align: right;
+}
+.desktop-nav-right #live-clock strong {
+    font-size: 1rem;
+    color: var(--text);
+    display: block;
+}
+.desktop-nav-right #live-clock small {
+    display: block;
+    font-size: 0.78rem;
+    line-height: 1;
+    color: #9aa0a6;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.desktop-nav-right .logo-corner {
+    position: static;
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    flex: 0 0 auto;
+    margin-left: 0;
+    margin-right: 0;
+}
+.desktop-nav-right .logo-corner .corner-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+}
+.desktop-nav-right .user-menu { position: relative; }
+.desktop-nav-right .user-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 0;
+    color: var(--chrome-label);
+    padding: 4px 6px;
+    border-radius: 8px;
+}
+.desktop-nav-right .user-menu-trigger:hover { background: rgba(var(--accent-rgb), 0.12); color: var(--text); }
+.desktop-nav-right .user-menu-name { font-size: 0.78rem; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+
+
+/* TOP position: content starts below the bar. BOTTOM position: ... */
+html.nav-top body {
+    padding-top: var(--desktop-nav-h, 72px);
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    html.nav-top body {
+        padding-top: 0;
+    }
+}
+
+/* BOTTOM: the existing rule already adds the padding-bottom - keep it. */
+/* A phone keeps its own bottom bar; this one is the desktop's and has no business there. */
+/* Desktop hides its own (now dead) top bar. The phone keeps its header. */
+@media (min-width: 1025px) {
+    .top-menu {
+        display: none !important;
+    }
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    /* **The mobile bottom nav is the same component as the desktop one**, just pinned to the bottom
+       and with the right-hand cluster (bell, clock, logo) hidden - those live in the mobile header. */
+    .desktop-nav {
+        display: flex !important;
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        padding: 6px 8px max(6px, env(safe-area-inset-bottom)) !important;
+    }
+    .desktop-nav-right {
+        display: none !important;
+    }
+    /* **Six fits a 390px phone, and 60px did not.** The floor is what decides how many columns fit, and
+       at 60px only five fitted a 374px grid — so a six-entry menu wrapped. 56px fits six (6 x 56 + 5 x 3 =
+       351 of 374). The minimum is only a floor: `1fr` still stretches every column, so a menu with fewer
+       entries is unaffected, and the widest label that has to survive it is "Qualifying". */
+    .desktop-nav .bottom-nav-grid {
+        grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)) !important;
+        gap: 3px !important;
+    }
+    /* **Icon above the word, and a font that fits the longest one.** The label gets the whole column
+       width instead of sharing it with the icon, which is what makes "Qualifying" fit — the longest single
+       word in the nav. */
+    .desktop-nav button {
+        min-height: 44px !important;
+        font-size: 0.66rem !important;
+        gap: 1px !important;
+        flex-direction: column !important;
+        padding: 4px 2px !important;
+        line-height: 1.05 !important;
+    }
+    /* **A label may wrap between words and never inside one.** The previous version of this allowed
+       `overflow-wrap: anywhere`, which broke words at any character — "Community" became "Comm" over
+       "unity" and "League" lost letters. `white-space: normal` alone wraps at spaces only, and
+       `word-break: keep-all` forbids a break inside a word, so the only label that ever takes two lines is
+       one that genuinely has two words in it. */
+    .desktop-nav button span {
+        white-space: normal !important;
+        overflow-wrap: normal !important;
+        word-break: keep-all !important;
+        text-align: center;
+    }
+    html.nav-top body,
+    html.nav-bottom body {
+        padding-top: 0 !important;
+        padding-bottom: 72px !important;
+    }
+}
+
+html.nav-top .desktop-nav { position: fixed; top: 0; bottom: auto; }
+
+/* **The nav bar's own look**, lost during the header teardown. Every button inside it must look like
+   the original mobile bottom nav, not like a browser-default grey box (`buttonface = #efefef`), which is
+   what showed up as the "ugly white background on the text" (owner, 2026-10-16). Transparent, no
+   border, the same colour and the same pressed state as the bottom bar. */
+.desktop-nav button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 54px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--chrome-label);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+.desktop-nav button span {
+    white-space: nowrap;
+}
+
+/*
+ * The navbar's type and icons, a little larger (owner, 2026-10-20: "svuda u navbaru da 'dugmad' ostano
+ * tolika kolika su a povecaj svuda malo font i ikonice, cak za 1 pt mozda i na mob verziji ako ne ode u
+ * overflow").
+ *
+ * <p>The buttons keep their size - the same min-height, the same grid, the same padding - and only the
+ * type grows. The icon is sized in `em`, so it grows with the label instead of drifting away from it.
+ */
+.desktop-nav .desktop-nav-icon {
+    font-size: 1.15em;
+    line-height: 1;
+}
+
+/*
+ * The navbar's icons, a little larger (owner, 2026-10-20: "svuda u navbaru da 'dugmad' ostano tolika
+ * kolika su a povecaj svuda malo font i ikonice, cak za 1 pt mozda i na mob verziji ako ne ode u
+ * overflow").
+ *
+ * <p>The buttons keep their size - the same min-height, the same grid, the same padding - and only the
+ * type and the icons grow: the desktop's label goes from 0.92rem to 1rem and the phone's from 0.58rem
+ * to 0.66rem. The icon is sized in `em`, so it grows with the label instead of drifting away from it.
+ *
+ * <p>On the phone the longest label in the nav is "Qualifying", and at 0.66rem it still fits the
+ * column it is given - the bar was measured after the change, not before it.
+ */
+.desktop-nav .desktop-nav-icon {
+    font-size: 1.15em;
+    line-height: 1;
+}
+
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .desktop-nav .desktop-nav-icon {
+        font-size: 1.5em;
+    }
+}
+.desktop-nav button:active,
+.desktop-nav button:hover,
+.desktop-nav button:focus-visible {
+    background: rgba(var(--accent-rgb), 0.12);
+    color: var(--text);
+}
+
+
+/* Content must not hide behind the bar. In the bottom position it needs room at the foot of the page;
+   in the top position the bar is in normal flow under the top bar and needs nothing.
+   The old rule was `body.desktop-bottom-nav-on` while the class was set on <html>, so it never
+   applied and the last row of every page sat under the bar. */
+html.nav-bottom body {
+    padding-bottom: max(76px, env(safe-area-inset-bottom));
+}
+
+/* The same squad-table rule as the media query above, for the JS mobile class.
+   The phone keeps the position and the age (redesign.md R-9) - it is the ability, the potential, the
+   condition, the morale and the three stat columns that move under the name. */
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-ability,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-ability,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-potential,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-potential,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-cond,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-cond,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-morale,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-morale,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-games,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-games,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) th.sq-goals,
+html.is-mobile-nav .fm-squad-wrap .fm-squad:not(.fm-clubs-ranking-table):not(.fm-world-table):not(.fm-qualifying-table) td.sq-goals { display: none !important; }
+html.is-mobile-nav .club-profile-detail-row strong { overflow-wrap: break-word; }
+
+
+/* Club stat text should break at word boundaries, never mid-word;
+   prefer a slightly smaller type to fitting a broken line. */
+.fm-club-hero .fm-medical-stat-grid > div strong,
+.fm-club-hero .fm-medical-stat-grid > div span,
+.club-profile-detail-row strong {
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: auto;
+    text-wrap: balance;
+}
+
+.fm-club-hero .fm-medical-stat-grid > div strong {
+    font-size: 0.86rem;
+}
+
+.fm-club-hero .fm-medical-stat-grid > div span {
+    font-size: 0.72rem;
+}
+
+/* On narrow phones, give long club values enough width instead of breaking "Omladinac" awkwardly. */
+@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+    .fm-club-hero .fm-medical-stat-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+}

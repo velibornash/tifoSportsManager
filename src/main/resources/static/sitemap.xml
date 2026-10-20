@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TIFO Sports Manager sitemap (Layer 1 SEO, 2026-10-17).
+     TODO(domain): replace http://158.180.22.180:8080 with the real domain once it is live.
+     Layer 2 (marketing/how-to-play/features) and Layer 3 (public club/league/country pages)
+     URLs are appended here as those pages ship. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+        <loc>http://158.180.22.180:8080/</loc>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+    </url>
+    <url>
+        <loc>http://158.180.22.180:8080/register.html</loc>
+        <changefreq>monthly</changefreq>
+        <priority>0.9</priority>
+    </url>
+    <url>
+        <loc>http://158.180.22.180:8080/login.html</loc>
+        <changefreq>monthly</changefreq>
+        <priority>0.6</priority>
+    </url>
+</urlset>

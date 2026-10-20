@@ -1,0 +1,362 @@
+/* =============================================================
+   BASKETBALL MANAGER — theme + the parts of the game that are not
+   football. Everything structural comes from /css/dashboard.css via
+   /commonmanager/css/common.css; this file only supplies the colour
+   and the basketball-specific pieces (positions, box score, arena).
+   ============================================================= */
+
+:root {
+    /* Orange hardwood. Six values, because the shared layer cannot
+       derive an alpha from a hex without relying on color-mix(). */
+    --cm-accent: #f5a623;
+    --cm-accent-deep: #e87d2f;
+    --cm-accent-bright: #ff6b35;
+    --cm-accent-soft: rgba(245, 166, 35, 0.14);
+    --cm-accent-faint: rgba(245, 166, 35, 0.08);
+    --cm-accent-line: rgba(245, 166, 35, 0.3);
+
+    --bball-primary: #e87d2f;
+    --bball-primary-light: #f5a623;
+    --bball-accent: #ff6b35;
+    --bball-highlight: rgba(245, 166, 35, 0.09);
+    --bball-away: #64b5f6;
+}
+
+/* ─── POSITIONS ────────────────────────────────────────────── */
+
+.pos-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.pos-badge.PG { background: rgba(245, 166, 35, 0.2); color: #f5a623; }
+.pos-badge.SG { background: rgba(232, 125, 47, 0.2); color: #e87d2f; }
+.pos-badge.SF { background: rgba(255, 107, 53, 0.2); color: #ff6b35; }
+.pos-badge.PF { background: rgba(192, 100, 26, 0.24); color: #d4843f; }
+.pos-badge.C  { background: rgba(139, 69, 19, 0.28); color: #d4a574; }
+
+.pos-PG { color: #f5a623; }
+.pos-SG { color: #e87d2f; }
+.pos-SF { color: #ff6b35; }
+.pos-PF { color: #c0641a; }
+.pos-C  { color: #d4a574; }
+
+/* ─── CLUB OVERVIEW ────────────────────────────────────────── */
+
+.bball-team-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--cm-accent-line);
+}
+
+.bball-eyebrow {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bball-primary-light);
+    margin-bottom: 6px;
+}
+
+.hall-card {
+    padding: 16px;
+    margin: 12px 0;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.hall-card h4 {
+    color: var(--bball-primary-light);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.hall-name { font-size: 1.1rem; font-weight: 700; }
+
+/* The next fixture, as a card you can click to play. */
+.next-match-card {
+    padding: 16px;
+    margin: 12px 0;
+    text-align: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--bball-highlight), rgba(245, 166, 35, 0.02));
+    border: 1px solid var(--cm-accent-line);
+    transition: all 0.2s;
+}
+
+.next-match-card:hover {
+    background: linear-gradient(135deg, rgba(245, 166, 35, 0.16), rgba(245, 166, 35, 0.05));
+    border-color: var(--bball-primary);
+}
+
+/* ─── PLAYER PROFILE ───────────────────────────────────────── */
+
+.bball-player-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 20px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
+}
+
+.bball-player-avatar {
+    width: 100px;
+    height: 100px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--bball-primary), var(--bball-accent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #fff;
+}
+
+.bball-player-meta h2 { font-size: 1.6rem; margin-bottom: 4px; }
+
+.bball-player-meta .phys-stats { font-size: 0.82rem; color: #b9c7da; margin-top: 4px; }
+
+.stat-grid-bball {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.stat-cell {
+    padding: 10px 8px;
+    text-align: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+}
+
+.stat-cell .stat-cell-value { font-size: 1.2rem; font-weight: 900; }
+
+.stat-cell .stat-cell-label {
+    margin-top: 2px;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cm-muted);
+}
+
+/* ─── LEAGUE TABLE ─────────────────────────────────────────── */
+
+.bball-table th { border-bottom-color: var(--cm-accent-line); }
+.bball-table .pos-num,
+.bball-table .pts-col { color: var(--bball-primary-light); }
+.bball-table .highlight-row td { background: var(--bball-highlight); }
+
+/* ─── MATCH VIEWER ─────────────────────────────────────────── */
+
+.match-viewer .scoreboard {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
+}
+
+.match-viewer .score-team { text-align: center; flex: 1; }
+.match-viewer .score-team-name { font-size: 0.9rem; color: #b9c7da; margin-bottom: 6px; }
+
+.match-viewer .score-value {
+    font-size: 3.2rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--bball-primary-light);
+}
+
+.match-viewer .score-vs {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #5a6a7a;
+}
+
+.match-viewer .score-team.away .score-value,
+.match-viewer .score-team.away .score-team-name { color: var(--bball-away); }
+
+.qtr-scores {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.qtr-score {
+    min-width: 60px;
+    padding: 8px 14px;
+    text-align: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+}
+
+.qtr-label {
+    margin-bottom: 4px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--cm-muted);
+}
+
+.qtr-home, .qtr-away { font-size: 0.85rem; font-weight: 700; }
+.qtr-home { color: var(--bball-primary-light); }
+.qtr-away { color: var(--bball-away); }
+
+.match-tab { margin-top: 12px; }
+
+.tab-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--cm-muted);
+    transition: all 0.2s;
+}
+
+.tab-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+.tab-btn.active {
+    background: var(--bball-highlight);
+    border-color: var(--bball-primary);
+    color: var(--bball-primary-light);
+}
+
+.event-feed {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--cm-border);
+}
+
+.match-event {
+    padding: 4px 0;
+    font-size: 0.82rem;
+    color: #b9c7da;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.match-event:last-child { border-bottom: none; }
+
+.side-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.side-stats-home, .side-stats-away { min-width: 0; }
+.side-stats-home .stats-table th,
+.side-stats-away .stats-table th { font-size: 0.55rem; padding: 4px 2px; }
+.side-stats-home .stats-table td,
+.side-stats-away .stats-table td { font-size: 0.65rem; padding: 4px 2px; }
+
+/* ─── ACTIONS ──────────────────────────────────────────────────
+   The `.team-card` variants below are not duplication. The shared layer
+   paints every button inside a card with a gradient at (0,1,1), which a
+   single-class rule cannot out-rank; without these the dashboard's
+   buttons would render in another sport's colours. */
+
+.play-btn,
+.play-all-btn,
+.reset-btn {
+    display: inline-block;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.play-all-btn,
+.team-card .play-all-btn {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    background: linear-gradient(135deg, rgba(232, 125, 47, 0.3), rgba(245, 166, 35, 0.2));
+    color: #f5a623;
+    border: 1px solid rgba(232, 125, 47, 0.4);
+}
+
+.play-all-btn:hover,
+.team-card .play-all-btn:hover {
+    background: linear-gradient(135deg, rgba(232, 125, 47, 0.45), rgba(245, 166, 35, 0.3));
+    transform: scale(1.02);
+}
+
+/* The small chip on a fixture row — a span, never a button. */
+.play-btn {
+    padding: 4px 14px;
+    font-size: 0.7rem;
+    background: rgba(245, 166, 35, 0.15);
+    color: #f5a623;
+    border: 1px solid rgba(245, 166, 35, 0.35);
+}
+
+.play-btn:hover { background: rgba(245, 166, 35, 0.25); }
+
+/* Resetting a season is not a normal action, so it must not wear the accent. */
+.reset-btn,
+.team-card .reset-btn {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    background: rgba(235, 87, 87, 0.1);
+    color: #eb5757;
+    border: 1px solid rgba(235, 87, 87, 0.3);
+}
+
+.reset-btn:hover,
+.team-card .reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
+
+/* ─── SCHEDULE ─────────────────────────────────────────────── */
+
+.schedule-round { border-left: 3px solid transparent; padding-left: 12px; }
+.schedule-round.current-round { border-left-color: var(--bball-primary-light); }
+
+.locked-row { opacity: 0.5; cursor: default !important; }
+.locked-row:hover { background: none !important; }
+
+/* ─── MOBILE ───────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .bball-player-header { flex-direction: column; text-align: center; gap: 12px; }
+    .stat-grid-bball { grid-template-columns: repeat(3, 1fr); }
+    .side-stats-grid { grid-template-columns: 1fr; }
+    .match-viewer .scoreboard { flex-wrap: wrap; gap: 12px; padding: 16px; }
+    .match-viewer .score-value { font-size: 2.2rem; }
+    .qtr-scores { gap: 6px; }
+    .qtr-score { min-width: 44px; padding: 4px 8px; }
+}

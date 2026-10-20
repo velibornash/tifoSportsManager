@@ -1,0 +1,363 @@
+/* =============================================================
+   AMERICAN FOOTBALL MANAGER — theme + the parts of the game that
+   are not football. Everything structural comes from
+   /css/dashboard.css via /commonmanager/css/common.css; this file
+   only supplies the colour and the American-football-specific
+   pieces (positions, down/yardage tables, stadium).
+   ============================================================= */
+
+:root {
+    /* Leather brown, the colour of the ball itself. Six values, because
+       the shared layer cannot derive an alpha from a hex without
+       relying on color-mix(). */
+    --cm-accent: #c49a6c;
+    --cm-accent-deep: #8b5e3c;
+    --cm-accent-bright: #d4a574;
+    --cm-accent-soft: rgba(196, 154, 108, 0.14);
+    --cm-accent-faint: rgba(196, 154, 108, 0.08);
+    --cm-accent-line: rgba(196, 154, 108, 0.3);
+
+    --af-primary: #8b5e3c;
+    --af-primary-light: #c49a6c;
+    --af-accent: #d4a574;
+    --af-highlight: rgba(196, 154, 108, 0.09);
+    --af-away: #d4523e;
+}
+
+/* ─── POSITIONS ────────────────────────────────────────────── */
+
+.pos-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.pos-badge.QB { background: rgba(212, 165, 116, 0.2); color: #d4a574; }
+.pos-badge.RB { background: rgba(196, 154, 108, 0.2); color: #c49a6c; }
+.pos-badge.WR { background: rgba(232, 200, 138, 0.2); color: #e8c88a; }
+.pos-badge.TE { background: rgba(184, 134, 78, 0.2); color: #b8864e; }
+.pos-badge.OL { background: rgba(139, 115, 85, 0.24); color: #9c8265; }
+.pos-badge.DE { background: rgba(212, 82, 62, 0.2); color: #d4523e; }
+.pos-badge.DT { background: rgba(184, 69, 53, 0.2); color: #b84535; }
+.pos-badge.LB { background: rgba(212, 135, 94, 0.2); color: #d4875e; }
+.pos-badge.CB { background: rgba(74, 123, 168, 0.2); color: #4a7ba8; }
+.pos-badge.S  { background: rgba(74, 158, 138, 0.2); color: #4a9e8a; }
+.pos-badge.K  { background: rgba(232, 200, 64, 0.2); color: #e8c840; }
+.pos-badge.P  { background: rgba(139, 110, 168, 0.2); color: #8b6ea8; }
+
+.pos-QB { color: #d4a574; }
+.pos-RB { color: #c49a6c; }
+.pos-WR { color: #e8c88a; }
+.pos-TE { color: #b8864e; }
+.pos-OL { color: #9c8265; }
+.pos-DE { color: #d4523e; }
+.pos-DT { color: #b84535; }
+.pos-LB { color: #d4875e; }
+.pos-CB { color: #4a7ba8; }
+.pos-S  { color: #4a9e8a; }
+.pos-K  { color: #e8c840; }
+.pos-P  { color: #8b6ea8; }
+
+/* ─── CLUB OVERVIEW ────────────────────────────────────────── */
+
+.next-match-card {
+    padding: 16px;
+    margin: 12px 0;
+    text-align: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, var(--af-highlight), rgba(196, 154, 108, 0.02));
+    border: 1px solid var(--cm-accent-line);
+    transition: all 0.2s;
+}
+
+.next-match-card:hover {
+    background: linear-gradient(135deg, rgba(196, 154, 108, 0.16), rgba(196, 154, 108, 0.05));
+    border-color: var(--af-primary-light);
+}
+
+/* ─── PLAYER PROFILE ───────────────────────────────────────── */
+
+.afl-player-header {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 20px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
+}
+
+.afl-player-avatar {
+    width: 100px;
+    height: 100px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--af-primary), var(--af-accent));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(139, 94, 60, 0.3);
+}
+
+.afl-player-meta h2 { font-size: 1.6rem; margin-bottom: 4px; }
+
+.stat-grid-af {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    margin: 16px 0;
+}
+
+.stat-cell {
+    padding: 10px 8px;
+    text-align: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+}
+
+.stat-cell .stat-cell-value { font-size: 1.2rem; font-weight: 900; }
+
+.stat-cell .stat-cell-label {
+    margin-top: 2px;
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--cm-muted);
+}
+
+/* ─── SQUAD / BOX SCORE TABLE ──────────────────────────────── */
+
+.afl-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.afl-stats-table th {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 2px solid var(--cm-accent-line);
+    color: var(--af-primary-light);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.afl-stats-table th:hover { background: var(--af-highlight); }
+
+.afl-stats-table th:first-child,
+.afl-stats-table td:first-child { text-align: left; padding-left: 8px; }
+
+.afl-stats-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--cm-border);
+    font-size: 0.78rem;
+}
+
+.afl-stats-table tr:hover td { background: var(--af-highlight); }
+
+.afl-stats-table .highlight-row td { background: var(--af-highlight); }
+.afl-stats-table .pos-num { color: var(--af-primary-light); font-weight: 800; }
+.afl-stats-table .pts-col { color: var(--af-primary); font-weight: 900; }
+
+/* ─── MATCH VIEWER ─────────────────────────────────────────── */
+
+.match-viewer .scoreboard {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    background: var(--cm-surface);
+    border: 1px solid var(--cm-accent-line);
+}
+
+.match-viewer .score-team { text-align: center; flex: 1; }
+.match-viewer .score-team-name { font-size: 0.9rem; color: #b9c7da; margin-bottom: 6px; }
+
+.match-viewer .score-value {
+    font-size: 3.2rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--af-primary-light);
+}
+
+.match-viewer .score-vs {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #5a6a7a;
+}
+
+.match-viewer .score-team.away .score-value,
+.match-viewer .score-team.away .score-team-name { color: var(--af-away); }
+
+.qtr-scores {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.qtr-score {
+    min-width: 60px;
+    padding: 8px 14px;
+    text-align: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--cm-border);
+}
+
+.qtr-label {
+    margin-bottom: 4px;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--cm-muted);
+}
+
+.qtr-home, .qtr-away { font-size: 0.85rem; font-weight: 700; }
+.qtr-home { color: var(--af-primary-light); }
+.qtr-away { color: var(--af-away); }
+
+.match-tab { margin-top: 12px; }
+
+.tab-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--cm-muted);
+    transition: all 0.2s;
+}
+
+.tab-btn:hover { background: rgba(255, 255, 255, 0.08); }
+
+.tab-btn.active {
+    background: var(--af-highlight);
+    border-color: var(--af-primary);
+    color: var(--af-primary-light);
+}
+
+.event-feed {
+    max-height: 500px;
+    overflow-y: auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--cm-border);
+}
+
+.match-event {
+    padding: 4px 0;
+    font-size: 0.82rem;
+    color: #b9c7da;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+    font-family: 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+.match-event:last-child { border-bottom: none; }
+
+.side-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.side-stats-home, .side-stats-away { min-width: 0; }
+.side-stats-home .stats-table th,
+.side-stats-away .stats-table th { font-size: 0.55rem; padding: 4px 2px; }
+.side-stats-home .stats-table td,
+.side-stats-away .stats-table td { font-size: 0.65rem; padding: 4px 2px; }
+
+/* ─── ACTIONS ──────────────────────────────────────────────────
+   These live in `.fm-panel` panels, not inside a `.team-card`, so a single
+   class is enough to out-rank the shared layer's card-button gradient. */
+
+.play-btn,
+.play-all-btn,
+.reset-btn {
+    display: inline-block;
+    border-radius: 10px;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.play-all-btn {
+    padding: 10px 20px;
+    font-size: 0.85rem;
+    background: linear-gradient(135deg, rgba(139, 94, 60, 0.3), rgba(212, 165, 116, 0.2));
+    color: #d4a574;
+    border: 1px solid rgba(139, 94, 60, 0.4);
+}
+
+.play-all-btn:hover {
+    background: linear-gradient(135deg, rgba(139, 94, 60, 0.4), rgba(212, 165, 116, 0.3));
+    transform: scale(1.02);
+}
+
+/* The small chip on a fixture row — a span, never a button. */
+.play-btn {
+    padding: 4px 14px;
+    font-size: 0.7rem;
+    background: rgba(196, 154, 108, 0.15);
+    color: #c49a6c;
+    border: 1px solid rgba(196, 154, 108, 0.35);
+}
+
+.play-btn:hover { background: rgba(196, 154, 108, 0.25); }
+
+/* Resetting a season is not a normal action, so it must not wear the accent. */
+.reset-btn {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    background: rgba(235, 87, 87, 0.1);
+    color: #eb5757;
+    border: 1px solid rgba(235, 87, 87, 0.3);
+}
+
+.reset-btn:hover { background: rgba(235, 87, 87, 0.2); }
+
+/* ─── SCHEDULE ─────────────────────────────────────────────── */
+
+.schedule-round { border-left: 3px solid transparent; padding-left: 12px; }
+.schedule-round.current-round { border-left-color: var(--af-primary-light); }
+
+.locked-row { opacity: 0.5; cursor: default !important; }
+.locked-row:hover { background: none !important; }
+
+/* ─── MOBILE ───────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .afl-player-header { flex-direction: column; text-align: center; gap: 12px; }
+    .stat-grid-af { grid-template-columns: repeat(3, 1fr); }
+    .side-stats-grid { grid-template-columns: 1fr; }
+    .match-viewer .scoreboard { flex-wrap: wrap; gap: 12px; padding: 16px; }
+    .match-viewer .score-value { font-size: 2.2rem; }
+    .afl-stats-table { font-size: 0.7rem; }
+    .qtr-scores { gap: 6px; }
+    .qtr-score { min-width: 44px; padding: 4px 8px; }
+}

@@ -1,0 +1,279 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <!-- Palette before first paint (redesign.md R-1/R-15): reads the saved PER-USER
+         choice synchronously so the stylesheet arrives with the right tokens already
+         in force - no flash of the wrong palette on reload. Same derivation as
+         theme.js storageKey(): the token's sub claim names the account. -->
+    <script>
+      (function(){try{var t=null,k='fm-theme:device';try{
+        var p=(sessionStorage.getItem('token')||'').split('.')[1]||'';
+        if(p){var w=p.replace(/-/g,'+').replace(/_/g,'/');var s=JSON.parse(atob(w.length%4?w+' '.repeat(4-w.length%4):w)).sub;
+        if(s)k='fm-theme:'+s;}
+      }catch(e){}
+      t=localStorage.getItem(k);
+      if(t==='ember'||t==='pitch'||t==='daylight')document.documentElement.setAttribute('data-theme',t);
+      }catch(e){}})();
+    </script>
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <script defer src="/js/theme.js"></script>
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <script>
+      (function() {
+        var mobile = window.matchMedia('(max-width:768px)').matches
+            || ('ontouchstart' in window)
+            || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+        if (mobile) document.documentElement.classList.add('is-mobile-nav');
+        window.isMobileNav = mobile;
+      })();
+    </script>
+    <script>
+      (function() {
+        // **Where the desktop navigation sits: top or bottom. Default top.**
+        //
+        // Read before first paint so the bar never jumps. Anything that is not one of the two positions
+        // is top, which is the owner's default.
+        //
+        // The old `fm_desktop_bottom_nav` checkbox is deliberately NOT migrated. Its stored value cannot
+        // be told apart from its own default - it was a checkbox that defaulted to on - so "migrating"
+        // it would read as knowledge the setting never contained. The bar is now the same in both
+        // positions and the owner has set the default, so a fresh top is the honest answer.
+        try {
+            var KEY = 'fm_desktop_nav_position';
+            var stored = localStorage.getItem(KEY);
+            var position = stored === 'bottom' ? 'bottom' : 'top';
+            if (stored !== position) localStorage.setItem(KEY, position);
+            document.documentElement.classList.add(position === 'bottom' ? 'nav-bottom' : 'nav-top');
+            window.desktopNavPosition = position;
+        } catch (e) {
+            document.documentElement.classList.add('nav-top');
+            window.desktopNavPosition = 'top';
+        }
+      })();
+    </script>
+    <meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+<div class="background"></div>
+<!-- **Mobile top header** (owner spec, 2026-10-17): Sports Lobby icon, Search icon, notification,
+     clock + S/W/D, logo. No hamburger. The hamburger is gone; everything that used to live behind it
+     is reachable from the bottom nav bar. -->
+<div class="top-menu">
+    <button type="button" class="menu-button mobile-only mobile-sports-lobby-btn" onclick="window.location.href='/home.html'" aria-label="Sports Lobby">
+        <span aria-hidden="true">&#9917;&#127936;&#127947;</span>
+    </button>
+    <button type="button" class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" aria-label="Search">
+        <span aria-hidden="true">&#128269;</span>
+    </button>
+    <div class="notification-bell-wrap">
+        <button type="button" class="menu-button notification-bell" id="notification-bell"
+                data-notification-bell aria-haspopup="true" aria-expanded="false"
+                aria-controls="notification-dropdown" aria-label="Notifications">
+            <span aria-hidden="true">&#128276;</span>
+            <span class="notification-badge" id="notification-badge" data-notification-badge hidden>0</span>
+        </button>
+    </div>
+    <div id="live-clock-mobile-header" class="mobile-only live-clock-mobile">
+        <div class="live-clock-time-mobile">Loading...</div>
+        <div class="live-clock-date-mobile"></div>
+    </div>
+    <!-- **The desktop destinations are gone from this bar.** Owner, 2026-10-16: "instead of the
+         current top header menu, put an identical nav bar to the bottom one". The eight buttons that
+         used to sit here - Sports Lobby, Club, League, Country, World, Community, Search, Admin - are
+         now one navigation bar, `#desktop-nav`, which is the same component whichever position it is
+         set to. Two copies of the same list in two rows is the thing this removes.
+         What stays here is what that bar is not: who is signed in, the clock, and the logo. -->
+    <!-- WHO IS SIGNED IN. Signout used to live only on the lobby page, so inside the SPA there was
+         no way out of a session at all on a phone. It stays because it carries the manager's name,
+         which no icon in the navigation bar can. -->
+    <!-- ** desktop account/clock/logo moved into the nav right cluster below ** -->
+    <div class="mobile-only mobile-logo-wrapper"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
+</div>
+
+<div id="mobileSidebar" class="sidebar mobile-only">
+    <div class="sidebar-content">
+        <h3 onclick="closeMobileMenu()">Menu</h3>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="closeMobileMenu(); loadDashboard()">
+                🏠 Dashboard
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+                ⚽ Club
+            </div>
+            <div class="accordion-content">
+                <div onclick="loadPage('firstTeam'); closeMobileMenu()">First Team</div>
+                <div onclick="loadPage('schedule'); closeMobileMenu()">Schedule</div>
+                <div onclick="loadPage('juniors'); closeMobileMenu()">Juniors</div>
+                <div onclick="loadPage('loans'); closeMobileMenu()">Loans</div>
+                <div onclick="loadPage('formations'); closeMobileMenu()">Tactics</div>
+                <div onclick="loadPage('staff'); closeMobileMenu()">Staff</div>
+                <div onclick="loadPage('finances'); closeMobileMenu()">Finances</div>
+                <div onclick="loadPage('transfers'); closeMobileMenu()">Transfers</div>
+                <div onclick="loadPage('trainingSetup'); closeMobileMenu()">Training</div>
+                <div onclick="loadPage('trainingReports'); closeMobileMenu()">Training Reports</div>
+                <div onclick="loadPage('medicalCenter'); closeMobileMenu()">Medical Center</div>
+                <div onclick="loadPage('profile'); closeMobileMenu()">Profile</div>
+                <div onclick="loadPage('stadium'); closeMobileMenu()">Stadium</div>
+                <div onclick="loadPage('tacticEditor'); closeMobileMenu()">Tactic Editor</div>
+                <div onclick="loadPage('results'); closeMobileMenu()">Results</div>
+            </div>
+        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('leagueTable')">
+                &#127942; League
+            </div>
+        </div>
+
+	        <div class="mobile-accordion">
+	            <div id="country-mobile-button" class="accordion-header" onclick="closeMobileMenu(); showMyCountry()">
+                &#127758; Country
+            </div>
+        </div>
+
+	        <div class="mobile-accordion">
+	            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('world')">
+	                &#127757; World
+	            </div>
+	        </div>
+
+	        <div class="mobile-accordion">
+	            <div class="accordion-header" onclick="toggleMobileAccordion(this)">
+	                <span class="community-menu-icon" aria-hidden="true">&#9993;</span> Community
+	            </div>
+	            <div class="accordion-content">
+	                <div onclick="loadPage('forum'); closeMobileMenu()">Forum</div>
+	                <div onclick="loadPage('messages'); closeMobileMenu()">Messages</div>
+	            </div>
+	        </div>
+
+	        <div class="mobile-accordion" data-admin-only hidden>
+	            <div id="admin-mobile-button" class="accordion-header" onclick="closeMobileMenu(); loadPage('admin')">
+	                &#128295; Admin
+	            </div>
+	        </div>
+
+        <div class="mobile-accordion">
+            <div class="accordion-header" onclick="window.location.href='/home.html'">
+                ⚽🏀🏈 Sports Lobby
+            </div>
+        </div>
+
+        <!-- The same account block as the desktop top bar, as a full-width row at the foot of the
+             drawer. On a phone this is the only signout there is, so it is deliberately at the
+             bottom of the menu rather than hidden behind the logo. -->
+        <div class="mobile-accordion mobile-user-block">
+            <div class="mobile-user-identity">
+                <span class="user-menu-avatar user-menu-avatar--lg" id="user-menu-avatar-mobile" aria-hidden="true">?</span>
+                <span>
+                    <strong id="user-menu-name-mobile">Signed in</strong>
+                    <small id="user-menu-meta-mobile"></small>
+                </span>
+            </div>
+            <!-- Palette dots (redesign.md R-2): the user menu is the only place
+                 a one-tap switch is always reachable on a phone, without walking
+                 through Settings. Wiring and active marking live in theme.js. -->
+            <div class="fm-theme-dots" role="group" aria-label="Colour palette">
+                <button type="button" class="fm-theme-dot fm-theme-dot--midnight" data-theme-dot="midnight" aria-label="Midnight palette"></button>
+                <button type="button" class="fm-theme-dot fm-theme-dot--ember" data-theme-dot="ember" aria-label="Ember palette"></button>
+                <button type="button" class="fm-theme-dot fm-theme-dot--pitch" data-theme-dot="pitch" aria-label="Pitch palette"></button>
+                <button type="button" class="fm-theme-dot fm-theme-dot--daylight" data-theme-dot="daylight" aria-label="Daylight palette"></button>
+            </div>
+            <div class="accordion-header" onclick="closeMobileMenu(); loadPage('settings')">
+                &#9881; Settings
+            </div>
+            <div class="accordion-header" onclick="closeMobileMenu(); loadUserProfile()">
+                &#128100; My profile
+            </div>
+            <div class="accordion-header" onclick="closeMobileMenu(); logout()">
+                &#128682; Sign out
+            </div>
+        </div>
+
+        <div id="live-clock-mobile" class="mobile-accordion" style="padding:12px; background:#1e2e1e; border-radius:8px; text-align:center; margin:10px 0;">
+            <strong id="clock-time-m">Loading...</strong><br>
+            <small id="clock-date-m"></small>
+        </div>
+
+    </div>
+</div>
+<div id="mobileOverlay" class="mobile-overlay mobile-only" onclick="closeMobileMenu()"></div>
+
+<!-- **Mobile bottom nav is the same component as the desktop one**, styled for a phone. The five-icon bar
+     (Home, Club, League, World, Search) is retired: Home lives in the top header now (Sports Lobby icon)
+     and Search moved up there too, leaving the six groups - Club, League, World, Country, User,
+     Community - each with its own drill-down. -->
+<nav class="mobile-bottom-nav" aria-label="Mobile navigation" style="display:none !important;"></nav>
+
+<!-- **One navigation, two positions.** Owner, 2026-10-16: the same bar the bottom had, now optionally
+     at the top. It is one element with one set of buttons; `html.nav-top` / `html.nav-bottom` decide
+     where it sits, so the two positions cannot drift apart. The choice is in Settings. -->
+<nav class="desktop-nav" id="desktop-nav" aria-label="Desktop navigation">
+    <div class="bottom-nav-grid" id="desktop-nav-grid"></div>
+    <div class="desktop-nav-right">
+        <button type="button" class="menu-button desktop-nav-search" onclick="loadPage('search')" aria-label="Search">
+            <span aria-hidden="true">&#128269;</span>
+        </button>
+        <div class="notification-bell-wrap">
+            <button type="button" class="menu-button notification-bell" id="notification-bell-desktop"
+                    data-notification-bell aria-haspopup="true" aria-expanded="false"
+                    aria-controls="notification-dropdown" aria-label="Notifications">
+                <span aria-hidden="true">&#128276;</span>
+                <span class="notification-badge" id="notification-badge-desktop" data-notification-badge hidden>0</span>
+            </button>
+        </div>
+<div id="live-clock" class="desktop-only live-clock">
+        <strong id="clock-time">Loading...</strong>
+        <small id="clock-date"></small>
+        <small id="clock-phase"></small>
+    </div>
+<div class="desktop-only logo-corner"><img src="/images/logomain.jpg" alt="Tifo Sports Manager Logo" class="corner-logo" onclick="loadDashboard()" role="button" tabindex="0" title="Back to dashboard" style="cursor:pointer;"></div>
+    </div>
+</nav>
+<div class="notification-dropdown" id="notification-dropdown" role="dialog" aria-label="Notifications" hidden></div>
+
+<div class="dashboard-content">
+    <div id="main-content" style="opacity:0.9"></div>
+</div>
+
+<script>
+    // Token check on page load
+    const token = sessionStorage.getItem('token');
+    if (!token) {
+        window.location.href = '/login.html';
+    }
+</script>
+
+<script type="module" src="/js/auth.js"></script>
+<script type="module" src="/js/reveal-ui.js"></script>
+<script type="module" src="/js/demo.js"></script>
+<script type="module" src="/js/sidebar.js"></script>
+<script type="module" src="/js/dashboard.js"></script>
+<script type="module" src="/js/pages.js"></script>
+<script type="module" src="/js/clock.js"></script>
+
+
+<!--
+    The maintenance worker (redesign.md R-22). It only answers a navigation that the network
+    could not reach - which is what a rebuild looks like from a browser - and it keeps the
+    application's own files out of its cache, so a rebuild is never served a stale script.
+-->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('/sw.js').catch(function () { /* no worker, no page */ });
+        });
+    }
+</script>
+</body>
+</html>
