@@ -1911,10 +1911,10 @@ async function loadUserProfile() {
         if (group === 'country') {
             return [
                 { icon: '&#9664;', label: 'Back', navBack: true },
-                { label: 'General', page: 'country', options: { tab: 'general' } },
-                { label: 'Calendar', page: 'country', options: { tab: 'calendar' } },
-                { label: 'Clubs', page: 'country', options: { tab: 'clubs' } },
-                { label: 'Qualifying', page: 'country', options: { tab: 'qualifying' } },
+                { label: 'General', page: 'country', options: { tab: 'general' }, icon: '🌍' },
+                { label: 'Calendar', page: 'country', options: { tab: 'calendar' }, icon: '📅' },
+                { label: 'Clubs', page: 'country', options: { tab: 'clubs' }, icon: '🏟' },
+                { label: 'Qualifying', page: 'country', options: { tab: 'qualifying' }, icon: '📄' },
                 // **One entry instead of two, and that is what makes the row fit** (owner, 2026-10-18).
                 // The country menu was the only one with six sub-options and the seventh button dropped to
                 // a second row on a phone. Shortening "National Team" to "NT" and lowering the grid's
@@ -1933,10 +1933,10 @@ async function loadUserProfile() {
         if (group === 'world') {
             return [
                 { icon: '&#9664;', label: 'Back', navBack: true },
-                { label: 'Countries', page: 'world', options: { tab: 'countries' } },
-                { label: 'Clubs', page: 'world', options: { tab: 'clubs' } },
-                { label: 'Competitions', page: 'world', options: { tab: 'competitions' } },
-                { label: 'Friendlies', page: 'world', options: { tab: 'friendlies' } },
+                { label: 'Countries', page: 'world', options: { tab: 'countries' }, icon: '🌍' },
+                { label: 'Clubs', page: 'world', options: { tab: 'clubs' }, icon: '🏟' },
+                { label: 'Competitions', page: 'world', options: { tab: 'competitions' }, icon: '🏆' },
+                { label: 'Friendlies', page: 'world', options: { tab: 'friendlies' }, icon: '🤝' },
             ];
         }
         if (group === 'search') {
