@@ -139,7 +139,7 @@ public class PlusFeatureService {
 /**
      * The club this user actually runs, delegated to {@link ClubOwnershipLinker}.
      *
-     * <p>Was resolved here by name, through {@code teams.findByName(name)} — a lookup that
+     * <p>Was resolved here by name, through {@code teams.findFirstByNameOrderByIdAsc(name)} — a lookup that
      * <b>throws</b> when two clubs share a name, which {@code TeamRepository} documents as allowed. It is
      * now the foreign key {@code User.footballTeam}, with the name-join kept only as a backfill inside
      * the linker.

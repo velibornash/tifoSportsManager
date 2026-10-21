@@ -535,7 +535,7 @@ public class SimulationController {
      * The football club this account manages, by identity.
      *
      * <p>This read the manager's club as a <b>name</b> and looked it back up with
-     * {@code teamRepository.findByName(...)} — at four call sites, including
+     * {@code teamRepository.findFirstByNameOrderByIdAsc(...)} — at four call sites, including
      * {@link #isUserMatch}, which decides what "play my match" and the reveal button may act on. Two
      * clubs sharing a name meant a fixture belonging to somebody else reading as yours.
      *
@@ -560,7 +560,7 @@ public class SimulationController {
         // Legacy fallback only. `getCTeam()` is a footballtextmanager CTeam, a different model entirely,
         // so its id is not a football Team id and must never be compared with one.
         if (user.getCTeam() != null && user.getCTeam().getName() != null) {
-            return teamRepository.findByName(user.getCTeam().getName()).orElse(null);
+            return teamRepository.findFirstByNameOrderByIdAsc(user.getCTeam().getName()).orElse(null);
         }
         return null;
     }

@@ -237,7 +237,7 @@ public class MatchTacticOrderController {
             return teams.findById(user.getFootballTeam().getId()).orElse(null);
         }
         if (user.getCTeam() != null && user.getCTeam().getName() != null) {
-            return teams.findByName(user.getCTeam().getName()).orElse(null);
+            return teams.findFirstByNameOrderByIdAsc(user.getCTeam().getName()).orElse(null);
         }
         return null;
     }

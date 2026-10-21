@@ -35,6 +35,18 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findAllByNameIgnoreCase(String name);
 
     /**
+     * The oldest club with this name.
+     *
+     * <p><b>Two clubs may share a name</b> — that is allowed, and the id is what tells them apart — so
+     * {@link #findByName} throws on it. This is the lookup for the code that needs <em>a</em> club and
+     * has to say which one it takes: the oldest, because that is the one the rest of the world has
+     * been pointing at, and because the owner's own club is the oldest of its name.
+     *
+     * <p>Code that must decide about the ambiguity itself uses {@link #findAllByNameIgnoreCase}.
+     */
+    Optional<Team> findFirstByNameOrderByIdAsc(String name);
+
+    /**
      * The names of one country's clubs, and nothing but the names.
      *
      * <p>Added for the seeding bottleneck (owner, 2026-10-07). The builder asked

@@ -713,7 +713,7 @@ public class DatabaseInitializer {
             User owner = new User();
 
             // Pronađi Omladinac (pretpostavljam da postoji nakon inicijalizacije)
-            Team omladinac = teamRepository.findByName("OFK Omladinac")
+            Team omladinac = teamRepository.findFirstByNameOrderByIdAsc("OFK Omladinac")
                     .orElseGet(() -> {
                         log.warn("Omladinac nije pronađen – kreira se placeholder tim");
                         Team temp = teamFactory.findOrCreate("OFK Omladinac");
@@ -740,7 +740,7 @@ public class DatabaseInitializer {
         } else {
             log.info("Owner korisnik 'velibor' već postoji – preskačem kreiranje.");
             User owner = existingOwner.orElseThrow();
-            ownerTeam = teamRepository.findByName("OFK Omladinac")
+            ownerTeam = teamRepository.findFirstByNameOrderByIdAsc("OFK Omladinac")
                     .orElseGet(() -> teamFactory.findOrCreate("OFK Omladinac"));
             ownerTeam.setHumanControlled(true);
             teamRepository.save(ownerTeam);
@@ -883,7 +883,7 @@ public class DatabaseInitializer {
      */
     private void refreshClubIdentities() {
         for (String name : List.of("OFK Omladinac", SREMAC_TEAM_NAME)) {
-            teamRepository.findByName(name)
+            teamRepository.findFirstByNameOrderByIdAsc(name)
                     .ifPresent(this::applyClubIdentity);
         }
     }
@@ -1215,7 +1215,7 @@ public class DatabaseInitializer {
                     || snapshot.tactics.isEmpty()) {
                 continue;
             }
-            Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
+            Team team = teamRepository.findFirstByNameOrderByIdAsc(snapshot.teamName).orElse(null);
             if (team == null || team.getId() == null) {
                 log.warn("Tactic library skipped: no club named {} after the reset.", snapshot.teamName);
                 continue;
@@ -1389,7 +1389,7 @@ public class DatabaseInitializer {
         int restored = 0;
         List<String> unmatched = new ArrayList<>();
         for (TacticsProfileSnapshot snapshot : wanted) {
-            Team team = teamRepository.findByName(snapshot.teamName).orElse(null);
+            Team team = teamRepository.findFirstByNameOrderByIdAsc(snapshot.teamName).orElse(null);
             if (team == null || team.getId() == null) {
                 // Named rather than skipped. The old `continue` made a profile that could not be placed
                 // indistinguishable from there being none, which is how four of the owner's five

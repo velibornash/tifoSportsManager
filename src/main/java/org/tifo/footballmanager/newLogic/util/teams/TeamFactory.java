@@ -49,7 +49,7 @@ public class TeamFactory {
                 });
 
         // 🔹 Proveri da li tim već postoji
-        Optional<Team> existing = teamRepository.findByName(name);
+        Optional<Team> existing = teamRepository.findFirstByNameOrderByIdAsc(name);
         if (existing.isPresent()) {
             Team existingTeam = existing.get();
             if (existingTeam.getType() == null) {
