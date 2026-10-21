@@ -65,6 +65,28 @@ public class DatabaseInitializer {
     private static final String SREMAC_STADIUM = "Stadion Livadice";
 
     /**
+     * The tactic library, as a projection.
+     *
+     * <p>Not the entities: see {@link #snapshotTacticLibrary()} for why the world cannot be loaded
+     * into the heap to be read.
+     */
+    private static final String TACTIC_LIBRARY_SQL = """
+            SELECT c.name, t.name, t.formation, t.style, t.rules_json, t.set_pieces_json,
+                   t.version, t.is_default
+            FROM tactic t
+            JOIN team c ON c.id = t.team_id
+            ORDER BY t.id
+            """;
+
+    /**
+     * How many rows the library read carries at a time.
+     *
+     * <p>One row is 132,000 characters of rules, so sixty-four of them is about 8 MB in flight — a
+     * batch the garbage collector can take away, instead of two gigabytes at once.
+     */
+    private static final int TACTIC_LIBRARY_FETCH_SIZE = 64;
+
+    /**
      * The Šid municipal league, and the nine real clubs that play in it.
      *
      * <p>Real names rather than generated ones because the point of this league is that it is a
@@ -123,6 +145,18 @@ public class DatabaseInitializer {
     private org.springframework.transaction.support.TransactionTemplate perDivision;
 
     /**
+     * The transaction the tactic library is read in.
+     *
+     * <p><b>REQUIRED, and not REQUIRES_NEW</b> — the opposite of the two above, and for a reason
+     * that is not about isolation. A read that joins the caller's transaction sees what the caller
+     * has done, and it runs on the caller's connection — which is also what turns autocommit off,
+     * and autocommit off is what lets PostgreSQL answer with a cursor instead of the whole result
+     * set. A transaction of its own would see only what is committed, and inside a test that is
+     * nothing at all.
+     */
+    private org.springframework.transaction.support.TransactionTemplate inTheCallersTransaction;
+
+    /**
      * The threads the divisions are filled on.
      *
      * <p>Four, like the simulated countries' ({@link SimulatedWorldSeeder}). The work is mostly
@@ -152,6 +186,11 @@ public class DatabaseInitializer {
         divisionTemplate.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.perDivision = divisionTemplate;
+
+        // The default propagation is REQUIRED, and that is the point: the library read joins the
+        // caller's transaction, so it sees the caller's work and runs on the caller's connection.
+        this.inTheCallersTransaction =
+                new org.springframework.transaction.support.TransactionTemplate(seedingTransactionManager);
     }
 
     /**
@@ -1011,30 +1050,108 @@ public class DatabaseInitializer {
      * reads the backup file. The file is written on editor save and predates the library — the owner's
      * copy still held one tactic called "4-4-2" while his database held the renamed default and its
      * copy — and preferring it would undo his rename on every reset.
+     *
+     * <p><b>This is the fix for the reset that took the app down on the server</b> (owner, 2026-10-21:
+     * "reset db na oracle vratio Database operation failed. Error: Server returned HTML instead of
+     * JSON: 504"). The server's log said it plainly:
+     *
+     * <pre>
+     * Clearing football data (preserving owner account + tactics profiles)...
+     * java.lang.OutOfMemoryError: Java heap space
+     *   at ...DatabaseInitializer.snapshotTacticLibrary(DatabaseInitializer.java:1017)
+     * </pre>
+     *
+     * <p><b>Why it ran out of heap.</b> A tactic's rules are a grid of every slot, every ball state
+     * and every possession context: <b>132,000 characters</b> of JSON, which PostgreSQL stores
+     * compressed — the whole table reads 81 MB on disk. The world holds <b>14,976</b> of them, one per
+     * club, and this method held every one in memory at once: <b>about 2 GB of strings</b>, in a heap
+     * of 3,200 MB, with the entities around them. The app died, the JVM exited
+     * ({@code -XX:+ExitOnOutOfMemoryError}), and nginx answered the browser with a 504.
+     *
+     * <p><b>What the world actually holds</b>, measured on the server: 14,976 rows and <b>three</b>
+     * distinct payloads. The library is one tactic replicated fourteen thousand times, and the
+     * snapshot only ever needed three copies of it.
+     *
+     * <p><b>So the rows are read one at a time and identical payloads are kept once.</b> The read is
+     * a cursor over a projection — no entities, no proxies, nothing for the session to hold — and the
+     * snapshot's footprint is the <em>distinct</em> tactical data rather than the world's copy of it.
+     * Three distinct payloads are about 400 KB.
      */
-    private List<TacticLibrarySnapshot> snapshotTacticLibrary() {
+    List<TacticLibrarySnapshot> snapshotTacticLibrary() {
         Map<String, TacticLibrarySnapshot> byClub = new LinkedHashMap<>();
-        for (Tactic tactic : tacticRepository.findAll()) {
-            Team team = tactic.getTeam();
-            if (team == null || team.getName() == null || team.getName().isBlank()) {
-                continue;
-            }
-            TacticLibrarySnapshot snapshot = byClub.computeIfAbsent(team.getName(), name -> {
-                TacticLibrarySnapshot created = new TacticLibrarySnapshot();
-                created.teamName = name;
-                return created;
-            });
-            TacticEntry entry = new TacticEntry();
-            entry.name = tactic.getName();
-            entry.formation = tactic.getFormation();
-            entry.style = tactic.getStyle();
-            entry.rulesJson = tactic.getRulesJson();
-            entry.setPiecesJson = tactic.getSetPiecesJson();
-            entry.version = tactic.getVersion() == null ? 0L : tactic.getVersion();
-            entry.isDefault = tactic.isDefaultTactic();
-            snapshot.tactics.add(entry);
-        }
+        Map<String, String> payloads = new HashMap<>();
+        inTheCallersTransaction.executeWithoutResult(status -> readTheLibrary(byClub, payloads));
         return new ArrayList<>(byClub.values());
+    }
+
+    /**
+     * The library, as a projection, read through a cursor.
+     *
+     * <p>Not {@code tacticRepository.findAll()}: that materialises every row as an entity, and with
+     * 132,000 characters of rules on each of 14,976 rows it is the allocation that killed the server.
+     * A projection carries the columns and nothing else, and the cursor means the rows arrive in
+     * batches instead of all at once.
+     *
+     * <p>{@code ORDER BY t.id} is not decoration: the restore gives the default flag to the
+     * <em>first</em> tactic of a club, and the order it reads is the order the old
+     * {@code findAll()} gave.
+     */
+    private void readTheLibrary(Map<String, TacticLibrarySnapshot> byClub, Map<String, String> payloads) {
+        jdbcTemplate.query(connection -> {
+            java.sql.PreparedStatement statement = connection.prepareStatement(TACTIC_LIBRARY_SQL);
+            // The cursor. PostgreSQL only streams when the connection is not in autocommit mode, and
+            // the transaction this runs in is what turns that off. Sixty-four rows is about 8 MB of
+            // payload in flight, which is nothing next to two gigabytes.
+            statement.setFetchSize(TACTIC_LIBRARY_FETCH_SIZE);
+            return statement;
+        }, (org.springframework.jdbc.core.ResultSetExtractor<Void>) resultSet -> {
+            while (resultSet.next()) {
+                readOneTactic(resultSet, byClub, payloads);
+            }
+            return null;
+        });
+    }
+
+    private void readOneTactic(java.sql.ResultSet row,
+                               Map<String, TacticLibrarySnapshot> byClub,
+                               Map<String, String> payloads) throws java.sql.SQLException {
+        String clubName = row.getString(1);
+        if (clubName == null || clubName.isBlank()) {
+            return;
+        }
+        TacticLibrarySnapshot snapshot = byClub.computeIfAbsent(clubName, name -> {
+            TacticLibrarySnapshot created = new TacticLibrarySnapshot();
+            created.teamName = name;
+            return created;
+        });
+        TacticEntry entry = new TacticEntry();
+        entry.name = row.getString(2);
+        entry.formation = row.getString(3);
+        entry.style = row.getString(4);
+        entry.rulesJson = sharedPayload(payloads, row.getString(5));
+        entry.setPiecesJson = sharedPayload(payloads, row.getString(6));
+        entry.version = row.getLong(7);
+        entry.isDefault = row.getBoolean(8);
+        snapshot.tactics.add(entry);
+    }
+
+    /**
+     * One copy of a payload, however many rows carry it.
+     *
+     * <p>The pool holds the payload as both its key and its value, so the map costs the distinct
+     * payloads and nothing more. The strings are immutable, so a shared one cannot be changed under
+     * the rows that use it.
+     */
+    private static String sharedPayload(Map<String, String> pool, String payload) {
+        if (payload == null) {
+            return null;
+        }
+        String pooled = pool.get(payload);
+        if (pooled != null) {
+            return pooled;
+        }
+        pool.put(payload, payload);
+        return payload;
     }
 
     /**
@@ -1915,14 +2032,14 @@ public class DatabaseInitializer {
     }
 
     /** A single tactic in the snapshot: everything about it except the id and the club. */
-    private static class TacticEntry {
-        private String name;
-        private String formation;
-        private String style;
-        private String rulesJson;
-        private String setPiecesJson;
-        private long version;
-        private boolean isDefault;
+    static class TacticEntry {
+        String name;
+        String formation;
+        String style;
+        String rulesJson;
+        String setPiecesJson;
+        long version;
+        boolean isDefault;
     }
 
     static class TacticsProfileSnapshot {
