@@ -84,18 +84,30 @@
     }
 
     /*
-     * The picture on a phone. The source is a landscape frame (1168x784) and the phone is a portrait
-     * one, so `cover` cropped the sides - and the message written on the ground went off the screen
-     * with them (owner, 2026-10-21: "Maintenance stranicu da se skalira za mob slika jer text koji
-     * se nalazi na slici na mobu izadje van ekrana").
+     * The picture on a phone.
      *
-     * <p>`contain` keeps the whole frame visible, text and all; the bars it leaves at top and bottom
-     * fall on the night background, which is what the page already is. The desktop tuning
-     * (`cover`, `center 65%`) is kept for the wide screens where the whole frame is not needed.
+     * <p>The text is **baked into the picture** - "Maintenance in progress, please wait" and "TIFO
+     * will be back online soon" are pixels in `maintenance-bg.jpg`, not type on the page. So the
+     * picture cannot be cropped on a phone without cutting the message off, and the phone's portrait
+     * frame is the opposite of the picture's landscape one. (Owner, 2026-10-21: "vidis da ima preko
+     * cele slike tekst.. da trazim novu sliku specijalno za mob ili je mozes skalirati za portret a
+     * da ostane text?")
+     *
+     * <p><b>Measured off the pixels</b> (1168x784): the text block is x 195..954 - 759px of the 1168 -
+     * and y 150..395, and the widest line is "Maintenance in progress,". For that line to fit a 390px
+     * phone whole, the picture can be at most 390 / 759 = 0.51 of its own width. At 0.94 of the
+     * phone's width there is still a margin on each side, so the picture is **144.6%** of the phone's
+     * width: the headline lands at 366px and the big "M" at 27px tall.
+     *
+     * <p>So the picture is a **band** on a phone and not a full-bleed cover - at 144.6% it is 564x379
+     * in a 390x844 screen. It cannot be taller while the text stays whole: at the phone's full height
+     * the picture would be 1258px wide and the message 817px of it, half off the screen. **A portrait
+     * picture would be the better answer for a phone** - the text set for a phone and the ground
+     * filling the screen - and it is a one-line change here when it arrives.
      */
     @media (max-width: 768px) {
         .stage::before {
-            background-size: contain;
+            background-size: 144.6% auto;
             background-position: center center;
         }
     }
