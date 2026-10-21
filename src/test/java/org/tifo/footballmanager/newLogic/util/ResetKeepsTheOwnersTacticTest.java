@@ -43,7 +43,14 @@ class ResetKeepsTheOwnersTacticTest {
     @Autowired TeamTacticsProfileRepository profiles;
     @Autowired TacticRepository tactics;
 
-    private static final String CLUB = "Reset-Tactics Club";
+    /**
+     * The club whose library a reset keeps: the owner's own.
+     *
+     * <p>The name is the whole point (owner, 2026-10-21): a reset empties the world and the rebuild
+     * draws the clubs again with new names, so only the two managers' clubs keep their identity, and
+     * only their libraries are carried across. The snapshot reads the clubs by name.
+     */
+    private static final String CLUB = "OFK Omladinac";
     private static final String RULES =
             "[{\"slotKey\":\"CMR\",\"ballStateKey\":\"CELL_2_3\","
             + "\"possessionContext\":\"WE_HAVE_BALL\",\"targetCellKey\":\"CELL_2_3\"}]";
@@ -52,7 +59,9 @@ class ResetKeepsTheOwnersTacticTest {
     @DisplayName("a saved profile keeps its world-default designation across a snapshot and restore")
     void theWorldDefaultDesignationSurvivesASnapshot() {
         Team club = new Team();
-        club.setName(CLUB + " " + System.nanoTime());
+        // The exact name a reset keeps: the snapshot reads the clubs by name, because a reset empties
+        // the world and the rebuild draws the clubs again.
+        club.setName(CLUB);
         club = teams.save(club);
         final String clubName = club.getName();
 
@@ -92,7 +101,9 @@ class ResetKeepsTheOwnersTacticTest {
     @DisplayName("a club's whole tactic library comes back, not just its default")
     void theWholeLibrarySurvives() {
         Team club = new Team();
-        club.setName(CLUB + " lib " + System.nanoTime());
+        // The exact name a reset keeps: the snapshot reads the clubs by name, because a reset empties
+        // the world and the rebuild draws the clubs again.
+        club.setName(CLUB);
         club = teams.save(club);
         final String clubName = club.getName();
 

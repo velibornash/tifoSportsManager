@@ -18,7 +18,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <b>three</b> distinct payloads. The library is one tactic replicated fourteen thousand times.
  *
  * <p><b>What is measured here, and why not the heap.</b> The heap cannot be measured on H2: it hands
- * back the very object it was given, so a test that stored one string and pointed sixteen rows at it
+ * back the very object it was given, so a test that stored one string and pointed several rows at it
  * would measure nothing at all. What differs between the broken snapshot and the fixed one is
  * <em>what is held</em>, and that is measured two ways:
  *
@@ -53,11 +52,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       identical payloads once, which is what makes the whole library one copy instead of fourteen
  *       thousand.
  * </ul>
+ *
+ * <p>And a third thing, which is the owner's own rule: a reset keeps <b>only the two managers'
+ * clubs</b> (owner, 2026-10-21: "taktika default treba da prezivi reset SAMO za Omladinac ... jer
+ * se timovi menjaju posle svakog reseta (sem omladinca i sremca)"), so the snapshot reads only
+ * those two.
  */
 class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
 
-    /** How many clubs carry the same payload. The owner's world has 14,976. */
-    private static final int CLUBS = 16;
+    /**
+     * The clubs a reset keeps: the two managers'.
+     *
+     * <p>They are the two whose identity survives a reset - the rebuild draws the other fourteen
+     * thousand again, with new names - so they are the only two whose tactics are worth carrying
+     * across one.
+     */
+    private static final List<String> CLUBS_A_RESET_KEEPS = List.of("OFK Omladinac", "Sremac Berkasovo");
 
     /** How big the payload is. The owner's is 132,000 characters; a megabyte is not a rounding error. */
     private static final int PAYLOAD_CHARS = 1_000_000;
@@ -75,13 +85,13 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
         String payload = onePayload();
         Country country = aCountry();
 
-        for (int i = 0; i < CLUBS; i++) {
-            // **A separate copy of the same rules for every club.** That is what the world holds:
-            // PostgreSQL decodes every row into its own string, so fourteen thousand rows are
-            // fourteen thousand strings of a hundred and thirty-two thousand characters each. A
-            // test that stored one string and pointed sixteen rows at it would hand the snapshot one
-            // object to share, and would measure nothing.
-            saveTactic(aClub(country, "Snapshot " + i), "4-4-2", true, new String(payload.toCharArray()));
+        // **A separate copy of the same rules for every club.** That is what the world holds:
+        // PostgreSQL decodes every row into its own string, so fourteen thousand rows are
+        // fourteen thousand strings of a hundred and thirty-two thousand characters each. A
+        // test that stored one string and pointed several rows at it would hand the snapshot one
+        // object to share, and would measure nothing.
+        for (String name : CLUBS_A_RESET_KEEPS) {
+            saveTactic(aClubNamed(country, name), "4-4-2", true, new String(payload.toCharArray()));
         }
 
         // The test's own copy of the data is not what the snapshot must hold. A reset reads the
@@ -91,14 +101,14 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
 
         List<DatabaseInitializer.TacticLibrarySnapshot> snapshot = initializer.snapshotTacticLibrary();
 
-        assertEquals(CLUBS, snapshot.size(),
-                "the snapshot did not carry every club's library, so a reset would lose a club's tactics");
+        assertEquals(CLUBS_A_RESET_KEEPS.size(), snapshot.size(),
+                "the snapshot did not carry the two managers' libraries, so a reset would lose them");
 
         assertEquals(0, managedEntities(),
                 "the snapshot left " + managedEntities() + " entities in the session. It read the library "
                         + "as entities, and with 132,000 characters of rules on each of fourteen thousand "
                         + "rows that is about two gigabytes of strings in a heap of three thousand two "
-                        + "hundred — which is the out-of-memory error that took the app down.");
+                        + "hundred - which is the out-of-memory error that took the app down.");
     }
 
     @Test
@@ -108,12 +118,13 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
         String payload = onePayload();
         Country country = aCountry();
 
-        for (int i = 0; i < CLUBS; i++) {
-            saveTactic(aClub(country, "Payload " + i), "4-4-2", true, new String(payload.toCharArray()));
+        for (String name : CLUBS_A_RESET_KEEPS) {
+            saveTactic(aClubNamed(country, name), "4-4-2", true, new String(payload.toCharArray()));
         }
 
         List<DatabaseInitializer.TacticLibrarySnapshot> snapshot = initializer.snapshotTacticLibrary();
 
+        assertTrue(snapshot.size() >= 2, "the test needs two clubs to compare");
         String first = snapshot.get(0).tactics.get(0).rulesJson;
         for (int i = 1; i < snapshot.size(); i++) {
             // `assertSame` would print two megabytes of rules into the report when it fails, so the
@@ -128,10 +139,29 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
 
     @Test
     @Transactional
+    @DisplayName("the snapshot carries only the clubs a reset keeps")
+    void theSnapshotCarriesOnlyTheClubsAResetKeeps() {
+        // A club the rebuild will draw again, under a new name. Its tactics are the previous
+        // world's, and carrying them across the reset is two gigabytes of reading to be thrown away.
+        Country country = aCountry();
+        saveTactic(aClub(country, "Rebuilt Away"), "4-4-2", true, onePayload());
+
+        List<DatabaseInitializer.TacticLibrarySnapshot> snapshot = initializer.snapshotTacticLibrary();
+
+        for (DatabaseInitializer.TacticLibrarySnapshot club : snapshot) {
+            assertTrue(CLUBS_A_RESET_KEEPS.contains(club.teamName),
+                    "the snapshot carried '" + club.teamName + "', which a reset does not keep. Only the "
+                            + "two managers' clubs keep their identity - the rebuild draws the rest "
+                            + "again with new names - so only theirs are worth carrying across.");
+        }
+    }
+
+    @Test
+    @Transactional
     @DisplayName("every club's tactic still comes back whole")
     void theLibraryStillRoundTrips() {
         String payload = onePayload();
-        Team club = aClub(aCountry(), "Snapshot Round Trip");
+        Team club = aClubNamed(aCountry(), "OFK Omladinac");
         saveTactic(club, "Owner's own", true, payload);
 
         var snapshot = initializer.snapshotTacticLibrary();
@@ -177,6 +207,25 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
     private Team aClub(Country country, String label) {
         Team team = new Team();
         team.setName("ZZ Snapshot club " + label + " " + UUID.randomUUID());
+        team.setCountry(country);
+        team.setType(CompetitionTeamType.CLUB);
+        return teams.save(team);
+    }
+
+    /**
+     * A club with one of the names a reset keeps.
+     *
+     * <p>The name is the whole point: the snapshot reads the clubs by name, because a reset empties
+     * the world and the rebuild draws the clubs again. So the test's club has to carry the name the
+     * reset would give it.
+     */
+    private Team aClubNamed(Country country, String name) {
+        Team existing = teams.findByName(name).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        Team team = new Team();
+        team.setName(name);
         team.setCountry(country);
         team.setType(CompetitionTeamType.CLUB);
         return teams.save(team);

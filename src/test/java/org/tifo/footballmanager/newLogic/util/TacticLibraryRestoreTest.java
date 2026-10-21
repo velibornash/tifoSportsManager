@@ -33,6 +33,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TacticLibraryRestoreTest extends BaseTest {
 
+    /** The club whose library a reset keeps: the owner's own. */
+    private static final String CLUB_A_RESET_KEEPS = "OFK Omladinac";
+
     @Autowired private DatabaseInitializer initializer;
     @Autowired private TacticRepository tactics;
     @Autowired private TeamRepository teams;
@@ -140,8 +143,20 @@ class TacticLibraryRestoreTest extends BaseTest {
 
     // --- helpers ----------------------------------------------------------
 
-    /** A throwaway club, following TacticsProfileRestoreTest so the two agree on what one is. */
+    /**
+     * A club whose library a reset keeps.
+     *
+     * <p>The name is the whole point, and it changed with the owner's rule (2026-10-21: "taktika
+     * default treba da prezivi reset SAMO za Omladinac ... jer se timovi menjaju posle svakog
+     * reseta (sem omladinca i sremca)"). A reset empties the world and the rebuild draws the clubs
+     * again with new names, so the only libraries worth carrying across are the two managers' — and
+     * the snapshot reads the clubs by name.
+     */
     private Team aClub(String label) {
+        Team existing = teams.findByName(CLUB_A_RESET_KEEPS).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
         Country country = new Country();
         country.setName("ZZ Library " + label + " " + UUID.randomUUID());
         country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
@@ -149,7 +164,7 @@ class TacticLibraryRestoreTest extends BaseTest {
         country = countries.save(country);
 
         Team team = new Team();
-        team.setName("ZZ Library club " + label + " " + UUID.randomUUID());
+        team.setName(CLUB_A_RESET_KEEPS);
         team.setCountry(country);
         team.setType(CompetitionTeamType.CLUB);
         return teams.save(team);

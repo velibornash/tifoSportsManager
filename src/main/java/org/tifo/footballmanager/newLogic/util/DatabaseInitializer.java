@@ -65,6 +65,24 @@ public class DatabaseInitializer {
     private static final String SREMAC_STADIUM = "Stadion Livadice";
 
     /**
+     * The clubs whose tactic library a reset can restore.
+     *
+     * <p><b>The two managers' clubs, and no others</b> (owner, 2026-10-21: "taktika default treba da
+     * prezivi reset SAMO za Omladinac pa cu je ja posle exportovati kroz admin jer se timovi
+     * menjaju posle svakog reseta (sem omladinca i sremca)").
+     *
+     * <p>A reset empties the world and the rebuild draws the clubs again, with new names — the
+     * fourteen thousand of them are the previous world's. Only the two clubs a manager actually plays
+     * for keep their identity, so only their tactics are worth carrying across a reset; the rest were
+     * being read out of the database (2 GB of them) to be thrown away.
+     *
+     * <p>The <b>default</b> tactic does not depend on any of this: it travels in the backup file and
+     * in the profile row, and the rebuild gives it to every club. The owner exports it through the
+     * admin panel after a reset.
+     */
+    private static final List<String> CLUBS_A_RESET_KEEPS = List.of("OFK Omladinac", SREMAC_TEAM_NAME);
+
+    /**
      * The tactic library, as a projection.
      *
      * <p>Not the entities: see {@link #snapshotTacticLibrary()} for why the world cannot be loaded
@@ -75,8 +93,9 @@ public class DatabaseInitializer {
                    t.version, t.is_default
             FROM tactic t
             JOIN team c ON c.id = t.team_id
+            WHERE c.name IN ('%s')
             ORDER BY t.id
-            """;
+            """.formatted(String.join("', '", CLUBS_A_RESET_KEEPS));
 
     /**
      * How many rows the library read carries at a time.
@@ -1076,6 +1095,11 @@ public class DatabaseInitializer {
      * a cursor over a projection — no entities, no proxies, nothing for the session to hold — and the
      * snapshot's footprint is the <em>distinct</em> tactical data rather than the world's copy of it.
      * Three distinct payloads are about 400 KB.
+     *
+     * <p><b>And only the clubs a reset keeps are read at all</b> — see
+     * {@link #CLUBS_A_RESET_KEEPS}. The other fourteen thousand clubs are the previous world's: the
+     * rebuild draws them again with new names, so their tactics were two gigabytes of reading to be
+     * thrown away.
      */
     List<TacticLibrarySnapshot> snapshotTacticLibrary() {
         Map<String, TacticLibrarySnapshot> byClub = new LinkedHashMap<>();
