@@ -1281,7 +1281,18 @@ public class DatabaseInitializer {
                 .filter(Objects::nonNull)
                 .forEach(snapshot -> {
                     TacticsProfileSnapshot existing = merged.get(snapshot.teamName);
+                    // **Readable beats long.** The rule used to compare the *length* of the rules, and
+                    // that is not the same thing: a degraded rulesJson of eighteen characters is longer
+                    // than nothing, so it beat a real one, and every club in the world was then given
+                    // rules the engine cannot read (owner, 2026-10-21: "skoro za svaki klub je izasla
+                    // poruka ... has a tactical profile for 4-3-3 whose rules could not be read").
+                    //
+                    // So the file's rules win when the database's cannot be read and the file's can,
+                    // and the length and the version decide the rest.
+                    boolean fileReadable = rulesAreReadable(snapshot.rulesJson);
+                    boolean databaseReadable = existing != null && rulesAreReadable(existing.rulesJson);
                     boolean shouldReplace = existing == null
+                            || (fileReadable && !databaseReadable)
                             || (snapshot.rulesJson != null && snapshot.rulesJson.length() > 10
                                 && (existing.rulesJson == null || existing.rulesJson.length() <= 10))
                             || (snapshot.version != null && existing.version != null && snapshot.version > existing.version);
@@ -1302,6 +1313,20 @@ public class DatabaseInitializer {
                 });
 
         return new ArrayList<>(merged.values());
+    }
+
+    /**
+     * Whether the engine can read these rules.
+     *
+     * <p>The same parser the match engine uses, so the answer is the one that matters: a shape the
+     * engine refuses is a shape that is worth replacing, and a shape it accepts is worth keeping.
+     */
+    private static boolean rulesAreReadable(String rulesJson) {
+        if (rulesJson == null || rulesJson.isBlank()) {
+            return false;
+        }
+        return org.tifo.footballmanager.newLogic.sim.tactics.TacticsRules.fromProfileJson(
+                rulesJson, null, "reset snapshot") != null;
     }
 
     /**
