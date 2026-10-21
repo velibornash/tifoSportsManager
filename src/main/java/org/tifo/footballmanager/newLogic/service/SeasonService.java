@@ -45,6 +45,7 @@ public class SeasonService {
     /** The coin that separates two teams level on everything the table can measure. */
     private final RankingTieBreakService tieBreaks;
     private final GameClockRepository gameClockRepository;
+    private final jakarta.persistence.EntityManager entityManager;
     private final SeasonRepository seasonRepository;
     private final SeasonCompetitionRepository seasonCompetitionRepository;
     private final CompetitionEntryRepository competitionEntryRepository;
@@ -242,7 +243,20 @@ public class SeasonService {
                 .toList();
         for (CompetitionEntry entry : stale) {
             if (entry.getId() != null) {
-                competitionEntryRepository.deleteById(entry.getId());
+                // **A delete that does not care whether the row is still there.**
+                //
+                // <p>Two requests can adjust the same table at once - the dashboard's League position
+                // tile and the League page both read the table, and the owner had both open. Both
+                // found the same stale row, both deleted it, and the second one's delete took zero
+                // rows. Hibernate checks the row count of a batched delete, so it answered
+                // `StaleStateException`, the transaction rolled back, and the league table answered
+                // **500** - which the page showed as "No league yet" (owner, 2026-10-21).
+                //
+                // <p>The row is gone either way, and that is the outcome both requests wanted. A
+                // statement that does not check the row count is the honest way to say so.
+                entityManager.createNativeQuery("DELETE FROM competition_entry WHERE id = ?")
+                        .setParameter(1, entry.getId())
+                        .executeUpdate();
             }
         }
 

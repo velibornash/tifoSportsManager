@@ -5,16 +5,39 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.ColumnDefault;
+import org.hibernate.annotations.DynamicUpdate;
 import lombok.*;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalDouble;
 
+/**
+ * A club, and <b>the update that does not take a column it did not change</b>.
+ *
+ * <p><b>Why {@code @DynamicUpdate} is on this entity</b> (owner, 2026-10-21: "posle database inita
+ * nije napravljena srpska piramida.. imam meceve na dashboardu ali nema lige").
+ *
+ * <p>The Initialize DB job binds <b>one</b> {@code EntityManager} for the whole job, and the pyramid
+ * is built by thirty-one divisions that run in parallel, each in its own transaction. The job's own
+ * thread reads the owner's club <b>before</b> those transactions commit, and writes it <b>after</b> —
+ * so its copy is stale, and a plain UPDATE writes the whole row and puts the stale
+ * {@code competition_id} back over the division's.
+ *
+ * <p>Measured, with the fix reverted: the Superliga's division set the club's competition to the
+ * league and committed it, and eleven seconds later the job's own thread wrote the row back with a
+ * null competition. The club was in the league's table of fixtures and in no league at all, which is
+ * what "no league" looked like from the manager's chair.
+ *
+ * <p>With it, the UPDATE lists only the columns that actually changed, so a session that is holding
+ * an old copy cannot take a column another transaction has since written. The club's budget and
+ * reputation — which the same division sets — are safe for the same reason.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity(name = "Team")
+@DynamicUpdate
 @Table(indexes = {
         @Index(name = "ix_team_name_prefix", columnList = "name"),
         @Index(name = "ix_team_competition", columnList = "competition_id"),
