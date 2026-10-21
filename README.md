@@ -105,6 +105,42 @@ The build is a separate file (`local.dockerfile`) rather than a change to `image
 `image.dockerfile` is the server's build. The only difference is that the local build keeps the Maven
 repository in a cache, so a rebuild after a code change does not download the world again.
 
+#### Rebuilding after a code change
+
+The app in the container is the **jar inside the image**, so a code change is not live until the image
+is rebuilt and the container is recreated. Docker Desktop shows the image and the container, but the
+rebuild itself is a `docker` command — Docker Desktop has no "rebuild" button on an image, and its
+"Start" on an existing container re-runs the **old** image.
+
+```bash
+cd /Users/velja/IdeaProjects/TifoManagerApp
+
+docker compose up -d --build        # rebuild the image and recreate the container
+```
+
+That is the whole thing. What it does, and what Docker Desktop shows afterwards:
+
+1. **The build** (`local.dockerfile`) compiles the current source into a new jar and bakes it into
+   `tifo-sports-manager:local`. The Maven repository is a build cache, so this is about a minute and
+   it does not download the world again.
+2. **The recreate**: Compose stops the old `tifo-app` container and starts a new one from the new
+   image. The database is a separate container and a named volume, so **the world is not touched**.
+3. **In Docker Desktop**: the **Images** tab shows `tifo-sports-manager:local` with a new *Created*
+   time — that is the proof the image was rebuilt — and the **Containers** tab shows `tifo-app` with
+   a new *Created* time as well, because the container was recreated. The app answers on
+   <http://localhost:8080> about 15 seconds later.
+
+Two steps instead of one, when you want to see the image change before the container does:
+
+```bash
+docker build -f local.dockerfile -t tifo-sports-manager:local .   # the image only
+docker compose up -d --force-recreate                              # the container on it
+```
+
+**Then reload the browser.** The app serves its own static files, and the service worker
+(`/sw.js`) keeps a copy of the old ones, so the page can show the previous build after a rebuild.
+A hard reload (Cmd-Shift-R) is what shows the new code.
+
 ---
 
 ## The layout
