@@ -28,7 +28,7 @@ export const CUPS = [
 
 export const TIERS = [1, 2, 3, 4, 5];
 
-export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, getTeamId }) {
+export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, getTeamId, loadClubProfile }) {
     /** Read the payload, or say why it could not be read. Never both. */
     async function readJson(url) {
         const response = await authFetch(url);
@@ -36,6 +36,55 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
     }
 
     const escape = value => escapeHtml(value);
+
+    /**
+     * A club's name as something the reader can press.
+     *
+     * <p>The group tables and the bracket named clubs and nothing on the page led anywhere (owner,
+     * 2026-10-21: *"da mogu da kliknem na klubove"*). The name now opens the club's own profile, the
+     * same page the world club ranking opens, so a manager can look at a Champions Cup opponent's
+     * squad without leaving the competition he found them in.
+     *
+     * <p><b>By id, never by name.</b> The endpoint sends `teamId` on every table row and
+     * `homeTeamId`/`awayTeamId` on every tie, and this codebase has four defects that came from
+     * joining a club to something by its name - there are two clubs called GFK Zemun in one Serbian
+     * division. A club whose id is absent is left as plain text rather than linked to a guess.
+     *
+     * <p>It uses `.fm-team-link`, the established clickable-club look (bold, pointer, accent on
+     * hover), and not a button: a button around a name leaves a white slab on a dark card, which is
+     * what the owner asked to have removed from this page's ties.
+     */
+    function clubLink(teamId, name, fallback) {
+        const label = escape(name || fallback);
+        if (!teamId) {
+            return label;
+        }
+        return `<span class="fm-team-link js-cup-club" data-club-team-id="${escape(teamId)}"
+                      role="link" tabindex="0" title="Open this club">${label}</span>`;
+    }
+
+    /** Every clickable club on the page opens its profile. `loadClubProfile` is injected, not global. */
+    function wireClubLinks(root) {
+        if (typeof loadClubProfile !== 'function') {
+            return;
+        }
+        root.querySelectorAll('.js-cup-club').forEach(node => {
+            const open = event => {
+                event.stopPropagation();
+                const teamId = Number(node.dataset.clubTeamId);
+                if (teamId) loadClubProfile(teamId);
+            };
+            node.addEventListener('click', open);
+            // A role="link" that only answers the mouse is not a link: the keyboard reaches it with
+            // Tab and it must open with Enter or Space, the way every other link on the page does.
+            node.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    open(event);
+                }
+            });
+        });
+    }
 
     // ------------------------------------------------------------------ markup
 
@@ -109,7 +158,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                         ${rows.map(row => `
                             <tr${isOwnRow(row) ? ' class="is-own"' : ''}>
                                 <td class="st-pos">${escape(row.position)}</td>
-                                <td class="sq-name">${escape(row.team)}${isOwnRow(row) ? ownClubChipHtml() : ''}</td>
+                                <td class="sq-name">${clubLink(row.teamId, row.team, 'Unknown')}${isOwnRow(row) ? ownClubChipHtml() : ''}</td>
                                 <td>${escape(row.country || '—')}</td>
                                 <td>${escape(row.played)}</td>
                                 <td>${escape(row.wins)}</td>
@@ -216,7 +265,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
         return `
             <tr class="fm-cup-tie-row${mine ? ' is-own' : ''}"${mine ? ' title="Your tie"' : ''}>
                 <td>Matchday ${escape(tie.round)}</td>
-                <td class="sq-name">${escape(tie.home || 'TBC')}</td>
+                <td class="sq-name">${clubLink(tie.homeTeamId, tie.home, 'TBC')}</td>
                 <td class="fm-cup-final-score">
                     <button type="button" class="fm-cup-tie-sep js-open-tie"
                             data-tie-fixture="${escape(tie.id)}"
@@ -224,7 +273,7 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                             data-tie-match-id="${escape(tie.matchId ?? '')}"
                             title="${tie.played ? 'Open this tie' : 'Open the pre-match state for this tie'}">${score}</button>
                 </td>
-                <td class="sq-name">${escape(tie.away || 'TBC')}</td>
+                <td class="sq-name">${clubLink(tie.awayTeamId, tie.away, 'TBC')}</td>
             </tr>`;
     }
 
@@ -280,11 +329,11 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                                 ? '<div class="fm-empty">Not drawn yet.</div>'
                                 : round.fixtures.map(tie => `
                                     <div class="fm-cup-tie">
-                                        <span>${escape(tie.home || 'TBC')}</span>
+                                        <span>${clubLink(tie.homeTeamId, tie.home, 'TBC')}</span>
                                         <span class="fm-cup-tie-sep">${tie.played
                                             ? `${escape(tie.homeGoals ?? '')} – ${escape(tie.awayGoals ?? '')}`
                                             : 'v'}</span>
-                                        <span>${escape(tie.away || 'TBC')}</span>
+                                        <span>${clubLink(tie.awayTeamId, tie.away, 'TBC')}</span>
                                     </div>`).join('')}
                         </div>
                     </div>`).join('')}
@@ -342,6 +391,9 @@ export function createClubCupView({ authFetch, escapeHtml, loadPage, loadMatch, 
                 });
             });
             wireTies(mainContent, 'clubCup');
+            // After wireTies, and it does not fight it: a club name and the score beside it are
+            // different targets, and the name's handler stops the click from reaching the row.
+            wireClubLinks(mainContent);
         } catch (err) {
             console.error('Failed to load the club cup page:', err);
             mainContent.innerHTML = `<div class="manager-card"><h2>${escape(cup.name)}</h2>

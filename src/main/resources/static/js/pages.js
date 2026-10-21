@@ -520,7 +520,12 @@ function buildPageNavState(page, options = {}) {
         getTeamId: () => currentUserTeamId,
         // The shared match view, so a Champions / Masters / Challenge Cup tie opens the same screen a
         // league fixture does - prediction before, lineups, stats, goals and a report after (P0-PREV-2).
-        loadMatch: (...args) => loadMatch(...args)
+        loadMatch: (...args) => loadMatch(...args),
+        // The club profile, so a club named in a group table or a bracket opens its page. Injected the
+        // same way loadMatch is, rather than reached for on window: a module that calls
+        // window.loadClubProfile works on the page where someone remembered to define it and nowhere
+        // else, which is what this file's own header warns about.
+        loadClubProfile: (...args) => loadClubProfile(...args)
     });
     const nationalTournamentView = createNationalTournamentView({
         authFetch,
