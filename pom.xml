@@ -187,6 +187,45 @@
 
     <build>
         <plugins>
+            <!--
+                The build's own name, written into the jar (owner, 2026-10-21: "trebamo uvesti verziju app
+                da pise negde na settings ili gde god i da dizemo svaki put kad izmenimo da mozemo da
+                pratimo").
+
+                <p>The version is the commit, so it rises on every change by itself and two machines can
+                be compared by reading it. `git.properties` goes into the classpath and
+                `BuildInfoController` reads it; the app shows it on the Settings page.
+
+                <p>**It is written by the build, not by a plugin that has to be downloaded.** The
+                git-commit-id plugin is the usual way, and it is not here: its own dependency is not in
+                the offline repository, so an offline build - the owner's local one - would fail before
+                it started. One `sh` line does the same work with what every build already has.
+
+                <p>Without git (a source archive, a machine with no repository) the file says
+                "unknown" and the build still succeeds: a build that cannot say its version is still a
+                build that works.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>write-build-info</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>sh</executable>
+                            <arguments>
+                                <argument>-c</argument>
+                                <argument>mkdir -p "${project.build.outputDirectory}" &amp;&amp; { echo "git.commit.id.abbrev=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"; echo "git.branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"; echo "git.build.time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "${project.build.outputDirectory}/git.properties"; exit 0</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Spring Boot plugin -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>

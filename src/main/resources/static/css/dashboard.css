@@ -5986,6 +5986,21 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 
 /*
+ * The dashboard's recent-matches card carries the same surface as the cards beside it (owner,
+ * 2026-10-21: "desktop - recent matches, providan, treba biti kao ostali nastrani da ima isti
+ * background (providno je i na mobu)").
+ *
+ * <p>The club's own match card is a four per cent wash - on the club's own page it sits on a panel and
+ * reads as a card, and on the dashboard it sat on the stadium with nothing behind it, so the card was
+ * transparent and the text lay on the photograph.
+ */
+.fm-dashboard-section--recent .fm-fixture {
+    background: var(--surface-2-grad);
+    border: 1px solid var(--border-faint);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+/*
  * The dashboard reads a little larger on a desktop (owner, 2026-10-19: "povecaj malko za sve font").
  *
  * <p>Scoped to the dashboard and to the desktop, and raised by a point rather than a jump: the
@@ -6778,6 +6793,16 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
     .fm-season-select-wrap {
         min-width: 0;
+    }
+
+    /*
+     * **The match page's lineups are one table under the other** (owner, 2026-10-21: "mob - match
+     * details, lineup nije bio ovakav (slika 2)"). Two tables side by side on a 430px phone are 190px
+     * each, and the rate column ran off the right edge of both. The tablet has had one column for
+     * this reason for a long time; the phone now gets it too.
+     */
+    .fm-match-lineups-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     /*

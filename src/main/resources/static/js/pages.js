@@ -1759,7 +1759,42 @@ async function loadUserProfile() {
                         </label>
                     </div>
                 </section>
+                <section class="fm-panel fm-build-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h2>Version</h2>
+                            <p class="fm-subtle">Which build this is. The commit is the version: it rises
+                                with every change, so two machines can be compared by reading it.</p>
+                        </div>
+                        <span class="fm-panel-action">Build</span>
+                    </div>
+                    <div class="club-profile-detail-list">
+                        <div class="club-profile-detail-row"><span>Commit</span><strong data-build-commit>reading…</strong></div>
+                        <div class="club-profile-detail-row"><span>Branch</span><strong data-build-branch>reading…</strong></div>
+                        <div class="club-profile-detail-row"><span>Built</span><strong data-build-time>reading…</strong></div>
+                    </div>
+                </section>
             </div>`;
+        // The build's own version, read from the server (owner, 2026-10-21: "trebamo uvesti verziju app
+        // da pise negde na settings ili gde god i da dizemo svaki put kad izmenimo da mozemo da pratimo").
+        // A server that cannot answer it must not break the Settings page, so the line keeps the
+        // placeholder it was given.
+        void (async () => {
+            try {
+                const response = await authFetch('/api/build-info');
+                if (!response.ok) return;
+                const build = await response.json();
+                const set = (selector, value) => {
+                    const node = mainContent.querySelector(selector);
+                    if (node && value) node.textContent = String(value);
+                };
+                set('[data-build-commit]', build?.commit);
+                set('[data-build-branch]', build?.branch);
+                set('[data-build-time]', build?.builtAt);
+            } catch (error) {
+                // Nothing to say: the build information is a convenience, not the page's work.
+            }
+        })();
         mainContent.querySelectorAll('[data-nav-position]').forEach(radio => {
             radio.addEventListener('change', () => {
                 if (radio.checked) applyDesktopNavPosition(radio.value);
