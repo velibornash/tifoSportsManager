@@ -5196,6 +5196,19 @@ body {
         display: none;
     }
 
+    /*
+     * **Except the League position tile**, which stays in the layout even with nothing to say
+     * (owner, 2026-10-21: "League position widget sa dashboarda na mob view se pojavi i kad nema
+     * podataka - tako bi trebao i desktop (na desktopu totalno nestane kad nema podataka)").
+     *
+     * <p>The phone has always shown it and the desktop hid it, so a manager whose club is not in a
+     * league saw the tile on his phone and not on his desk — one answer in two shapes. With nothing
+     * to say it reads "—" and "No league yet", which is what the phone says.
+     */
+    .fm-dashboard-view [data-widget="position"].is-hidden {
+        display: flex;
+    }
+
     /* The four tiles of the first row share one height, and so do the match cards below. */
     .fm-dashboard-view [data-widget] {
         min-height: 164px;
