@@ -35,4 +35,20 @@ public interface StaffMemberRepository extends JpaRepository<StaffMember, Long> 
     List<StaffMember> findByTeamIsNull();
 
     long countByTeamIdAndRole(Long teamId, StaffRole role);
+
+    /**
+     * How many staff every club holds, by role, in one query.
+     *
+     * <p><b>The same shape of fix as {@link #findStaffedTeamIds()}, for the same reason.</b> The AI
+     * recruiting pass used to ask every club in the world how many staff it had — seven counts for
+     * each of fourteen thousand clubs, a hundred thousand round trips inside one transaction — and the
+     * job never finished (owner, 2026-10-21: "nije stigao staff, nesto ga zeza"). The set of counts
+     * is one query, and the rest is arithmetic.
+     *
+     * <p>Each row is the club's id, the role, and how many of that role it holds.
+     */
+    @Query("select t.team.id, t.role, count(t) from StaffMember t "
+            + "where t.team.id is not null and t.role is not null "
+            + "group by t.team.id, t.role")
+    List<Object[]> countsByTeamAndRole();
 }

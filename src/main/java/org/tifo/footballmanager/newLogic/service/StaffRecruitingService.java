@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -241,22 +242,39 @@ public class StaffRecruitingService {
     /**
      * Lets a handful of AI clubs each fill one vacancy.
      *
+     * <p><b>Three queries, and the world is not walked one club at a time</b> (owner, 2026-10-21:
+     * "nije stigao staff, nesto ga zeza"). It used to ask every club in the world for its staff count
+     * — seven queries for each of fourteen thousand clubs — and to ask for the candidates on the
+     * market again for every club it looked at. That is a hundred thousand round trips inside one
+     * transaction, and the job never finished: the market's weekly batch was rolled back with it, the
+     * row stayed PENDING for ever, and the next scan took the slot again while the first copy was
+     * still running. **The staff never arrived because the job that brings them never completed.**
+     *
+     * <p>So the counts come in one query, the candidates in one query, and the clubs in one, and the
+     * rest is arithmetic.
+     *
      * @return how many signed
      */
     @Transactional
     public int aiRecruit() {
         int signed = 0;
+        List<StaffMember> candidates = staff.findByTeamIsNull();
+        if (candidates.isEmpty()) {
+            return 0;
+        }
+        Map<Long, Map<StaffRole, Integer>> held = staffCountsByTeamAndRole();
+
         List<Team> clubs = new ArrayList<>();
         for (Team club : teams.findAll()) {
             if (club.isHumanControlled()) continue;
-            if (!hasVacancy(club.getId())) continue;
+            if (!hasVacancy(held, club.getId())) continue;
             clubs.add(club);
         }
         Collections.shuffle(clubs, random);
 
         for (Team club : clubs) {
             if (signed >= AI_SIGNUPS_PER_WEEK) break;
-            StaffMember best = bestCandidateFor(club);
+            StaffMember best = bestCandidateFor(club, candidates, held);
             if (best == null) continue;
             best.setTeam(club);
             staff.save(best);
@@ -268,16 +286,35 @@ public class StaffRecruitingService {
         return signed;
     }
 
+    /**
+     * How many staff each club holds, by role, in one query.
+     *
+     * <p>The shape the answer is used in: a club's vacancies are read out of it rather than asked
+     * for, so the world's fourteen thousand clubs cost one round trip between them.
+     */
+    private Map<Long, Map<StaffRole, Integer>> staffCountsByTeamAndRole() {
+        Map<Long, Map<StaffRole, Integer>> held = new HashMap<>();
+        for (Object[] row : staff.countsByTeamAndRole()) {
+            Long teamId = (Long) row[0];
+            StaffRole role = (StaffRole) row[1];
+            int count = ((Number) row[2]).intValue();
+            if (teamId == null || role == null) continue;
+            held.computeIfAbsent(teamId, ignored -> new HashMap<>()).put(role, count);
+        }
+        return held;
+    }
+
     // ------------------------------------------------------------------
     // Internals
     // ------------------------------------------------------------------
 
     /** The best candidate a club could still use and pay, or null. */
-    private StaffMember bestCandidateFor(Team club) {
+    private StaffMember bestCandidateFor(Team club, List<StaffMember> candidates,
+                                        Map<Long, Map<StaffRole, Integer>> held) {
         double budget = club.getBudget() == null ? 0.0 : club.getBudget();
         StaffMember best = null;
-        for (StaffMember candidate : staff.findByTeamIsNull()) {
-            if (!hasVacancy(club.getId(), candidate.getRole())) continue;
+        for (StaffMember candidate : candidates) {
+            if (!hasVacancy(held, club.getId(), candidate.getRole())) continue;
             double wage = candidate.getWeeklyWage() == null ? 0.0 : candidate.getWeeklyWage();
             if (wage > budget) continue;
             if (best == null || candidate.overallSkill() > best.overallSkill()) {
@@ -287,16 +324,23 @@ public class StaffRecruitingService {
         return best;
     }
 
-    private boolean hasVacancy(Long teamId) {
+    /**
+     * Whether a club has a gap in any of the roles the AI clubs hire for.
+     *
+     * <p>Read out of the counts that came in one query, so the whole world is arithmetic here.
+     */
+    private boolean hasVacancy(Map<Long, Map<StaffRole, Integer>> held, Long teamId) {
         for (StaffRole role : AI_PRIORITY) {
-            if (hasVacancy(teamId, role)) return true;
+            if (hasVacancy(held, teamId, role)) return true;
         }
         return false;
     }
 
-    private boolean hasVacancy(Long teamId, StaffRole role) {
+    /** Whether a club has a gap in one role. */
+    private boolean hasVacancy(Map<Long, Map<StaffRole, Integer>> held, Long teamId, StaffRole role) {
         int allowed = SLOTS_PER_ROLE.getOrDefault(role, 1);
-        return staff.countByTeamIdAndRole(teamId, role) < allowed;
+        int employed = held.getOrDefault(teamId, Map.of()).getOrDefault(role, 0);
+        return employed < allowed;
     }
 
     /**
