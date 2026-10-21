@@ -162,4 +162,52 @@ class TacticsProfileBackupServiceTest {
                 "the file is the owner's copy and must not be deleted, but it must not stop the editor "
                         + "opening either");
     }
+
+    /**
+     * The file is keyed by club name and the database is not, so a rename has to re-key the file.
+     *
+     * <p>Without this the club's hand-authored tactics stay under a name no club has any more: the
+     * editor finds nothing, and {@code DatabaseInitializer} restores the profile onto a club by name
+     * after a reset and finds none. This is the reset-survival property of the file, tested directly.
+     */
+    @Test
+    @DisplayName("renaming a club moves its tactics to the new name, and only that club's")
+    void renamingAClubReKeysItsTactics(@TempDir Path dir) {
+        Path file = dir.resolve("backup.json");
+        var service = serviceAt(file);
+
+        service.saveClub("OFK Omladinac", List.of(tactic("4-4-2", "4-4-2", "[{\"slotKey\":\"CML\"}]")), "4-4-2");
+        service.saveClub("Sremac Berkasovo", List.of(tactic("4-3-3", "4-3-3", "[{\"slotKey\":\"CM\"}]")), "4-3-3");
+
+        service.renameClub("OFK Omladinac", "Novi Omladinac");
+
+        assertTrue(service.findByTeamName("Novi Omladinac").isPresent(),
+                "the club's tactics did not follow the rename, so a reset would drop them");
+        assertTrue(service.findByTeamName("OFK Omladinac").isEmpty(),
+                "the old name is still in the file, so the club has two entries");
+        assertEquals("[{\"slotKey\":\"CML\"}]",
+                TacticsProfileBackupService
+                        .defaultTacticOf(service.findByTeamName("Novi Omladinac").orElseThrow())
+                        .orElseThrow().getRulesJson(),
+                "the rules themselves must survive the re-key");
+        assertTrue(service.findByTeamName("Sremac Berkasovo").isPresent(),
+                "renaming one club removed another club from the file");
+    }
+
+    @Test
+    @DisplayName("renaming to the same name, or to nothing, leaves the file alone")
+    void aNoOpRenameWritesNothing(@TempDir Path dir) {
+        Path file = dir.resolve("backup.json");
+        var service = serviceAt(file);
+        service.saveClub("OFK Omladinac", List.of(tactic("4-4-2", "4-4-2", "[{\"slotKey\":\"CML\"}]")), "4-4-2");
+
+        service.renameClub("OFK Omladinac", "  ofk omladinac ");
+        assertTrue(service.findByTeamName("OFK Omladinac").isPresent(),
+                "a same-name rename must not merge or drop the club");
+
+        service.renameClub("OFK Omladinac", "   ");
+        assertTrue(service.findByTeamName("OFK Omladinac").isPresent(),
+                "a blank target must not rename the club to nothing");
+        assertEquals(1, service.loadAll().size(), "a no-op rename wrote an extra entry");
+    }
 }

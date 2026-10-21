@@ -34,6 +34,40 @@ export function createClubView(deps) {
             </div>`;
     }
 
+    /**
+     * The club's name in the hero, with the rename editor beside it when it is the viewer's own club.
+     *
+     * <p>Owner, 2026-10-21: *"Korisnik treba da moze da promeni ime kluba, isti nacin kao promena
+     * imena stadiona"*. So it is literally the stadium's editor — a pencil beside the name, an inline
+     * field, a cross to cancel and a tick to save, and the same `.user-name-*` classes, so it looks
+     * like the profile editor because it *is* the profile editor.
+     *
+     * <p>The pencil is drawn only when the server said this reader may rename the club
+     * (`profile.canRename`). An AI club's page shows its name and nothing to press — the viewer cannot
+     * rename a rival, and a button that answers 403 is worse than no button.
+     */
+    function clubNameCellHtml(profile) {
+        const name = profile.name || 'Club Profile';
+        if (!profile.canRename) {
+            return htmlEscape(name);
+        }
+        return `
+            <span class="user-name-view js-club-name-view">
+                <span class="js-club-name-value">${htmlEscape(name)}</span>
+                <button type="button" class="fm-icon-btn js-club-name-edit" title="Edit the name of your club"
+                        aria-label="Edit the club name">&#9998;</button>
+            </span>
+            <span class="user-name-edit js-club-name-edit-cell" hidden>
+                <input type="text" class="js-club-name-input" maxlength="60"
+                       value="${htmlEscape(name)}" placeholder="Name your club"
+                       aria-label="Club name" />
+                <button type="button" class="fm-icon-btn js-club-name-cancel" title="Cancel"
+                        aria-label="Cancel">&#215;</button>
+                <button type="button" class="fm-icon-btn fm-icon-btn--ok js-club-name-save" title="Save"
+                        aria-label="Save">&#10003;</button>
+            </span>`;
+    }
+
     async function loadClubProfile(teamIdOverride) {
         // Owner, 2026-10-14: "kad je AI tim odvede me na ligu - to nije dobro, i AI klubovi treba da
         // imaju profile stranu". This view used to ignore which club it was asked about and always
@@ -80,8 +114,9 @@ export function createClubView(deps) {
                 <div class="fm-club-hero-main">
                     <div>
                         <div class="fm-eyebrow">Club overview</div>
-                        <h2>${htmlEscape(profile.name || 'Club Profile')}</h2>
+                        <h2>${clubNameCellHtml(profile)}</h2>
                         <p class="fm-subtle">Same club shell as First Team, with profile data, stadium access, budget, and reputation.</p>
+                        <p class="fm-subtle" data-club-name-status></p>
                     </div>
                     ${buildClubActionsHtml('profile')}
                 </div>
@@ -191,6 +226,80 @@ export function createClubView(deps) {
 
         wireFriendlyPanel(mainContent, teamId);
         wireFriendlyBoard(mainContent, teamId);
+        wireClubName(mainContent, teamId, teamIdOverride);
+    }
+
+    /**
+     * Renaming the club, the way the ground is renamed (owner, 2026-10-21).
+     *
+     * <p>The name saves on Enter or on the tick, and the page re-renders afterwards so every other
+     * mention of the club — the hero, the brand card, the detail list — reads the new name at once.
+     * The server owns the name: this sends it and takes the server's answer, including its refusal,
+     * which is printed where the manager is looking.
+     */
+    function wireClubName(main, teamId, teamIdOverride) {
+        const view = main.querySelector('.js-club-name-view');
+        const editCell = main.querySelector('.js-club-name-edit-cell');
+        const input = main.querySelector('.js-club-name-input');
+        const value = main.querySelector('.js-club-name-value');
+        const status = main.querySelector('[data-club-name-status]');
+        if (!input) return;
+
+        const showEditing = (editing) => {
+            if (view) view.hidden = editing;
+            if (editCell) editCell.hidden = !editing;
+            if (editing && input) {
+                input.value = value ? value.textContent.trim() : '';
+                input.focus();
+                input.select();
+            }
+        };
+
+        main.querySelector('.js-club-name-edit')?.addEventListener('click', () => showEditing(true));
+        main.querySelector('.js-club-name-cancel')?.addEventListener('click', () => showEditing(false));
+
+        const save = async () => {
+            const name = (input.value || '').trim();
+            if (!name) {
+                if (status) status.textContent = 'A club needs a name.';
+                return;
+            }
+            const button = main.querySelector('.js-club-name-save');
+            if (button) button.disabled = true;
+            if (status) status.textContent = 'Saving…';
+            try {
+                await authFetch(`/teams/${teamId}/name`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `name=${encodeURIComponent(name)}`
+                });
+                // Re-render from the payload the server just confirmed, so the hero, the brand card
+                // and the detail list change together. The confirmation is written *after* the
+                // re-render, because the re-render replaces the status line the manager was reading.
+                await loadClubProfile(teamIdOverride);
+                const fresh = document.querySelector('[data-club-name-status]');
+                if (fresh) fresh.textContent = 'Saved.';
+            } catch (err) {
+                // The server's own refusal is the useful message ("You can only rename your own
+                // club"), and authFetch throws with that text inside it.
+                if (status) {
+                    status.textContent = apiErrorMessage(err, 'The name could not be saved.');
+                }
+                console.error('Club rename failed:', err);
+            } finally {
+                if (button) button.disabled = false;
+            }
+        };
+
+        main.querySelectorAll('.js-club-name-save').forEach(button => {
+            button.addEventListener('click', () => save());
+        });
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                save();
+            }
+        });
     }
 
     /**

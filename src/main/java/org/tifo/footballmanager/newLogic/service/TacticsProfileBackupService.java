@@ -196,6 +196,45 @@ public class TacticsProfileBackupService {
     }
 
     /**
+     * Re-keys a club in the file when the club itself is renamed.
+     *
+     * <p><b>This file is keyed by club name and the database is not.</b> The {@code tactic} table
+     * points at a club by id, so a rename there costs nothing — but the backup is looked up by
+     * {@link #findByTeamName(String)}, and {@code DatabaseInitializer} restores it onto a club by
+     * name after a reset. A club renamed without this call keeps its tactics in the database and
+     * loses them at the next {@code Reset DB}, silently, which is exactly the loss this file exists
+     * to prevent.
+     *
+     * <p>Does nothing when either name is blank or the two normalize to the same club, so a
+     * re-submitted rename cannot rewrite the file for no reason.
+     */
+    public synchronized void renameClub(String fromTeamName, String toTeamName) {
+        String from = normalizeTeamName(fromTeamName);
+        String to = normalizeTeamName(toTeamName);
+        if (from.isBlank() || to.isBlank() || from.equals(to)) {
+            return;
+        }
+
+        List<ClubBackup> clubs = new ArrayList<>(loadAll());
+        boolean renamed = false;
+        // The file is name-keyed, so the club is found the same way every other read finds it. The
+        // rename writes the name as it was given, not the normalized form, because that is what the
+        // name is: the club's name, not the file's index into it.
+        for (ClubBackup club : clubs) {
+            if (from.equals(normalizeTeamName(club.getTeamName()))) {
+                club.setTeamName(toTeamName);
+                renamed = true;
+            }
+        }
+        if (!renamed) {
+            return;
+        }
+
+        clubs.sort(Comparator.comparing(entry -> normalizeTeamName(entry.getTeamName())));
+        writeClubs(clubs);
+    }
+
+    /**
      * The tactic a club falls back to when nothing else is asked for.
      *
      * <p>The named default when there is one, otherwise the first tactic, otherwise nothing. The fallbacks

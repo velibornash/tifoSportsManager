@@ -68,6 +68,7 @@ public class TeamController {
     private final org.tifo.footballmanager.newLogic.service.MatchLockService matchLocks;
     private final ClubOwnershipLinker clubOwnership;
     private final SquadRegistrationService squadRegistration;
+    private final org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService tacticsBackup;
 
     public TeamController(TeamRepository teamRepository,
                           PlayerRepository playerRepository,
@@ -84,7 +85,8 @@ public class TeamController {
                           org.tifo.footballmanager.newLogic.service.MatchLockService matchLocks,
                           PlusFeatureService plusFeatures,
                           ClubOwnershipLinker clubOwnership,
-                          SquadRegistrationService squadRegistration) {
+                          SquadRegistrationService squadRegistration,
+                          org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService tacticsBackup) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
@@ -101,6 +103,7 @@ public class TeamController {
         this.plusFeatures = plusFeatures;
         this.clubOwnership = clubOwnership;
         this.squadRegistration = squadRegistration;
+        this.tacticsBackup = tacticsBackup;
     }
 
     @GetMapping
@@ -156,7 +159,8 @@ public class TeamController {
     }
 
     @GetMapping("/{teamId}/profile")
-    public ResponseEntity<Map<String, Object>> getTeamProfile(@PathVariable Long teamId) {
+    public ResponseEntity<Map<String, Object>> getTeamProfile(@PathVariable Long teamId,
+                                                              @AuthenticationPrincipal User principal) {
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return ResponseEntity.notFound().build();
@@ -215,7 +219,61 @@ public class TeamController {
         profile.put("worldPosition", worldPosition);
         profile.put("humanControlled", Boolean.TRUE.equals(team.isHumanControlled()));
 
+        // Whether the reader may rename this club — the same gate the rename endpoint applies, so the
+        // pencil appears exactly where the write would be accepted. Read rather than guessed from
+        // humanControlled: an AI club is human-controlled false, but so is a club whose manager has
+        // not been linked yet, and the page should not offer a pencil that answers 403.
+        profile.put("canRename", mayManage(principal, teamId));
+
         return ResponseEntity.ok(profile);
+    }
+
+    /**
+     * Renames a club — the manager's own club, the same way he renames his ground.
+     *
+     * <p><b>Gated, and gated the same way the stadium's name is.</b> The team id in the path says
+     * <i>which</i> club; {@code mayManage} says whether it is the caller's. A rename is a write to
+     * another line's season — the league table prints the name — so any manager able to reach this
+     * endpoint for any id could rename a rival.
+     *
+     * <p><b>Sixty characters, because that is the stadium's rule.</b> One field, one button, one
+     * validation; a club name with a different limit from the ground's would be two rules for the
+     * same act.
+     *
+     * <p><b>The tactics backup is re-keyed with it.</b> {@code var/tactics-editor-profiles.json} is
+     * keyed by club name and the database is keyed by id, so a rename that did not touch the file
+     * would leave the club's hand-authored tactics under a name no club has any more — readable by
+     * nobody and dropped by the next reset. See
+     * {@link org.tifo.footballmanager.newLogic.service.TacticsProfileBackupService#renameClub}.
+     */
+    @PostMapping("/{teamId}/name")
+    public ResponseEntity<Map<String, Object>> renameTeam(@PathVariable Long teamId,
+                                                          @RequestParam("name") String name,
+                                                          @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "error", "You can only rename your own club."));
+        }
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 60) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "A club name must be between 1 and 60 characters."));
+        }
+
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String previous = team.getName();
+        team.setName(trimmed);
+        teamRepository.save(team);
+
+        if (previous != null && !previous.equals(trimmed)) {
+            tacticsBackup.renameClub(previous, trimmed);
+        }
+
+        return ResponseEntity.ok(Map.of("name", trimmed));
     }
 
     @GetMapping("/{teamId}/coaches")

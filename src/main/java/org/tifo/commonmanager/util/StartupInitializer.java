@@ -158,7 +158,19 @@ public class StartupInitializer implements org.springframework.boot.CommandLineR
         // by name here rather than by id because at this point in boot the club exists but the owner
         // has no link to it; the name is the only thing both sides share. ClubOwnershipLinker owns
         // every other read of this column.
-        owner.setFootballTeam(newLogicTeamFor(footballTeamName));
+        //
+        // <p><b>A failed lookup must not drop a link that is already there.</b> The configured name is
+        // a label, and a club the manager renamed no longer answers to it — so this line used to set
+        // football_team_id to null on the first restart after a rename and lock the owner out of his
+        // own club: the name the fallback would have resolved through is the CTeam's, and that carries
+        // the old name as well. The property still wins when it resolves (that is how a legitimate
+        // move to another club is applied, and how Reset DB re-links to the rebuilt one); only a
+        // lookup that found nothing is ignored. ClubOwnershipLinker clears a club id that has actually
+        // gone, so a stale key remains self-healing.
+        org.tifo.footballmanager.newLogic.model.Team resolvedClub = newLogicTeamFor(footballTeamName);
+        if (resolvedClub != null || owner.getFootballTeam() == null) {
+            owner.setFootballTeam(resolvedClub);
+        }
 
         userRepository.save(owner);
         log.info("Updated owner user '{}'", ownerUsername);

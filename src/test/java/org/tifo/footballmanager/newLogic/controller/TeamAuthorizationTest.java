@@ -162,8 +162,77 @@ class TeamAuthorizationTest extends BaseTest {
                 .andReturn().getResponse().getStatus());
     }
 
-    // ── The hole: a manager rewriting another club's season ────────────────────────────────────────────
+    // ── Renaming a club ───────────────────────────────────────────────────────────────────────────────
 
+    @Test
+    @DisplayName("a manager cannot rename another club")
+    void aManagerCannotRenameAnotherClub() throws Exception {
+        String before = teams.findById(rivalClub.getId()).orElseThrow().getName();
+
+        int code = mockMvc.perform(post("/teams/{teamId}/name", rivalClub.getId())
+                        .param("name", "Hijacked FC")
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
+                .andReturn().getResponse().getStatus();
+
+        assertEquals(403, code, "expected a refusal, got " + code);
+        assertEquals(before, teams.findById(rivalClub.getId()).orElseThrow().getName(),
+                "a refused rename still changed the club's name");
+    }
+
+    @Test
+    @DisplayName("an anonymous caller cannot rename a club")
+    void anAnonymousCallerCannotRenameAClub() throws Exception {
+        assertRefused(mockMvc.perform(post("/teams/{teamId}/name", rivalClub.getId())
+                        .param("name", "Hijacked FC"))
+                .andReturn().getResponse().getStatus());
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("a manager can rename his own club, and the profile says so")
+    void aManagerCanRenameHisOwnClub() throws Exception {
+        String newName = "Mine Renamed " + System.nanoTime();
+
+        mockMvc.perform(post("/teams/{teamId}/name", myClub.getId())
+                        .param("name", newName)
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
+                .andExpect(status().isOk());
+
+        assertEquals(newName, teams.findById(myClub.getId()).orElseThrow().getName(),
+                "the rename was accepted but the club kept its old name");
+
+        mockMvc.perform(get("/teams/{teamId}/profile", myClub.getId())
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.name").value(newName))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.canRename").value(true));
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("a rename that is empty or too long is refused, and the club keeps its name")
+    void anEmptyOrTooLongNameIsRefused() throws Exception {
+        String before = teams.findById(myClub.getId()).orElseThrow().getName();
+
+        int empty = mockMvc.perform(post("/teams/{teamId}/name", myClub.getId())
+                        .param("name", "   ")
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
+                .andReturn().getResponse().getStatus();
+        assertEquals(400, empty, "an empty name was accepted: " + empty);
+
+        int tooLong = mockMvc.perform(post("/teams/{teamId}/name", myClub.getId())
+                        .param("name", "x".repeat(61))
+                        .header("Authorization", auth.bearerManaging(UserRole.REGULAR, myClub)))
+                .andReturn().getResponse().getStatus();
+        assertEquals(400, tooLong, "a 61-character name was accepted: " + tooLong);
+
+        assertEquals(before, teams.findById(myClub.getId()).orElseThrow().getName(),
+                "a refused rename still changed the club's name");
+    }
+
+    // ── The hole: a manager rewriting another club's season ────────────────────────────────────────────
     @Test
     @Transactional
     @DisplayName("a manager cannot rewrite another club's lineup template")
