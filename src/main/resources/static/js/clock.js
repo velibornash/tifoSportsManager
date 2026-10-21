@@ -147,17 +147,6 @@ async function syncGameClock() {
             dayNumber = Number(data.day || 1);
         }
         dayLabel = data.dayLabel || '';
-
-        // Publish the clock so the dashboard can gate "Watch Your Match" on the real kickoff hour
-        // instead of a week boolean. Set here because this is the one place the server clock is
-        // already being read every tick.
-        window.__fmWatchStatus = {
-            available: isWatchable(data),
-            reason: watchReason(data),
-            kickoffHour: data.kickoffHour,
-            day: data.day,
-            hour: data.hour
-        };
     } catch (err) {
         console.warn('Game clock sync failed:', err);
     }
@@ -189,46 +178,6 @@ syncGameClock();
 setInterval(syncGameClock, 20 * 1000);
 updateLiveClock();
 setInterval(updateLiveClock, 1000);
-
-/**
- * Whether the clock says a match can be watched right now (owner, 2026-09-29).
- *
- * <p>Mirrors the server rule exactly - a match day, and the hour at or past kickoff. The server
- * remains the authority and /api/watch/status is what the button ultimately follows; this exists so
- * the dashboard has the answer between ticks rather than rendering a stale enabled button.
- */
-function isWatchable(clock) {
-    if (!clock || clock.matchDay !== true) return false;
-    if (clock.kickoffHour === null || clock.kickoffHour === undefined) return false;
-    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined
-        ? 0 : Number(clock.kickoffMinute);
-    // Day 1 is a 20:45 slot. A kickoff inside the hour is not watchable until that hour has passed,
-    // because the engine resolves matches to the hour and there is nothing to watch at 20:30.
-    return kickoffMinute === 0
-        ? Number(clock.hour) >= Number(clock.kickoffHour)
-        : Number(clock.hour) > Number(clock.kickoffHour);
-}
-
-/** The template's kickoff as HH:MM. Day 1 is a 20:45 slot and printing ":00" said 20:00. */
-function kickoffLabel(clock) {
-    const minute = clock.kickoffMinute === null || clock.kickoffMinute === undefined ? 0 : Number(clock.kickoffMinute);
-    return `${String(clock.kickoffHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
-function watchReason(clock) {
-    if (!clock) return 'The game clock is not available.';
-    if (clock.matchDay !== true) return 'Not a match day.';
-    if (clock.kickoffHour === null || clock.kickoffHour === undefined) return 'No kickoff on this day.';
-    const kickoffMinute = clock.kickoffMinute === null || clock.kickoffMinute === undefined ? 0 : Number(clock.kickoffMinute);
-    const hour = Number(clock.hour);
-    const beforeKickoff = !(kickoffMinute === 0
-        ? hour >= Number(clock.kickoffHour)
-        : hour > Number(clock.kickoffHour));
-    if (beforeKickoff) {
-        return `Kickoff is at ${kickoffLabel(clock)}.`;
-    }
-    return 'Your match is ready to watch.';
-}
 
 /**
  * Re-reads the clock now, rather than waiting for the next poll.

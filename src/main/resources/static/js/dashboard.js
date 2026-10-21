@@ -21,7 +21,6 @@ let currentUserCountryIsoCode = null;
 let currentUserRole = null;
 
 const DASHBOARD_FLOW_FLASH_KEY = 'dashboardSeasonFlowFlash';
-const DASHBOARD_WEEK_CONSUMED_KEY = 'dashboardWeekConsumed';
 
 function updateCountryMenuLabels() {
     const countryLabel = currentUserCountryName || 'Country';
@@ -182,53 +181,21 @@ function readDashboardFlowFlash() {
     }
 }
 
-function isWeekConsumed() {
-    try {
-        return sessionStorage.getItem(DASHBOARD_WEEK_CONSUMED_KEY) === 'true';
-    } catch (err) {
-        console.warn('Failed to read week consumed flag:', err);
-        return false;
-    }
-}
-
-/**
- * The server's answer on whether watching is available right now (owner, 2026-09-29).
- *
- * <p>Cached on window so the dashboard does not call it on every render, and deliberately tolerant:
- * if the endpoint is unreachable the gate falls back to the old week rule rather than locking the
- * manager out of watching entirely.
- */
-function readWatchStatus() {
-    if (readWatchStatus._cached) return readWatchStatus._cached;
-    if (typeof window === 'undefined' || !window.__fmWatchStatus) return null;
-    readWatchStatus._cached = window.__fmWatchStatus;
-    return readWatchStatus._cached;
-}
-
 function buildSeasonFlowPanel() {
     const flash = readDashboardFlowFlash();
-    const weekConsumed = isWeekConsumed();
-    // Gated on the server, not on a week boolean. The server knows the current game day and the
-    // kickoff hour for it; the browser used to guess with "is the week consumed", which made Watch
-    // available at 08:00 on a match day and unavailable on a day that had a fixture on it.
-    const watch = readWatchStatus();
-    const watchDisabled = watch && watch.available === false
-        ? ' disabled aria-disabled="true"'
-        : (weekConsumed ? ' disabled aria-disabled="true"' : '');
-    const watchTitle = watch && !watch.available ? ` title="${escapeHtml(watch.reason || '')}"` : '';
     const statusTone = flash?.tone || 'info';
-    const statusMessage = flash?.message || (watch && !watch.available
-        ? (watch.reason || 'Your match is not available yet.')
-        : weekConsumed
-        ? 'Current match week is already locked in. Use Advance Week to move forward and unlock the next replay/results cycle.'
-        : 'Prepare the current week once, then either watch your match or open the live results desk before advancing.');
-    const simulateDisabled = weekConsumed ? ' disabled aria-disabled="true"' : '';
+    // The panel is the calendar now, and nothing else (owner, 2026-10-21: *"Watch your match i Simulate
+    // all results iz Match Week Controls sad nemaju smisla jer pomeramo dan pa on pokrene odgovarajuci
+    // job pa ih skloni i sa deska i sa moba"*). The two buttons were the only thing that ever set the
+    // week-consumed flag, and the only thing the watch status was read for, so both are gone: moving the
+    // clock runs the jobs that are due, and a button that prepares a week by hand is a second way to do
+    // what Advance Day already does.
+    const statusMessage = flash?.message
+        || 'Advance the calendar. Each move runs the jobs that fall due, so the match week plays out '
+         + 'on its own.';
 
     // **Match Week Controls are admin-only.** Non-admin managers do not get the calendar-advance
-    // controls, and they do not get the Watch / Simulate buttons here either: "Watch your match" already
-    // appears on every unwatched match in the Recent Matches list, and "Simulate all results" is an admin
-    // action. Showing them again below the list just duplicates the per-match buttons and leaks a
-    // "Not a match day" status line that means nothing to a manager.
+    // controls.
     if (!isAdminUser()) {
         return '';
     }
@@ -238,16 +205,14 @@ function buildSeasonFlowPanel() {
             <div class="fm-season-flow-head">
                 <div>
                     <h3>Match Week Controls</h3>
-                    <div class="fm-season-flow-copy">${escapeHtml(weekConsumed
-                        ? 'Your replay and live results desk are now closed for this week. Advance the calendar to unlock the next match week.'
-                        : 'Current week can be prepared once, then viewed either through your replay or the live results desk. After that, advance the calendar.')}</div>
+                    <div class="fm-season-flow-copy">Advance the calendar one hour, one day or one week.
+                        Every move runs the jobs that are due, so the fixtures play and the tables move
+                        without a second button.</div>
                 </div>
                 <span class="fm-season-flow-badge">Admin</span>
             </div>
             <div class="dashboard-actions fm-season-flow-buttons">
-                <button id="start-realistic-demo-btn"${watchTitle} data-label="⚽ Watch Your Match" class="fm-action-btn fm-dashboard-cta" onclick="startRealisticDemoTest()"${watchDisabled}>⚽ Watch Your Match</button>
-                <button id="simulate-current-round-btn" data-label="🧮 Simulate All Results" class="fm-action-btn secondary" onclick="simulateCurrentRoundTest()"${simulateDisabled}>🧮 Simulate All Results</button>
-                <button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn secondary" onclick="advanceWeekTest()">📅 Advance Week</button>
+                <button id="advance-week-btn" data-label="📅 Advance Week" class="fm-action-btn fm-dashboard-cta" onclick="advanceWeekTest()">📅 Advance Week</button>
                 <button id="advance-day-btn" data-label="📆 Advance Day" class="fm-action-btn secondary" onclick="advanceDayTest()">📆 Advance Day</button>
                 <button id="advance-hour-btn" data-label="⏩ Advance Hour" class="fm-action-btn secondary" onclick="advanceHourTest()">⏩ Advance Hour</button>
             </div>
