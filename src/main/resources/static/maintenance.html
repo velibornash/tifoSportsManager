@@ -84,30 +84,26 @@
     }
 
     /*
-     * The picture on a phone.
+     * The picture on a portrait screen.
      *
      * <p>The text is **baked into the picture** - "Maintenance in progress, please wait" and "TIFO
-     * will be back online soon" are pixels in `maintenance-bg.jpg`, not type on the page. So the
-     * picture cannot be cropped on a phone without cutting the message off, and the phone's portrait
-     * frame is the opposite of the picture's landscape one. (Owner, 2026-10-21: "vidis da ima preko
-     * cele slike tekst.. da trazim novu sliku specijalno za mob ili je mozes skalirati za portret a
-     * da ostane text?")
+     * will be back online soon" are pixels in the image, not type on the page - so the picture cannot
+     * be cropped on a phone without cutting the message off. The landscape frame is 1168x784 and a
+     * phone is the other way round, so the message went off the screen with the sides (owner,
+     * 2026-10-21: "vidis kako je isecen text na mob verziji za maintenance stranu").
      *
-     * <p><b>Measured off the pixels</b> (1168x784): the text block is x 195..954 - 759px of the 1168 -
-     * and y 150..395, and the widest line is "Maintenance in progress,". For that line to fit a 390px
-     * phone whole, the picture can be at most 390 / 759 = 0.51 of its own width. At 0.94 of the
-     * phone's width there is still a margin on each side, so the picture is **144.6%** of the phone's
-     * width: the headline lands at 366px and the big "M" at 27px tall.
+     * <p><b>The owner made a portrait frame for the phone</b> - 784x1168, the same picture with the
+     * type set for a portrait screen. It is used here, and the landscape one keeps the wide screens,
+     * where the whole frame is not needed.
      *
-     * <p>So the picture is a **band** on a phone and not a full-bleed cover - at 144.6% it is 564x379
-     * in a 390x844 screen. It cannot be taller while the text stays whole: at the phone's full height
-     * the picture would be 1258px wide and the message 817px of it, half off the screen. **A portrait
-     * picture would be the better answer for a phone** - the text set for a phone and the ground
-     * filling the screen - and it is a one-line change here when it arrives.
+     * <p>Measured off the pixels of the portrait frame: the type is at x 157..613 of 784 and y
+     * 460..790 of 1168. On a 390x844 phone, `cover` scales the frame by 0.72 and takes 88px off each
+     * side, which leaves the type at x 25..355 - the whole message, and the tagline with it.
      */
-    @media (max-width: 768px) {
+    @media (max-width: 1024px) and (orientation: portrait) {
         .stage::before {
-            background-size: 144.6% auto;
+            background-image: url('/images/maintenance-bg-portrait.jpg');
+            background-size: cover;
             background-position: center center;
         }
     }
