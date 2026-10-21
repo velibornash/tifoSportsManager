@@ -4840,6 +4840,69 @@ body {
 }
 
 /*
+ * The club's own pages: the room they have, and the type in them (owner, 2026-10-21).
+ *
+ * <p>"celu Club - Office stranu malo rasiri u levo i desno i malo povecaj font na stranici" - and
+ * the same for the Office's own pages (Profile, Stadium, Finances, Staff, Transfers), the Squad and
+ * every one of its sub-pages, Matches, Training setup, Training reports, Tactic setup and the Tactic
+ * Editor. **Desktop only.**
+ *
+ * <p><b>Measured at 2560x1440</b>, the desktop the owner writes from: every one of these pages is
+ * **1180px wide with 690px - 18cm - of empty screen on each side**. The dashboard and the match page
+ * already had this answered (the measure 1180 -> 1920 and the root 16 -> 18), so the same answer is
+ * given here: the measure goes to **1920px**, which leaves 320px - 8.5cm - on each side, and the type
+ * grows with the room.
+ *
+ * <p>The root goes from 18px to **20px** on these pages - about 11%, the same step the dashboard
+ * took. It is **scoped to them**, because the root is shared with the nav bar and the nav bar has to
+ * be the same bar on every page; the rules below pin the bar's own type in px, so it cannot move
+ * with the root.
+ *
+ * <p>The phone keeps 16px and the tablet keeps 18px: the whole rule sits inside `min-width: 1025px`.
+ */
+@media (min-width: 1025px) {
+    /*
+     * The descendant form, and not a nested `:has()`: `html:has(.dashboard-content:has(...))` is
+     * **not a valid selector** - the browser refuses it outright - while
+     * `html:has(.dashboard-content .fm-page--club)` is.
+     */
+    html:has(.dashboard-content .fm-page--office,
+             .dashboard-content .fm-page--club,
+             .dashboard-content .fm-page--stadium,
+             .dashboard-content .fm-page--CTeam-detail) {
+        font-size: 20px;
+    }
+
+    .dashboard-content:has(.fm-page--office, .fm-page--club, .fm-page--stadium, .fm-page--CTeam-detail) {
+        max-width: 1920px;
+    }
+
+    /*
+     * The nav bar's type, pinned in px.
+     *
+     * <p>It was `1rem` and `0.78rem` of an 18px root - 18px and 14px - and the bar is drawn to that
+     * size. Pinned in px, it is the same bar whether the root is 18px (the dashboard, the match page)
+     * or 20px (the club's pages). The icons are `em` of their own button, so they follow it.
+     */
+    .desktop-nav button {
+        font-size: 18px;
+    }
+
+    .desktop-nav-right .menu-button {
+        font-size: 18px;
+    }
+
+    .desktop-nav-right #live-clock strong {
+        font-size: 18px;
+    }
+
+    .desktop-nav-right #live-clock small,
+    .desktop-nav-right .user-menu-name {
+        font-size: 14px;
+    }
+}
+
+/*
  * The dashboard spreads (owner, 2026-10-20: "da li na desktopu fm-dashboard-view moze malo da se rasiri
  * po recimo 4-5 cm levo i desno da imamo vise korisnog prostora", and again: "bas nam ostaje po 10ak
  * cm i vise sa obe strane pa su nam zbog toga fontovi manji i malo nepregledni na desktopu").
