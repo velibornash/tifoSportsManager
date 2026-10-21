@@ -175,6 +175,34 @@ export function createMatchView(deps) {
                 console.info(`Unknown caller "${caller}" - Back will return to the previous screen.`);
             }
 
+            /**
+             * The tab bar's buttons, built one at a time.
+             *
+             * <p>**Written as parts, not as one long line of markup with the state inside it** (owner,
+             * 2026-10-21: a played match could not be opened at all - "Error loading match: Cannot read
+             * properties of null (reading 'addEventListener')"). The line carried the "disabled" state
+             * **inside** the `class` attribute, so the attribute and the state were parsed as one thing,
+             * and the buttons after it were not buttons any more: the browser read the rest of the tab
+             * bar as the text of the first one, and `getElementById("view-stats")` found nothing.
+             *
+             * <p>Here every button is written whole - the class, then the disabled attribute, then the
+             * label - and the state is decided before the string is built. Nothing can be half-written.
+             */
+            const matchTabButtons = [
+                { id: 'view-preview', label: 'Preview' },
+                { id: 'view-setup', label: 'Match Setup' },
+                { id: 'view-lineups', label: 'Lineups', needsPlayed: true, disabledTitle: 'Recorded once the match has been played' },
+                { id: 'view-stats', label: 'Stats', needsPlayed: true, disabledTitle: 'Recorded once the match has been played' },
+                { id: 'view-goals', label: 'Goals', needsPlayed: true, disabledTitle: 'Recorded once the match has been played' },
+                { id: 'view-replay', label: 'Replay', needsPlayed: true, disabledTitle: 'Available once the match has been played' },
+                { id: 'view-report', label: 'Match Report', needsPlayed: true, disabledTitle: 'Written once the match has been played' }
+            ];
+            const matchTabButtonsHtml = matchTabButtons.map(tab => {
+                const active = initialTab === tab.id.replace('view-', '');
+                const disabled = tab.needsPlayed && !hasPlayedMatch;
+                return `<button type="button" id="${tab.id}" class="fm-action-btn secondary fm-match-action-btn${active ? ' is-active' : ''}"${disabled ? ` disabled title="${tab.disabledTitle}"` : ''}>${tab.label}</button>`;
+            }).join('');
+
             mainContent.innerHTML = `
             <div class="team-card fm-match-page">
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
@@ -193,15 +221,7 @@ export function createMatchView(deps) {
                     The open tab is marked, and the row is a bar that scrolls sideways when it does not
                     fit.
                 -->
-                <div id="match-buttons-container" class="fm-match-actions fm-match-tabs" role="tablist">
-                    <button type="button" id="view-preview" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'preview' ? ' is-active' : ''}">Preview</button>
-                    <button type="button" id="view-setup" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'setup' ? ' is-active' : ''}">Match Setup</button>
-                    <button type="button" id="view-lineups" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'lineups' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Lineups</button>
-                    <button type="button" id="view-stats" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'stats' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Stats</button>
-                    <button type="button" id="view-goals" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'goals' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Recorded once the match has been played"'}>Goals</button>
-                    <button type="button" id="view-replay" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'replay' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Available once the match has been played"'}>Replay</button>
-                    <button type="button" id="view-report" class="fm-action-btn secondary fm-match-action-btn${initialTab === 'report' ? ' is-active' : ''}${hasPlayedMatch ? '' : ' disabled title="Written once the match has been played"'}>Match Report</button>
-                </div>
+                <div id="match-buttons-container" class="fm-match-actions fm-match-tabs" role="tablist">${matchTabButtonsHtml}</div>
                 <h2 style="text-align:center;">${played ? 'Match Details' : 'Match Preview'}</h2>
                 ${competitionHeading}
                 <div class="fm-match-scoreline" style="font-size:1.5em; margin:20px 0; font-weight:bold;">
@@ -1027,30 +1047,31 @@ export function createMatchView(deps) {
             }
 
             /**
-             * The open tab is the marked one (owner, 2026-10-20: "pa se ne zna odmah na kojojk smo
-             * strani"). One listener on the bar rather than seven on the buttons: the buttons are
-             * replaced whenever the page is rendered, and a bar that marks itself cannot forget.
+             * The tab bar: **one listener**, and the buttons are found by their id when it is asked.
+             *
+             * <p>Two reasons, and the second one is the owner's report (owner, 2026-10-21): a played
+             * match could not be opened at all - "Error loading match: Cannot read properties of null
+             * (reading 'addEventListener')" - because the code went looking for seven buttons by id
+             * and one of them was not a button. A bar that is asked "which button was pressed" cannot
+             * fail that way: a button that is not there is simply never pressed.
+             *
+             * <p>The open tab is the marked one (owner, 2026-10-20: "pa se ne zna odmah na kojojk smo
+             * strani"), and the bar marks itself.
              */
             const tabBar = document.getElementById('match-buttons-container');
-            tabBar?.addEventListener('click', (event) => {
-                const button = event.target.closest('.fm-match-action-btn');
-                if (!button || button.disabled) return;
-                tabBar.querySelectorAll('.fm-match-action-btn').forEach(other => other.classList.remove('is-active'));
-                button.classList.add('is-active');
-            });
-
-            document.getElementById("view-preview").addEventListener("click", () => {
+            const TAB_HANDLERS = {
+                'view-preview': () => {
                 // Leaving Match Setup empties its panels, so a preview is a preview and not a preview
                 // with three editors still sitting underneath it.
                 const setup = document.getElementById('fm-match-setup');
                 if (setup) setup.innerHTML = '';
                 void showPreview();
-            });
-            document.getElementById("view-setup")?.addEventListener("click", () => {
+                },
+                'view-setup': () => {
                 infoDiv.innerHTML = '';
                 void mountSetupPanels();
-            });
-            document.getElementById("view-lineups").addEventListener("click", () => {
+                },
+                'view-lineups': () => {
                 if (!lineupsPayload || (!lineupsPayload.homeLineup && !lineupsPayload.awayLineup)) {
                     infoDiv.innerHTML = `<p style="color:#aaa; text-align:center; padding:30px;">Lineups are not available for this match.</p>`;
                     return;
@@ -1104,9 +1125,9 @@ export function createMatchView(deps) {
                             ${renderLineup(lineupsPayload.awayTeam || awayTeamName, lineupsPayload.awayTeamId || 0, lineupsPayload.awayLineup || [])}
                         </div>
                     </div>`;
-            });
-            document.getElementById("view-stats").addEventListener("click", () => void showStats());
-            document.getElementById("view-replay").addEventListener("click", () => {
+                },
+                'view-stats': () => void showStats(),
+                'view-replay': () => {
                 void (async () => {
                     await revealMatchResultIfAllowed();
                     // Regular matchday matches have no stored replay (storeReplay=false). The server
@@ -1132,9 +1153,20 @@ export function createMatchView(deps) {
                     }
                     window.location.href = `/demo/service/ui/proposal/index.html?matchId=${encodeURIComponent(matchId)}`;
                 })();
+                },
+                'view-report': () => void showMatchReport(),
+                'view-goals': () => showGoals()
+            };
+
+            tabBar?.addEventListener('click', (event) => {
+                const button = event.target.closest('.fm-match-action-btn');
+                if (!button || button.disabled) return;
+                const handler = TAB_HANDLERS[button.id];
+                if (!handler) return;
+                tabBar.querySelectorAll('.fm-match-action-btn').forEach(other => other.classList.remove('is-active'));
+                button.classList.add('is-active');
+                handler();
             });
-            document.getElementById("view-report").addEventListener("click", () => void showMatchReport());
-            document.getElementById("view-goals").addEventListener("click", showGoals);
             // Named so `initialTab: 'goals'` can open it. It was an anonymous arrow, which is why
             // "Show results" could only ever land on the preview or the report and the owner asked
             // for the goals.

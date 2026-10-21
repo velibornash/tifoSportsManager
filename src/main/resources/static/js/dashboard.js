@@ -3,6 +3,10 @@ import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility } from './auth.js';
 import { startNotificationPolling, wireNotificationBell, readUnreadCount } from './notifications.js';
 import { widgetRailHtml, nextMatchesHtml, updateWidget, bindWidgets, loadWidgetData, setStadiumFallback } from './dashboard-widgets.js';
+// The recent matches are the club's own match card, built by the same builder the club's Matches page
+// uses, so the two cannot drift apart (owner, 2026-10-21: "prosto prepisi da izgleda kao u Club -
+// Matches").
+import { buildScheduleFixtureCardHtml, bindScheduleInteractions } from './pages-renderers.js';
 
 let currentUserTeamId = null;
 let currentUserTeamName = null;
@@ -478,38 +482,6 @@ async function loadImportantUpdates() {
     }
 }
 
-function extractTeamId(team) {
-    if (team === null || team === undefined) return null;
-    if (typeof team === 'object') {
-        return team.id ?? team.teamId ?? team._id ?? null;
-    }
-    return team;
-}
-
-function extractTeamName(team) {
-    if (team === null || team === undefined) return null;
-    if (typeof team === 'object') {
-        return team.name ?? team.teamName ?? null;
-    }
-    return typeof team === 'string' ? team : null;
-}
-
-function isCurrentUserTeam(team) {
-    const teamId = extractTeamId(team);
-    if (teamId !== null && teamId !== undefined && currentUserTeamId !== null && currentUserTeamId !== undefined) {
-        if (Number(teamId) === Number(currentUserTeamId)) {
-            return true;
-        }
-    }
-
-    const teamName = extractTeamName(team);
-    if (teamName && currentUserTeamName) {
-        return teamName.trim().toLowerCase() === currentUserTeamName.trim().toLowerCase();
-    }
-
-    return false;
-}
-
 window.addEventListener('load', async () => {
     const token = sessionStorage.getItem('token');
     if (!token) {
@@ -908,16 +880,11 @@ async function pollAdminDatabaseJob(loadingPopup) {
 }
 
 async function loadRecentMatches() {
-    const competitionTypeLabels = {
-        LEAGUE: 'League',
-        CUP: 'Cup',
-        INTERNATIONAL: 'International',
-        TOURNAMENT: 'Tournament',
-        FRIENDLY: 'Friendly'
-    };
-
     try {
-        const response = await authFetch(`/teams/${currentUserTeamId}/matches`);
+        // **The club's schedule, not the club's match rows** (owner, 2026-10-21: the strip should look
+        // like the club's Matches page, and that page reads the schedule - which carries the ground and
+        // the head-to-head line the match rows do not).
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule`);
 
         const matches = await response.json();
         // Order by the game calendar (season, week, day), not by wall-clock date.
@@ -952,100 +919,32 @@ async function loadRecentMatches() {
             return;
         }
 
-        let html = '';
-        const recentMatches = recent;
-        recent.forEach((match, i) => {
-            const isHiddenResult = Boolean(match.resultHidden);
-            const isHomeTeam = isCurrentUserTeam(match.homeTeam);
-            const isAwayTeam = isCurrentUserTeam(match.awayTeam);
-            const homeTeamLabel = escapeHtml(match.homeTeam?.name || match.homeTeam || 'Home');
-            const awayTeamLabel = escapeHtml(match.awayTeam?.name || match.awayTeam || 'Away');
-            const competitionLabel = escapeHtml(
-                match.competitionName
-                    || competitionTypeLabels[String(match.competitionType || '').toUpperCase()]
-                    || 'Friendly'
-            );
+        /*
+         * **The strip is the club's own match card** (owner, 2026-10-21: "Recent matches na dashboardu:
+         * ne izgleda dobro (slika1) uopste se ne vidi ko je igrao, prosto prepisi da izgleda kao u
+         * Club - Matches (slika2)").
+         *
+         * <p>It was its own row: the date on the left, the score in the middle and the two club names
+         * on the sides, **cut to "OFK..." and "ŽFK..."** - so the strip could not say who had played,
+         * which is the one thing a list of finished matches is for.
+         *
+         * <p>Now it is the same card the club's Matches page builds, by the same builder, so the two
+         * cannot drift apart: the date, the competition, the venue, both names whole, the score and
+         * the head-to-head line.
+         */
+        const recentCards = recent.map(match => buildScheduleFixtureCardHtml(match, {
+            matchCaller: 'match',
+            pendingLabel: 'VS',
+            allowFixtureClick: false,
+            safe: escapeHtml
+        })).join('');
 
-            let resultBadge = '';
-            let badgeText = '';
-
-            if (!isHiddenResult && (isHomeTeam || isAwayTeam)) {
-                const myTeamGoals = isHomeTeam ? match.homeGoals : match.awayGoals;
-                const opponentGoals = isHomeTeam ? match.awayGoals : match.homeGoals;
-
-                if (myTeamGoals > opponentGoals) {
-                    resultBadge = 'win';
-                } else if (myTeamGoals === opponentGoals) {
-                    resultBadge = 'draw';
-                } else {
-                    resultBadge = 'loss';
-                }
-
-                badgeText = resultBadge === 'win' ? 'W' : resultBadge === 'draw' ? 'D' : 'L';
-            }
-
-            if (isHiddenResult) {
-                /*
-                 * A hidden result, and the three things that want the same space: the two club names,
-                 * the badge that says the result is not shown, and the two buttons that act on it.
-                 *
-                 * <p>The badge is a **direct child of the row**, not a child of the teams, because the
-                 * two screens want it in two different places: on a desktop it belongs down with the
-                 * buttons (owner, 2026-10-19: "skloniti isto spustiti pored Watch your match i Show
-                 * results jer se ne vidi ime gostujuceg tima"), and on a phone it belongs between the
-                 * two names, where the buttons used to be ("na mestu gde je sada Watch your match ime
-                 * domaceg tima, na mestu gde je sad Show results ime gostujuceg tima, izmedju results
-                 * hidden, a ova dva dugmeta ispod"). One element, two places, and the stylesheet
-                 * decides which.
-                 */
-                html += `
-            <div class="match-row recent-match is-hidden-result" data-match-id="${match.id}">
-                <span class="fm-widget-counter fm-match-counter">${i + 1}/${recentMatches.length}</span>
-                <div class="match-date-small">
-                    <span>${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</span>
-                    <span class="match-competition-small">${competitionLabel}</span>
-                </div>
-                <div class="match-teams">
-                    <span class="team-home">${homeTeamLabel}</span>
-                    <span class="team-away">${awayTeamLabel}</span>
-                </div>
-                <span class="score fm-hidden-score">Result hidden</span>
-                ${TifoReveal.hiddenResultActions(match.id)}
-            </div>`;
-                return;
-            }
-
-            html += `
-            <div class="match-row recent-match is-clickable" data-match-id="${match.id}">
-                <span class="fm-widget-counter fm-match-counter">${i + 1}/${recentMatches.length}</span>
-                <div class="match-date-small">
-                    <span>${escapeHtml(match.seasonDayLabel || match.matchDate || 'N/A')}</span>
-                    <span class="match-competition-small">${competitionLabel}</span>
-                </div>
-                <div class="match-teams">
-                    <span class="team-home">${homeTeamLabel}</span>
-                    <span class="match-score-stack">
-                        <span class="score">${match.homeGoals ?? '-'} : ${match.awayGoals ?? '-'}</span>
-                        ${badgeText ? `<span class="result-badge ${resultBadge}">${badgeText}</span>` : '<span class="result-badge result-badge--placeholder" aria-hidden="true">&nbsp;</span>'}
-                    </span>
-                    <span class="team-away">${awayTeamLabel}</span>
-                </div>
-            </div>`;
-        });
-
-        list.innerHTML = html;
-        list.querySelectorAll('.recent-match.is-clickable').forEach(row => {
-            row.addEventListener('click', () => {
-                const matchId = Number(row.dataset.matchId);
-                if (matchId && typeof window.loadMatch === 'function') {
-                    window.loadMatch(matchId, 'match');
-                }
-            });
-        });
+        list.innerHTML = `<div class="fm-fixtures">${recentCards}</div>`;
         // One implementation, shared with the club schedule and the league results. Three copies of
         // "reveal then navigate" is three places for them to disagree, and they already did: the
         // dashboard revealed through its own helper and opened the report tab, the other two surfaces
         // had no buttons at all and leaked the score instead.
+        bindScheduleInteractions(list, { loadMatch: window.loadMatch });
         TifoReveal.bindHiddenResultActions(list, window.loadMatch);
     } catch (err) {
         console.error('Error loading recent matches:', err);
