@@ -1,0 +1,83 @@
+# The game and its database, on this machine, in Docker (owner, 2026-10-21: "napravi da pokrecem
+# lokalno iz dockera").
+#
+# WHAT THIS IS: the same jar the server runs, started next to a PostgreSQL of its own. The point is
+# that the local run and the deployed one are the same code on the same database engine, so "works
+# here and not there" stops being a question of what is different.
+#
+#   docker compose up --build        the game on http://localhost:8080
+#   docker compose logs -f app       what the game is saying
+#   docker compose down              stop it; the data stays
+#   docker compose down -v           stop it and throw the database away
+#
+# The database lives in a named volume, so it survives a rebuild and a restart. So does the game's
+# own data directory: the world's default tactic (var/) and the backups (backups/) are written at
+# runtime, and a container that forgot them on every rebuild would lose the owner's work.
+#
+# THE DATABASE: by default this compose file starts a PostgreSQL of its own, on the host's port
+# 5433 (the host already has a PostgreSQL on 5432 - the two do not fight). To run the game against
+# the PostgreSQL that is already running on this machine instead, put this in a file called `.env`
+# next to this one:
+#
+#   SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/sokker_db
+#
+# The game's port on the host is APP_PORT (8080 by default), for the same reason: the owner's IDE
+# often has the game running on 8080 already, and two things cannot have one port.
+
+name: tifo
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: tifo-postgres
+    environment:
+      POSTGRES_DB: sokker_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: stojke
+    volumes:
+      # **The mount is at /var/lib/postgresql, not at /var/lib/postgresql/data.** PostgreSQL 18's
+      # image keeps its data in a version-named directory below it, and refuses to start when the
+      # old path is mounted and holds something (it reads that as a half-finished upgrade).
+      - sokker-db:/var/lib/postgresql
+    ports:
+      # 5433, because the host's own PostgreSQL is on 5432.
+      - "5433:5432"
+    healthcheck:
+      # The game waits for this, so it does not start against a database that is not up yet.
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sokker_db"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: local.dockerfile
+    image: tifo-sports-manager:local
+    container_name: tifo-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The prod profile, because that is the one the server runs - and because the dev profile is
+      # not in the repository (it holds this machine's own database password).
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/sokker_db}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-stojke}
+      # The heap, said here because a container with no limit takes the host's memory and the host
+      # is a laptop that also runs the IDE.
+      JAVA_TOOL_OPTIONS: -Xmx1500m
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      # The world's default tactic and the backups: written at runtime, read back after a restart.
+      - tifo-var:/app/var
+      - tifo-backups:/app/backups
+    restart: unless-stopped
+
+volumes:
+  sokker-db:
+  tifo-var:
+  tifo-backups:

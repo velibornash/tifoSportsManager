@@ -77,6 +77,34 @@ mvn test                       # the whole suite
 mvn test -Dtest=RatingEngineTest    # one class
 ```
 
+### Running it in Docker
+
+The same jar the server runs, next to a PostgreSQL of its own, on this machine.
+
+```bash
+docker compose up --build        # the game on http://localhost:8080
+docker compose logs -f app       # what the game is saying
+docker compose down              # stop it; the data stays
+docker compose down -v           # stop it and throw the database away
+```
+
+The database lives in a named volume, so it survives a rebuild and a restart. So does the game's own
+data directory — the world's default tactic (`var/`) and the backups (`backups/`) are written at
+runtime.
+
+Two things are configurable, both as environment variables, because the machine already has both
+taken: the game's port on the host (`APP_PORT`, 8080 by default) and the database it talks to. To run
+the game against the PostgreSQL that is already running on this machine instead of the one this file
+starts, put this in a file called `.env` next to `docker-compose.yml`:
+
+```
+SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/sokker_db
+```
+
+The build is a separate file (`local.dockerfile`) rather than a change to `image.dockerfile`, because
+`image.dockerfile` is the server's build. The only difference is that the local build keeps the Maven
+repository in a cache, so a rebuild after a code change does not download the world again.
+
 ---
 
 ## The layout
