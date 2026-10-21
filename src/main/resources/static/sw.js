@@ -46,11 +46,35 @@ const MAINTENANCE_ASSETS = [
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(MAINTENANCE_ASSETS))
+            .then(cache => fillTheCache(cache))
             .then(() => self.skipWaiting())
             .catch(() => self.skipWaiting())
     );
 });
+
+/**
+ * Fills the cache with the current page and its images, from the network.
+ *
+ * <p><b>Fetched with {@code no-store}, one at a time.</b> The browser's own HTTP cache is not asked:
+ * the app serves the page with {@code no-cache} but the images with an hour's lifetime, and a cached
+ * picture is a picture from the last hour. The whole point of the cache is to be the copy the manager
+ * sees while the app is down, and that copy has to be the one the deploy shipped.
+ *
+ * <p>One at a time, and a failure on one asset does not lose the others: the page matters more than
+ * the badge, and a missing picture is better than no page.
+ */
+async function fillTheCache(cache) {
+    for (const asset of MAINTENANCE_ASSETS) {
+        try {
+            const response = await fetch(asset, { cache: 'no-store' });
+            if (response && response.ok) {
+                await cache.put(asset, response);
+            }
+        } catch (error) {
+            // The network was down for this one. The others may still be there.
+        }
+    }
+}
 
 self.addEventListener('activate', event => {
     event.waitUntil(
