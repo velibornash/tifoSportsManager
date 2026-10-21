@@ -5279,6 +5279,43 @@ body {
     }
 }
 
+/*
+ * The League position tile: the Elo and the position itself, bigger.
+ *
+ * <p>Owner, 2026-10-21: "na league position widgetu na desktopu povecaj ELO i vrednost i za desktop
+ * i za mobile".
+ *
+ * <p>Two numbers on this tile were too small to read at a glance:
+ *
+ * <ul>
+ *   <li>the **Elo chip** in the tile's head - `0.62rem`, which is **9.9px on a phone** and 11.2px on
+ *       a desktop, i.e. smaller than the label next to it. It is now `0.8rem`: 12.8px and 14.4px.
+ *   <li>the **position** itself - `1.3rem` on a phone and `1.65rem` on a desktop. It is now `1.55rem`
+ *       and `2rem`: 24.8px and 36px.
+ * </ul>
+ *
+ * <p>Only this tile. The four tiles of the first row share one height, and the stadium tile's value
+ * is a name ("OFK Omladinac Stadium") that is clamped to two lines - growing it with this one would
+ * clip it.
+ *
+ * <p><b>Measured at 1440x900</b>: the tile's head is 304px wide and the chip 79px, so the label
+ * keeps its line. At 1025px - the narrowest desktop - the head is 200px, the label already wraps to
+ * two lines there, and it still fits its longest word ("POSITION", 82px) in the 94px left over.
+ */
+.fm-dashboard-view [data-widget="position"] .fm-widget-chip {
+    font-size: 0.8rem;
+}
+
+.fm-dashboard-view [data-widget="position"] .fm-widget-value {
+    font-size: 1.55rem;
+}
+
+@media (min-width: 1025px) {
+    .fm-dashboard-view [data-widget="position"] .fm-widget-value {
+        font-size: 2rem;
+    }
+}
+
 .fm-widget--pos .fm-widget-value { color: var(--pos); }
 .fm-widget--neg .fm-widget-value { color: var(--neg); }
 .fm-widget--warn .fm-widget-value { color: var(--warn); }
