@@ -83,6 +83,23 @@
         pointer-events: none;
     }
 
+    /*
+     * The picture on a phone. The source is a landscape frame (1168x784) and the phone is a portrait
+     * one, so `cover` cropped the sides - and the message written on the ground went off the screen
+     * with them (owner, 2026-10-21: "Maintenance stranicu da se skalira za mob slika jer text koji
+     * se nalazi na slici na mobu izadje van ekrana").
+     *
+     * <p>`contain` keeps the whole frame visible, text and all; the bars it leaves at top and bottom
+     * fall on the night background, which is what the page already is. The desktop tuning
+     * (`cover`, `center 65%`) is kept for the wide screens where the whole frame is not needed.
+     */
+    @media (max-width: 768px) {
+        .stage::before {
+            background-size: contain;
+            background-position: center center;
+        }
+    }
+
     .corner {
         position: absolute;
         top: clamp(14px, 3vw, 30px);
