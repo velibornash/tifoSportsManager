@@ -430,6 +430,10 @@ public class NationalTeamSeeder {
                 .limit(Math.max(room, 0))
                 .toList();
 
+        // **One batch, not one save per player.** `save` on its own is its own transaction, and
+        // there is no transaction around this call, so a squad of twenty-five was twenty-five
+        // commits. The rows are the same; the commits are not.
+        List<Player> copies = new ArrayList<>(squad.size());
         for (Player source : squad) {
             Player copy = new Player();
             copy.setName(source.getName());
@@ -448,8 +452,9 @@ public class NationalTeamSeeder {
             if (copy.getSkills() == null) {
                 copy.setSkills(source.getSkills());
             }
-            players.save(copy);
+            copies.add(copy);
         }
+        players.saveAll(copies);
         log.debug("{} squad of {} drawn from {} eligible players.",
                 nationalTeam.getName(), squad.size(), eligible.size());
     }

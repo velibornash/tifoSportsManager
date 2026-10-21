@@ -84,6 +84,13 @@ public class TeamFactory {
         newTeam.setStadium(stadium);
 
         // 🔹 Sačuvaj i vrati
-        return teamRepository.save(newTeam);
+        //
+        // **Flushed, not just saved.** A club's id is assigned by the insert (IDENTITY), and inside a
+        // transaction the insert waits for the flush - so a caller that has just created a club and
+        // asks for its id would get null. The divisions are now filled in parallel, each in its own
+        // transaction, and each of them needs the id of the club it just created to claim that club
+        // for its division. Outside a transaction this made no difference: the save committed by
+        // itself, which is the id's reason for existing at all.
+        return teamRepository.saveAndFlush(newTeam);
     }
 }

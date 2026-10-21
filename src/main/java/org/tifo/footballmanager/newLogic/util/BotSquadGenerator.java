@@ -160,7 +160,13 @@ public class BotSquadGenerator {
         // The names already used in this squad, so two players are never called the same thing.
         Set<String> taken = new HashSet<>();
 
-        int made = 0;
+        // **One batch, not one save per player.** The squad is written with `saveAll`, because a
+        // `save` on its own is its own transaction: there is no transaction around this call, so
+        // twenty-five saves meant twenty-five commits for one squad, and ninety-six squads meant
+        // 2,400 commits for the national sides - which was most of the thirty-five seconds the
+        // Initialize DB button spent on this phase. The rows are the same; the commits are not.
+        List<Player> squad = new ArrayList<>(SQUAD_SIZE);
+
         for (int index = 0; index < SQUAD_SIZE; index++) {
             Position position = positionFor(index);
             Player player = new Player();
@@ -180,10 +186,10 @@ public class BotSquadGenerator {
             // BASE_SKILL * 8, which made every bot in the world read exactly 96 and handed each of
             // them a free +6 of OVR over a human of identical ability.
             player.setRating(player.careerRating());
-            players.save(player);
-            made++;
+            squad.add(player);
         }
-        return made;
+        players.saveAll(squad);
+        return squad.size();
     }
 
     /** The shape above, walked in order, so every bot side is the same shape. */

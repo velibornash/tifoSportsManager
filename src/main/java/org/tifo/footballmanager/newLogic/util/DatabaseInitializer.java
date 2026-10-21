@@ -113,6 +113,26 @@ public class DatabaseInitializer {
     private org.springframework.transaction.support.TransactionTemplate requiresNew;
 
     /**
+     * The transaction each division of the pyramid is filled in.
+     *
+     * <p>Same construction as {@link #requiresNew} and for the same reason: the divisions run on
+     * their own threads, and a template that joined the caller's transaction would join nothing -
+     * there is no transaction on a worker thread - and the division's work would end up in the job
+     * thread's session instead of its own.
+     */
+    private org.springframework.transaction.support.TransactionTemplate perDivision;
+
+    /**
+     * The threads the divisions are filled on.
+     *
+     * <p>Four, like the simulated countries' ({@link SimulatedWorldSeeder}). The work is mostly
+     * database round-trips, so more threads than this buy little and make the world's build
+     * harder to reason about; the owner's server has few cores to spare anyway.
+     */
+    private final java.util.concurrent.ExecutorService divisionPool =
+            java.util.concurrent.Executors.newFixedThreadPool(4);
+
+    /**
      * The transaction used for the seeding steps that must be able to fail without poisoning the boot.
      *
      * <p>Built here rather than injected: Spring Boot auto-configures a TransactionTemplate with
@@ -126,7 +146,26 @@ public class DatabaseInitializer {
         template.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.requiresNew = template;
+
+        org.springframework.transaction.support.TransactionTemplate divisionTemplate =
+                new org.springframework.transaction.support.TransactionTemplate(seedingTransactionManager);
+        divisionTemplate.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.perDivision = divisionTemplate;
     }
+
+    /**
+     * Stops the threads that fill the divisions.
+     *
+     * <p>Without this the pool's threads would keep the application from shutting down - they are
+     * not daemon threads, and the application is stopped and started often enough for that to show
+     * up as a slow shutdown.
+     */
+    @jakarta.annotation.PreDestroy
+    void shutdownDivisionPool() {
+        divisionPool.shutdown();
+    }
+
     private final InternationalFixtureSeeder internationalFixtureSeeder;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final org.tifo.footballmanager.newLogic.service.NationalTeamService nationalTeamService;
@@ -252,9 +291,12 @@ public class DatabaseInitializer {
      */
     private void seedTheNamePools() {
         try {
-            for (Country country : countryRepository.findAll()) {
-                countryNamePoolService.seedFromFile(country.getIsoCode());
-            }
+            // **Every country in its own transaction, four at a time.** The pools are written one
+            // name at a time (a country's names carry an identity id, so they cannot be batched),
+            // and a country is a second of the job on its own. Forty-eight countries are the second
+            // biggest thing this job does.
+            runEachInItsOwnTransaction(countryRepository.findAll(),
+                    country -> countryNamePoolService.seedFromFile(country.getIsoCode()));
         } catch (RuntimeException e) {
             log.warn("Could not seed the name pools: {}", e.getMessage());
         }
@@ -1336,8 +1378,66 @@ public class DatabaseInitializer {
             createLeagueIfNotExists(serbia, 5, name, i, 10, currentSeason);
         }
 
-        // 4. Popuni timove u Tier 1 (Superliga) – obavezno Omladinac + 9 random/stvarnih
-        populateLeagueWithTeams(tier1, 10, true, currentSeason);
+        // 4. Popuni timove u Tier 1 (Superliga) – obavezno Omladinac + 9 random/stvarnih,
+        //    i sve ostale lige. Svaka liga se popunjava u svojoj transakciji i paralelno.
+        fillSerbianDivisions(tier1, currentSeason);
+
+        // 5. Dodaj PromotionRule za lige
+        addPromotionRulesForLeagues(currentSeason);
+
+        // 6. Dodaj Kup Srbije (nacionalni kup)
+        createCupCompetitionIfNotExists(serbia, "Kup Srbije", 64, currentSeason);
+
+        // 7. Generate double round-robin fixtures for all Serbian leagues, on the current season
+        int seasonYear = currentSeasonYear();
+        List<Long> leagueIds = competitionRepository.findAll().stream()
+                .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
+                .filter(c -> c.getType() == CompetitionType.LEAGUE)
+                .map(Competition::getId)
+                .toList();
+        // **The clock is read by every fixture list, and it is created on the first read.** It is
+        // created here, once, before thirty-one divisions ask for it at the same time - otherwise
+        // two of them write the same row.
+        seasonService.getOrCreateClock();
+        // Each league's fixtures in their own transaction, four at a time: a league's ninety
+        // fixtures are the league's, and no league reads another's.
+        runEachInItsOwnTransaction(leagueIds, leagueId -> {
+            Competition league = competitionRepository.findById(leagueId).orElseThrow(
+                    () -> new IllegalStateException("The division was gone before its fixtures were drawn: " + leagueId));
+            seasonService.ensureDoubleRoundRobinSchedule(league, seasonYear);
+        });
+    }
+
+    /**
+     * Fills the divisions of the Serbian pyramid, each in its own transaction, four at a time.
+     *
+     * <p><b>Why (owner, 2026-10-21: "vidi admin opcije reset db i initialise db da li mogu da se
+     * ubrzaju jer mislim da moze neki paralelizam or something").</b> The Initialize DB button took
+     * six minutes, and four of them were the three hundred clubs and their seven and a half thousand
+     * players. Two things were wrong with that work:
+     *
+     * <ul>
+     *   <li><b>One thread, one transaction, one growing pile.</b> The job ran on a single thread with
+     *       a single {@code EntityManager}, so every club and every player stayed in the persistence
+     *       context until the job ended and every flush checked all of it. A club cost 0.49 s at the
+     *       top of the pyramid and 2.25 s at the bottom: the price of the clubs before it.</li>
+     *   <li><b>The divisions do not depend on each other.</b> Thirty-one divisions, ten clubs each.
+     *       The only things they share are the name pool and the rule that a club belongs to one
+     *       division.</li>
+     * </ul>
+     *
+     * <p>So each division is filled in its own transaction, on the pattern the simulated countries
+     * already use ({@link SimulatedWorldSeeder}). A division's ten clubs and their players cost one
+     * commit instead of five hundred, and its context holds a quarter of a division's worth of
+     * entities instead of the whole world's.
+     *
+     * <p><b>What the parallelism does not change.</b> The set of clubs a division owns is still the
+     * set of clubs it created, and the second human manager's club is still the first one in the
+     * Superliga. The Šid league still gets its real clubs first.
+     */
+    private void fillSerbianDivisions(Competition tier1, Season season) {
+        List<DivisionJob> jobs = new ArrayList<>();
+        jobs.add(new DivisionJob(tier1.getId(), 10, true, null));
 
         // Ostale lige popuni random timovima. The Šid league gets its real clubs first and one random
         // club to make ten, which is what the rest of the pyramid does for the remainder.
@@ -1351,22 +1451,66 @@ public class DatabaseInitializer {
         competitionRepository.findAll().stream()
                 .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
                 .filter(c -> c.getTier() != null && c.getTier() > 1)
-                .forEach(league -> populateLeagueWithTeams(league, 10, false, currentSeason,
+                .forEach(league -> jobs.add(new DivisionJob(league.getId(), 10, false,
                         MUNICIPAL_SID_LEAGUE.equals(league.getName())
-                                ? MUNICIPAL_SID_CLUBS : null));
+                                ? MUNICIPAL_SID_CLUBS : null)));
 
-        // 5. Dodaj PromotionRule za lige
-        addPromotionRulesForLeagues(currentSeason);
+        log.info("Popunjavam {} liga, paralelno", jobs.size());
+        runEachInItsOwnTransaction(jobs, job -> fillDivision(job, season.getSeasonYear()));
+    }
 
-        // 6. Dodaj Kup Srbije (nacionalni kup)
-        createCupCompetitionIfNotExists(serbia, "Kup Srbije", 64, currentSeason);
+    /**
+     * Runs the same work over many items, four at a time, each item in its own transaction.
+     *
+     * <p>The pattern the simulated countries already use ({@link SimulatedWorldSeeder}), and the
+     * reason it works: the items are independent, so each one gets its own {@code EntityManager}
+     * and its own commit instead of sharing the job's session and its growing pile.
+     *
+     * <p><b>A failure is the job's failure.</b> One item that fails takes the whole set down, as it
+     * did when the items ran one after another - but the items that already committed keep their
+     * work, and a rerun of the button is what finishes the rest.
+     */
+    private <T> void runEachInItsOwnTransaction(List<T> items, Consumer<T> work) {
+        List<java.util.concurrent.CompletableFuture<Void>> futures = items.stream()
+                .map(item -> java.util.concurrent.CompletableFuture.runAsync(
+                        () -> perDivision.executeWithoutResult(status -> work.accept(item)),
+                        divisionPool))
+                .toList();
+        try {
+            java.util.concurrent.CompletableFuture.allOf(futures.toArray(new java.util.concurrent.CompletableFuture[0]))
+                    .join();
+        } catch (java.util.concurrent.CompletionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw e;
+        }
+    }
 
-        // 7. Generate double round-robin fixtures for all Serbian leagues, on the current season
-        int seasonYear = currentSeasonYear();
-        competitionRepository.findAll().stream()
-                .filter(c -> c.getCountry() != null && "SRB".equals(c.getCountry().getIsoCode()))
-                .filter(c -> c.getType() == CompetitionType.LEAGUE)
-                .forEach(league -> seasonService.ensureDoubleRoundRobinSchedule(league, seasonYear));
+    /**
+     * Fills one division, in the division's own transaction.
+     *
+     * <p>The league and the season are read here, in the worker, rather than handed over: the worker
+     * has its own {@code EntityManager}, and an entity from another thread's session is not one it
+     * can use. The ids are what crosses the thread.
+     */
+    private void fillDivision(DivisionJob job, int seasonYear) {
+        Competition league = competitionRepository.findById(job.leagueId()).orElseThrow(
+                () -> new IllegalStateException(
+                        "The division was gone before it could be filled: " + job.leagueId()));
+        Season season = seasonRepository.findBySeasonYear(seasonYear).orElseThrow(
+                () -> new IllegalStateException(
+                        "The season was gone before the pyramid could be filled: " + seasonYear));
+        populateLeagueWithTeams(league, job.teamCount(), job.includeOmladinac(), season, job.preferredNames());
+    }
+
+    /**
+     * One division to fill: which league, how many clubs, whether it holds the second human
+     * manager's club, and the real clubs it owns.
+     */
+    private record DivisionJob(Long leagueId, int teamCount, boolean includeOmladinac,
+                                List<String> preferredNames) {
     }
 
     private Country createCountryIfNotExists(String name, String isoCode, int reputation, int youthRating) {
@@ -1443,13 +1587,13 @@ public class DatabaseInitializer {
      * name, League B drew the same name, {@code findOrCreate} returned the <em>same</em> Team, and
      * {@code addTeamToLeague} then reassigned its competition. A club has exactly one division, and
      * two clubs are allowed to share a name, so identity here has to be the id.
+     *
+     * <p><b>Concurrent, because the divisions are filled in parallel (owner, 2026-10-21).</b> The set
+     * is now claimed atomically: the division that adds an id to this set owns that club, and the
+     * other thirty skip it. A plain {@code contains} followed by an {@code add} was one check and
+     * one write with a gap in between, and thirty-one divisions now take that gap at the same time.
      */
-    private final Set<Long> teamIdsAssignedToALeague = new HashSet<>();
-
-    private int populateLeagueWithTeams(Competition league, int teamCount, boolean includeOmladinac,
-                                        Season season) {
-        return populateLeagueWithTeams(league, teamCount, includeOmladinac, season, null);
-    }
+    private final Set<Long> teamIdsAssignedToALeague = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
      * Fills a division, preferring real club names where the league has them.
@@ -1485,12 +1629,14 @@ public class DatabaseInitializer {
         // 1. Dodaj Omladinac ako treba i ako ga nema
         if (includeOmladinac) {
             Team omladinac = teamFactory.findOrCreate("OFK Omladinac");
+            // **The claim comes first, and it is the claim that decides.** `add` returns false when
+            // another division already owns the club, and that is the whole of the "one club, one
+            // division" rule now that the divisions run at the same time.
             if (omladinac.getId() != null
                     && !usedTeamIdsInLeague.contains(omladinac.getId())
-                    && !teamIdsAssignedToALeague.contains(omladinac.getId())) {
+                    && teamIdsAssignedToALeague.add(omladinac.getId())) {
                 addTeamToLeague(omladinac, sc);
                 usedTeamIdsInLeague.add(omladinac.getId());
-                teamIdsAssignedToALeague.add(omladinac.getId());
                 economyProfile.apply(omladinac, league);
                 toCreate--;
                 log.info("Dodat Omladinac u ligu: {}", league.getName());
@@ -1505,13 +1651,12 @@ public class DatabaseInitializer {
                 Team real = teamFactory.findOrCreate(realName);
                 if (real.getId() == null
                         || usedTeamIdsInLeague.contains(real.getId())
-                        || teamIdsAssignedToALeague.contains(real.getId())) {
+                        || !teamIdsAssignedToALeague.add(real.getId())) {
                     continue;
                 }
                 if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, real).isEmpty()) {
                     addTeamToLeague(real, sc);
                     usedTeamIdsInLeague.add(real.getId());
-                    teamIdsAssignedToALeague.add(real.getId());
                     economyProfile.apply(real, league);
                     toCreate--;
                     log.info("Dodat stvarni tim {} u ligu {}", realName, league.getName());
@@ -1524,17 +1669,21 @@ public class DatabaseInitializer {
             String candidateName = getRandomTeamName();
             Team team = teamFactory.findOrCreate(candidateName);
             if (team.getId() == null
-                    || usedTeamIdsInLeague.contains(team.getId())
-                    // The real fix for the two-leagues bug: a name collision in this league must
-                    // skip, not re-add, the club another league already owns.
-                    || teamIdsAssignedToALeague.contains(team.getId())) {
+                    || usedTeamIdsInLeague.contains(team.getId())) {
+                attempts++;
+                continue;
+            }
+            // The real fix for the two-leagues bug: a name collision in this league must
+            // skip, not re-add, the club another league already owns. **The claim is taken
+            // here, before the club is added, and it is atomic** - the divisions run at the
+            // same time and a check followed by a write is a race.
+            if (!teamIdsAssignedToALeague.add(team.getId())) {
                 attempts++;
                 continue;
             }
             if (competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
                 addTeamToLeague(team, sc);
                 usedTeamIdsInLeague.add(team.getId());
-                teamIdsAssignedToALeague.add(team.getId());
                 economyProfile.apply(team, league);
                 added++;
                 toCreate--;
@@ -1552,6 +1701,7 @@ public class DatabaseInitializer {
                 String fallbackName = "FK Fallback " + league.getName() + " " + fallbackIdx++;
                 Team team = teamFactory.findOrCreate(fallbackName);
                 if (team.getId() != null && !usedTeamIdsInLeague.contains(team.getId())
+                        && teamIdsAssignedToALeague.add(team.getId())
                         && competitionEntryRepository.findBySeasonCompetitionAndTeam(sc, team).isEmpty()) {
                     addTeamToLeague(team, sc);
                     usedTeamIdsInLeague.add(team.getId());

@@ -35,6 +35,21 @@ public class CountryNamePoolService {
     private final CountryRepository countries;
     private final CountryNamePool files;
 
+    /**
+     * The pool each country is read from, cached.
+     *
+     * <p><b>Why this exists (owner, 2026-10-21: "da li mogu da se ubrzaju").</b> The pool was read
+     * from the database <em>every time a name was drawn</em>, and a name is drawn twice per player:
+     * the first name and the last one. Building Serbia's pyramid therefore asked the database for
+     * the same pool 15,000 times - 30,000 queries, and 4.9 million rows fetched back, for a list that
+     * does not change while the world is being built.
+     *
+     * <p>Measured on the Initialize DB button: the clubs took four minutes, and this was most of it.
+     * The pool is content, not state: it changes when the owner edits it in the admin panel, and
+     * that is the one moment the cache is dropped.
+     */
+    private final Map<String, CountryNamePool.Pool> poolCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     public CountryNamePoolService(CountryNamePoolEntryRepository entries, CountryRepository countries,
                                   CountryNamePool files) {
         this.entries = entries;
@@ -103,6 +118,8 @@ public class CountryNamePoolService {
         written += write(country, CountryNamePoolEntry.Category.CITY, cities);
         written += write(country, CountryNamePoolEntry.Category.FIRST_NAME, firstNames);
         written += write(country, CountryNamePoolEntry.Category.LAST_NAME, lastNames);
+        // The rows behind the cached pool have just changed.
+        forgetPool(code);
         return written;
     }
 
@@ -135,6 +152,8 @@ public class CountryNamePoolService {
         written += write(country, CountryNamePoolEntry.Category.CITY, pool.cities());
         written += write(country, CountryNamePoolEntry.Category.FIRST_NAME, pool.firstNames());
         written += write(country, CountryNamePoolEntry.Category.LAST_NAME, pool.lastNames());
+        // The rows behind the cached pool have just changed.
+        forgetPool(code);
         return written;
     }
 
@@ -144,10 +163,26 @@ public class CountryNamePoolService {
      * <p>This is what the seeders ask, so that the names the owner set in the admin panel are the
      * names the world is built from - and a country nobody touched keeps the file's, and a country
      * with neither keeps what it always had.
+     *
+     * <p><b>Read once and kept (owner, 2026-10-21).</b> The seeders ask for a name per player, so
+     * this method was called about thirty thousand times in one world build and every call was two
+     * queries and a few hundred rows. The pool does not change while the world is being built, so
+     * it is read once per country and kept until the owner edits it - {@link #save} and
+     * {@link #seedFromFile} are the two moments that drop it.
      */
     @Transactional(readOnly = true)
     public CountryNamePool.Pool poolFor(String isoCode) {
         String code = isoCode == null ? "" : isoCode.trim().toUpperCase(java.util.Locale.ROOT);
+        return poolCache.computeIfAbsent(code, this::readPool);
+    }
+
+    /**
+     * The pool as it stands in the database, or in the file when the database has none.
+     *
+     * <p>Split out of {@link #poolFor} so the cache holds the reading and the reading stays a plain
+     * method: it runs once per country, and it is the only part that touches the database.
+     */
+    private CountryNamePool.Pool readPool(String code) {
         Optional<Country> country = countries.findByIsoCode(code);
         if (country.isPresent()) {
             Map<CountryNamePoolEntry.Category, List<String>> byCategory = new LinkedHashMap<>();
@@ -163,6 +198,17 @@ public class CountryNamePoolService {
             }
         }
         return files.forCountry(code).orElse(CountryNamePool.Pool.empty());
+    }
+
+    /**
+     * Forgets a country's cached pool, because the pool has just changed.
+     *
+     * <p>Called whenever the rows behind the cache are written. A stale pool would be worse than no
+     * cache: the seeders would draw names the owner had just deleted.
+     */
+    private void forgetPool(String isoCode) {
+        if (isoCode == null) return;
+        poolCache.remove(isoCode.trim().toUpperCase(java.util.Locale.ROOT));
     }
 
     /** A random club name for a country, from the pool that is actually in force. */
@@ -202,12 +248,12 @@ public class CountryNamePoolService {
 
     private int write(Country country, CountryNamePoolEntry.Category category, List<String> values) {
         if (values == null) return 0;
-        int written = 0;
         // **Duplicates are dropped, not refused.** The names arrive as one typed line split on
         // commas, and a person repeating a name is a person making a typo, not a request for an
         // error: the save failed on a repeated "Sloga Kraljevo" before this, and a save that refuses
         // because a name was typed twice is a save that loses the whole list.
         java.util.Set<String> seen = new java.util.HashSet<>();
+        List<CountryNamePoolEntry> rows = new ArrayList<>();
         for (String value : values) {
             if (value == null) continue;
             String text = value.trim();
@@ -218,9 +264,14 @@ public class CountryNamePoolService {
             entry.setCountry(country);
             entry.setCategory(category);
             entry.setValue(text);
-            entries.save(entry);
-            written++;
+            rows.add(entry);
         }
-        return written;
+        // **Written in one batch.** A country's pool is a few hundred names, and they were written
+        // one statement at a time - 48 countries is fourteen thousand statements where four hundred
+        // will do.
+        if (!rows.isEmpty()) {
+            entries.saveAll(rows);
+        }
+        return rows.size();
     }
 }
