@@ -66,6 +66,24 @@ export function paintAccountMenu(user, leagueName) {
     if (trigger) {
         trigger.setAttribute('title', name ? `Signed in as ${name}` : 'Account');
     }
+
+    // **The nav bar's User entry is the account corner now** (owner spec, 2026-10-16: the desktop
+    // account block moved into the nav's right cluster), and it is labelled with the manager's name
+    // rather than the word "User".
+    //
+    // It reads `window.fmUserName`, and that was published **only** in dashboard.js's window-`load`
+    // handler - once per full page load. So renaming yourself in My profile saved the name and
+    // left the nav bar saying the old one until the page was reloaded (owner, 2026-10-21: "kad
+    // izmenim ime u User - My profile da odmah prihvati u nav baru, vrvt treba neki mali refresh").
+    //
+    // So the name is published here, from the same payload the corner is painted from, and the nav
+    // is re-rendered. The re-render reads the label at paint time (mainDesktopNavItems), so it has
+    // to be asked for - a nav that was built before the change still holds the old string in its
+    // markup.
+    window.fmUserName = name || 'Manager';
+    if (typeof window.renderDesktopBottomNav === 'function') {
+        window.renderDesktopBottomNav();
+    }
 }
 
 function setText(id, value) {
