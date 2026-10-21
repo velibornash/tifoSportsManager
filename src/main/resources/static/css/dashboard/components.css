@@ -858,6 +858,54 @@ recent-match:hover .result-badge {
     line-height:1.1; text-align:center;
 }
 
+/*
+ * The ground's plan: the stands that could not show their data, and the type in them
+ * (owner, 2026-10-21).
+ *
+ * <p>"samu sliku stadiona u The Ground delu, prosiriti sve tribine na slici osim North i South da bi
+ * se bolje videli podaci na tribini i onda malo i povecati font"
+ *
+ * <p><b>Measured</b> before the change: the plan is **300x400** and its side columns are **60px**.
+ * The corner's data ("Benches · 3,462") needed **64px** and the West and East needed **68px**, so
+ * **all six were cut off** - the corners read "Benches · 3,…" and the sides read "Benches ·…". North
+ * and South had 180px and showed their data whole.
+ *
+ * <p>So the four corners and the two sides get **130px** each and the plan grows from 300px to 440px
+ * wide. The plan's width is derived from its height (`max-height: 400px` with an `aspect-ratio`), so
+ * the aspect ratio moves with it. **North and South keep their 180px** and the pitch keeps its
+ * 180x240, so the drawing still reads as a ground and the middle of it does not change.
+ *
+ * <p>The type grows with the room: the corner's label 10 -> 12px and its data 8 -> 10px, the stand's
+ * name 11 -> 13px and its data 9 -> 11px. Measured: the corner's data then needs 80px of the 126px it
+ * has, and the West and East 83px of 122px, so the data is whole on all six.
+ *
+ * <p>Desktop only. The plan is a fixed 300x400 drawing on a phone and on a tablet, and the type there
+ * is measured to fit its 60px columns - growing it without growing the plan would make the phone
+ * worse, not better.
+ */
+@media (min-width: 1025px) {
+    .stadium-plan-pitch {
+        aspect-ratio: 11/10;
+        grid-template-columns: 130px 180px 130px;
+    }
+
+    .stadium-stand-name {
+        font-size: 13px;
+    }
+
+    .stadium-stand-meta {
+        font-size: 11px;
+    }
+
+    .stadium-corner-label {
+        font-size: 12px;
+    }
+
+    .stadium-corner-meta {
+        font-size: 10px;
+    }
+}
+
 /* --- legend --- */
 .stadium-plan-legend{
     display:grid;
