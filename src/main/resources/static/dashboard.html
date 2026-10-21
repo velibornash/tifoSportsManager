@@ -66,7 +66,7 @@
      is reachable from the bottom nav bar. -->
 <div class="top-menu">
     <button type="button" class="menu-button mobile-only mobile-sports-lobby-btn" onclick="window.location.href='/home.html'" aria-label="Sports Lobby">
-        <span aria-hidden="true">&#9917;&#127936;&#127947;</span>
+        <span aria-hidden="true">&#9917;&#127936;&#127944;</span>
     </button>
     <button type="button" class="menu-button mobile-only mobile-search-btn" onclick="loadPage('search')" aria-label="Search">
         <span aria-hidden="true">&#128269;</span>
@@ -163,11 +163,10 @@
 	            </div>
 	        </div>
 
-        <div class="mobile-accordion">
-            <div class="accordion-header" onclick="window.location.href='/home.html'">
-                ⚽🏀🏈 Sports Lobby
-            </div>
-        </div>
+        <!-- The Sports Lobby entry that used to sit here is gone (owner, 2026-10-21: it must not be in
+             the phone's menu, because it is already in the phone's top header - the ⚽🏀🏈 button next to
+             Search. It was removed from the bottom nav on 2026-10-20 and this drawer entry was the one
+             that was missed, so the lobby still appeared in two places on a phone. -->
 
         <!-- The same account block as the desktop top bar, as a full-width row at the foot of the
              drawer. On a phone this is the only signout there is, so it is deliberately at the
