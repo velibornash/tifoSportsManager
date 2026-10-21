@@ -946,10 +946,27 @@ public class TeamController {
         return matchRepository.findByHomeTeamIdOrAwayTeamId(teamId, teamId).stream()
                 .filter(Match::isPlayed)
                 .filter(match -> match.getHomeTeam() != null && match.getAwayTeam() != null)
+                // **A match whose result has not been revealed is not in the history yet.** The
+                // head-to-head line is a summary of what the manager has been shown, and it counted a
+                // match the manager had not been shown: the win and the goals of a game whose result
+                // was still masked (owner, 2026-10-21: "pojavi se u next matches vec u h2h, to treba
+                // da azurira kad klikne watch your match ili show results"). The same rule the row
+                // itself uses to hide the score: the side this club is on has to be the revealed one.
+                .filter(match -> resultIsRevealedFor(match, teamId))
                 .collect(Collectors.groupingBy(match -> resolveOpponentId(match, teamId)))
                 .entrySet()
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, entry -> summarizeHeadToHead(teamId, entry.getValue())));
+    }
+
+    /**
+     * Whether the club's own side of the result has been shown.
+     *
+     * <p>The reveal is per side, so a manager watching their own club sees their own result first.
+     */
+    private boolean resultIsRevealedFor(Match match, Long teamId) {
+        boolean isHome = Objects.equals(match.getHomeTeam().getId(), teamId);
+        return isHome ? match.isHomeResultRevealed() : match.isAwayResultRevealed();
     }
 
     private Map<String, Object> summarizeHeadToHead(Long teamId, List<Match> matches) {

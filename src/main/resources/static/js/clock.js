@@ -44,6 +44,12 @@ let kickoffMinute = null;
 let matchDay = false;
 let syncing = false;
 
+/** The last game position the client saw, so a move can be noticed. */
+let lastPositionKey = null;
+
+/** Whether the world was mid-job the last time the clock was read. */
+let worldIsSyncing = false;
+
 /** Whether the job walk for the last clock move is still running. */
 export function isSyncing() {
     return syncing;
@@ -147,9 +153,54 @@ async function syncGameClock() {
             dayNumber = Number(data.day || 1);
         }
         dayLabel = data.dayLabel || '';
+        announceTheWorldMoved(data);
     } catch (err) {
         console.warn('Game clock sync failed:', err);
     }
+}
+
+/**
+ * Says that the world moved, so the pages that show it can come back for it.
+ *
+ * <p><b>Two signals, and both of them are needed.</b>
+ *
+ * <ul>
+ *   <li><b>The hour changed.</b> The matchday jobs fire on the hour, and the publish job is what moves
+ *       a match out of "next matches" and into the results. The dashboard re-reads itself when the hour
+ *       turns over (owner, 2026-10-21: "proveri takodje da kad publishing job okine da refreshuje
+ *       dashboard i da mec iz next predje u recents").</li>
+ *   <li><b>The world stopped syncing.</b> The job that publishes takes a couple of minutes - it plays
+ *       four hundred and eighty fixtures - and the hour turns over while it is still running. The
+ *       server says so: {@code syncing} is true while a job is in the body, and the response exists
+ *       for exactly this, "the browser knows to come back".</li>
+ * </ul>
+ *
+ * <p>So the page is told twice: once when the hour turns over, and once when the job that was running
+ * has finished.
+ */
+function announceTheWorldMoved(data) {
+    const positionKey = `${seasonNumber}/${weekNumber}/${dayNumber}/${data.hour}`;
+    const moved = positionKey !== lastPositionKey;
+    if (moved) {
+        lastPositionKey = positionKey;
+    }
+
+    if (data.syncing === true) {
+        worldIsSyncing = true;
+    } else if (worldIsSyncing) {
+        worldIsSyncing = false;
+        announce('sync-finished');
+    }
+    if (moved) {
+        announce('position-changed');
+    }
+}
+
+/** Tells the pages that the world moved. */
+function announce(reason) {
+    window.dispatchEvent(new CustomEvent('fm-world-moved', {
+        detail: { reason, season: seasonNumber, week: weekNumber, day: dayNumber }
+    }));
 }
 
 function updateLiveClock() {

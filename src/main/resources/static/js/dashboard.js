@@ -582,6 +582,25 @@ function loadDashboard() {
 }
 
 /**
+ * Comes back for the world when the world moves.
+ *
+ * <p>The matchday jobs fire on the hour, and the publish job is what plays the day's matches — so a
+ * match that was in "next matches" is in the results a moment later, and the dashboard has to say so
+ * without the manager reloading the page (owner, 2026-10-21: "proveri takodje da kad publishing job
+ * okine da refreshuje dashboard i da mec iz next predje u recents").
+ *
+ * <p>The clock's sync says when the hour turned over and when the world stopped syncing, and this is
+ * what it is for. The re-read is skipped when the dashboard is not on the screen: the loaders write
+ * into the page, and there is no page to write into.
+ */
+window.addEventListener('fm-world-moved', () => {
+    if (!document.getElementById('recent-matches-list')) return;
+    loadRecentMatches();
+    loadHomeTeamStats();
+    loadNextMatch();
+});
+
+/**
  * The next-fixture strip on a phone: three tiles, one per screen, and the swipe goes **round**.
  *
  * <p>Owner, 2026-10-20: "moze da se swajpuje za oba u krug 1/3, 2/3, 3/3, 1/3..." - a strip that
@@ -849,7 +868,13 @@ async function loadRecentMatches() {
         // **The club's schedule, not the club's match rows** (owner, 2026-10-21: the strip should look
         // like the club's Matches page, and that page reads the schedule - which carries the ground and
         // the head-to-head line the match rows do not).
-        const response = await authFetch(`/teams/${currentUserTeamId}/schedule`);
+        //
+        // **With every competition**, like the page it has to match. Without the flag the schedule is
+        // the league's fixtures only, so a match in the cup or a friendly was not in the strip at all:
+        // the manager's first game of the season was a Challenge Cup tie, and the strip said "No played
+        // matches yet" while the club's Matches page said "1 Played" (owner, 2026-10-21: "ne pojavi se
+        // match na dashboardu u recents ... a mozes uci i sam na Oracle i pogledati").
+        const response = await authFetch(`/teams/${currentUserTeamId}/schedule?allCompetitions=true`);
 
         const matches = await response.json();
         // Order by the game calendar (season, week, day), not by wall-clock date.
