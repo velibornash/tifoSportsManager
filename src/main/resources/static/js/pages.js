@@ -1,7 +1,7 @@
 ﻿// pages.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
-import { renderPlayersView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderAwaySquadView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
 import { albumHtml, bindAlbum } from './pages/views/album-view.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createLoansFeature } from './pages/features/loans.js';
@@ -656,6 +656,13 @@ function buildPageNavState(page, options = {}) {
                     }
                     break;
 
+                // Another club's squad (owner, 2026-10-21). `teamId` is required for the same reason
+                // `clubProfile` requires it: falling back to the viewer's own club would render a squad
+                // screen that looks right and is about somebody else.
+                case "clubSquad":
+                    await loadClubSquad(options.teamId);
+                    break;
+
                 // Global search. Not the friendly picker: this finds anything in the world, and it is
                 // reached from the magnifying glass in the top bar rather than from inside a panel.
                 case "fantasy":
@@ -934,6 +941,51 @@ function buildPageNavState(page, options = {}) {
             return clubView.loadClubProfile();
         }
         return clubView.loadClubProfile(teamId);
+    }
+
+    /**
+     * Another club's squad (owner, 2026-10-21).
+     *
+     * <p>The owner: <i>"svaki user bi trebalo da moze da klikne na squad za drugi tim samo ga vidi bez
+     * skilova, vidi formu, rejting, apps, goals, assists"</i>. This is that screen — a purpose-built
+     * page, not the First Team page, which reads the viewer's own club and cannot show another.
+     *
+     * <p>It asks {@code /teams/{id}/squad}, whose response carries no skill field at all, so "without
+     * skills" is a property of the data rather than of this renderer's care. The club's name is read
+     * from the profile endpoint, because the squad response is players and the page's title is a club.
+     */
+    async function loadClubSquad(teamId) {
+        const mainContent = document.getElementById('main-content');
+        if (teamId == null) {
+            // No club named means the viewer's own, which has the First Team page already.
+            await settleTeamId();
+            if (currentUserTeamId == null) {
+                return;
+            }
+            teamId = currentUserTeamId;
+        }
+        const requested = teamId;
+        try {
+            const [squadResponse, profileResponse] = await Promise.all([
+                authFetch(`/teams/${encodeURIComponent(requested)}/squad`),
+                authFetch(`/teams/${encodeURIComponent(requested)}/profile`)
+            ]);
+            if (!squadResponse.ok) {
+                throw new Error(`Squad request failed (${squadResponse.status})`);
+            }
+            const squad = await squadResponse.json();
+            // The title is a nicety; a club whose profile read failed still gets its squad, under a
+            // neutral heading, rather than an error page about a name.
+            const profile = profileResponse.ok ? await profileResponse.json().catch(() => null) : null;
+            renderAwaySquadView(squad, {
+                clubName: profile?.name || 'Club',
+                teamId: requested
+            });
+        } catch (error) {
+            mainContent.innerHTML = buildEmptyState(
+                error.message || 'This club\u2019s squad could not be loaded.'
+            );
+        }
     }
 
     async function loadUpcomingMatches() {

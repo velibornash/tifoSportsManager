@@ -575,6 +575,109 @@ export function buildSquadTableHtml(players, options = {}) {
 }
 
 /**
+ * Another club's squad, as a stranger may see it (owner, 2026-10-21).
+ *
+ * <p>The owner asked for a squad screen any manager can open on any club, and named what it shows:
+ * <i>"svaki user bi trebalo da moze da klikne na squad za drugi tim samo ga vidi bez skilova, vidi
+ * formu, rejting, apps, goals, assists"</i>. So: the photo and the name, the position and the age,
+ * and the four numbers a manager reads — form, average rating, appearances, goals and assists.
+ *
+ * <h2>Why it is not {@link buildSquadTableHtml} with columns hidden</h2>
+ *
+ * <p>That builder's other columns are not decoration, they are <b>skills read back out</b>: Ability is
+ * the player's overall, Potential is that overall plus a constant, Condition is his fatigue, and the
+ * avatar in the name cell carries the overall again as a badge. Hiding them leaves three placeholders
+ * and a badge to remember not to add later.
+ *
+ * <p>This screen renders the columns it means and none other, and it is fed by a response that has no
+ * skill field on it at all — so there is nothing here to hide by mistake.
+ */
+export function renderAwaySquadView(players, { clubName, teamId, onBack } = {}) {
+    const mainContent = document.getElementById('main-content');
+    const rows = Array.isArray(players) ? players : [];
+    const escape = htmlEscape;
+
+    const number = value => (Number(value) > 0 ? String(Number(value)) : '-');
+    const rating = value => (Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '-');
+
+    const body = rows.length === 0
+        ? `<tr><td colspan="8" class="fm-empty">No players registered at this club.</td></tr>`
+        : rows.map(player => {
+            const played = Number(player?.appearances || 0);
+            const avg = Number(player?.averageRating);
+            return `
+                <tr class="fm-squad-row league-player-card"
+                    data-player-id="${escape(player?.id ?? '')}"
+                    data-apps="${played}"
+                    data-goals="${Number(player?.goals || 0)}"
+                    data-assists="${Number(player?.assists || 0)}"
+                    data-form="${Number(player?.form || 0)}"
+                    data-rating="${Number.isFinite(avg) ? avg : 0}">
+                    <td class="sq-name">
+                        <span class="sq-player-cell">
+                            <img class="fm-pcard-mini-photo" src="/images/player.jpg" alt="">
+                            <span class="sq-player-link">${escape(player?.name || 'Unknown')}</span>
+                        </span>
+                    </td>
+                    <td class="sq-pos">${escape(player?.position || '-')}</td>
+                    <td class="sq-age">${escape(player?.age ?? '-')}</td>
+                    <td class="sq-form">${Number(player?.form ?? 0).toFixed(1)}</td>
+                    <td class="sq-rating">${played > 0 ? rating(player?.averageRating) : '-'}</td>
+                    <td class="sq-games">${played > 0 ? played : '-'}</td>
+                    <td class="sq-goals">${number(player?.goals)}</td>
+                    <td class="sq-goals">${number(player?.assists)}</td>
+                </tr>`;
+        }).join('');
+
+    mainContent.innerHTML = `
+    <div class="fm-page fm-page--club">
+        <section class="fm-panel fm-club-hero">
+            ${backButtonHtml('Back', onBack || 'dashboard')}
+            <div class="fm-club-hero-main">
+                <div>
+                    <div class="fm-eyebrow">Squad</div>
+                    <h2>${escape(clubName || 'Club')}</h2>
+                    <p class="fm-subtle">Form, rating, appearances, goals and assists. A squad you do not
+                        manage is shown without skills.</p>
+                </div>
+            </div>
+            <div class="fm-medical-stat-grid CTeam-summary-grid">
+                <div><strong>${rows.length}</strong><span>Players</span></div>
+            </div>
+        </section>
+        <div class="fm-CTeam-layout">
+            <section class="fm-panel">
+                <div class="fm-panel-head">
+                    <h3>Squad</h3>
+                    <span class="fm-panel-action">${rows.length} registered</span>
+                </div>
+                <div class="fm-squad-wrap fm-squad-wrap--sortable">
+                    <table class="fm-squad fm-squad--away">
+                        <thead>
+                            <tr>
+                                <th class="sq-name">Name</th>
+                                <th>Position</th>
+                                <th class="sq-age">Age</th>
+                                <th class="sq-form sortable" data-sort="form">Form \u21c5</th>
+                                <th class="sq-rating sortable" data-sort="rating">Av Rat \u21c5</th>
+                                <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
+                                <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
+                                <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
+                            </tr>
+                        </thead>
+                        <tbody>${body}</tbody>
+                    </table>
+                </div>
+                <p class="fm-subtle" data-away-squad-note></p>
+            </section>
+        </div>
+    </div>`;
+
+    bindSortableSquadTable(mainContent);
+    return mainContent;
+}
+
+/**
  * Makes `.fm-squad-wrap--sortable` tables reorderable by clicking a sortable column header.
  * Sorting happens client-side on the values emitted as `data-*` attributes, so a click only
  * reorders the rows the server already sent. Sensible for a club squad, whose players are a
@@ -589,11 +692,12 @@ export function bindSortableSquadTable(container) {
     const heads = Array.from(table.querySelectorAll('thead .sortable[data-sort]'));
     if (!tbody || !heads.length) return;
 
-    const attrOf = (key) => `data-${key === 'rating' ? 'rating' : key === 'assists' ? 'assists' : key === 'goals' ? 'goals' : 'apps'}`;
+    const attrOf = (key) => `data-${key === 'rating' ? 'rating' : key === 'assists' ? 'assists' : key === 'goals' ? 'goals' : key === 'form' ? 'form' : 'apps'}`;
     const readNum = (row, key) => {
         if (key === 'apps') return Number(row.dataset.apps) || 0;
         if (key === 'goals') return Number(row.dataset.goals) || 0;
         if (key === 'assists') return Number(row.dataset.assists) || 0;
+        if (key === 'form') return Number(row.dataset.form) || 0;
         return Number(row.dataset.rating) || 0;
     };
 

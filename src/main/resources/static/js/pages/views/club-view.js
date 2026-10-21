@@ -139,6 +139,11 @@ export function createClubView(deps) {
                     <h3>${htmlEscape(profile.name || 'Club')}</h3>
                     <p class="fm-subtle">Serbian club profile with our existing app data.</p>
                     <button type="button" class="fm-action-btn secondary club-profile-stadium-btn" data-stadium-image="${htmlEscape(stadiumImage)}" data-stadium-name="${htmlEscape(profile.stadium || 'Stadium')}">Open Stadium View</button>
+                    <!-- Another club's squad (owner, 2026-10-21). The squad has its own screen because
+                         the First Team page reads the viewer's own club and cannot show anybody else's,
+                         and the owner asked for a purpose-built one that a stranger can open - form,
+                         rating, appearances, goals and assists, without skills. -->
+                    <button type="button" class="fm-action-btn secondary club-profile-squad-btn">Open Squad</button>
                 </section>
                 <section class="fm-panel club-profile-detail-card">
                     <div class="fm-panel-head">
@@ -221,6 +226,16 @@ export function createClubView(deps) {
             // capacity, prices, colours or pitch.
             stadiumButton.addEventListener('click', () => {
                 loadPage('stadium');
+            });
+        }
+
+        // The squad of the club being looked at, whoever it is. `teamId` is the club this page is
+        // about - the override when a stranger's club was opened, the viewer's own otherwise - so the
+        // button leads to the right squad and never back to the viewer's.
+        const squadButton = mainContent.querySelector('.club-profile-squad-btn');
+        if (squadButton) {
+            squadButton.addEventListener('click', () => {
+                loadPage('clubSquad', { teamId });
             });
         }
 

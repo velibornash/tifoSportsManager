@@ -3,6 +3,7 @@ package org.tifo.footballmanager.newLogic.controller;
 import org.tifo.footballmanager.newLogic.dto.LeagueMilestonesDTO;
 import org.tifo.footballmanager.newLogic.dto.MatchDTO;
 import org.tifo.footballmanager.newLogic.dto.PlayerDTO;
+import org.tifo.footballmanager.newLogic.dto.PublicSquadMemberDTO;
 import org.tifo.footballmanager.newLogic.dto.TacticsEditorDTO;
 import org.tifo.footballmanager.newLogic.dto.TacticsEditorSaveRequest;
 import org.tifo.footballmanager.newLogic.dto.TeamSummaryDTO;
@@ -313,6 +314,58 @@ public class TeamController {
                 .map(player -> toPlayerDto(player, statsByPlayerId.get(player.getId()), user))
                 .toList();
         return ResponseEntity.ok(players);
+    }
+
+    /**
+     * Another club's squad, as much of it as a stranger may see (owner, 2026-10-21).
+     *
+     * <p>The owner asked for a squad screen any manager can open on any club:
+     * <i>"svaki user bi trebalo da moze da klikne na squad za drugi tim samo ga vidi bez skilova, vidi
+     * formu, rejting, apps, goals, assists"</i>. This is the read behind it, and it answers with
+     * {@link PublicSquadMemberDTO} — form, rating, appearances, goals, assists and the injury state,
+     * and <b>no skill field and no talent at all</b>. A shape with no skill on it cannot leak one.
+     *
+     * <p><b>Why not reuse {@code /players}.</b> That route answers {@link PlayerDTO}, which carries the
+     * player's whole skill set; no screen renders it for a club you do not own, but it is sent, and the
+     * owner's request is that a stranger sees the player <i>without</i> the skills. Hiding them in the
+     * page would leave them one devtools tab away — the same shape of mistake as a hidden button
+     * guarding an action.
+     *
+     * <p><b>Not a permission check.</b> Any signed-in manager may read any club's squad; that is the
+     * feature, not a hole. This route is a read, and it cannot write.
+     */
+    @GetMapping("/{teamId}/squad")
+    public ResponseEntity<List<PublicSquadMemberDTO>> getPublicSquad(@PathVariable Long teamId) {
+        List<Player> teamPlayers = squadRegistration.availablePlayers(teamId);
+        Map<Long, List<MatchPlayerStats>> statsByPlayerId = teamPlayers.isEmpty()
+                ? Map.of()
+                : matchPlayerStatsRepository.findByPlayerIdIn(teamPlayers.stream().map(Player::getId).toList())
+                .stream()
+                .filter(stats -> stats.getPlayer() != null)
+                .collect(Collectors.groupingBy(stats -> stats.getPlayer().getId()));
+
+        List<PublicSquadMemberDTO> squad = teamPlayers
+                .stream()
+                .map(player -> PublicSquadMemberDTO.from(player,
+                        statsByPlayerId.getOrDefault(player.getId(), List.of()).size(),
+                        averageRating10(statsByPlayerId.get(player.getId()))))
+                .toList();
+        return ResponseEntity.ok(squad);
+    }
+
+    /**
+     * The season's mean match rating for one player, to one decimal, or null if he has not played.
+     *
+     * <p>The same figure the owning manager's squad screen shows, computed the same way — an average of
+     * the per-match ratings on a ten-point scale, rounded to one decimal. Null rather than zero for a
+     * player with no appearances, because "no rating yet" and "rated zero" are different facts.
+     */
+    private Double averageRating10(List<MatchPlayerStats> stats) {
+        if (stats == null || stats.isEmpty()) {
+            return null;
+        }
+        double average = stats.stream().mapToInt(MatchPlayerStats::getRating).average().orElse(0.0) / 10.0;
+        return Math.round(average * 10.0) / 10.0;
     }
 
     // Detalji jednog igrača
