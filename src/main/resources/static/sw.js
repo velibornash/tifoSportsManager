@@ -7,25 +7,39 @@
  *
  * <p>So the worker keeps the maintenance page and the two images it needs in a cache, and when a
  * **navigation** cannot reach the network, it answers with the cached page instead of the browser's
- * error page. The page then pings the server and puts the manager back where they were as soon as
- * it is up.
+ * error page. The page then pings the server and puts the manager back where they were as soon as it
+ * is up.
  *
  * <p>Two rules it lives by, and both of them are about not making the app worse:
  *
  * <ul>
- *   <li><b>Only navigations are touched.</b> Scripts, styles, images and API calls go straight to
- *       the network. A worker that cached the application's own files would serve stale code after
+ *   <li><b>Only navigations are touched.</b> Scripts, styles, images and API calls go straight to the
+ *       network. A worker that cached the application's own files would serve stale code after
  *       every rebuild - the exact class of bug this page exists to hide.</li>
  *   <li><b>Nothing is cached that the app needs.</b> The cache holds the maintenance page and the
  *       two images on it. The app's own assets are not in it.</li>
  * </ul>
  */
 
-const CACHE_NAME = 'fm-maintenance-v2';
+/**
+ * The cache's name.
+ *
+ * <p><b>It is a version, and it has to move when the maintenance page or its images change.</b>
+ * The cache is filled when the worker installs, and the worker installs when **this file** changes -
+ * so a page that changed without the name changing would be a page a deploy behind, and the
+ * manager would be looking at the previous picture and the previous words while the app was down
+ * (owner, 2026-10-21: "i dalje nije slika za mob na maintenance strani kad udjem s moba.. probao
+ * refresh, probao private tab - opet isecena slika sa desktopa").
+ *
+ * <p>The refresh below makes that unnecessary in the steady state, but the name still has to move
+ * once, so that the first visit after this deploy picks the new page up.
+ */
+const CACHE_NAME = 'fm-maintenance-v3';
 const MAINTENANCE_PAGE = '/maintenance.html';
 const MAINTENANCE_ASSETS = [
     MAINTENANCE_PAGE,
     '/images/maintenance-bg.jpg',
+    '/images/maintenance-bg-portrait.jpg',
     '/images/logomain.jpg'
 ];
 
@@ -40,8 +54,19 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
     event.waitUntil(
-        caches.keys()
-            .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
+        caches.open(CACHE_NAME)
+            .then(cache => cache.match(MAINTENANCE_PAGE))
+            .then(cached => {
+                // **The old caches go only if the new one has the page.** The install fills it from
+                // the network, and a rebuild is exactly when the network is down - so an install
+                // that could not fetch must not throw away the page that is there. The picture and
+                // the words would then be a deploy behind, which is better than no page at all, and
+                // the next visit with the app up fills the new cache.
+                if (!cached) return null;
+                return caches.keys()
+                    .then(keys => Promise.all(
+                            keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))));
+            })
             .then(() => self.clients.claim())
     );
 });
@@ -61,12 +86,19 @@ self.addEventListener('fetch', event => {
      * sentence and none of the game around it.
      *
      * <p>The network is still tried first, so a live app always gets the live file. The rule that
-     * nothing the app needs is cached still holds: these two are the maintenance page's own.
+     * nothing the app needs is cached still holds: these are the maintenance page's own.
+     *
+     * <p><b>And what the network answers is written back into the cache.</b> Otherwise the cache
+     * would be a deploy behind: the app comes up with a new maintenance page, the manager opens the
+     * site and is answered with the cached one - the old picture, the old words. A rebuild is
+     * exactly the moment this page is shown, so it must not be the one thing that is out of date.
      */
     if (request.method === 'GET' && url.pathname !== MAINTENANCE_PAGE && MAINTENANCE_ASSETS.includes(url.pathname)) {
         event.respondWith((async () => {
             try {
-                return await fetch(request);
+                const response = await fetch(request);
+                putInTheCache(request, response.clone());
+                return response;
             } catch (error) {
                 const cached = await caches.match(request);
                 if (cached) return cached;
@@ -82,12 +114,46 @@ self.addEventListener('fetch', event => {
 
     event.respondWith((async () => {
         try {
-            return await fetch(request);
+            const response = await fetch(request);
+            if (url.pathname === MAINTENANCE_PAGE) {
+                // The page itself, and it is the one that changes with a deploy.
+                putInTheCache(MAINTENANCE_PAGE, response.clone());
+            } else {
+                // Any other page: the network is up, so this is the moment to make sure the
+                // maintenance page in the cache is the current one. The page the manager was
+                // trying to reach is not the maintenance page and must never be cached as it.
+                refreshTheMaintenancePage();
+            }
+            return response;
         } catch (error) {
             return await maintenanceResponse(url);
         }
     })());
 });
+
+/**
+ * Puts a response into the maintenance cache, if it can.
+ *
+ * <p>The write is not awaited by the caller: a cache write that fails must not turn a page that
+ * loaded into one that did not.
+ */
+function putInTheCache(key, response) {
+    caches.open(CACHE_NAME)
+        .then(cache => cache.put(key, response))
+        .catch(() => { /* the cache is an aid, not a requirement */ });
+}
+
+/**
+ * Fetches the maintenance page in the background and puts it in the cache.
+ *
+ * <p>Called on every navigation that succeeded, so the cached page is the current one by the time
+ * the app goes down again - which is the only time the cache is read.
+ */
+function refreshTheMaintenancePage() {
+    fetch(MAINTENANCE_PAGE, { cache: 'no-store' })
+        .then(response => putInTheCache(MAINTENANCE_PAGE, response))
+        .catch(() => { /* the network was up a moment ago; nothing to do */ });
+}
 
 /**
  * The cached maintenance page, with the page the manager was trying to reach written into it.
@@ -97,7 +163,12 @@ self.addEventListener('fetch', event => {
  */
 async function maintenanceResponse(url) {
     const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(MAINTENANCE_PAGE);
+    let cached = await cache.match(MAINTENANCE_PAGE);
+    if (!cached) {
+        // Any cache, not only this one's: an install that could not reach the network leaves the
+        // previous cache holding the page, and that page is better than the bare fallback below.
+        cached = await caches.match(MAINTENANCE_PAGE);
+    }
     if (!cached) {
         return new Response(
             '<!doctype html><meta charset="utf-8"><title>Maintenance</title>'
