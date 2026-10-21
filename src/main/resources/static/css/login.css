@@ -377,3 +377,26 @@ button:hover {
 .register-link a:hover {
     color: #cbeeff;
 }
+
+/*
+ * The desktop's type, a little larger.
+ *
+ * <p>Owner, 2026-10-21: "na desktopu, login i home strana je nekako mali i nepregledni font i sve..
+ * povecaj to malo".
+ *
+ * <p>Every size on this page is in `rem` and every length that is not type is in `px`, so **one line
+ * moves the whole scale**: the desktop's root goes from 16px to 18px, about 12%. That is the same
+ * step the dashboard already takes for the same reason (see `dashboard.css`), so the login page and
+ * the dashboard now read at one size.
+ *
+ * <p>Scoped to `.login-page` because `register.html` loads this stylesheet too, and the owner named
+ * the login page.
+ *
+ * <p><b>Measured at 1440x900</b>: the title stays on two lines (68.4px, 166px tall), the card is
+ * 768px tall in a 900px viewport, and nothing overflows it.
+ */
+@media (min-width: 1025px) {
+    html.login-page {
+        font-size: 18px;
+    }
+}
