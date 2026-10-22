@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.jobs.impl;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.UniqueIsoCodes;
 
 import org.tifo.footballmanager.BaseTest;
@@ -184,7 +185,7 @@ class InternationalClubCupJobTest extends BaseTest {
         // Nine weeks: five group matchdays, then 7, 8, 9 and 10. A tenth stage resolves to the ninth week,
         // which is what puts both last ties in week 10 rather than pushing one into week 11 — where the
         // league promotion play-off lives.
-        int[] weeks = InternationalClubCupDraw.CUP_WEEKS;
+        int[] weeks = SeasonCalendar.CUP_WEEKS;
         assertEquals(9, weeks.length, "5 group matchdays and 4 knockout weeks");
         assertEquals(7, weeks[InternationalClubCupDraw.GROUP_MATCHDAYS], "the last sixteen is week 7");
         assertEquals(10, weekForStage(InternationalClubCupDraw.ROUND_THIRD_PLACE));
@@ -286,7 +287,7 @@ class InternationalClubCupJobTest extends BaseTest {
 
     /** Mirrors {@code InternationalClubCupDraw.weekFor}, which is private. */
     private int weekForStage(int stage) {
-        int[] weeks = InternationalClubCupDraw.CUP_WEEKS;
+        int[] weeks = SeasonCalendar.CUP_WEEKS;
         return weeks[Math.min(stage, weeks.length) - 1];
     }
 

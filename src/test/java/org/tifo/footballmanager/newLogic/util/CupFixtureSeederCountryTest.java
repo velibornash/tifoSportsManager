@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -105,7 +106,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
         Competition cup = aCup(serbia, "Serbian Cup");
         assertNotNull(cup, "the domestic cup must exist for the draw to have a target");
 
-        int drawn = seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
+        int drawn = seeder.drawRoundForWeek(SeasonCalendar.CUP_WEEKS[0]);
 
         assertTrue(drawn > 0, "the cup drew nothing at all, so there is nothing to check");
 
@@ -144,7 +145,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
         }
         Competition cup = aCup(serbia, "Serbian Cup");
 
-        seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
+        seeder.drawRoundForWeek(SeasonCalendar.CUP_WEEKS[0]);
 
         Competition seederTarget = theCupTheSeederUsed();
         List<MatchFixture> round1 = roundOneFixtures(seederTarget);
@@ -202,11 +203,11 @@ class CupFixtureSeederCountryTest extends BaseTest {
         Competition cup = aCup(serbia, "Serbian Cup");
 
         // Week 1 is the preliminary and legitimately draws the 40 clubs it has.
-        int preliminary = seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
+        int preliminary = seeder.drawRoundForWeek(SeasonCalendar.CUP_WEEKS[0]);
         assertTrue(preliminary > 0, "a 40-club preliminary should still be drawn");
 
         // Week 2 is where the 256-club main draw is assembled. 40 clubs cannot make 256.
-        int mainDraw = seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[1]);
+        int mainDraw = seeder.drawRoundForWeek(SeasonCalendar.CUP_WEEKS[1]);
         assertEquals(0, mainDraw,
                 "40 clubs were assembled into a main draw that requires " + CupFixtureSeeder.MAIN_DRAW_TEAMS
                         + ". Every tie in it is a fixture that should not exist.");
@@ -338,7 +339,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
     }
 
     private List<MatchFixture> drawAndRead(Competition cup) {
-        seeder.drawRoundForWeek(CupFixtureSeeder.CUP_WEEKS[0]);
+        seeder.drawRoundForWeek(SeasonCalendar.CUP_WEEKS[0]);
         return roundOneFixtures(theCupTheSeederUsed());
     }
 
@@ -375,7 +376,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
     private List<MatchFixture> roundOneFixtures(Competition cup) {
         return fixtures.findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(
                         cup.getId(), SEASON()).stream()
-                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == CupFixtureSeeder.CUP_WEEKS[0])
+                .filter(f -> f.getWeekNumber() != null && f.getWeekNumber() == SeasonCalendar.CUP_WEEKS[0])
                 .toList();
     }
 

@@ -4,6 +4,7 @@ import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
@@ -55,21 +56,14 @@ import java.util.Random;
  * carrying league football only). The owner has since stated the table outright, and it is the table
  * above.
  *
- * <p>{@link InternationalClubCupDraw#CUP_WEEKS} already carried exactly this map. The national cup was
- * the only competition in the codebase disagreeing with the owner's arithmetic, which is how a wrong
- * answer survives: there was nothing to compare it against until the two were read side by side.
+ * <p>The map itself lives on {@link SeasonCalendar#CUP_WEEKS}, once, for the national cup and the
+ * continental cups together. It used to be declared here as well; the two copies agreed, but only one
+ * of them would have been corrected the day the owner changed his mind.
  */
 @Component
 public class CupFixtureSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(CupFixtureSeeder.class);
-
-    /**
-     * Owner, restated 2026-10-13. Nine rounds, no week 6, the final on week 10.
-     *
-     * <p>See the class comment for the table this encodes, and for what it used to say.
-     */
-    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
 
     /** Owner: ranks 203-310 enter in week 1; ranks 1-202 join the winners in week 2. */
     static final int ENTRY_ROUND_TEAMS = 108;
@@ -173,7 +167,7 @@ public class CupFixtureSeeder {
             // on every press, by a method whose Javadoc promised the opposite. Its own name said
             // "if missing", and to that question a played round is missing.
             long existing = fixtures.countByCompetitionIdAndSeasonYearAndWeekNumberAndDayNumber(
-                    cup.getId(), seedSeason(), CUP_WEEKS[0], CUP_DAY);
+                    cup.getId(), seedSeason(), SeasonCalendar.CUP_WEEKS[0], CUP_DAY);
             if (existing > 0) {
                 drawn++;
                 continue;
@@ -416,8 +410,8 @@ public class CupFixtureSeeder {
 
     /** The round number the calendar puts in a given week, or 0 if that week has no cup round. */
     private int roundForWeek(int week) {
-        for (int i = 0; i < CUP_WEEKS.length; i++) {
-            if (CUP_WEEKS[i] == week) {
+        for (int i = 0; i < SeasonCalendar.CUP_WEEKS.length; i++) {
+            if (SeasonCalendar.CUP_WEEKS[i] == week) {
                 return i + 1;
             }
         }
@@ -485,7 +479,7 @@ public class CupFixtureSeeder {
         Collections.shuffle(favourites, drawRandom);
         Collections.shuffle(nonFavourites, drawRandom);
 
-        int week = CUP_WEEKS[Math.min(roundNumber, CUP_WEEKS.length) - 1];
+        int week = SeasonCalendar.CUP_WEEKS[Math.min(roundNumber, SeasonCalendar.CUP_WEEKS.length) - 1];
         int ties = Math.min(favourites.size(), nonFavourites.size());
         if (ties * 2 < ranked.size()) {
             // Odd count: the unpaired clubs from the larger half enter as byes rather than being

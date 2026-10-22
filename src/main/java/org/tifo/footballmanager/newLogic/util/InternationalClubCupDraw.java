@@ -4,6 +4,7 @@ import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionEntry;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.newLogic.model.SeasonCompetition;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.CompetitionEntryRepository;
@@ -95,11 +96,11 @@ public class InternationalClubCupDraw {
      * week 1 i week 5" and "eliminaciona faza izmedju week 7 i week 10"; the fifth round fits because
      * the final and the third place are decided the same evening, which is how a cup final day works.
      *
-     * <p>{@link #weekFor} already clamps its index to this array's length, so a tenth stage resolves to
+     * <p>{@link #weekFor} already clamps its index to the array's length, so a tenth stage resolves to
      * the ninth week rather than throwing — which is what puts the final on week 10 without a special
-     * case anywhere else.
+     * case anywhere else. The array itself is {@link SeasonCalendar#CUP_WEEKS}, shared with the
+     * national cup.
      */
-    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
 
     /** How many from each group reach the knockouts, by cup. */
     public static final int CHAMPIONS_QUALIFY_PER_GROUP = 2;
@@ -798,8 +799,8 @@ public class InternationalClubCupDraw {
     }
 
     private int weekFor(int stage) {
-        int index = Math.min(stage, CUP_WEEKS.length) - 1;
-        return CUP_WEEKS[Math.max(0, index)];
+        int index = Math.min(stage, SeasonCalendar.CUP_WEEKS.length) - 1;
+        return SeasonCalendar.CUP_WEEKS[Math.max(0, index)];
     }
 
     static String groupCode(int index) {

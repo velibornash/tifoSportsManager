@@ -81,6 +81,21 @@ public final class SeasonCalendar {
     public static final int PLAYOFF_WEEK = 11;
 
     /**
+     * The weeks the cup competitions play in (owner, restated 2026-10-13).
+     *
+     * <p>Nine rounds, no week 6 — that is the national-team pause — and the final on week 10. The
+     * national cup and the fifteen continental cups share this map: the national cup plays it in the
+     * day-5 slot, the continental cups in the day-1 international slot.
+     *
+     * <p><b>One map, not two.</b> It used to be declared twice, identically, in {@code CupFixtureSeeder}
+     * and {@code InternationalClubCupDraw}. The copies agreed, so nothing broke — but a map of the right
+     * length in the wrong order still produces a cup that ends on the wrong night, and two copies is two
+     * chances for only one of them to be corrected. The season shape belongs here, next to the weeks it
+     * refers to.
+     */
+    public static final int[] CUP_WEEKS = {1, 2, 3, 4, 5, 7, 8, 9, 10};
+
+    /**
      * Week 6 is midseason: no league, and no fixtures to speak of.
      *
      * <p>Reserved for <b>national-team qualifiers, played day by day</b> (owner rule 2026-09-27).

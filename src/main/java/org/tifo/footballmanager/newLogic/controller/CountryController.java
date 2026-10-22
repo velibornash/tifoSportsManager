@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.newLogic.dto.CountrySummaryDTO;
 import org.tifo.footballmanager.newLogic.dto.LeagueTableDTO;
 import org.tifo.footballmanager.newLogic.dto.MatchDTO;
@@ -568,7 +569,7 @@ public class CountryController {
         List<MatchFixture> all = matchFixtureRepository
                 .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), activeSeasonYear);
         Map<Integer, List<Map<String, Object>>> byRound = new LinkedHashMap<>();
-        for (int round : CupFixtureSeeder.CUP_WEEKS) {
+        for (int round : SeasonCalendar.CUP_WEEKS) {
             byRound.put(round, new ArrayList<>());
         }
         for (MatchFixture fixture : all) {
@@ -608,7 +609,7 @@ public class CountryController {
             bucket.add(tie);
         }
         List<Map<String, Object>> rounds = new ArrayList<>();
-        for (int round : CupFixtureSeeder.CUP_WEEKS) {
+        for (int round : SeasonCalendar.CUP_WEEKS) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("week", round);
             row.put("fixtures", byRound.getOrDefault(round, List.of()));

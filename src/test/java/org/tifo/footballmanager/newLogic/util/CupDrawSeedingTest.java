@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -378,15 +379,15 @@ class CupDrawSeedingTest extends BaseTest {
     @Test
     @DisplayName("the cup runs weeks 1-5 and 7-10, no week 6, and finishes with a final on week 10")
     void theWeekMapIsTheOwners() {
-        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 7, 8, 9, 10}, CupFixtureSeeder.CUP_WEEKS,
+        assertArrayEquals(new int[]{1, 2, 3, 4, 5, 7, 8, 9, 10}, SeasonCalendar.CUP_WEEKS,
                 "the cup's week map is not the owner's: weeks 1-5 then 7-10, week 6 being the national-team week");
 
         // Nine rounds, and they must be the nine the bracket needs: 256 entrants after round 2 take eight
         // halvings to a single champion, plus the entry round in front of them.
-        assertEquals(9, CupFixtureSeeder.CUP_WEEKS.length,
+        assertEquals(9, SeasonCalendar.CUP_WEEKS.length,
                 "a 310-club cup needs the entry round plus eight halvings from 256, which is nine rounds");
 
-        for (int week : CupFixtureSeeder.CUP_WEEKS) {
+        for (int week : SeasonCalendar.CUP_WEEKS) {
             assertTrue(week != 6, "week 6 is the national-team week and carries no club football");
             assertTrue(week >= 1 && week <= 12, "week " + week + " is outside a twelve-week season");
         }
@@ -412,7 +413,7 @@ class CupDrawSeedingTest extends BaseTest {
                 "the bracket does not finish on one champion over nine rounds");
 
         // And the final is the last week on the map, not a week that merely happens to be free.
-        assertEquals(10, CupFixtureSeeder.CUP_WEEKS[CupFixtureSeeder.CUP_WEEKS.length - 1],
+        assertEquals(10, SeasonCalendar.CUP_WEEKS[SeasonCalendar.CUP_WEEKS.length - 1],
                 "the last round is not on the owner's final week");
     }
 

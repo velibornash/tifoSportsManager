@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.jobs.impl;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
 import org.tifo.footballmanager.newLogic.model.Competition;
@@ -268,7 +269,7 @@ public class InternationalClubCupJob implements DayJob {
      * written out, so changing the week map cannot leave this disagreeing with it.
      */
     private boolean isKnockoutWeek(int week) {
-        int[] weeks = InternationalClubCupDraw.CUP_WEEKS;
+        int[] weeks = SeasonCalendar.CUP_WEEKS;
         for (int index = InternationalClubCupDraw.GROUP_MATCHDAYS; index < weeks.length; index++) {
             if (weeks[index] == week) {
                 return true;

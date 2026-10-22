@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -464,10 +465,8 @@ class InternationalClubCupDrawTest extends BaseTest {
     @Test
     @DisplayName("week 6 is never used by either cup")
     void weekSixIsTheNationalTeamPause() {
-        for (int week : InternationalClubCupDraw.CUP_WEEKS) {
-            assertNotEqualsSix(week);
-        }
-        for (int week : CupFixtureSeeder.CUP_WEEKS) {
+        // One map now, shared by the national cup and the continental cups: {@link SeasonCalendar#CUP_WEEKS}.
+        for (int week : SeasonCalendar.CUP_WEEKS) {
             assertNotEqualsSix(week);
         }
     }
