@@ -39,7 +39,7 @@ public class CleanDecisionEngine {
      * corridor. Measured over 40 matches the veto fired on 29.4% of all in-zone ticks; this is the
      * number that has to move, not the shot volume.
      */
-    public static final double SHOT_MIN_OPENNESS = 0.06; // public: MatchEngineVersion fingerprints it
+    public static final double SHOT_MIN_OPENNESS = 0.12; // public: MatchEngineVersion fingerprints it
 
     /** Cells of clearance from the shot line that count as fully open. 2.0 cells is 28 m. */
     private static final double SHOT_OPENNESS_RADIUS = 2.0;
