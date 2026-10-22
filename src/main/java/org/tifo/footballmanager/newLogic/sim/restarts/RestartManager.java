@@ -479,8 +479,18 @@ public class RestartManager {
     }
 
     private Player selectTaker(MatchState state, RestartType type, Position ballPos) {
-        // The "_HOME"/"_AWAY" suffix encodes which team TAKES the restart.
-        String takingTeam = type.name().endsWith("_AWAY") ? "AWAY" : "HOME";
+        // Which team TAKES the restart is an explicit property of the type, not a
+        // suffix convention (F-RS-5): a new RestartType added without the
+        // "_AWAY" suffix used to be silently treated as HOME.
+        String takingTeam;
+        if (type == RestartType.KICK_OFF) {
+            takingTeam = state.getRestartTeam() != null ? state.getRestartTeam() : "HOME";
+        } else {
+            takingTeam = switch (type) {
+                case GOAL_KICK_AWAY, CORNER_AWAY, THROW_IN_AWAY, PENALTY_AWAY -> "AWAY";
+                default -> "HOME";
+            };
+        }
         return switch (type) {
             case GOAL_KICK_HOME, GOAL_KICK_AWAY ->
                     findNearestDefender(state, takingTeam, ballPos);
