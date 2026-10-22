@@ -41,28 +41,42 @@ public class YouthAcademyService {
     public void generateSeasonIntakeForWeek2(int seasonNumber, int weekNumber) {
         if (weekNumber != INTAKE_WEEK) return;
 
-        List<Team> teams = teamRepository.findClubTeamsForOperations();
+        // **The clubs that can roll an intake, not every club in the world.** The academy is a
+        // purchase, not a default (Sprint 5.3a, owner 2026-09-27). Before that rule every one of the
+        // 310 clubs rolled an intake every season for free; now a club without a school has to buy its
+        // way to young players, which is what makes the scouting network and the transfer market
+        // matter. Human-controlled only, by the same rule: bot squads keep the same players and train
+        // at the default pace.
+        //
+        // Both halves of that rule are in the query, because on the world's scale the difference is
+        // fourteen thousand rows read every season to find the two clubs that qualify.
+        List<Team> teams = teamRepository.findClubsWithAnActiveAcademy();
+        if (teams.isEmpty()) return;
+
+        // **Two reads for the whole intake, not two per club.** "Has this club already rolled?" and
+        // "how many active juniors does it hold?" were asked once per club, and they are one grouped
+        // query each now. Archiving cannot move the second answer: it only archives juniors that are
+        // no longer ACTIVE.
+        Set<Long> alreadyRolled = new HashSet<>(
+                juniorRepository.findTeamIdsWithIntakeIn(seasonNumber, INTAKE_WEEK));
+        List<Long> candidateIds = teams.stream().map(Team::getId).filter(Objects::nonNull).toList();
+        Map<Long, Long> activeVisibleByTeam = new HashMap<>();
+        if (!candidateIds.isEmpty()) {
+            for (Object[] row : juniorRepository.countVisibleByTeamIdsAndStatus(candidateIds,
+                    JuniorStatus.ACTIVE)) {
+                if (row[0] != null && row[1] != null) {
+                    activeVisibleByTeam.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+                }
+            }
+        }
 
         for (Team team : teams) {
             if (team.getId() == null) continue;
-
-            // The academy is a purchase, not a default (Sprint 5.3a, owner 2026-09-27). Before this
-            // every one of the 310 clubs rolled an intake every season for free, human-managed or not.
-            // A club without a school now has to buy its way to young players, which is what makes
-            // the scouting network and the transfer market matter.
-            //
-            // Human-controlled only, by the same rule: bot squads keep the same players and train at
-            // the default pace.
-            if (!team.isHumanControlled() || !Boolean.TRUE.equals(team.getJuniorSchoolActive())) {
-                continue;
-            }
-
-            long alreadyGenerated = juniorRepository.countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(team.getId(), seasonNumber, INTAKE_WEEK);
-            if (alreadyGenerated > 0) continue;
+            if (alreadyRolled.contains(team.getId())) continue;
             archiveResolvedJuniorsBeforeSeason(team.getId(), seasonNumber);
 
             ensureCoachSkill(team);
-            long activeVisible = juniorRepository.countVisibleByTeamIdAndStatus(team.getId(), JuniorStatus.ACTIVE);
+            long activeVisible = activeVisibleByTeam.getOrDefault(team.getId(), 0L);
             int freeSlots = Math.max(0, MAX_ACTIVE_JUNIORS - (int) activeVisible);
             if (freeSlots <= 0) {
                 log.info("Youth intake skipped for team {} in season {}: academy already has {} active juniors (max 10).",

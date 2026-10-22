@@ -87,6 +87,41 @@ class PyramidBuilderQueryCountTest extends BaseTest {
         verify(teams, times(1)).findNamesForCountry(org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    @DisplayName("the builder never looks a club up by name - the country's clubs are loaded once")
+    void noPerClubLookupSurvives() throws java.io.IOException {
+        String source = code(java.nio.file.Files.readString(
+                org.tifo.footballmanager.ProductionSource.file(PyramidBuilder.class)));
+
+        assertEquals(0, count(source, "findAllByNameIgnoreCase"),
+                "the builder asked LOWER(name) = LOWER(?) once per club, which is a full scan of the "
+                        + "world's clubs per club. The country's clubs are loaded once into ExistingClubs");
+        assertEquals(1, count(source, "findByCountryId("),
+                "the re-seed path loads a country's clubs with one query. A second call site means a "
+                        + "per-club or per-division load is back");
+    }
+
+    /** The file without its comment lines - the javadoc explains the old query, it does not issue it. */
+    private static String code(String source) {
+        StringBuilder kept = new StringBuilder();
+        for (String line : source.split("\n")) {
+            String stripped = line.strip();
+            if (stripped.startsWith("*") || stripped.startsWith("/*") || stripped.startsWith("//")) {
+                continue;
+            }
+            kept.append(line).append('\n');
+        }
+        return kept.toString();
+    }
+
+    private static int count(String haystack, String needle) {
+        int seen = 0;
+        for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + 1)) {
+            seen++;
+        }
+        return seen;
+    }
+
     private Country aSimulatedCountry() {
         Country country = new Country();
         country.setName("Perf " + UUID.randomUUID().toString().substring(0, 8));

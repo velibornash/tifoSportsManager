@@ -717,16 +717,51 @@ public class SimMatchService {
         }
     }
 
+    /**
+     * The database players behind a set of simulation ids, in <b>one</b> query.
+     *
+     * <p>All four loops that read a match back from the engine used to call
+     * {@code playerRepository.findById} once per player: about twenty-two rows per match, replicated
+     * across the stats, the career totals, the condition and the zone load, so a single fixture cost
+     * something close to a hundred round trips to fetch the same twenty-two players four times. On a
+     * matchday that plays every fixture in the world this is the persistence half of the cost.
+     *
+     * <p>The engine's ids are either a real database id or a synthetic {@code "HOME-1"} label,
+     * depending on whether the club had a saved lineup, so they go through {@link #parsePlayerId}
+     * first. An id that cannot resolve is simply absent from the map and the caller skips it, which is
+     * exactly what the per-player lookup did by returning empty.
+     */
+    private Map<Long, org.tifo.footballmanager.newLogic.model.Player> loadPlayers(
+            java.util.Collection<String> simIds) {
+        Set<Long> ids = new LinkedHashSet<>();
+        for (String simId : simIds) {
+            Long id = parsePlayerId(simId);
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, org.tifo.footballmanager.newLogic.model.Player> byId = new HashMap<>();
+        for (org.tifo.footballmanager.newLogic.model.Player player : playerRepository.findAllById(ids)) {
+            byId.put(player.getId(), player);
+        }
+        return byId;
+    }
+
     private void persistPlayerStats(Match match, ProposalMatchOutcome outcome) {
         Team homeTeam = match.getHomeTeam();
         Team awayTeam = match.getAwayTeam();
         int homeConceded = outcome.awayGoals();
         int awayConceded = outcome.homeGoals();
+        Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
+                outcome.players().stream().map(ProposalMatchOutcome.PlayerOutcome::playerId).toList());
 
         for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
             Long dbId = parsePlayerId(po.playerId());
             if (dbId == null) continue;
-            org.tifo.footballmanager.newLogic.model.Player dbPlayer = playerRepository.findById(dbId).orElse(null);
+            org.tifo.footballmanager.newLogic.model.Player dbPlayer = dbPlayers.get(dbId);
             if (dbPlayer == null) continue;
 
             boolean isHome = homeTeam != null && homeTeam.getName().equals(po.teamName());
@@ -762,10 +797,12 @@ public class SimMatchService {
      *  on every real DB player who took part. */
     private void bumpCareerStats(ProposalMatchOutcome outcome) {
         Set<org.tifo.footballmanager.newLogic.model.Player> updated = new LinkedHashSet<>();
+        Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
+                outcome.players().stream().map(ProposalMatchOutcome.PlayerOutcome::playerId).toList());
         for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
             Long dbId = parsePlayerId(po.playerId());
             if (dbId == null) continue;
-            org.tifo.footballmanager.newLogic.model.Player dbPlayer = playerRepository.findById(dbId).orElse(null);
+            org.tifo.footballmanager.newLogic.model.Player dbPlayer = dbPlayers.get(dbId);
             if (dbPlayer == null) continue;
             dbPlayer.setTotalGoals(dbPlayer.getTotalGoals() + po.goals());
             dbPlayer.setTotalAssists(dbPlayer.getTotalAssists() + po.assists());
@@ -816,11 +853,12 @@ public class SimMatchService {
         int season = clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason();
         int week = clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek();
 
+        Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
+                state.getPlayers().stream().map(Player::getId).toList());
         for (Player p : state.getPlayers()) {
             Long dbId = parsePlayerId(p.getId());
             if (dbId == null) continue;
-            org.tifo.footballmanager.newLogic.model.Player dbPlayer =
-                    playerRepository.findById(dbId).orElse(null);
+            org.tifo.footballmanager.newLogic.model.Player dbPlayer = dbPlayers.get(dbId);
             if (dbPlayer == null || dbPlayer.getSkills() == null) continue;
 
             if (p.getFatigue() > 0) {
@@ -1061,6 +1099,11 @@ public class SimMatchService {
             return;
         }
         Map<String, org.tifo.footballmanager.newLogic.model.Player> resolved = new HashMap<>();
+        Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
+                snapshots.get(snapshots.size() - 1).getPlayers().stream()
+                        .filter(java.util.Objects::nonNull)
+                        .map(org.tifo.footballmanager.newLogic.sim.recording.PlayerSnapshot::getId)
+                        .toList());
         for (org.tifo.footballmanager.newLogic.sim.recording.PlayerSnapshot snapshotPlayer
                 : snapshots.get(snapshots.size() - 1).getPlayers()) {
             if (snapshotPlayer == null) {
@@ -1070,8 +1113,10 @@ public class SimMatchService {
             if (dbId == null) {
                 continue;
             }
-            playerRepository.findById(dbId)
-                    .ifPresent(player -> resolved.put(snapshotPlayer.getId(), player));
+            org.tifo.footballmanager.newLogic.model.Player player = dbPlayers.get(dbId);
+            if (player != null) {
+                resolved.put(snapshotPlayer.getId(), player);
+            }
         }
         zoneLoadRecorder.record(match, snapshots, resolved);
     }

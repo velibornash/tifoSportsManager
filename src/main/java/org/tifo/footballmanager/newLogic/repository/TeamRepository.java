@@ -109,6 +109,21 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findClubTeamsForOperations();
 
     /**
+     * The clubs a youth intake can actually roll for: human-managed, with a junior school switched on.
+     *
+     * <p>The season intake used to load every club in the world and then skip the ones this predicate
+     * rejects in memory — fourteen thousand rows a season to find the handful that qualify. A club can
+     * only have an intake if a manager bought the school, so the database can answer the whole question.
+     */
+    @Query("""
+            select t from Team t
+            where t.humanControlled = true
+              and t.juniorSchoolActive = true
+            order by t.id asc
+            """)
+    List<Team> findClubsWithAnActiveAcademy();
+
+    /**
      * How many clubs the world holds — a count, not the clubs themselves.
      *
      * <p>Same predicate as {@link #findClubTeamsForOperations()}, so the number is the same one that

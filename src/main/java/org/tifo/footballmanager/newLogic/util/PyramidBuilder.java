@@ -127,7 +127,7 @@ public class PyramidBuilder {
             // have been seeded after the season that is now being used for international qualification,
             // or it may already have the pyramid from an older season. Re-assert the table rows for the
             // requested season without creating players, fixtures or a second pyramid.
-            Set<String> existingNames = existingClubNamesIn(country);
+            ExistingClubs existingNames = existingClubsIn(country);
             int namedSoFar = 0;
             for (Competition league : existing) {
                 fillStaticDivision(league, country, seasonYear, league.getTier(), existingNames, namedSoFar);
@@ -139,8 +139,8 @@ public class PyramidBuilder {
         int divisions = 0;
         int clubs = 0;
         int players = 0;
-        // One query per country, not one per club. See existingClubNamesIn.
-        Set<String> existingNamesInScope = existingClubNamesIn(country);
+        // One query per country, not one per club. See existingClubsIn.
+        ExistingClubs existingNamesInScope = existingClubsIn(country);
 
         // The counter of the clubs already named in this country - the same one the static pyramid
         // uses, so the two builders cannot give two tiers the same ten names.
@@ -292,8 +292,8 @@ public class PyramidBuilder {
         int divisions = 0;
         int clubs = 0;
         // One query for the country's existing club names instead of one per club. See
-        // existingClubNamesIn.
-        Set<String> existingNames = existingClubNamesIn(country);
+        // existingClubsIn.
+        ExistingClubs existingNames = existingClubsIn(country);
 
         // **The counter of the clubs already named in this country.** It is what makes the pool's
         // names unique across the whole pyramid: the offset used to be the division's level, so the
@@ -338,26 +338,75 @@ public class PyramidBuilder {
      * make the query faster but to stop making it: **one query per country instead of one per club**,
      * and the existence check becomes a set membership test in memory. 14,880 round trips become 48.
      *
-     * <p>The query is still issued for a name that <em>is</em> in the set — that is the re-seeding path,
-     * where the club has to be loaded anyway — so the saving is largest exactly where it matters, on a
-     * fresh world where nothing exists and every one of the old lookups returned empty.
+     * <p>What is left of the per-club query is the re-seeding path, where the club itself has to be
+     * loaded and not just its name. That one used to be a {@code findAllByNameIgnoreCase} per club, and
+     * is now a single load of the country's clubs on the first collision — see {@link ExistingClubs}.
      */
-    private Set<String> existingClubNamesIn(Country country) {
-        return new java.util.HashSet<>(teams.findNamesForCountry(country.getId()).stream()
+    private ExistingClubs existingClubsIn(Country country) {
+        Set<String> names = new java.util.HashSet<>(teams.findNamesForCountry(country.getId()).stream()
                 .map(name -> name.toLowerCase(Locale.ROOT))
                 .toList());
+        return new ExistingClubs(names, teams, country.getId());
+    }
+
+    /**
+     * A country's clubs, as the builder needs them: the names always, the rows only when a name
+     * collides.
+     *
+     * <p>The projection query answered "does this club already exist?" for the whole country at once
+     * and the set is all a fresh world ever needs. The re-seeding path needs the club itself, not just
+     * its name, and that used to be one {@code findAllByNameIgnoreCase} per club — which is the scan
+     * the projection was introduced to avoid, brought back for the one path that has clubs to find.
+     *
+     * <p>So the rows are loaded on the first miss-or-hit that needs one, once per country, and the
+     * following nine clubs of the division are answered from the map. A fresh world issues the
+     * projection and nothing else; a re-seed issues the projection and one entity query, instead of
+     * 310 lookups against a table of fourteen thousand.
+     */
+    private static final class ExistingClubs {
+
+        private final Set<String> names;
+        private final org.tifo.footballmanager.newLogic.repository.TeamRepository teams;
+        private final Long countryId;
+        private Map<String, Team> loaded;
+
+        private ExistingClubs(Set<String> names,
+                              org.tifo.footballmanager.newLogic.repository.TeamRepository teams,
+                              Long countryId) {
+            this.names = names;
+            this.teams = teams;
+            this.countryId = countryId;
+        }
+
+        private static String key(String name) {
+            return name.toLowerCase(Locale.ROOT);
+        }
+
+        /** The club of this name, or null when this country has none. */
+        private Team find(String name) {
+            if (name == null || !names.contains(key(name))) {
+                return null;
+            }
+            if (loaded == null) {
+                loaded = new java.util.HashMap<>();
+                for (Team team : teams.findByCountryId(countryId)) {
+                    if (team.getName() != null) {
+                        loaded.putIfAbsent(key(team.getName()), team);
+                    }
+                }
+            }
+            return loaded.get(key(name));
+        }
     }
 
     /** Ten clubs with ratings and a standing table. No squads, no schedule. */
     private int fillStaticDivision(Competition league, Country country, int seasonYear, int tier,
-                                   Set<String> existingNames, int namedBefore) {
+                                   ExistingClubs existingNames, int namedBefore) {
         List<Team> made = new ArrayList<>();
         List<Team> fresh = new ArrayList<>();
         for (int index = 0; index < CLUBS_PER_DIVISION; index++) {
             String name = clubName(country, league, namedBefore + index);
-            Team team = existingNames.contains(name.toLowerCase(Locale.ROOT))
-                    ? teams.findAllByNameIgnoreCase(name).stream().findFirst().orElse(null)
-                    : null;
+            Team team = existingNames.find(name);
             if (team == null) {
                 team = new Team();
                 team.setName(name);
@@ -464,13 +513,11 @@ public class PyramidBuilder {
     }
 
     private int fillDivision(Competition league, Country country, int seasonYear,
-                             Set<String> existingNames, int namedBefore) {
+                             ExistingClubs existingNames, int namedBefore) {
         List<Team> made = new ArrayList<>();
         for (int index = 0; index < CLUBS_PER_DIVISION; index++) {
             String clubName = clubName(country, league, namedBefore + index);
-            Team team = existingNames.contains(clubName.toLowerCase(Locale.ROOT))
-                    ? teams.findAllByNameIgnoreCase(clubName).stream().findFirst().orElse(null)
-                    : null;
+            Team team = existingNames.find(clubName);
             if (team == null) {
                 team = new Team();
                 team.setName(clubName);

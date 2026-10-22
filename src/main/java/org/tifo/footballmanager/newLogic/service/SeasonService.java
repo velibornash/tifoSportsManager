@@ -595,18 +595,6 @@ public class SeasonService {
     }
 
     /**
-     * Settles the week for <b>every</b> club, not just the one the player manages.
-     *
-     * <p>This is the difference between a game and a spreadsheet. Before it, gate income, broadcast
-     * money and prize money existed as formulas nothing called and {@code Player.earnings} was
-     * seeded and read by nothing — so the wage bill was free and the transfer budget had nothing to
-     * be limited by. An AI club with no economy is an AI club that can never be bought, sold, or
-     * promoted out of trouble, which quietly breaks promotion and relegation.
-     *
-     * <p>Each club settles in its own transaction (REQUIRES_NEW inside the finance service), and a
-     * failure for one club is logged and stepped over rather than rolling back the other 309.
-     */
-    /**
      * Expires contracts that have run out, turning those players into free agents (Sprint 3.1).
      *
      * <p>This is what makes the market move. Without it a player can never stop having a club, which
@@ -650,6 +638,24 @@ public class SeasonService {
         supporterMoods.driftWeekly();
     }
 
+    /**
+     * Settles the week for <b>every</b> club, not just the one the player manages.
+     *
+     * <p>This is the difference between a game and a spreadsheet. Before it, gate income, broadcast
+     * money and prize money existed as formulas nothing called and {@code Player.earnings} was
+     * seeded and read by nothing — so the wage bill was free and the transfer budget had nothing to
+     * be limited by. An AI club with no economy is an AI club that can never be bought, sold, or
+     * promoted out of trouble, which quietly breaks promotion and relegation.
+     *
+     * <p><b>One transaction for the read, one per club for the write.</b> This method carried no
+     * {@code @Transactional} at all, so {@code findClubsWithAnEconomy()} ran and closed its own
+     * transaction and the loop then walked a detached list of fourteen thousand entities. Each club's
+     * settlement is {@code REQUIRES_NEW} inside {@link WeeklyFinanceService}, and that is deliberate: a
+     * club whose settlement throws is logged and stepped over, and it must not take the other clubs'
+     * committed money with it. The outer transaction therefore only holds the club list steady while
+     * the loop runs — it is not what makes a club's settlement atomic.
+     */
+    @Transactional
     public int settleWeeklyFinancesForAllClubs() {
         GameClock clock = getOrCreateClock();
         Integer season = clock.getCurrentSeason();
@@ -1072,12 +1078,35 @@ public class SeasonService {
 
         List<Team> promotedDirect = new ArrayList<>();
         List<Team> playoffLower = new ArrayList<>();
+        // **Two reads for the tier, not two per child league.** This loop used to ask for the child
+        // league's season competition and then for its table: two queries per league, and a country's
+        // second tier can hold eight divisions of ten. Both answers are fetched for the whole tier in
+        // one query each, and the loop below then indexes into them.
+        Map<Long, List<CompetitionEntry>> childTablesBySeasonCompetition = new HashMap<>();
+        Map<Long, SeasonCompetition> childSeasonCompetitionByLeague = new HashMap<>();
+        List<SeasonCompetition> childSeasonCompetitions =
+                seasonCompetitionRepository.findByCompetitionInAndSeasonYear(childLeagues, seasonYear);
+        for (SeasonCompetition childSeasonCompetition : childSeasonCompetitions) {
+            if (childSeasonCompetition.getCompetition() != null) {
+                childSeasonCompetitionByLeague.put(childSeasonCompetition.getCompetition().getId(),
+                        childSeasonCompetition);
+            }
+        }
+        if (!childSeasonCompetitions.isEmpty()) {
+            for (CompetitionEntry entry : competitionEntryRepository.findBySeasonCompetitionIn(childSeasonCompetitions)) {
+                childTablesBySeasonCompetition
+                        .computeIfAbsent(entry.getSeasonCompetition().getId(), id -> new ArrayList<>())
+                        .add(entry);
+            }
+        }
+
         for (Competition childLeague : childLeagues) {
-            SeasonCompetition childSeasonCompetition = seasonCompetitionRepository.findByCompetitionAndSeasonYear(childLeague, seasonYear).orElse(null);
+            SeasonCompetition childSeasonCompetition = childSeasonCompetitionByLeague.get(childLeague.getId());
             if (childSeasonCompetition == null) {
                 return;
             }
-            List<CompetitionEntry> childTable = sortTable(competitionEntryRepository.findBySeasonCompetition(childSeasonCompetition));
+            List<CompetitionEntry> childTable = sortTable(
+                    childTablesBySeasonCompetition.getOrDefault(childSeasonCompetition.getId(), List.of()));
             if (childTable.size() < 2) {
                 return;
             }

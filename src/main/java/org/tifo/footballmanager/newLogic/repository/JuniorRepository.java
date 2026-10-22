@@ -42,12 +42,40 @@ public interface JuniorRepository extends JpaRepository<Junior, Long> {
     @Query("SELECT j FROM Junior j WHERE j.team.id = :teamId AND (j.archived = false OR j.archived IS NULL) ORDER BY j.academySkillExact DESC")
     List<Junior> findVisibleByTeamId(@Param("teamId") Long teamId);
 
-    @Query("SELECT count(j) FROM Junior j WHERE j.team.id = :teamId AND j.status = :status AND (j.archived = false OR j.archived IS NULL)")
-    long countVisibleByTeamIdAndStatus(@Param("teamId") Long teamId, @Param("status") JuniorStatus status);
+    /**
+     * The clubs that already rolled an intake for this season and week.
+     *
+     * <p>The season intake asked this per club, and the world has fourteen thousand of them. It is
+     * asked once now, for the whole world, and the answer is a set to test membership against.
+     */
+    @Query("""
+            SELECT DISTINCT j.team.id FROM Junior j
+            WHERE j.arrivalSeasonNumber = :seasonNumber
+              AND j.arrivalWeekNumber = :arrivalWeekNumber
+            """)
+    List<Long> findTeamIdsWithIntakeIn(@Param("seasonNumber") int seasonNumber,
+                                       @Param("arrivalWeekNumber") int arrivalWeekNumber);
+
+    /**
+     * Visible juniors of one status, counted per club, for a list of clubs in one query.
+     *
+     * <p>This is the academy's free-slot question ("how many active juniors does this club already
+     * hold?"), grouped instead of asked once per club. A club with none is absent from the result
+     * rather than a zero, which is what the caller's {@code getOrDefault} is for.
+     */
+    @Query("""
+            SELECT j.team.id, count(j) FROM Junior j
+            WHERE j.team.id IN :teamIds
+              AND j.status = :status
+              AND (j.archived = false OR j.archived IS NULL)
+            GROUP BY j.team.id
+            """)
+    List<Object[]> countVisibleByTeamIdsAndStatus(@Param("teamIds") java.util.Collection<Long> teamIds,
+                                                  @Param("status") JuniorStatus status);
 
     List<Junior> findByTeamIdAndArchivedTrueOrderByArrivalSeasonNumberDescAcademySkillExactDesc(Long teamId);
     List<Junior> findByStatus(JuniorStatus status);
-    long countByTeamIdAndArrivalSeasonNumberAndArrivalWeekNumber(Long teamId, int arrivalSeasonNumber, int arrivalWeekNumber);
+
 
     @Modifying
     @Query("update Junior j set j.age = j.age + 1 where j.status = :status")
