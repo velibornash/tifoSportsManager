@@ -53,6 +53,15 @@ public class Team {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String name;
+
+    /**
+     * The year the club was founded.
+     *
+     * <p><b>P0-24:</b> was hardcoded to 1954 in {@code TeamController}. Now a real field, defaulting
+     * to 1954 so existing rows keep their old value.
+     */
+    @Column(name = "founded_year")
+    private Integer foundedYear = 1954;
     @Enumerated(EnumType.STRING)
     private CompetitionTeamType type;
     @ManyToOne(fetch = FetchType.LAZY)

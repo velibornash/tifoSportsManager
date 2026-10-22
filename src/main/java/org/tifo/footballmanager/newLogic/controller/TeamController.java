@@ -169,7 +169,7 @@ public class TeamController {
 
         Map<String, Object> profile = new LinkedHashMap<>();
         profile.put("name", team.getName());
-        profile.put("founded", 1954); // TODO: Add founded year to Team entity
+        profile.put("founded", team.getFoundedYear() == null ? 1954 : team.getFoundedYear());
         profile.put("stadium", team.getStadium() != null ? team.getStadium().getName() : "N/A");
         profile.put("budget", team.getBudget());
         profile.put("reputation", team.getReputation() > 70 ? "High" : team.getReputation() > 40 ? "Medium" : "Low");
