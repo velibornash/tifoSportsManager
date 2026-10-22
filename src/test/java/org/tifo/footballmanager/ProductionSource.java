@@ -71,6 +71,30 @@ public final class ProductionSource {
     }
 
     /**
+     * A file of the front end — the static resources the application serves.
+     *
+     * <p><b>The same rule as the Java sources, for the same reason.</b> A guard that reads a front-end
+     * file has to find it rather than be told where it is: a literal path is a path that goes stale
+     * the day the file is moved, and a stale path in a guard is either an exception or — worse — a
+     * guard that quietly reads nothing and passes.
+     *
+     * @param relative the path under {@code resources/static}, with forward slashes
+     */
+    public static Path staticFile(String relative) {
+        Path resolved = staticRoot().resolve(relative.replace('/', java.io.File.separatorChar));
+        if (!java.nio.file.Files.isRegularFile(resolved)) {
+            throw new IllegalStateException(
+                    "no such static file: " + relative + " (looked in " + staticRoot() + ")");
+        }
+        return resolved;
+    }
+
+    /** The application's static resources — the front end. */
+    public static Path staticRoot() {
+        return MAIN.getParent().resolve("resources").resolve("static");
+    }
+
+    /**
      * The source file named {@code simpleName} in the package of {@code anchor}.
      *
      * <p>For a class that <b>no longer exists</b>: the anchor carries the package, the name carries

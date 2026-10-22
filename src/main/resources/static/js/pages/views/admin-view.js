@@ -229,6 +229,17 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
      *
      * <p>Shown up front so an admin can see whether the world is whole before touching it, rather
      * than finding out afterwards from a failure.
+     *
+     * <p><b>What this panel used to say, and why it was not a warning.</b> It counted the countries,
+     * the sides, the squads on them and the legacy rows — and not one of those is a club, a player or
+     * a fixture. So it said <em>"World is whole"</em> for a world with <b>no clubs and no matches</b>,
+     * and <em>"World needs repair"</em> for a world that was fine, because a single national squad
+     * was missing and the sentence did not say which one. The club count was in the payload the whole
+     * time and this panel never read it.
+     *
+     * <p>So the panel now shows the world's substance and <b>names the button that builds what is
+     * missing</b>. Seven tools, no instructions, is how an administrator ends up pressing
+     * <em>Repair world</em> on a world that has to be built from nothing.
      */
     async function showWorldIntegrity() {
         const box = document.getElementById('fm-integrity');
@@ -236,19 +247,61 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
         try {
             const res = await authFetch('/admin/world-integrity');
             const w = await res.json();
+            const where = w.activeCountries ? w.activeCountries : 'active country';
             box.innerHTML = `
                 <div class="fm-medical-stat-grid team-summary-grid">
                     <div class="fm-stat-card"><span>Countries</span><strong>${w.countries} / ${w.expectedCountries}</strong></div>
                     <div class="fm-stat-card"><span>National sides</span><strong>${w.nationalSides}</strong></div>
                     <div class="fm-stat-card"><span>Sides with a squad</span><strong>${w.seniorSidesWithSquad} / ${w.seniorSides}</strong></div>
                     <div class="fm-stat-card"><span>Legacy rows</span><strong>${w.legacyRows.length}</strong></div>
+                    <div class="fm-stat-card"><span>Clubs — ${escapeHtml(where)}</span><strong>${w.activeClubs}</strong></div>
+                    <div class="fm-stat-card"><span>Players — ${escapeHtml(where)}</span><strong>${w.activePlayers}</strong></div>
+                    <div class="fm-stat-card"><span>Fixtures — ${escapeHtml(where)}</span><strong>${w.activeFixtures}</strong></div>
                 </div>
-                ${w.healthy
-                    ? '<p class="fm-subtle">World is whole.</p>'
-                    : `<p class="fm-subtle">World needs repair${w.legacyRows.length ? ` (legacy rows: ${w.legacyRows.join(', ')})` : ''}.</p>`}`;
+                ${worldStateSentence(w)}`;
         } catch (err) {
             box.innerHTML = `<p class="fm-subtle">Could not read the world state: ${escapeHtml(err.message)}</p>`;
         }
+    }
+
+    /**
+     * One sentence about the world, and the button that answers it.
+     *
+     * <p><b>The backend decides which button</b> — it is the only place that knows what is missing —
+     * and this turns that into a sentence an administrator can act on. The two are not the same
+     * thing: {@code nextStep} is {@code "initialize"}, {@code "repair"} or {@code null}, and the panel
+     * has to say which button that is, because "Initialize DB" and "Repair world" build different
+     * things.
+     */
+    function worldStateSentence(w) {
+        if (w.healthy) {
+            return '<p class="fm-subtle">World is whole.</p>';
+        }
+
+        const missing = [];
+        if (!w.activeClubs) missing.push('no clubs');
+        if (!w.activePlayers) missing.push('the clubs have no players');
+        if (!w.activeFixtures) missing.push('no fixtures');
+        if (w.sidesWithoutSquad && w.sidesWithoutSquad.length) {
+            missing.push(`${w.sidesWithoutSquad.length} national side(s) with no squad: ${w.sidesWithoutSquad.join(', ')}`);
+        }
+        if (w.legacyRows && w.legacyRows.length) {
+            missing.push(`legacy rows: ${w.legacyRows.join(', ')}`);
+        }
+        if (w.countries !== w.expectedCountries) {
+            missing.push(`${w.countries} of ${w.expectedCountries} countries`);
+        }
+        const detail = missing.length ? ` ${missing.join('; ')}.` : '';
+
+        if (w.nextStep === 'initialize') {
+            return `<p class="fm-subtle">The world cannot be played yet.${detail} Press <strong>Initialize DB</strong> to build it.</p>`;
+        }
+        if (w.nextStep === 'repair') {
+            return `<p class="fm-subtle">World needs repair.${detail} Press <strong>Repair world</strong> to repair it.</p>`;
+        }
+        // The backend found something it could not name a button for. Say so rather than guess:
+        // a wrong button is how an administrator breaks a world that was working.
+        return `<p class="fm-subtle">World needs repair.${detail}</p>`;
     }
 
     async function handleTool(button) {

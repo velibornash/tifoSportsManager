@@ -109,6 +109,28 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     List<Team> findClubTeamsForOperations();
 
     /**
+     * How many clubs the world holds — a count, not the clubs themselves.
+     *
+     * <p>Same predicate as {@link #findClubTeamsForOperations()}, so the number is the same one that
+     * list would have produced, and it costs a count instead of loading every club row. The admin
+     * panel reads this on every visit, and at the world's scale that list is fourteen thousand
+     * entities it then throws away.
+     */
+    @Query("select count(t) from Team t where t.type is null "
+            + "or t.type = org.tifo.footballmanager.newLogic.model.CompetitionTeamType.CLUB")
+    long countClubTeams();
+
+    /**
+     * How many clubs one country holds — the count form of {@link #findClubTeamsForCountry(Long)}.
+     *
+     * <p>The active country's club count is the one number that says whether there is a game to play
+     * at all, so it is asked for on its own rather than counted out of a country-wide list.
+     */
+    @Query("select count(t) from Team t where t.country.id = :countryId "
+            + "and (t.type is null or t.type = org.tifo.footballmanager.newLogic.model.CompetitionTeamType.CLUB)")
+    long countClubTeamsForCountry(@Param("countryId") Long countryId);
+
+    /**
      * The clubs that have an economy (owner, 2026-10-11).
      *
      * <p><b>Human teams, and clubs in an active country. Nothing else.</b> The owner: *"Simulirane

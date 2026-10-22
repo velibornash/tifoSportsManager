@@ -218,6 +218,19 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     long countByCompetitionId(Long competitionId);
 
     /**
+     * How many ties one country has — every competition of that country, every round.
+     *
+     * <p>The count form of "does this country have a schedule at all", and the question the admin
+     * panel asks of a world that may never have been built. A country with clubs and players and
+     * **no fixtures** is a world that cannot play a match, and nothing else says so.
+     *
+     * <p>Counted through the competition's country rather than through a team's, because the national
+     * tournaments have no country of their own — they belong to no country and are not counted here.
+     */
+    @Query("select count(f) from MatchFixture f where f.competition.country.id = :countryId")
+    long countForCountry(@Param("countryId") Long countryId);
+
+    /**
      * Fixtures of one gameweek in one country that have not been played (owner, 2026-10-17).
      *
      * <p>The fantasy gameweek is scored only when this is zero. A week scored while half its matches are

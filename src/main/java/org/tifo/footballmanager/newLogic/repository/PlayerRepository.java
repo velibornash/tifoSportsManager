@@ -68,6 +68,21 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     @Query("select p from Player p where p.team.country.id = :countryId")
     List<Player> findByTeamCountryId(@Param("countryId") Long countryId);
 
+    /**
+     * How many players one country's clubs hold — a count, not the players.
+     *
+     * <p>The same question as {@link #findByTeamCountryId(Long)} answered in the database. That list
+     * is every player of the country, and the admin panel wants to know whether there are any at
+     * all, not who they are: a club with no squad is a club that cannot play a match.
+     *
+     * <p><b>Clubs only.</b> A national side's squad is a copy of a club player's row, and the
+     * national team is not a club, so its rows are not counted here.
+     */
+    @Query("select count(p) from Player p where p.team.country.id = :countryId "
+            + "and (p.team.type is null "
+            + "     or p.team.type = org.tifo.footballmanager.newLogic.model.CompetitionTeamType.CLUB)")
+    long countClubPlayersForCountry(@Param("countryId") Long countryId);
+
     List<Player> findByTeamId(Long teamId);
     List<Player> findByTeamIdAndPosition(Long teamId, Position position);
     Optional<Player> findByIdAndTeamId(Long id, Long teamId);
