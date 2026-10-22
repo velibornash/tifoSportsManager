@@ -145,7 +145,7 @@ export function createPlayerView(deps) {
                         ${playerCardHtml(player, {
                             positionLabel: positionInfo.primary,
                             clubName: teamName,
-                            skillIdPrefix: 'skill-'
+                            skillIdPrefix: 'skill-hero-'
                         })}
                     </div>
                     <div class="fm-ph-identity">
@@ -710,11 +710,18 @@ export function createPlayerView(deps) {
         const sequence = Array.isArray(payload.allocationSequence) ? payload.allocationSequence : [];
         const remainingEl = document.getElementById("junior-reveal-remaining");
         const statusEl = document.getElementById("junior-reveal-status");
+        // Each skill lives in two places: the hero card (skill-hero-*) and the Attributes table
+        // (skill-*). Both must move together, so the animation updates every element that carries
+        // either id. (P0-style fix: duplicate ids meant only the first was ever updated.)
         const idByKey = {
-            stamina: "skill-stamina-val", goalkeeper: "skill-goalkeeper-val",
-            defending: "skill-defending-val", pace: "skill-pace-val",
-            technique: "skill-technique-val", playmaker: "skill-playmaker-val",
-            passing: "skill-passing-val", shooting: "skill-shooting-val"
+            stamina: ["skill-stamina-val", "skill-hero-stamina-val"],
+            goalkeeper: ["skill-goalkeeper-val", "skill-hero-goalkeeper-val"],
+            defending: ["skill-defending-val", "skill-hero-defending-val"],
+            pace: ["skill-pace-val", "skill-hero-pace-val"],
+            technique: ["skill-technique-val", "skill-hero-technique-val"],
+            playmaker: ["skill-playmaker-val", "skill-hero-playmaker-val"],
+            passing: ["skill-passing-val", "skill-hero-passing-val"],
+            shooting: ["skill-shooting-val", "skill-hero-shooting-val"]
         };
         const current = { stamina: 0, goalkeeper: 0, defending: 0, pace: 0, technique: 0, playmaker: 0, passing: 0, shooting: 0 };
         const resetSkillHighlight = () => {
@@ -733,11 +740,13 @@ export function createPlayerView(deps) {
                 if (Object.prototype.hasOwnProperty.call(current, skillKey)) {
                     current[skillKey] += 1;
                     resetSkillHighlight();
-                    const node = document.getElementById(idByKey[skillKey]);
-                    if (node) {
-                        node.textContent = `${current[skillKey].toFixed(2)}`;
-                        node.style.color = "#6fcf97";
-                    }
+                    (idByKey[skillKey] || []).forEach(id => {
+                        const node = document.getElementById(id);
+                        if (node) {
+                            node.textContent = `${current[skillKey].toFixed(2)}`;
+                            node.style.color = "#6fcf97";
+                        }
+                    });
                 }
                 remaining = Math.max(0, remaining - 1);
                 if (remainingEl) remainingEl.textContent = String(remaining);
@@ -748,11 +757,13 @@ export function createPlayerView(deps) {
                 await delay(1000);
                 current[key] = Number(allocated[key] || 0);
                 resetSkillHighlight();
-                const node = document.getElementById(idByKey[key]);
-                if (node) {
-                    node.textContent = `${current[key].toFixed(2)}`;
-                    node.style.color = "#6fcf97";
-                }
+                (idByKey[key] || []).forEach(id => {
+                    const node = document.getElementById(id);
+                    if (node) {
+                        node.textContent = `${current[key].toFixed(2)}`;
+                        node.style.color = "#6fcf97";
+                    }
+                });
             }
             if (remainingEl) remainingEl.textContent = String(Math.max(0, Number(payload.remainingAfterFill || 0)));
         }
