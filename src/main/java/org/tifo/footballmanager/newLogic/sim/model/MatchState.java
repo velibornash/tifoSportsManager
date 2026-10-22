@@ -215,6 +215,7 @@ public class MatchState {
     // Last action (for shot outcome attribution)
     private ActionType lastActionType;     // what the last decision executed (SHOT/PASS/DRIBBLE/CLEAR)
     private Player lastShooter;            // who fired the last shot (carrier is null during flight)
+    private boolean shotOutcomeEmitted;     // guards a single SHOT_* epilogue per shot
     private boolean lastShotOnTarget;      // predicted on-target by ExecutionQuality at fire time
 
     public MatchState() {
@@ -683,6 +684,8 @@ public class MatchState {
     public void setLastActionType(ActionType lastActionType) { this.lastActionType = lastActionType; }
     public Player getLastShooter() { return lastShooter; }
     public void setLastShooter(Player lastShooter) { this.lastShooter = lastShooter; }
+    public boolean isShotOutcomeEmitted() { return shotOutcomeEmitted; }
+    public void setShotOutcomeEmitted(boolean v) { this.shotOutcomeEmitted = v; }
     public boolean isLastShotOnTarget() { return lastShotOnTarget; }
     public void setLastShotOnTarget(boolean onTarget) { this.lastShotOnTarget = onTarget; }
 

@@ -188,7 +188,7 @@ public class BallResultHandler {
                     case SAVE -> {
                         Player gk = state.getCarrier();
                         state.setOffsideFlaggedReceiver(null);
-                        if (wasShot) {
+                        if (wasShot && !state.isShotOutcomeEmitted()) {
                             // Real save: ball in flight was a SHOT, GK stopped it.
                             eventMsg = "*** SHOT_SAVED by " + gk.getLabel() + "(" + gk.getRole() + ")"
                                     + (shooter != null ? " | shot by " + shooter.getLabel() : "")
@@ -197,6 +197,7 @@ public class BallResultHandler {
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_SAVED", eventMsg, shooter, null);
                             state.clearPassContext();
                             stats.onSave(gk.getTeam());
+                            state.setShotOutcomeEmitted(true);
                             state.setLastShooter(null); // shot outcome consumed
                         } else {
                             // GK picked up a fast ball not launched as a shot (pass/clear
@@ -212,12 +213,13 @@ public class BallResultHandler {
                         state.setOffsideFlaggedReceiver(null);
                         // Only a fast ball in flight following a SHOT is a shot block;
                         // otherwise it's a body deflection of a pass/clear.
-                        if (wasShot) {
+                        if (wasShot && !state.isShotOutcomeEmitted()) {
                             eventMsg = "SHOT_BLOCKED " + res.getDetail() + " parried the shot"
                                     + (shooter != null ? " | shot by " + shooter.getLabel() : "")
                                     + " | ball" + p(state.getBall().getPosition());
                             log("ORC", eventMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_BLOCKED", eventMsg, shooter, null);
+                            state.setShotOutcomeEmitted(true);
                             state.clearPassContext();
                             if (shooter != null) {
                                 stats.onBlock("HOME".equals(shooter.getTeam()) ? "AWAY" : "HOME");
@@ -248,8 +250,11 @@ public class BallResultHandler {
                                 + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(),
-                                wasShot ? "SHOT_POST" : "POST_HIT", eventMsg, shooter, null);
-                        if (wasShot) state.setLastShooter(null); // shot outcome consumed
+                                wasShot && !state.isShotOutcomeEmitted() ? "SHOT_POST" : "POST_HIT", eventMsg, shooter, null);
+                        if (wasShot && !state.isShotOutcomeEmitted()) {
+                            state.setShotOutcomeEmitted(true);
+                            state.setLastShooter(null); // shot outcome consumed
+                        }
                         state.clearPassContext();
                     }
                     case GOAL -> {
@@ -310,6 +315,7 @@ public class BallResultHandler {
                                     Integer.valueOf(state.getHomeGoals()),
                                     Integer.valueOf(state.getAwayGoals()),
                                     null, null, null, null, "GOAL", "OVERTURNED");
+                            state.setShotOutcomeEmitted(true);
                             state.setLastShooter(null);
                             state.clearPassContext();
                             state.setRestartTeam(defending);
@@ -340,6 +346,7 @@ public class BallResultHandler {
                         // to see. The celebration is the dead period instead: it is a real hold with
                         // movement and a snapshot on every tick, so the goal is on screen.
                         state.clearPassContext();
+                        state.setShotOutcomeEmitted(true);
                         state.setLastShooter(null); // shot outcome consumed
                         state.setRestartTeam("HOME".equals(scorerTeam) ? "AWAY" : "HOME");
                         state.startCelebration(scorerTeam, GOAL_CELEBRATION_HOLD_TICKS);
@@ -359,11 +366,12 @@ public class BallResultHandler {
                         log("BAL", eventMsg);
                         recorder.appendEvent(state.getMatchTicks(), "OOB_ENTER", eventMsg, state);
                         // A shot that leaves the field is a miss (goal kick / corner after).
-                        if (wasShot) {
+                        if (wasShot && !state.isShotOutcomeEmitted()) {
                             String missMsg = "SHOT_MISSED by " + (shooter != null ? shooter.getLabel() : "?")
                                     + " -> " + res.getRestartType();
                             log("ORC", missMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_MISSED", missMsg, shooter, null);
+                            state.setShotOutcomeEmitted(true);
                             state.setLastShooter(null); // shot outcome consumed
                         }
                         state.clearPassContext();
@@ -408,11 +416,12 @@ public class BallResultHandler {
                         // Ball died on the pitch. If it was a shot (off target / didn't reach
                         // the goal), emit the missing epilogue so the sidebar shows the full
                         // shot outcome chain: SHOT → SAVED/BLOCKED/POST/MISSED.
-                        if (wasShot) {
+                        if (wasShot && !state.isShotOutcomeEmitted()) {
                             String missMsg = "SHOT_MISSED by " + (shooter != null ? shooter.getLabel() : "?")
                                     + " — ball died " + p(state.getBall().getPosition());
                             log("ORC", missMsg);
                             recorder.appendEvent(state.getMatchTicks(), "SHOT_MISSED", missMsg, shooter, null);
+                            state.setShotOutcomeEmitted(true);
                             state.setLastShooter(null); // shot outcome consumed
                         }
                         if (wasShot || state.getPendingReceiver() == null) {

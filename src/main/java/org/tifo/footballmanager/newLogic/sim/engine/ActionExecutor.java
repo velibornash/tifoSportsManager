@@ -59,6 +59,7 @@ public class ActionExecutor {
         state.setLastActionType(type);
         if (type == ActionType.SHOT && carrier != null) {
             state.setLastShooter(carrier);
+            state.setShotOutcomeEmitted(false);
         }
 
         // Shared action logger — every executed action writes a trace line so the

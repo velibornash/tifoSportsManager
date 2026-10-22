@@ -1,6 +1,13 @@
 package org.tifo.footballmanager.newLogic.sim.result;
 
-/** Per-team match statistics. */
+/**
+ * Per-team match statistics.
+ *
+ * <p><b>Naming note (2026-10-22).</b> {@code dribbles}, {@code throughBalls}, {@code centers} and
+ * {@code crosses} are <b>decision counts</b> — how many ticks the engine chose that action — not
+ * completed actions. A "dribble" here is a tick in which the carrier carried the ball, not a
+ * successful take-on. Rename to {@code *Decisions} is deferred to avoid touching every caller and
+ * the persisted {@code MatchTeamStats} shape.
 public record TeamStats(
     String teamName,
     int goals,
