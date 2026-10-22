@@ -371,7 +371,14 @@ public class RestartManager {
             case "CORNER_AWAY" -> RestartType.CORNER_AWAY;
             case "THROW_IN_HOME" -> RestartType.THROW_IN_HOME;
             case "THROW_IN_AWAY" -> RestartType.THROW_IN_AWAY;
-            default -> RestartType.FREE_KICK;
+            default -> {
+                // Unrecognised restart type — fall back to a centre free kick, but
+                // say so loudly. A new OOB type added without updating this
+                // switch used to vanish silently (F-RS-4).
+                System.err.println("RestartManager: unrecognised restart type '"
+                        + oobType + "' — falling back to FREE_KICK at centre spot");
+                yield RestartType.FREE_KICK;
+            }
         };
     }
 
@@ -461,7 +468,7 @@ public class RestartManager {
                 return new Position(row, col);
             }
             case FREE_KICK:
-                return KICK_OFF_SPOT; // placeholder
+                return KICK_OFF_SPOT; // fallback for unrecognised types (F-RS-4)
             case PENALTY_HOME:
                 return new Position(7.5, 3.5);
             case PENALTY_AWAY:
