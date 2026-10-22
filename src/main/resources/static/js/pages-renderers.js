@@ -1,7 +1,7 @@
 import { backButtonHtml } from './ui/components.js';
 import { hiddenResultActions, bindHiddenResultActions } from './reveal-ui.js';
 import { escapeHtml } from './ui/escape.js';
-import { ownClubChipHtml, parseMatchDate } from './pages/views/utils.js';
+import { ownClubChipHtml, parseMatchDate, hasNumber } from './pages/views/utils.js';
 import { playerMiniCardHtml } from './pages/views/player-card.js';
 
 // Was a third copy of the escaper, byte-for-byte the same as the other two. ui/escape.js exists to be
@@ -171,12 +171,16 @@ export function buildScheduleFixtureCardHtml(match, options = {}) {
      * round next to it - `week` for everything, `leagueRound` only where it differs from `round`.
      */
     const calendarBits = [];
-    if (Number.isFinite(Number(match?.seasonYear))) calendarBits.push(`S${match.seasonYear}`);
-    if (Number.isFinite(Number(match?.day))) calendarBits.push(`D${match.day}`);
-    if (Number.isFinite(Number(match?.week))) calendarBits.push(`Wk ${match.week}`);
-    if (Number.isFinite(Number(match?.leagueRound))) {
+    if (hasNumber(match?.seasonYear)) calendarBits.push(`S${match.seasonYear}`);
+    if (hasNumber(match?.day)) calendarBits.push(`D${match.day}`);
+    if (hasNumber(match?.week)) calendarBits.push(`Wk ${match.week}`);
+    // The league round first, and the row's own round when there is no league round - a cup tie and
+    // an international tie have none, and their round is the one in `round`. `hasNumber`, and not
+    // `Number.isFinite(Number(...))`, because a null is not a zero: the null league round used to be
+    // read as a zero and printed as "Rd null" (owner, 2026-10-22).
+    if (hasNumber(match?.leagueRound)) {
         calendarBits.push(`Rd ${match.leagueRound}`);
-    } else if (Number.isFinite(Number(match?.round))) {
+    } else if (hasNumber(match?.round)) {
         calendarBits.push(`Rd ${match.round}`);
     }
     const calendarLabel = calendarBits.length ? calendarBits.join(' · ') : '';
@@ -927,7 +931,10 @@ export function renderPlayersView(players, title, options = {}) {
 export function renderMatchesView(matches, title, { loadMatch, currentPage = 'schedule', currentTeamName = '' } = {}) {
     const mainContent = document.getElementById('main-content');
     const matchRows = Array.isArray(matches) ? matches : [];
-    const completedMatches = matchRows.filter(match => Number.isFinite(Number(match?.homeGoals)) && Number.isFinite(Number(match?.awayGoals)));
+    // A result the manager has not seen yet arrives with no goals, and a null read as a zero read as
+    // a 0-0 draw - so the hidden match was counted as a draw in the summary below, and the count of
+    // draws gave the result away before it was revealed. `hasNumber` says "a number", not "a zero".
+    const completedMatches = matchRows.filter(match => hasNumber(match?.homeGoals) && hasNumber(match?.awayGoals));
     const wins = completedMatches.filter(match => Number(match.homeGoals) > Number(match.awayGoals)).length;
     const draws = completedMatches.filter(match => Number(match.homeGoals) === Number(match.awayGoals)).length;
     const losses = completedMatches.filter(match => Number(match.homeGoals) < Number(match.awayGoals)).length;

@@ -73,6 +73,28 @@ export function normalizeLeagueId(value) {
     return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
+/**
+ * Whether a field carries a number.
+ *
+ * <p><b>`Number.isFinite(Number(value))` is not that test on its own.</b> `Number(null)` is
+ * <b>zero</b> - and so is `Number('')` - so a field that is null passed as "a number", and the row
+ * then printed the null itself.
+ *
+ * <p>It showed on the fixture row: the <em>league</em> round is null for every cup and every
+ * international tie, because the league round only exists for a league, and the null was read as a
+ * zero and then printed - "Rd null" - while the real round sat in the row, unused (owner,
+ * 2026-10-22: *"za International meceve nije dobar round S1 · D1 · Wk 1 · Rd null, verujem i za
+ * Cup, liga je dobra"*).
+ *
+ * <p>It also showed on the club page's summary: a result the manager has not seen yet arrives with
+ * no goals, and the null read as a zero read as a 0-0 draw - so a hidden result was counted as a
+ * draw in "Wins / Draws / Losses".
+ */
+export function hasNumber(value) {
+    if (value === null || value === undefined || value === '') return false;
+    return Number.isFinite(Number(value));
+}
+
 export function isLeaguePage(page) {
     return page === 'leagueTable' || page === 'leagueSchedule' || page === 'leagueMatches';
 }

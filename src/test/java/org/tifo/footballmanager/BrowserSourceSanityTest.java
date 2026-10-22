@@ -500,7 +500,13 @@ class BrowserSourceSanityTest {
     }
 
     /** The node binary, or null when it is not installed. */
-    private static String nodeBinary() {
+    /**
+     * The node binary, or null when node is not installed.
+     *
+     * <p>Package-private, not private: the other browser guards need the same answer, and a second
+     * copy of "where is node" is a second copy to keep in step (FixtureRowNumbersTest uses it).
+     */
+    static String nodeBinary() {
         for (String candidate : new String[]{"node", "/usr/local/bin/node", "/opt/homebrew/bin/node"}) {
             try {
                 Process process = new ProcessBuilder(candidate, "--version").start();
