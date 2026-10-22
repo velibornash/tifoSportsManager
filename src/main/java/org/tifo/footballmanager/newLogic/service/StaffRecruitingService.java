@@ -158,6 +158,9 @@ public class StaffRecruitingService {
         if (club == null) {
             throw new StaffRecruitingException("no_club", "This account is not managing a club.");
         }
+        if (club.getBudget() != null && club.getBudget() < 0) {
+            throw new StaffRecruitingException("in_debt", "The club is in debt and cannot hire staff.");
+        }
         StaffMember candidate = staff.findById(candidateId)
                 .filter(m -> m.getTeam() == null)
                 .orElseThrow(() -> new StaffRecruitingException("gone",

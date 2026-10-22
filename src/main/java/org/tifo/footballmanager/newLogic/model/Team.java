@@ -77,6 +77,17 @@ public class Team {
     private Double budget;
 
     /**
+     * How many weeks in a row this club's budget has been negative.
+     *
+     * <p><b>Bankruptcy tracking (owner, 2026-10-22):</b> two consecutive negative weeks and the
+     * club starts selling its best players to survive; if that does not get it out of the red,
+     * it goes bankrupt - the manager loses the club, the club becomes AI, and the finances reset.
+     */
+    @Column(name = "consecutive_negative_weeks", nullable = false,
+            columnDefinition = "int not null default 0")
+    private int consecutiveNegativeWeeks = 0;
+
+    /**
      * The club's standing on the economy's 0-100 scale — attendance, wages, sponsor money, transfer
      * pulling. <b>Not an Elo number</b>, and it must never be made into one.
      *

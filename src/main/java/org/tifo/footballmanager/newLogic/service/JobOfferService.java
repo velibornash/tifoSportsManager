@@ -83,10 +83,12 @@ public class JobOfferService {
 
         List<User> candidates = new ArrayList<>();
         for (User user : users.findAll()) {
-            if (user.getFootballTeam() == null) continue;
             // One at a time. A manager already holding a decision is not given a second.
             if (offers.existsByUserIdAndStatus(user.getId(), OfferStatus.OPEN)) continue;
-            if (tierOf(user.getFootballTeam()) <= 1) continue;   // nothing above the top tier
+            Team current = user.getFootballTeam();
+            // A manager with a club must be in a tier above the bottom to be offered a higher one.
+            // A manager with no club (bankrupt) is always a candidate - he may be offered any AI club.
+            if (current != null && tierOf(current) <= 1) continue;
             candidates.add(user);
         }
         // Shuffled, so the same managers are not always the ones asked and the order users come back in
@@ -109,14 +111,21 @@ public class JobOfferService {
     /** One offer to one manager, or false when there is no club to make it. */
     private boolean offerOne(User user) {
         Team from = user.getFootballTeam();
-        if (from == null || from.getCompetition() == null) return false;
-        Long countryId = from.getCompetition().getCountry() == null
-                ? null : from.getCompetition().getCountry().getId();
-        Integer fromTier = from.getCompetition().getTier();
-        if (countryId == null || fromTier == null || fromTier <= 1) return false;
+        List<Team> pool;
+        if (from == null) {
+            // A free manager (e.g. after bankruptcy): any AI club in any country.
+            pool = teams.findAiClubs(org.springframework.data.domain.PageRequest.of(0, 200));
+            if (pool.isEmpty()) return false;
+        } else {
+            if (from.getCompetition() == null) return false;
+            Long countryId = from.getCompetition().getCountry() == null
+                    ? null : from.getCompetition().getCountry().getId();
+            Integer fromTier = from.getCompetition().getTier();
+            if (countryId == null || fromTier == null || fromTier <= 1) return false;
 
-        List<Team> pool = teams.findAiClubsInHigherTiers(countryId, fromTier);
-        if (pool.isEmpty()) return false;
+            pool = teams.findAiClubsInHigherTiers(countryId, fromTier);
+            if (pool.isEmpty()) return false;
+        }
 
         Team club = pool.get(java.util.concurrent.ThreadLocalRandom.current().nextInt(pool.size()));
         Instant now = Instant.now();

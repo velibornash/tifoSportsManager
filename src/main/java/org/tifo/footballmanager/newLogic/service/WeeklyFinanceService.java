@@ -206,6 +206,15 @@ public class WeeklyFinanceService {
         double closing = opening + net;
         team.setBudget(round2(closing));
 
+        // **Consecutive negative weeks** (bankruptcy tracking, owner 2026-10-22): two in a row and
+        // the club starts selling its best players to survive; if that does not get it out of the red,
+        // it goes bankrupt.
+        if (closing < 0) {
+            team.setConsecutiveNegativeWeeks(team.getConsecutiveNegativeWeeks() + 1);
+        } else {
+            team.setConsecutiveNegativeWeeks(0);
+        }
+
         return new WeekResult(team.getId(), opening, net, closing, written.size(), false);
     }
 

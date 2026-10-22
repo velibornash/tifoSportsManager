@@ -108,6 +108,30 @@ public class TransferService {
     }
 
     /**
+     * A forced listing, with no fee and no objection, because the club is being sold off to survive.
+     *
+     * <p><b>Bankruptcy (owner, 2026-10-22):</b> two consecutive weeks in the red and the best player
+     * goes on the transfer list, then the next, until the club is solvent or has nothing left to sell.
+     * This is not a manager's decision, so it carries no listing fee and raises no objection - the
+     * player did not choose to be sold and the club has no money to be charged.
+     */
+    @Transactional
+    public Transfer forceListPlayer(Long playerId, double askingPrice) {
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "PLAYER_NOT_FOUND", "Player not found."));
+        Team sellerTeam = requirePlayerTeam(player);
+        Transfer transfer = transferRepository.findByPlayerId(player.getId()).orElse(new Transfer());
+        transfer.setPlayer(player);
+        transfer.setSellerTeam(sellerTeam);
+        transfer.setBuyerTeam(null);
+        transfer.setStatus(TransferStatus.LISTED);
+        transfer.setAskingPrice(Math.max(1.0, askingPrice));
+        transfer.setListedAt(LocalDateTime.now());
+        transfer.setCompletedAt(null);
+        return transferRepository.save(transfer);
+    }
+
+    /**
      * A player on loan cannot be traded (owner, 2026-10-08 — by extension of "everything else stays with
      * the club that owns him").
      *

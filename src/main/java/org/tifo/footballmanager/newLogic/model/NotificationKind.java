@@ -49,5 +49,12 @@ public enum NotificationKind {
      * three players, the accept and decline buttons — lives on the Office page, because a bell dropdown
      * is for noticing and not for deciding. The notification says a decision is waiting and links there.
      */
-    JOB_OFFERED
+    JOB_OFFERED,
+
+    /**
+     * A club went bankrupt: the manager lost it, the club became AI, and the finances reset.
+     *
+     * <p>Payload: the club's name. The manager is now free and may be offered another club.
+     */
+    BANKRUPTCY
 }

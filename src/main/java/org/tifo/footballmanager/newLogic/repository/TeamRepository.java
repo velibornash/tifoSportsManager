@@ -231,6 +231,11 @@ select t from Team t
             """)
     List<Team> findAiClubsInHigherTiers(@Param("countryId") Long countryId, @Param("tier") Integer tier);
 
+    /** Any AI club, for a manager who has no club of his own (bankruptcy). */
+    @Query("select t from Team t where t.type = org.tifo.footballmanager.newLogic.model.CompetitionTeamType.CLUB "
+            + "and t.humanControlled = false and t.competition is not null")
+    List<Team> findAiClubs(org.springframework.data.domain.Pageable pageable);
+
     /**
      * The ISO codes of every country that has at least one club - a list of strings, not a list of teams.
      *

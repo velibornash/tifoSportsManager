@@ -280,6 +280,10 @@ public class TrainingFacilityService {
 
         double cost = upgradeCost(s, facility, level);
         double budget = team.getBudget() == null ? 0.0 : team.getBudget();
+        if (budget < 0) {
+            log.info("{} is in debt and cannot upgrade facilities.", team.getName());
+            return java.util.OptionalDouble.empty();
+        }
         if (cost > budget) {
             log.info("{} cannot afford a {} upgrade: needs {}, has {}", team.getName(), facility, cost, budget);
             return java.util.OptionalDouble.empty();

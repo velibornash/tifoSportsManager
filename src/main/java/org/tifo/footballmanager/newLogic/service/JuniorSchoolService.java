@@ -77,6 +77,10 @@ public class JuniorSchoolService {
 
         double fee = activationFee(team);
         double budget = team.getBudget() == null ? 0.0 : team.getBudget();
+        if (budget < 0) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "JUNIOR_SCHOOL_IN_DEBT",
+                    "The club is in debt and cannot open a junior school.");
+        }
         if (fee > budget) {
             // Refused rather than allowed to go negative. An academy the club cannot pay for would
             // roll an intake it cannot staff, which is precisely the free academy this replaced.

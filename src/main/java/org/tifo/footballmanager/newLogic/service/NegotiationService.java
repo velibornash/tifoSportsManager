@@ -308,6 +308,12 @@ public class NegotiationService {
             log.warn("Transfer {} cannot be completed: player={} buyer={}", transferId, player, buyer);
             return false;
         }
+        // **Bankruptcy (owner 2026-10-22):** a club in the red cannot buy players.
+        if (buyer.getBudget() != null && buyer.getBudget() < 0) {
+            log.warn("{} cannot buy {}: the club is in debt and may only pay wages.",
+                    buyer.getName(), player.getName());
+            return false;
+        }
 
         int season = currentSeason();
         int week = currentWeek();

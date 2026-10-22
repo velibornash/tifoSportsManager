@@ -61,6 +61,7 @@ public class SeasonService {
     private final RetirementService retirementService;
     private final SupporterMoodService supporterMoods;
     private final TransferService transferService;
+    private final BankruptcyService bankruptcy;
     private final FriendlyRequestService friendlyRequests;
     private final FriendlyOfferService friendlyOffers;
     private final LoanService loans;
@@ -672,6 +673,11 @@ public class SeasonService {
                 WeeklyFinanceService.WeekResult r =
                         weeklyFinances.applyWeeklyFinances(club, season, week);
                 if (!r.notApplied()) settled++;
+                // **Bankruptcy tracking** (owner 2026-10-22): two consecutive weeks in the red and the
+                // club starts selling its best players; if that never gets it out, it goes bankrupt.
+                if (!r.notApplied()) {
+                    bankruptcy.check(club, r.closing());
+                }
             } catch (RuntimeException e) {
                 log.warn("Finance settlement failed for club {} ({}): {}", club.getId(),
                         club.getName(), e.getMessage());

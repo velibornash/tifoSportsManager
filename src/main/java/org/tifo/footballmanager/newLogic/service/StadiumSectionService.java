@@ -228,6 +228,9 @@ public class StadiumSectionService {
         }
         double cost = ((Number) quote.get("cost")).doubleValue();
         double budget = team.getBudget() == null ? 0.0 : team.getBudget();
+        if (budget < 0) {
+            return refused("The club is in debt and cannot build until it is solvent again.");
+        }
         if (cost > budget) {
             return refused("Not enough budget. This costs " + money(cost) + " and you have " + money(budget) + ".");
         }
