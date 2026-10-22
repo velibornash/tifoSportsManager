@@ -979,9 +979,24 @@ async function loadHomeTeamStats() {
             return;
         }
 
-        // The rail's league tile, from the same table (redesign.md R-13). No second request:
-        // the dashboard already asked for this table, and asking twice would let the two answers
-        // disagree - which is exactly the bug class this codebase keeps meeting.
+        // **A result the manager has not seen yet must not be given away here.** The league table
+        // already reflects every played match, including the ones whose result is still hidden, so
+        // the goals, the points and the W-D-L line would say what the match card refuses to say.
+        // Read the schedule alongside the table and, when any of the club's own matches is still
+        // hidden, keep the numbers back until the manager opens the match or asks for the result.
+        // The Elo stays: it is the owner's ruling that it is not touched here.
+        let hasHiddenResult = false;
+        try {
+            const scheduleResponse = await authFetch(`/teams/${currentUserTeamId}/schedule?allCompetitions=true`);
+            if (scheduleResponse.ok) {
+                const schedule = await scheduleResponse.json();
+                hasHiddenResult = Array.isArray(schedule)
+                    && schedule.some(m => m?.resultHidden === true);
+            }
+        } catch (err) {
+            // The check is a courtesy, not a gate: if it fails, the table's numbers are shown.
+        }
+
         const goalsFor = Number(entry.goalsScored ?? 0);
         const goalsAgainst = Number(entry.goalsConceded ?? 0);
         const goalDifference = Number(entry.goalDifference ?? (goalsFor - goalsAgainst));
@@ -997,10 +1012,14 @@ async function loadHomeTeamStats() {
             : '';
         updateWidget('position', {
             value: entry.position ? `${entry.position}` : '—',
-            meta: `${entry.points || 0} points · ${entry.wins || 0}-${entry.draws || 0}-${entry.losses || 0}`,
+            meta: hasHiddenResult
+                ? 'Result pending'
+                : `${entry.points || 0} points · ${entry.wins || 0}-${entry.draws || 0}-${entry.losses || 0}`,
             // The goals, because a position without them says nothing about the team: scored,
             // conceded and the difference between them (owner, 2026-10-20).
-            note: `${goalsFor} scored · ${goalsAgainst} conceded · GD ${goalDifference > 0 ? '+' : ''}${goalDifference}`,
+            note: hasHiddenResult
+                ? 'Result pending'
+                : `${goalsFor} scored · ${goalsAgainst} conceded · GD ${goalDifference > 0 ? '+' : ''}${goalDifference}`,
             chipHtml: eloChip,
             tone: Number(entry.position) <= 3 ? 'pos' : Number(entry.position) >= 16 ? 'neg' : null
         });
