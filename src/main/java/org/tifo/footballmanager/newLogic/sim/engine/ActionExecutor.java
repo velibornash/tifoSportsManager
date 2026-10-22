@@ -86,6 +86,17 @@ public class ActionExecutor {
         Player carrier = state.getCarrier();
         Player receiver = decision.getTarget();
         if (carrier == null || receiver == null) return;
+        // Defensive guard (F-RS-7): a set-piece taker must never pass to
+        // himself. The decision layer already excludes the carrier, but a
+        // future caller invoking execute with carrier==target must not launch a
+        // pass to the carrier's own position.
+        if (receiver == carrier) {
+            if (state.getActionLogger() != null) {
+                state.getActionLogger().log("EXE",
+                        "self-pass blocked (carrier == target) for " + carrier.getLabel());
+            }
+            return;
+        }
 
         // Ball snapped to carrier already by orchestrator before decision
         Ball ball = state.getBall();
