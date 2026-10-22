@@ -155,7 +155,7 @@ public class FormAndMoraleJob implements DayJob {
         while (true) {
             final long from = lastId;
             Page settledPage = requiresNew.execute(status -> settleOnePage(from, playedThisWeek,
-                    onTheMarket, clubsWithFixtures));
+                    onTheMarket, clubsWithFixtures, season, week));
             if (settledPage == null) {
                 break;
             }
@@ -174,7 +174,7 @@ public class FormAndMoraleJob implements DayJob {
      *         more
      */
     private Page settleOnePage(long from, Set<Long> playedThisWeek, Set<Long> onTheMarket,
-                               Set<Long> clubsWithFixtures) {
+                               Set<Long> clubsWithFixtures, int season, int week) {
         List<Player> page = players.findByIdGreaterThanOrderByIdAsc(from, PageRequest.of(0, BATCH));
         if (page.isEmpty()) {
             return null;
@@ -190,7 +190,8 @@ public class FormAndMoraleJob implements DayJob {
             }
             boolean inTheSide = playedThisWeek.contains(player.getId())
                     || !clubsWithFixtures.contains(clubIdOf(player));
-            morale.settleWeek(player, inTheSide, onTheMarket.contains(player.getId()));
+            morale.settleWeek(player, inTheSide, onTheMarket.contains(player.getId()),
+                    season, week);
             settled++;
         }
 

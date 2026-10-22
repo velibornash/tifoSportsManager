@@ -59,6 +59,17 @@ public class MoraleService {
     public static final double WEEKLY_FORM_DECAY = 0.25;
 
     /**
+     * How far the form may wander in a week, either way.
+     *
+     * <p><b>Small on purpose.</b> The settle alone is arithmetic, and a form that is a pure function
+     * of the matches is a dial: a manager who reads the squad list can predict it exactly, and a
+     * player "on a run" is on a run by arithmetic. A tenth of a point a week is enough that the
+     * same two players on the same week do not end the season on the same number, and small enough
+     * that the wander never becomes the story.
+     */
+    public static final double WEEKLY_FORM_RANDOM = 0.10;
+
+    /**
      * The floor and ceiling of the whole morale-plus-personality factor.
      *
      * <p>Tighter than the bare personality range on purpose: this is multiplied into a growth figure
@@ -180,8 +191,8 @@ public class MoraleService {
      * Settles one week: the form drifts back toward its natural level, and the standing pressures
      * apply.
      *
-     * <p><b>Why form needs a weekly settle at all.</b> Form is a week-to-week swing — that is what
-     * the class says it is — and it only moved when a player played. A player who scored twice and
+     * <p><b>Why form needs a weekly settle at all.</b> Form is a week-to-week swing - that is what
+     * the class says it is - and it only moved when a player played. A player who scored twice and
      * then had a quiet month kept the form of the two goals for ever, and a player who was never
      * picked kept the form of his last bad game for ever. {@link #endOfSeason(Player)} shows the
      * intended decay; this is the same decay, weekly and partial.
@@ -192,20 +203,49 @@ public class MoraleService {
      * throw the week away the moment it happened, and a tenth would keep it for the rest of the
      * season.
      *
+     * <p><b>And a small random, so the form is a tendency and not a rule.</b> The settle alone is
+     * arithmetic: a player's form would be a dial, and a manager who reads the squad list could
+     * predict it exactly. The wander is seeded from the player and the week, so it is the same every
+     * time the world is rebuilt and different every week.
+     *
      * @param player            the player
      * @param inTheSide         whether he was in his club's side this week
      * @param listedForTransfer whether his club has put him on the market
+     * @param season            the season the week belongs to
+     * @param week              the week
      */
     @Transactional
-    public void settleWeek(Player player, boolean inTheSide, boolean listedForTransfer) {
+    public void settleWeek(Player player, boolean inSide, boolean listedForTransfer,
+                            int season, int week) {
         if (player == null) return;
         // **The same reading the rest of this class uses.** A form of zero means "never set", not
-        // "as bad as it gets" — `formOf` says so, and `applyMatch` reads it the same way. Settling a
+        // "as bad as it gets" - `formOf` says so, and `applyMatch` reads it the same way. Settling a
         // player whose form was never set from zero would leave him at one and a half, which is a
         // form he has never earned and the rest of the class would not agree with.
         double form = formOf(player);
-        player.setForm(clamp(form + (NATURAL_FORM - form) * WEEKLY_FORM_DECAY, 0, 10));
-        applyStanding(player, inTheSide, listedForTransfer);
+        double settled = form + (NATURAL_FORM - form) * WEEKLY_FORM_DECAY;
+        settled += weeklyWander(player, season, week) * WEEKLY_FORM_RANDOM;
+        player.setForm(clamp(settled, 0, 10));
+        applyStanding(player, inSide, listedForTransfer);
+    }
+
+    /**
+     * This player's small wander for this week, between -1 and 1.
+     *
+     * <p><b>Seeded from the player and the week, not from a clock.</b> Two reasons: the world
+     * rebuilds to the same state every time, and a form that wandered differently on every rebuild
+     * would make every measurement of the game unrepeatable. The seed is the player's id, the season
+     * and the week, so the wander is the same for him in that week and different for him the week
+     * after.
+     *
+     * <p><b>Not the engine's random.</b> `SimulationRandom` is the match simulation's stream, and
+     * the form settling is not football - a sweep that consumed from it would shift every match's
+     * randomness depending on how many players had been settled first.
+     */
+    private double weeklyWander(Player player, int season, int week) {
+        long id = player.getId() == null ? 0L : player.getId();
+        long seed = id * 1_000_003L + season * 1_009L + week * 31L;
+        return new java.util.Random(seed).nextDouble() * 2.0 - 1.0;
     }
 
     /** Whether this player would agitate for a move. */

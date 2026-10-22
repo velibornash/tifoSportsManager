@@ -20,6 +20,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -99,8 +100,8 @@ class FormAndMoraleJobTest {
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(played), eq(true), eq(false));
-        verify(morale).settleWeek(eq(benched), eq(false), eq(false));
+        verify(morale).settleWeek(eq(played), eq(true), eq(false), eq(1), eq(2));
+        verify(morale).settleWeek(eq(benched), eq(false), eq(false), eq(1), eq(2));
     }
 
     @Test
@@ -119,7 +120,7 @@ class FormAndMoraleJobTest {
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(listed), eq(true), eq(true));
+        verify(morale).settleWeek(eq(listed), eq(true), eq(true), eq(1), eq(2));
     }
 
     @Test
@@ -140,7 +141,7 @@ class FormAndMoraleJobTest {
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(player), eq(true), eq(false));
+        verify(morale).settleWeek(eq(player), eq(true), eq(false), eq(1), eq(2));
     }
 
     @Test
@@ -163,7 +164,7 @@ class FormAndMoraleJobTest {
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale, times(0)).settleWeek(any(), any(Boolean.class), any(Boolean.class));
+        verify(morale, times(0)).settleWeek(any(), any(Boolean.class), any(Boolean.class), anyInt(), anyInt());
     }
 
     @Test
@@ -187,8 +188,8 @@ class FormAndMoraleJobTest {
         // The cursor moves by id, so the second page starts after the first one's last player.
         verify(players).findByIdGreaterThanOrderByIdAsc(eq(0L), any(Pageable.class));
         verify(players).findByIdGreaterThanOrderByIdAsc(eq(1L), any(Pageable.class));
-        verify(morale).settleWeek(eq(first), eq(true), eq(false));
-        verify(morale).settleWeek(eq(second), eq(true), eq(false));
+        verify(morale).settleWeek(eq(first), eq(true), eq(false), eq(1), eq(2));
+        verify(morale).settleWeek(eq(second), eq(true), eq(false), eq(1), eq(2));
     }
 
     @Test

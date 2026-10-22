@@ -26,12 +26,14 @@ class MoraleServiceSettleWeekTest {
     void theFormSettles() {
         Player hot = playerWithForm(10.0);
 
-        morale.settleWeek(hot, true, false);
+        morale.settleWeek(hot, true, false, 1, 5);
 
-        assertEquals(9.0, hot.getForm(), 0.001,
+        // The settle is a quarter of the distance, and the week's small wander is on top of it, so
+        // the number is a tenth either side of the arithmetic.
+        assertTrue(hot.getForm() > 8.9 && hot.getForm() < 9.1,
                 "a player on ten loses a quarter of the four points above the natural level, so a good "
                         + "run takes about four weeks to fade. A reset to six would throw the week "
-                        + "away the moment it happened.");
+                        + "away the moment it happened. He is on " + hot.getForm() + ".");
     }
 
     @Test
@@ -39,10 +41,11 @@ class MoraleServiceSettleWeekTest {
     void aBadWeekRecovers() {
         Player cold = playerWithForm(2.0);
 
-        morale.settleWeek(cold, true, false);
+        morale.settleWeek(cold, true, false, 1, 5);
 
-        assertEquals(3.0, cold.getForm(), 0.001,
-                "a player on two gains a quarter of the four points below the natural level");
+        assertTrue(cold.getForm() > 2.9 && cold.getForm() < 3.1,
+                "a player on two gains a quarter of the four points below the natural level. He is on "
+                        + cold.getForm() + ".");
     }
 
     @Test
@@ -51,11 +54,46 @@ class MoraleServiceSettleWeekTest {
         Player fresh = new Player();
         fresh.setMorale(60.0);
 
-        morale.settleWeek(fresh, true, false);
+        morale.settleWeek(fresh, true, false, 1, 5);
 
-        assertEquals(MoraleService.NATURAL_FORM, fresh.getForm(), 0.001,
+        assertTrue(Math.abs(fresh.getForm() - MoraleService.NATURAL_FORM) <= MoraleService.WEEKLY_FORM_RANDOM,
                 "a player with no form has not been in a week yet, and the natural level is where he "
-                        + "belongs");
+                        + "belongs - the only thing that may move him is the week's small wander. He "
+                        + "is on " + fresh.getForm() + ".");
+    }
+
+    @Test
+    @DisplayName("the form wanders a little, and the same way every time")
+    void theFormWanders() {
+        Player first = playerWithForm(8.0);
+        first.setId(4242L);
+        Player second = playerWithForm(8.0);
+        second.setId(4242L);
+        Player otherWeek = playerWithForm(8.0);
+        otherWeek.setId(4242L);
+        Player otherPlayer = playerWithForm(8.0);
+        otherPlayer.setId(9999L);
+
+        morale.settleWeek(first, true, false, 1, 5);
+        morale.settleWeek(second, true, false, 1, 5);
+        morale.settleWeek(otherWeek, true, false, 1, 6);
+        morale.settleWeek(otherPlayer, true, false, 1, 5);
+
+        assertEquals(first.getForm(), second.getForm(), 0.0001,
+                "the same player in the same week gets the same wander - the world rebuilds to the "
+                        + "same state every time, and a form that wandered differently on every "
+                        + "rebuild would make every measurement of the game unrepeatable");
+        assertTrue(Math.abs(otherWeek.getForm() - first.getForm()) > 0.0001,
+                "a different week is a different wander");
+        assertTrue(Math.abs(otherPlayer.getForm() - first.getForm()) > 0.0001,
+                "and so is a different player");
+        // The settle alone takes him from eight to 7.5 - a quarter of the two points above the
+        // natural level. What is left over is the wander.
+        double settledAlone = 8.0 + (MoraleService.NATURAL_FORM - 8.0) * MoraleService.WEEKLY_FORM_DECAY;
+        assertTrue(Math.abs(first.getForm() - settledAlone) <= MoraleService.WEEKLY_FORM_RANDOM,
+                "and it is small: a wander of more than " + MoraleService.WEEKLY_FORM_RANDOM
+                        + " would be the story rather than the noise. The settle alone takes him to "
+                        + settledAlone + " and he is on " + first.getForm() + ".");
     }
 
     @Test
@@ -64,7 +102,7 @@ class MoraleServiceSettleWeekTest {
         Player benched = playerWithForm(6.0);
         benched.setMorale(60.0);
 
-        morale.settleWeek(benched, false, false);
+        morale.settleWeek(benched, false, false, 1, 5);
 
         assertEquals(58.8, benched.getMorale(), 0.001,
                 "being left out of the side is one of the standing pressures — 1.2 morale");
@@ -76,7 +114,7 @@ class MoraleServiceSettleWeekTest {
         Player regular = playerWithForm(6.0);
         regular.setMorale(60.0);
 
-        morale.settleWeek(regular, true, false);
+        morale.settleWeek(regular, true, false, 1, 5);
 
         assertEquals(60.0, regular.getMorale(), 0.001,
                 "a player in his side is not out of it, and the pressure does not apply");
@@ -90,8 +128,8 @@ class MoraleServiceSettleWeekTest {
         Player benched = playerWithForm(6.0);
         benched.setMorale(60.0);
 
-        morale.settleWeek(listed, true, true);
-        morale.settleWeek(benched, false, false);
+        morale.settleWeek(listed, true, true, 1, 5);
+        morale.settleWeek(benched, false, false, 1, 5);
 
         assertEquals(56.0, listed.getMorale(), 0.001,
                 "being put on the market is four points of morale — more than being benched");
@@ -106,8 +144,8 @@ class MoraleServiceSettleWeekTest {
         Player hopeless = playerWithForm(0.0);
 
         for (int week = 0; week < 20; week++) {
-            morale.settleWeek(perfect, true, false);
-            morale.settleWeek(hopeless, true, false);
+            morale.settleWeek(perfect, true, false, 1, 5);
+            morale.settleWeek(hopeless, true, false, 1, 5);
         }
 
         assertTrue(perfect.getForm() <= 10.0, "form never goes above ten: " + perfect.getForm());

@@ -78,6 +78,28 @@ public class Player {
     @ColumnDefault("6.0")
     private double form;
 
+    /**
+     * The form a player settles back toward when nothing is happening to him.
+     *
+     * <p>Six is the middle of the zero-to-ten scale. {@code MoraleService} settles the form back
+     * to it every week, and it is the point at which a player's form makes no difference to his
+     * performance — see {@link #performanceModifier()}.
+     */
+    public static final double NATURAL_FORM = 6.0;
+
+    /** The morale at which a player's mood makes no difference to his performance. */
+    public static final double NEUTRAL_MORALE = 60.0;
+
+    /** How much one point of form is worth, as a fraction of a player's ability. */
+    public static final double FORM_EFFECT_PER_POINT = 0.01;
+
+    /** How much one point of morale is worth, as a fraction of a player's ability. */
+    public static final double MORALE_EFFECT_PER_POINT = 0.0008;
+
+    /** The floor and the ceiling of {@link #performanceModifier()}. */
+    public static final double MIN_PERFORMANCE_MODIFIER = 0.90;
+    public static final double MAX_PERFORMANCE_MODIFIER = 1.10;
+
     // The two Sprint 5.3 fields sit at the END of the class, deliberately. Player carries a positional
     // all-args constructor, so a field inserted mid-list silently reorders every argument after it and
     // breaks each caller with a "no suitable constructor" that says nothing about the real cause. This
@@ -250,6 +272,39 @@ public class Player {
 
     public double getCurrentFatigue() {
         return skills.getFatigue() * 0.7 + (10.0 - form) * 0.3;
+    }
+
+    /**
+     * The form and the morale, as one factor on what the engine gives this player.
+     *
+     * <p><b>What this is for.</b> Until 2026-10-22 the form and the morale were written, read,
+     * displayed, and had <b>no effect on the football at all</b>: the engine read a player's eight
+     * skills and nothing else, so a player in the form of his life and a miserable one were
+     * identical on the pitch. The form decided how he was <em>rated</em> and whether he was
+     * <em>picked</em>; the morale decided how fast he <em>trained</em>. Neither touched a pass.
+     *
+     * <p><b>How much.</b> Deliberately small. A form of ten is four points above the natural level
+     * and a form of two four below, and a point of form is worth one percent: so a player in peak
+     * form is about <b>3% better</b> and a player in a bad run about <b>4% worse</b>, and a miserable
+     * one a little worse again. The two are <b>added, not multiplied</b>, so the worst case in a real
+     * world is around <b>−6%</b> and the best around <b>+5%</b>. Enough that a manager who reads
+     * the squad list can see why his striker is not scoring; not enough that one week of form
+     * decides a title.
+     *
+     * <p><b>Where it is applied.</b> In {@code RealSquadFactory}, which is the single funnel where
+     * a real player's ability becomes the engine's ability — so there is no path by which this
+     * factor is quietly bypassed.
+     */
+    public double performanceModifier() {
+        // **The same reading the rest of the codebase uses.** A form of zero means "never set", not
+        // "as bad as it gets" — `MoraleService.formOf` says so and `applyMatch` reads it the same
+        // way. A player whose form was never written must not be treated as a player in the worst
+        // run of his life, and a fresh `new Player()` has a form of zero.
+        double effectiveForm = form <= 0 ? NATURAL_FORM : form;
+        double formEffect = (effectiveForm - NATURAL_FORM) * FORM_EFFECT_PER_POINT;
+        double moraleEffect = (morale - NEUTRAL_MORALE) * MORALE_EFFECT_PER_POINT;
+        double factor = 1.0 + formEffect + moraleEffect;
+        return Math.max(MIN_PERFORMANCE_MODIFIER, Math.min(MAX_PERFORMANCE_MODIFIER, factor));
     }
 
     public boolean canReceiveBall() {

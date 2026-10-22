@@ -90,7 +90,12 @@ class RealSquadFactoryTest {
         List<org.tifo.footballmanager.newLogic.sim.model.Player> squad =
                 RealSquadFactory.buildSquad(lineupWith(starters), "HOME");
         PlayerSkills gk = gk(squad).getSkills();
-        assertEquals(18.5, gk.keeper(), 0.001);
+        // **The mapping is exact, and the player's own form and morale ride on top of it.** The
+        // fixture's players carry a form of eight, so the factor is not one - and the point of this
+        // test is the mapping, so it is asserted against the factor the player himself carries
+        // rather than against a number that happens to be right today.
+        assertEquals(18.5 * starters.get(0).performanceModifier(), gk.keeper(), 0.001,
+                "the goalkeeper's exact skill, times the player's own form-and-morale factor");
     }
 
     // ---------- helpers ----------

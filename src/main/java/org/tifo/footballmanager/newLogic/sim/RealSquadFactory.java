@@ -155,7 +155,7 @@ public final class RealSquadFactory {
                     role,
                     new Position(0, 0),
                     new Position(0, 0),
-                    toSimSkills(db.getSkills(), coachFactor),
+                    toSimSkills(db.getSkills(), coachFactor, db.performanceModifier()),
                     heightCm(db.getHeight()));
             p.setOnBench(true);
             bench.add(p);
@@ -227,7 +227,7 @@ public final class RealSquadFactory {
                     role,
                     anchor,
                     anchor,
-                    toSimSkills(db.getSkills(), coachFactor),
+                    toSimSkills(db.getSkills(), coachFactor, db.performanceModifier()),
                     heightCm(db.getHeight())));
         }
         return squad;
@@ -338,7 +338,7 @@ public final class RealSquadFactory {
     }
 
     private static PlayerSkills toSimSkills(Skills s) {
-        return toSimSkills(s, 1.0);
+        return toSimSkills(s, 1.0, 1.0);
     }
 
     /**
@@ -353,9 +353,19 @@ public final class RealSquadFactory {
      * rounded display figure, and clamped afterwards because a coach is not allowed to push anybody
      * past the top of the scale.
      */
-    private static PlayerSkills toSimSkills(Skills s, double coachFactor) {
+    /**
+     * As above, with the player's form and morale as well.
+     *
+     * <p><b>This is where a player's form reaches the pitch.</b> The funnel is the single point
+     * where a real player's ability becomes the engine's ability, so a factor applied here cannot be
+     * bypassed by any other path into a match.
+     *
+     * @param performanceFactor the player's {@code performanceModifier()} — his form and his morale
+     */
+    private static PlayerSkills toSimSkills(Skills s, double coachFactor, double performanceFactor) {
         if (s == null) return PlayerSkills.neutral();
-        double factor = coachFactor <= 0 ? 1.0 : coachFactor;
+        double factor = (coachFactor <= 0 ? 1.0 : coachFactor)
+                * (performanceFactor <= 0 ? 1.0 : performanceFactor);
         return new PlayerSkills(
                 clamp1(s.getExact(SkillName.PACE) * factor),
                 clamp1(s.getExact(SkillName.STAMINA) * factor),
