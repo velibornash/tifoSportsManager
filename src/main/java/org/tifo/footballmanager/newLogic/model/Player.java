@@ -35,7 +35,22 @@ import org.hibernate.annotations.ColumnDefault;
                 @Index(name = "ix_player_team_not_retired", columnList = "team_id,retired_season,age"),
         })
 @Entity(name = "Player")
+@org.hibernate.annotations.BatchSize(size = 50)
 public class Player {
+
+    /**
+     * <b>Players are loaded in batches of fifty.</b>
+     *
+     * <p>A match reads its two squads three times over: the match stats, the career totals and the
+     * condition the match left behind. Each of those loops asked for one player at a time, so one
+     * match asked the database about fifty players - and a matchday is one match in every division
+     * of the country, all of it in the hour before the kickoff.
+     *
+     * <p>With the batch, the same fifty players come in one query. The writes were never the
+     * problem: they are already batched (the JDBC batch size is 50), and the second and third loop
+     * write the same managed player, so it is written once.
+     */
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
