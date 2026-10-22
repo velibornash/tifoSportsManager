@@ -218,7 +218,6 @@ public class OffsideService implements EngineInterfaces.OffsideService {
             state.setOffsideDeferred(true);
             state.setOffsideDeferredMargin(margin);
             state.setOffsideLedToGoal(false);
-            state.setOffsideDeferredActionCount(state.getOffsideDeferredActionCount() + 1);
             return new OffsideResult(false, true);
         }
 

@@ -110,7 +110,6 @@ public class MatchState {
     private boolean offsideDeferred;              // flag is physically held
     private double offsideDeferredMargin;         // margin when the flag was held (cells)
     private boolean offsideLedToGoal;             // deferred call consumed by a goal path
-    private int offsideDeferredActionCount;       // action count at defer time
 
     // Offside whistle-at-reception flag (user rule 2026-09-23): set at pass-moment
     // when the intended receiver is (clear or marginal) offside. The pass flies
@@ -387,8 +386,6 @@ public class MatchState {
     public void setOffsideDeferredMargin(double margin) { this.offsideDeferredMargin = margin; }
     public boolean isOffsideLedToGoal() { return offsideLedToGoal; }
     public void setOffsideLedToGoal(boolean ledToGoal) { this.offsideLedToGoal = ledToGoal; }
-    public int getOffsideDeferredActionCount() { return offsideDeferredActionCount; }
-    public void setOffsideDeferredActionCount(int count) { this.offsideDeferredActionCount = count; }
 
     // === OFFSIDE WHISTLE-AT-RECEPTION ===
     public Player getOffsideFlaggedReceiver() { return offsideFlaggedReceiver; }
