@@ -738,7 +738,7 @@ class PitchRenderer {
 
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = isGK ? GK_COLOR : (isHome ? HOME_COLOR : AWAY_COLOR);
+      ctx.fillStyle = isGK ? GK_COLOR : (isHome ? (this.homeColor || HOME_COLOR) : (this.awayColor || AWAY_COLOR));
       ctx.fill();
       ctx.strokeStyle = isSelected ? '#58a6ff' : 'rgba(0,0,0,.4)';
       ctx.lineWidth = isSelected ? 3 : 1.5;
@@ -946,6 +946,8 @@ class MatchViewer {
       this._initFromData();
       const homeName = this.data.homeTeamName || 'HOME';
       const awayName = this.data.awayTeamName || 'AWAY';
+      this.homeColor = this.data.homeKitColor || HOME_COLOR;
+      this.awayColor = this.data.awayKitColor || AWAY_COLOR;
       this.overlays.showKickoff(homeName, awayName);
       this.play();
     } catch (e) {
@@ -975,6 +977,8 @@ class MatchViewer {
       // Show kickoff overlay, then auto-start after 3s
       const homeName = this.data.homeTeamName || 'HOME';
       const awayName = this.data.awayTeamName || 'AWAY';
+      this.homeColor = this.data.homeKitColor || HOME_COLOR;
+      this.awayColor = this.data.awayKitColor || AWAY_COLOR;
       this.overlays.showKickoff(homeName, awayName);
       this.play(); // will pause on overlay, then resume when dismissed
     } catch (e) {

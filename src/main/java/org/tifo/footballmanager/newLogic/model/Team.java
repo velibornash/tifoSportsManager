@@ -195,6 +195,28 @@ public class Team {
      * the same stored-and-unused pattern this column was added to fix.
      */
     private String logoUrl;
+
+    /**
+     * Kit colours and pattern (P0-32, owner 2026-10-22).
+     *
+     * <p>Hex strings (e.g. {@code "#539bf5"}) so the UI can paint them directly without a
+     * lookup. {@code kitPattern} is one of {@link KitPattern}; the viewer renders it.
+     *
+     * <p>Defaults are baked into {@code columnDefinition} so {@code ddl-auto=update} succeeds on a
+     * populated table (the AGENTS.md rule for NOT NULL columns).
+     */
+    @Column(name = "home_kit_color", columnDefinition = "varchar(7) not null default '#539bf5'")
+    private String homeKitColor = "#539bf5";
+
+    @Column(name = "away_kit_color", columnDefinition = "varchar(7) not null default '#f97583'")
+    private String awayKitColor = "#f97583";
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kit_pattern", columnDefinition = "varchar(16) not null default 'SOLID'")
+    private KitPattern kitPattern = KitPattern.SOLID;
+
+    public enum KitPattern { SOLID, STRIPES, HOOPS, HALVES }
+
     private boolean humanControlled;
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore

@@ -686,6 +686,9 @@ public class CountryController {
         side.put("id", team.getId());
         side.put("name", team.getName());
         side.put("logoUrl", team.getLogoUrl());
+        side.put("homeKitColor", team.getHomeKitColor());
+        side.put("awayKitColor", team.getAwayKitColor());
+        side.put("kitPattern", team.getKitPattern() != null ? team.getKitPattern().name() : null);
         side.put("country", team.getCountry() == null ? null : team.getCountry().getIsoCode());
         side.put("squad", playerRepository.findByTeamId(team.getId()).stream()
                 .limit(25)

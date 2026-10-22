@@ -366,6 +366,7 @@ public class PyramidBuilder {
                 team.setHumanControlled(false);
                 team.setReputation(reputationFor(tier));
                 team.setBudget(2_000_000.0 + (6 - tier) * 1_500_000.0);
+                assignKit(team, name);
                 // The club's town, from the country's pool when it has one (redesign.md R-23).
                 if (country.getIsoCode() != null) {
                     String city = namePool.randomCity(country.getIsoCode(), new java.util.Random(name.hashCode()));
@@ -496,6 +497,7 @@ public class PyramidBuilder {
                         : (double) index / (CLUBS_PER_DIVISION - 1);
                 team.setReputation(40.0 + league.getTier() * 8.0 + withinDivision * 7.0);
                 team.setBudget(2_000_000.0 + (6 - league.getTier()) * 1_500_000.0);
+                assignKit(team, clubName);
                 team = teams.save(team);
             }
             // The squad is generated to this division's standard, so a club in the municipal tier is
@@ -626,5 +628,20 @@ public class PyramidBuilder {
                 .filter(league -> league.getTier() != null && league.getTier() == 1)
                 .findFirst()
                 .orElse(null);
+    }
+
+    /** Generate a kit (colours + pattern) for a club from its name (deterministic). P0-32. */
+    private static void assignKit(org.tifo.footballmanager.newLogic.model.Team team, String name) {
+        java.util.Random r = new java.util.Random(name.hashCode() * 31L);
+        String[] palette = {"#1a3a6b", "#c62828", "#1b5e20", "#4a148c", "#e65100",
+                "#006064", "#37474f", "#880e4f", "#0d47a1", "#bf360c"};
+        String home = palette[r.nextInt(palette.length)];
+        String away;
+        do { away = palette[r.nextInt(palette.length)]; } while (away.equals(home));
+        team.setHomeKitColor(home);
+        team.setAwayKitColor(away);
+        org.tifo.footballmanager.newLogic.model.Team.KitPattern[] patterns =
+                org.tifo.footballmanager.newLogic.model.Team.KitPattern.values();
+        team.setKitPattern(patterns[r.nextInt(patterns.length)]);
     }
 }

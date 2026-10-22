@@ -23,6 +23,9 @@ public class TeamSummaryDTO {
      * badge" and "this club's badge happens to be the default" stay distinguishable in the API.
      */
     private String logoUrl;
+    private String homeKitColor;
+    private String awayKitColor;
+    private String kitPattern;
 
     public static TeamSummaryDTO from(Team team) {
         TeamSummaryDTO dto = new TeamSummaryDTO();
@@ -37,6 +40,9 @@ public class TeamSummaryDTO {
         dto.setReputation(team.getReputation());
         dto.setHumanControlled(team.isHumanControlled());
         dto.setLogoUrl(team.getLogoUrl());
+        dto.setHomeKitColor(team.getHomeKitColor());
+        dto.setAwayKitColor(team.getAwayKitColor());
+        dto.setKitPattern(team.getKitPattern() != null ? team.getKitPattern().name() : null);
         return dto;
     }
 }
