@@ -136,6 +136,11 @@ export function createClubView(deps) {
                              alt="${htmlEscape(profile.name)}"
                              onerror="this.src='/images/logoside.jpg'">
                     </div>
+                    <div class="club-profile-kit" style="display:flex;gap:6px;margin-top:8px;">
+                        <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${htmlEscape(profile.homeKitColor || '#539bf5')};border:1px solid #ccc;" title="Home kit"></span>
+                        <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${htmlEscape(profile.awayKitColor || '#f97583')};border:1px solid #ccc;" title="Away kit"></span>
+                        <span style="font-size:11px;color:#666;margin-left:4px;">${htmlEscape(profile.kitPattern || 'SOLID')}</span>
+                    </div>
                     <h3>${htmlEscape(profile.name || 'Club')}</h3>
                     <p class="fm-subtle">Serbian club profile with our existing app data.</p>
                     <button type="button" class="fm-action-btn secondary club-profile-stadium-btn" data-stadium-image="${htmlEscape(stadiumImage)}" data-stadium-name="${htmlEscape(profile.stadium || 'Stadium')}">Open Stadium View</button>
