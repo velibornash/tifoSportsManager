@@ -33,6 +33,25 @@ public interface MatchPlayerStatsRepository extends JpaRepository<MatchPlayerSta
     List<MatchPlayerStats> findByPlayerIdNewestFirst(@Param("playerId") Long playerId);
 
     /**
+     * The player ids who appeared in a match in one week of one season — one query for the whole world.
+     *
+     * <p><b>Why it is one query and not one per club.</b> The form-and-morale sweep asks, for every
+     * player in the world, whether he was in his club's side this week. Asked per club it is fourteen
+     * thousand round trips a week; asked here it is one, and the answer is a set the sweep reads from
+     * memory. The same lesson as the ban-check fix and the rating backfill.
+     *
+     * <p>A stat row with no match is skipped rather than counted: a half-written line is not a match
+     * that happened.
+     */
+    @Query("""
+            SELECT DISTINCT s.player.id FROM MatchPlayerStats s
+            WHERE s.player IS NOT NULL AND s.match IS NOT NULL
+              AND s.match.seasonYear = :season AND s.match.weekNumber = :week
+            """)
+    List<Long> findPlayerIdsWithAppearancesInWeek(@Param("season") Integer season,
+                                                  @Param("week") Integer week);
+
+    /**
      * Every stat line a player produced in one week of one season.
      *
      * <p>Goes through {@code Match} rather than carrying a week on the stat row, because the stat

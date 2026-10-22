@@ -40,6 +40,25 @@ public class MoraleService {
     public static final double CONTENT_MORALE = 65.0;
 
     /**
+     * The form a player settles back toward when nothing is happening to him.
+     *
+     * <p>Six is the middle of the zero-to-ten scale, and it is the number
+     * {@link #endOfSeason(Player)} settles a player's form to at the end of a season. It is also the
+     * number {@link #formOf(Player)} reads for a player whose form was never set.
+     */
+    public static final double NATURAL_FORM = 6.0;
+
+    /**
+     * How much of the distance back to the natural level one week takes off a player's form.
+     *
+     * <p>A quarter. A good week puts a player's form three or four above the natural level, and a
+     * quarter of that goes each week, so a good run takes about four weeks to fade — which is what
+     * "a week-to-week swing" means. A reset would throw the week away the moment it happened; a
+     * tenth would keep it for the rest of the season.
+     */
+    public static final double WEEKLY_FORM_DECAY = 0.25;
+
+    /**
      * The floor and ceiling of the whole morale-plus-personality factor.
      *
      * <p>Tighter than the bare personality range on purpose: this is multiplied into a growth figure
@@ -155,6 +174,38 @@ public class MoraleService {
         // every player eventually sits at 10.
         player.setForm(6.0);
         setMorale(player, clamp(moraleOf(player) * 0.6 + 40 * 0.4, 0, 100));
+    }
+
+    /**
+     * Settles one week: the form drifts back toward its natural level, and the standing pressures
+     * apply.
+     *
+     * <p><b>Why form needs a weekly settle at all.</b> Form is a week-to-week swing — that is what
+     * the class says it is — and it only moved when a player played. A player who scored twice and
+     * then had a quiet month kept the form of the two goals for ever, and a player who was never
+     * picked kept the form of his last bad game for ever. {@link #endOfSeason(Player)} shows the
+     * intended decay; this is the same decay, weekly and partial.
+     *
+     * <p><b>A quarter of the distance, not a reset.</b> Form after a good week can be nine or ten,
+     * which is three or four above the natural level; a quarter of that goes each week, so a good run
+     * takes about four weeks to fade and a bad one takes the same to recover. A reset to six would
+     * throw the week away the moment it happened, and a tenth would keep it for the rest of the
+     * season.
+     *
+     * @param player            the player
+     * @param inTheSide         whether he was in his club's side this week
+     * @param listedForTransfer whether his club has put him on the market
+     */
+    @Transactional
+    public void settleWeek(Player player, boolean inTheSide, boolean listedForTransfer) {
+        if (player == null) return;
+        // **The same reading the rest of this class uses.** A form of zero means "never set", not
+        // "as bad as it gets" — `formOf` says so, and `applyMatch` reads it the same way. Settling a
+        // player whose form was never set from zero would leave him at one and a half, which is a
+        // form he has never earned and the rest of the class would not agree with.
+        double form = formOf(player);
+        player.setForm(clamp(form + (NATURAL_FORM - form) * WEEKLY_FORM_DECAY, 0, 10));
+        applyStanding(player, inTheSide, listedForTransfer);
     }
 
     /** Whether this player would agitate for a move. */

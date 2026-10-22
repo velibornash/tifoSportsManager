@@ -14,6 +14,30 @@ import java.util.Optional;
 public interface MatchRepository extends JpaRepository<Match, Long> {
 
     /**
+     * The club ids that had a fixture in one week of one season — the home side, one query.
+     *
+     * <p><b>Why the form-and-morale sweep wants this.</b> A player who did not play is only out of
+     * his club's side if his club <em>played</em>. A club with no fixture that week has nobody to
+     * be disappointed in, and penalising its whole squad for a week the club did not play would be
+     * the sweep inventing a grievance. The two queries are the two sides of a match, and they are
+     * asked of the whole world at once.
+     */
+    @Query("SELECT DISTINCT m.homeTeam.id FROM Match m"
+            + " WHERE m.homeTeam IS NOT NULL AND m.seasonYear = :season AND m.weekNumber = :week")
+    List<Long> findHomeClubIdsWithFixturesInWeek(@Param("season") Integer season,
+                                                  @Param("week") Integer week);
+
+    /**
+     * The club ids that had a fixture in one week of one season — the away side, one query.
+     *
+     * @see #findHomeClubIdsWithFixturesInWeek(Integer, Integer)
+     */
+    @Query("SELECT DISTINCT m.awayTeam.id FROM Match m"
+            + " WHERE m.awayTeam IS NOT NULL AND m.seasonYear = :season AND m.weekNumber = :week")
+    List<Long> findAwayClubIdsWithFixturesInWeek(@Param("season") Integer season,
+                                                  @Param("week") Integer week);
+
+    /**
      * Excludes matches that have been computed but not yet published (owner, 2026-10-11).
      *
      * <p>A prepared match is a real, complete row: {@code played = true}, goals, possession, the lot.

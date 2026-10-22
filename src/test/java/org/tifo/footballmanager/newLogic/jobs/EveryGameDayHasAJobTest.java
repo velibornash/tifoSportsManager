@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Every day the calendar names has something scheduled on it.
  *
  * <p>{@code GameDay} is the game's own statement of what each day is for, and it is what the dashboard
- * and the calendar render. Six of its seven entries have a job registered on them. <b>Day 6 is labelled
- * "Form and morale" and has no job on it at all</b> — so the calendar names a day the scheduler never
- * delivers, and nothing anywhere reports it.
+ * and the calendar render. <b>Day 6 is labelled "Form and morale"</b> — and until 2026-10-22 it had no
+ * job on it at all, so the calendar named a day the scheduler never delivered, and nothing anywhere
+ * reported it.
  *
  * <p>This is the board's B9 residue, and the second half of it: the first half was the 20:45 kickoff
  * display, which is fixed. What is left is <b>not a bug with an obvious correct answer — what day 6
@@ -28,17 +28,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * is make the gap impossible to forget, and pin the rest of the week so a fix cannot be made by removing
  * the promise instead of keeping it.
  *
+ * <p><b>2026-10-22: the decision was taken, and the gap is closed.</b> The owner's week gives day 6 to
+ * form and morale, and the work already existed with no caller: {@code MoraleService.applyStanding}
+ * ("is he being paid fairly, is he in the side, is he being listed") had never been called by
+ * anything, and the weekly settle of the form did not exist at all. There is now a
+ * {@code form-and-morale} job on day 6, and this file says so — while keeping the half of the
+ * finding that still stands: <b>day 6 is not a club match day.</b> A club matchday there would change
+ * the week the owner described, and that still needs saying out loud.
+ *
  * <p>Structural, over the injected {@code List<DayJob>}, in the shape of
  * {@code JobTriggerUniquenessTest}: it asks what the application <em>is</em>, not what a document says.
  */
 class EveryGameDayHasAJobTest extends BaseTest {
 
+    /** The key the form-and-morale sweep runs under. */
+    private static final String FORM_AND_MORALE = "form-and-morale";
+
     @Autowired
     List<DayJob> jobs;
 
     @Test
-    @DisplayName("day 6 is a club rest day and a national match day, and nothing else")
-    void daySixIsANationalDayOnly() {
+    @DisplayName("day 6 carries form and morale, and no club matchday")
+    void daySixCarriesFormAndMoraleAndNoClubMatchday() {
         assertTrue(GameDay.DAY_6.kind() == WeekTemplate.DayKind.MORALE,
                 "day 6 is no longer the form-and-morale day, so this finding has to be re-stated against "
                         + "whatever it is now");
@@ -57,23 +68,31 @@ class EveryGameDayHasAJobTest extends BaseTest {
                         + "has been added to day 6, the calendar changed and this finding is re-stated, "
                         + "not deleted.");
 
+        assertTrue(keys.contains(FORM_AND_MORALE),
+                "the calendar names day 6 'Form and morale', so the week the owner described has to "
+                        + "compute something for it. The job exists — the form settles and the standing "
+                        + "pressures apply — and without it the day is a promise nobody keeps. Day 6 "
+                        + "carries: " + keys);
+
         for (String key : keys) {
             assertTrue(key.startsWith("matchday-qualifier") || key.startsWith("matchday-tournament")
                             || key.startsWith("matchday-prepare-qualifier")
                             || key.startsWith("matchday-publish-qualifier")
                             || key.startsWith("matchday-prepare-tournament")
-                            || key.startsWith("matchday-publish-tournament"),
-                    "day 6 carries " + key + ", which is not a national-tournament job. A club matchday "
-                            + "on day 6 changes the week the owner described, and needs saying out loud.");
+                            || key.startsWith("matchday-publish-tournament")
+                            || FORM_AND_MORALE.equals(key),
+                    "day 6 carries " + key + ", which is not a national-tournament job and not the "
+                            + "form-and-morale job. A club matchday on day 6 changes the week the owner "
+                            + "described, and needs saying out loud.");
         }
     }
 
     @Test
-    @DisplayName("every other day the calendar names has a job on it")
-    void everyOtherNamedDayHasAJob() {
+    @DisplayName("every day the calendar names has a job on it")
+    void everyNamedDayHasAJob() {
         Set<Integer> uncovered = new TreeSet<>();
         for (GameDay day : GameDay.values()) {
-            if (day.number() != 6 && jobsOnDay(day.number()).isEmpty()) {
+            if (jobsOnDay(day.number()).isEmpty()) {
                 uncovered.add(day.number());
             }
         }

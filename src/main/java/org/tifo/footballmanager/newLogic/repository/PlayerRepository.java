@@ -120,6 +120,17 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     List<Player> findActiveClubPlayers();
 
     /**
+     * One page of players, by id, for a sweep that reads the whole table.
+     *
+     * <p><b>By id and not by page number.</b> The rating backfill walks the table the same way, and
+     * for the same reason: an offset page asks the database to count the rows every time, and a
+     * count over three hundred and seventy thousand players, seven hundred and fifty times over, is
+     * the sweep's cost before it has done anything. The id cursor also survives the sweep writing
+     * to the rows it is reading — the ids do not move, so the cursor does not either.
+     */
+    List<Player> findByIdGreaterThanOrderByIdAsc(Long id, Pageable pageable);
+
+    /**
      * Every player's squad, for many teams at once.
      *
      * <p>Added with {@code ScheduleInsightService.buildTeamSnapshots}, which is called by both ranking
