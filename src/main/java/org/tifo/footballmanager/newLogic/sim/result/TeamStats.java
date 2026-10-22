@@ -8,6 +8,7 @@ package org.tifo.footballmanager.newLogic.sim.result;
  * completed actions. A "dribble" here is a tick in which the carrier carried the ball, not a
  * successful take-on. Rename to {@code *Decisions} is deferred to avoid touching every caller and
  * the persisted {@code MatchTeamStats} shape.
+ */
 public record TeamStats(
     String teamName,
     int goals,
