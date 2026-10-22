@@ -145,7 +145,7 @@ export function createStatsView(deps) {
                             <small class="top-list-team">(${teamIdByName.get(a.teamName) ? `<span class="cs-clickable" onclick="loadLeagueTeam(${teamIdByName.get(a.teamName)}, '${htmlEscape(a.teamName)}')">${a.teamName}</span>` : a.teamName})</small>
                         </span>
                         <span class="top-list-value top-list-value--accent">
-                            ${a.assists}&nbsp;<span class="league-stat-icon league-stat-icon--assist">&#127984;</span>
+                            ${a.assists}&nbsp;<span class="league-stat-icon league-stat-icon--assist">A</span>
                         </span>
                     </li>`;
                 });

@@ -256,7 +256,7 @@ export function buildMilestoneBoardHtml(milestones) {
             ${buildMilestoneCardHtml(
                 'Top assist',
                 assist?.playerName || '—',
-                assist?.playerName ? { club: assist.teamName, icons: iconCount('fm-badge-ast', '🅰️', assist.value) } : 'No assists filed yet.'
+                assist?.playerName ? { club: assist.teamName, icons: iconCount('fm-badge-ast', '<span class="league-stat-icon league-stat-icon--assist">A</span>', assist.value) } : 'No assists filed yet.'
             )}
             ${buildMilestoneCardHtml(
                 'Biggest win',
@@ -370,7 +370,7 @@ export function buildLineupEventBadges(player) {
 
     const badges = [
         buildRepeatedLineupBadge(goals, 'fm-badge-goal', '⚽', 'Goal'),
-        buildRepeatedLineupBadge(assists, 'fm-badge-ast', '🅰️', 'Assist'),
+        buildRepeatedLineupBadge(assists, 'fm-badge-ast', '<span class="league-stat-icon league-stat-icon--assist">A</span>', 'Assist'),
         buildRepeatedLineupBadge(yellowCards, 'fm-badge-card-yellow', '🟨', 'Yellow card'),
         buildRepeatedLineupBadge(redCards, 'fm-badge-card-red', '🟥', 'Red card')
     ].filter(Boolean);

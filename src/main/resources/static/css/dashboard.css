@@ -9492,7 +9492,17 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .league-stat-icon--goal { color: var(--gold); font-weight: 800; }
 /* The red "A", the same mark the column's heading carries (owner, 2026-10-20: "ne treba pored
    broja asistencija da stoji 🏡 nego crveno A kao u naslovu Top assists"). */
-.league-stat-icon--assist { font-weight: 900; }
+.league-stat-icon--assist {
+    display: inline-block;
+    font-weight: 900;
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: #c62828;
+    color: #fff;
+    vertical-align: middle;
+}
 
 /* ------------------------------------------------------------------ the Office page (owner, 2026-10-18)
  *

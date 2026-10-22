@@ -1333,7 +1333,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                     <tr>
                         <th class="ps-pos">#</th>
                         <th class="ps-name">Player</th>
-                        <th class="ps-val" title="${type === 'goals' ? 'Goals' : 'Assists'}">${type === 'goals' ? '⚽' : '🅰️'}</th>
+                        <th class="ps-val" title="${type === 'goals' ? 'Goals' : 'Assists'}">${type === 'goals' ? '⚽' : '<span class="league-stat-icon league-stat-icon--assist">A</span>'}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1398,7 +1398,7 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
                 ${milestoneCardHtml(
                     'Top assist',
                     assist?.playerName ? safe(assist.playerName) : '—',
-                    assist?.playerName ? `${safe(assist.teamName || 'No CTeam')} · ${iconCount('fm-badge-ast', '🅰️', Number(assist.value || 0))}` : 'No assists filed yet.'
+                    assist?.playerName ? `${safe(assist.teamName || 'No CTeam')} · ${iconCount('fm-badge-ast', '<span class="league-stat-icon league-stat-icon--assist">A</span>', Number(assist.value || 0))}` : 'No assists filed yet.'
                 )}
                 ${milestoneCardHtml(
                     'Biggest win',
