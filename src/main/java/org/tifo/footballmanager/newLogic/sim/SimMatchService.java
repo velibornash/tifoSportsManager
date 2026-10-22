@@ -602,10 +602,18 @@ public class SimMatchService {
             // Where he worked, not just what he did. The zone table, the recovery rules and the daily
             // recovery job all existed with nothing writing them, so recovery reported zero for every
             // player in the world. Best-effort: a missing zone row must never cost a match result.
-            try {
-                recordZoneLoad(match, simSnapshots);
-            } catch (RuntimeException e) {
-                log.warn("Could not record zone load for match {}: {}", match.getId(), e.getMessage());
+            //
+            // The zone load is only ever read by the replay viewer, which is only ever opened for a
+            // club a manager controls - so writing it for a bot's match is eighty-five rows per match
+            // that nobody will read. On a league day that is one match in every division of the world:
+            // the zone load alone was the biggest single writer in the prepare job. It is written now
+            // only when a manager is involved.
+            if (involvesManager) {
+                try {
+                    recordZoneLoad(match, simSnapshots);
+                } catch (RuntimeException e) {
+                    log.warn("Could not record zone load for match {}: {}", match.getId(), e.getMessage());
+                }
             }
 
             if (preparedOnly) {
