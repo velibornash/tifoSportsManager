@@ -177,6 +177,14 @@ public class VARService implements EngineInterfaces.VARService {
     @Override
     public void logVARReviewStarted(String team, String reviewType) {
         lastVARDecision = "VAR_REVIEW[" + team + "]: " + reviewType;
+        // Do not clobber an in-flight offside review (F-OF-5): an offside
+        // review carries the flagged receiver, and a goal/foul VAR review
+        // starting mid-deferral used to overwrite it with a null player,
+        // silently dropping the deferred offside. Keep the offside review's
+        // player reference intact.
+        if (state.hasPendingVARReview() && state.getPendingVARReviewPlayer() != null) {
+            return;
+        }
         state.setPendingVARReview(reviewType, null, team);
     }
 
