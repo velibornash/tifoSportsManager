@@ -299,6 +299,13 @@ public class DatabaseInitializer {
         // never widened, so every doctor insert failed and the recruiting market has never once
         // succeeded in this world - staff_member had no rows at all. See the method.
         resetService.alignStaffRoleConstraint();
+        // The same fault, a third time, and this one is a column rather than a constraint: the name
+        // pool's column was renamed to name_value, and ddl-auto adds a column and never drops one - so
+        // the old NOT NULL 'value' stayed on the table and refused every insert into the pool. The
+        // pools were therefore never filled: the world took its names from the files while the admin
+        // panel said "No names set for this country yet" for every country, and the owner's own edits
+        // could not be saved. See the method.
+        resetService.dropLegacyCountryNamePoolValueColumn();
         // Before anything can create a season row. Rewriting calendar years into season numbers
         // happens further down, and a world that still holds 2025 will have a seeder ask for season 1,
         // find nothing, and create a second row beside the one it should have reused. That is how one

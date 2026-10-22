@@ -129,6 +129,41 @@ public class ResetService {
     }
 
     /**
+     * The name pool's {@code value} column, which no code writes any more.
+     *
+     * <p>Owner, 2026-10-22, from the live log of his own Reset and Initialize:
+     *
+     * <pre>
+     * ERROR: null value in column "value" of relation "country_name_pool" violates not-null constraint
+     *   Detail: Failing row contains (2, 0, null, 1, Crvena zvezda).
+     * </pre>
+     *
+     * <p>The column was renamed: the entity writes {@code name_value} now, and the table carries both.
+     * {@code ddl-auto=update} <b>adds</b> a column and never drops one, so the old {@code value}
+     * stayed - NOT NULL, with no default, and with a unique constraint of its own. Every insert into
+     * the pool failed on it, because an insert that does not name a NOT NULL column without a default
+     * is refused by PostgreSQL.
+     *
+     * <p>So the name pools were never filled: the seeders read the table, found nothing, and fell
+     * back to the files - which is why the world had the right club and city names while the admin
+     * panel said <em>"No names set for this country yet"</em> for every country in the world, and why
+     * the owner's own edits could not be saved either: the same column refused the save.
+     *
+     * <p>Self-healing for the same reason the two alignments above are: a column the code no longer
+     * maps is a fact the database still holds, and only the code can let it go. The column is empty
+     * on every deployment that has it - it has never held a value the entity wrote - and the table is
+     * the working copy of the names, which the files still hold.
+     */
+    @Transactional
+    public void dropLegacyCountryNamePoolValueColumn() {
+        log.info("Dropping the legacy country_name_pool.value column, which no code writes any more...");
+        // The house's own dropper, which quotes the column name: 'value' is a reserved word in H2,
+        // which the test database is, and the parser refuses the whole statement over it.
+        dropLegacyColumnIfExists("country_name_pool", "value");
+        log.info("country_name_pool no longer carries the legacy 'value' column");
+    }
+
+    /**
      * One row per competition per season, and the duplicates that already exist are collapsed.
      *
      * <p>{@code season_competition} carried no unique constraint on (competition, season_year), and
