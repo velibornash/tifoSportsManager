@@ -41,7 +41,7 @@ class FixtureRowNumbersTest {
     @Test
     @DisplayName("the row's round and the club summary read their numbers as numbers")
     void theNumbersAreNumbers() throws IOException, InterruptedException {
-        String node = BrowserSourceSanityTest.nodeBinary();
+        String node = nodeBinary();
         if (node == null) {
             System.out.println("node not on PATH - the fixture row's numbers are not checked here");
             return;
@@ -80,5 +80,20 @@ class FixtureRowNumbersTest {
                 "the league round is not read through the null-safe helper");
         assertTrue(source.contains("hasNumber(match?.round)"),
                 "the round is not read through the null-safe helper");
+    }
+
+    /** The node binary, or null when node is not installed. */
+    private static String nodeBinary() {
+        for (String candidate : new String[]{"node", "/usr/local/bin/node", "/opt/homebrew/bin/node"}) {
+            try {
+                Process process = new ProcessBuilder(candidate, "--version").start();
+                if (process.waitFor() == 0) {
+                    return candidate;
+                }
+            } catch (IOException | InterruptedException ignored) {
+                // Try the next one.
+            }
+        }
+        return null;
     }
 }
