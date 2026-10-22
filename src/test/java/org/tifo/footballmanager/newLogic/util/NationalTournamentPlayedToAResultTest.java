@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -348,7 +350,7 @@ class NationalTournamentPlayedToAResultTest extends BaseTest {
         for (int i = 0; i < nations; i++) {
             Country country = new Country();
             country.setName(String.format("Nation %02d", i));
-            country.setIsoCode(String.format("N%02d", i));
+            country.setIsoCode(UniqueIsoCodes.next());
             country.setReputation(1500);
             country.setYouthRating(1500);
             country.setState(org.tifo.footballmanager.newLogic.model.CountryState.SIMULATED);

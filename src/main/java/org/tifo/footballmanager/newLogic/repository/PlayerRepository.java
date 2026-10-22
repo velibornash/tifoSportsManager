@@ -104,6 +104,17 @@ public interface PlayerRepository extends JpaRepository<Player, Long>, PagingAnd
     int incrementAgeForAllPlayers();
 
     /**
+     * One more week at the club, for every player still at one.
+     *
+     * <p><b>P0-17 (without the tax):</b> the club should be able to see how long a player has been
+     * with it. Incremented once a week for every player who still has a club; reset to zero when he
+     * moves clubs (see {@code NegotiationService.settle}).
+     */
+    @Modifying
+    @Query("update Player p set p.weeksAtClub = p.weeksAtClub + 1 where p.team is not null")
+    int incrementWeeksAtClubForAllPlayers();
+
+    /**
      * Every player still at a club and still playing — the retirement sweep's whole input.
      *
      * <p>Filtered in the query rather than in Java because {@code SeasonService} ages the entire world

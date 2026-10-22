@@ -119,7 +119,8 @@ class RealSquadSimulationSmokeTest {
                 // it: "add it at the end" keeps the order stable but never avoids touching the call
                 // sites, exactly as the notes above predicted.
                 null,
-                false);
+                false,
+                0);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

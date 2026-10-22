@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.repository;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -133,7 +135,7 @@ class GoalEventRepositoryTest extends BaseTest {
     private Competition aLeague(String name) {
         Country country = new Country();
         country.setName(name + " " + System.nanoTime());
-        country.setIsoCode("GG" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

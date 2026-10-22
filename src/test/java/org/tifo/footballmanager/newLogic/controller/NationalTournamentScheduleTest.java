@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.footballmanager.BaseTest;
@@ -91,7 +93,7 @@ class NationalTournamentScheduleTest extends BaseTest {
         for (int i = 0; i < 48; i++) {
             Country country = new Country();
             country.setName(String.format("Nation %02d", i));
-            country.setIsoCode(String.format("N%02d", i));
+            country.setIsoCode(UniqueIsoCodes.next());
             country.setReputation(1000 + i);
             country.setYouthRating(1000 + i);
             country.setState(CountryState.SIMULATED);

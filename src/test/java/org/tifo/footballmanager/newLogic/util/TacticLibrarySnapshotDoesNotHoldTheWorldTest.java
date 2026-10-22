@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
 import org.tifo.footballmanager.newLogic.model.Country;
@@ -198,7 +200,7 @@ class TacticLibrarySnapshotDoesNotHoldTheWorldTest extends BaseTest {
     private Country aCountry() {
         Country country = new Country();
         country.setName("ZZ Snapshot " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         return countries.save(country);
     }

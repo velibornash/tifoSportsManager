@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.footballmanager.BaseTest;
@@ -60,7 +62,7 @@ class FriendlyOpponentAndRequestRowTest extends BaseTest {
     void setUp() {
         country = new Country();
         country.setName("Friendly Republic " + System.nanoTime());
-        country.setIsoCode("F" + (System.nanoTime() % 90 + 10));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1500);
         country = countries.save(country);
         club = club("Inviting Club");

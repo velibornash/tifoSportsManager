@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -192,7 +194,7 @@ class LazySquadGeneratorTest {
         int n = ++isoCounter;
         Country country = new Country();
         country.setName("ZZ " + label + " " + n);
-        country.setIsoCode("Z" + String.format("%02d", n % 100));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         return country;
     }

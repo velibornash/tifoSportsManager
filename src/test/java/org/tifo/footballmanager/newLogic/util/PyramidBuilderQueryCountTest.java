@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.Country;
@@ -88,7 +90,7 @@ class PyramidBuilderQueryCountTest extends BaseTest {
     private Country aSimulatedCountry() {
         Country country = new Country();
         country.setName("Perf " + UUID.randomUUID().toString().substring(0, 8));
-        country.setIsoCode("P" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1500);
         country.setYouthRating(1500);
         country.setState(CountryState.SIMULATED);

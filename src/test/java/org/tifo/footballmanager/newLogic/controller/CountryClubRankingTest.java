@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.ClubSeasonRankingPoints;
 import org.tifo.footballmanager.newLogic.model.Competition;
@@ -164,7 +166,7 @@ class CountryClubRankingTest extends BaseTest {
     private Country aCountry(String prefix) {
         Country country = new Country();
         country.setName(prefix + " " + java.util.UUID.randomUUID().toString().substring(0, 4));
-        country.setIsoCode(("C" + java.util.UUID.randomUUID().toString().substring(0, 2)).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         return countries.save(country);
     }

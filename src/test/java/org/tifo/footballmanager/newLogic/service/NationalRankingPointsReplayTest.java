@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -226,7 +228,7 @@ class NationalRankingPointsReplayTest extends BaseTest {
     private Country aCountry(Team senior, Team youth, String name) {
         Country country = new Country();
         country.setName(name);
-        country.setIsoCode(name.substring(0, 1) + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country.setSeniorNationalTeam(senior);
         country.setU21NationalTeam(youth);

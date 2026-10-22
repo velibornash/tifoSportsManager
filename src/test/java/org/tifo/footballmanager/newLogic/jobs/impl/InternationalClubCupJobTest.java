@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.jobs.impl;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
 import org.tifo.footballmanager.newLogic.model.Competition;
@@ -336,8 +338,7 @@ class InternationalClubCupJobTest extends BaseTest {
         int n = ISO_CODES.incrementAndGet();
         Country country = new Country();
         country.setName(name + " " + System.nanoTime());
-        country.setIsoCode(String.format("%c%c%c",
-                (char) ('A' + n % 26), (char) ('A' + (n / 26) % 26), (char) ('A' + (n / 676) % 26)));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1500);
         return countries.save(country);
     }

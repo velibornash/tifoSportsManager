@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.commonmanager.model.User;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.commonmanager.util.JwtUtil;
@@ -63,7 +65,7 @@ class CountryTeamPlayersDisclosureTest extends BaseTest {
     void aRivalClubWithASquad() {
         Country country = new Country();
         country.setName("Disclosure " + System.nanoTime());
-        country.setIsoCode("DS" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

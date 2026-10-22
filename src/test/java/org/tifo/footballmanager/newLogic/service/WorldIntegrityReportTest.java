@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -108,7 +110,7 @@ class WorldIntegrityReportTest {
         Country country = new Country();
         // **Not a catalogue ISO code.** The catalogue owns those, and a row that carries one is
         // renamed or deleted by the next seeding pass.
-        country.setIsoCode("Z" + (char) ('A' + (int) (stamp % 26)) + (char) ('A' + (int) ((stamp / 26) % 26)));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setName("Integrity Probe " + stamp);
         country.setState(CountryState.ACTIVE);
         return countries.save(country);

@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.repository;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -174,7 +176,7 @@ class RecentMatchRowCarriesNoBlobTest extends BaseTest {
     private Match aPlayedMatch(String name, int homeGoals, int awayGoals, LocalDateTime when) {
         Country country = new Country();
         country.setName(name + " country " + System.nanoTime());
-        country.setIsoCode("GF" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

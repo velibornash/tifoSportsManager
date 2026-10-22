@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -187,7 +189,7 @@ class WeeklyFinanceScopeTest extends BaseTest {
     private Country aCountry(CountryState state) {
         Country country = new Country();
         country.setName("ZZ Finance " + UUID.randomUUID());
-        country.setIsoCode("I" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(state);
         return countries.save(country);
     }

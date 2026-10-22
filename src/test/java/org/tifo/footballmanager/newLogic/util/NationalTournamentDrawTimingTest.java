@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
 import org.tifo.footballmanager.newLogic.jobs.impl.NationalTournamentDrawJob;
@@ -193,7 +195,7 @@ class NationalTournamentDrawTimingTest extends BaseTest {
         for (int i = 0; i < nations; i++) {
             Country country = new Country();
             country.setName(String.format("Nation %02d", i));
-            country.setIsoCode(String.format("N%02d", i));
+            country.setIsoCode(UniqueIsoCodes.next());
             country.setReputation(1000 + i);
             country.setYouthRating(1000 + i);
             country.setState(CountryState.SIMULATED);

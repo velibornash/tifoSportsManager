@@ -154,7 +154,8 @@ class RealSquadFactoryTest {
                 // entity's own note gives: "add it at the end" keeps the order stable but never
                 // avoids touching the call sites.
                 null,
-                false);
+                false,
+                0);
     }
 
     private static Lineup lineupWith(List<Player> starters) {

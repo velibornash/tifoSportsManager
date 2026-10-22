@@ -354,6 +354,8 @@ public class NegotiationService {
 
         // 3. The player moves, on the agreed money, for the agreed term.
         player.setTeam(buyer);
+        // A new club: the weeks-at-club counter starts again (P0-17, without the tax).
+        player.setWeeksAtClub(0);
         // A signing arrives knowing nothing about this club's way of playing (Sprint 4.6), so his
         // growth is held back until he has played his way in. Set here rather than in a weekly sweep
         // because this is the exact moment the fact becomes true, and a sweep would have to guess

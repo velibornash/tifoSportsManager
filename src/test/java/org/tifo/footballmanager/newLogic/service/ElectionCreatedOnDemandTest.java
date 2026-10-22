@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.CountryState;
@@ -44,7 +46,7 @@ class ElectionCreatedOnDemandTest extends BaseTest {
     void askingCreatesOneAndOpensRegistration() {
         Country country = new Country();
         country.setName("On demand " + UUID.randomUUID());
-        country.setIsoCode("O" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 
@@ -72,7 +74,7 @@ class ElectionCreatedOnDemandTest extends BaseTest {
     void levelsStaySeparate() {
         Country country = new Country();
         country.setName("Levels " + UUID.randomUUID());
-        country.setIsoCode("L" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 
@@ -89,7 +91,7 @@ class ElectionCreatedOnDemandTest extends BaseTest {
     void registrationOpensInPreviousSeasonWeek12() {
         Country country = new Country();
         country.setName("Week12 " + UUID.randomUUID());
-        country.setIsoCode("W" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

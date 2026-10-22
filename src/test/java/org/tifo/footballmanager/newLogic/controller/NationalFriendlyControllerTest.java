@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -54,7 +56,7 @@ class NationalFriendlyControllerTest extends BaseTest {
         while (tail.length() < 2) {
             tail = "0" + tail;
         }
-        country.setIsoCode("T" + tail);
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1500);
         country.setYouthRating(1500);
         country = countries.save(country);

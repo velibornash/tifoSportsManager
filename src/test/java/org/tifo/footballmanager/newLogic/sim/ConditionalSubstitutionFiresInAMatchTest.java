@@ -154,7 +154,8 @@ class ConditionalSubstitutionFiresInAMatchTest {
                 null, null, null, false,
                 // injuryCause and injurySurgeryDone (2026-10-22), appended for the same reason:
                 // how this injury happened, and whether the medical centre has already operated.
-                null, false);
+                null, false,
+                0);
     }
 
     private static org.tifo.footballmanager.newLogic.model.Lineup lineupWith(List<Player> starters) {

@@ -642,6 +642,8 @@ public class SeasonService {
         decrementInjuriesByWeek();
         recoverFatigueForWeek();
         expirePlayerContracts();
+        // One more week at the club, for everyone still at one (P0-17, without the tax).
+        playerRepository.incrementWeeksAtClubForAllPlayers();
         // Mood drifts weekly, after contracts have been settled: a club that has just had players
         // expire, or that is selling players who object, learns about it in the same week it happens
         // rather than the week after.

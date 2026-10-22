@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
 import org.tifo.footballmanager.newLogic.model.Country;
@@ -98,7 +100,7 @@ class NationalTeamSeniorNameTest extends BaseTest {
     private Country aCountry() {
         Country country = new Country();
         country.setName("ZZ " + UUID.randomUUID().toString().substring(0, 8));
-        country.setIsoCode("Z" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1000);
         country.setYouthRating(1000);
         country.setState(CountryState.SIMULATED);

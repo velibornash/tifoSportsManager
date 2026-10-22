@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.CountryState;
 import org.tifo.footballmanager.newLogic.repository.CountryRepository;
@@ -63,7 +65,7 @@ class SeedNationTimingTest {
             c.setName("Benchland " + (char) ('A' + i) + "-" + System.nanoTime());
             // iso_code is varchar(3); the bench database is dropped between runs, so the index
             // alone is unique enough and there is nothing to append.
-            c.setIsoCode("B" + (char) ('A' + i));
+            c.setIsoCode(UniqueIsoCodes.next());
             c.setState(CountryState.SIMULATED);
             fresh.add(countries.save(c));
         }
@@ -136,7 +138,7 @@ class SeedNationTimingTest {
         for (int i = 0; i < COUNTRIES; i++) {
             Country c = new Country();
             c.setName("Buttonland " + (char) ('A' + i));
-            c.setIsoCode("C" + (char) ('A' + i));
+            c.setIsoCode(UniqueIsoCodes.next());
             c.setState(CountryState.SIMULATED);
             fresh.add(countries.save(c));
         }
@@ -193,7 +195,7 @@ class SeedNationTimingTest {
         for (int i = 0; i < 4; i++) {
             Country c = new Country();
             c.setName("Reseedland " + (char) ('A' + i));
-            c.setIsoCode("R" + (char) ('A' + i));
+            c.setIsoCode(UniqueIsoCodes.next());
             c.setState(CountryState.SIMULATED);
             fresh.add(countries.save(c));
         }

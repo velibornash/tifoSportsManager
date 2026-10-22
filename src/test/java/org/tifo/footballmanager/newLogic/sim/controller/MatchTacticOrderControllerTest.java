@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.sim.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -198,7 +200,7 @@ class MatchTacticOrderControllerTest extends BaseTest {
     private Team aTeam(String name) {
         Country country = new Country();
         country.setName("ZZ Orders country " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -156,7 +158,7 @@ class TacticsProfileRestoreTest extends BaseTest {
     private Team aClub(String label) {
         Country country = new Country();
         country.setName("ZZ Restore " + label + " " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

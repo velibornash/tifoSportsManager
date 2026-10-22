@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.jobs;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.jobs.impl.MatchdayJob;
 import org.tifo.footballmanager.newLogic.model.Competition;
@@ -97,7 +99,7 @@ class MatchdayJobQueryCountTest extends BaseTest {
     void onlyTargetCompetitionsArePlayed() {
         Country country = new Country();
         country.setName("Query cost scoped " + UUID.randomUUID());
-        country.setIsoCode("S" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

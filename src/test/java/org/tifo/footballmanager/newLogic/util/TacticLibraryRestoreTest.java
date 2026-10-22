@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.CountryState;
@@ -159,7 +161,7 @@ class TacticLibraryRestoreTest extends BaseTest {
         }
         Country country = new Country();
         country.setName("ZZ Library " + label + " " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

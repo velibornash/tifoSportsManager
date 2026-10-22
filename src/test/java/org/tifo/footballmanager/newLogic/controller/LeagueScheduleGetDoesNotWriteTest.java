@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.commonmanager.model.User;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.commonmanager.util.JwtUtil;
@@ -86,7 +88,7 @@ class LeagueScheduleGetDoesNotWriteTest extends BaseTest {
     void aLeagueWithFourClubsAndNoSchedule() {
         Country country = new Country();
         country.setName("Read only " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

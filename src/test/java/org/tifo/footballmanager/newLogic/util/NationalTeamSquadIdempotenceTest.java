@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.CountryState;
@@ -309,7 +311,7 @@ class NationalTeamSquadIdempotenceTest extends BaseTest {
     private Country aCountry() {
         Country country = new Country();
         country.setName("Idempotence " + UUID.randomUUID());
-        country.setIsoCode("I" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         return countries.save(country);
     }

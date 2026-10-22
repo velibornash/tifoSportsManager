@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.commonmanager.model.User;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.commonmanager.repository.UserRepository;
@@ -142,7 +144,7 @@ class LeagueTableEloColumnsTest {
         country.setName("ZZ Elo Table " + System.nanoTime());
         // iso_code is three characters, and "EL" plus a number is four. The block is mine and unused
         // elsewhere - check it before reusing, because the whole suite shares one database.
-        country.setIsoCode("EL" + (char) ('A' + Math.abs(System.nanoTime()) % 20));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

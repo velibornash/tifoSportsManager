@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.sim;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
@@ -98,7 +100,7 @@ class SimulatedSlotIsPersistedTest extends BaseTest {
     private Team aClub(String label) {
         Country country = new Country();
         country.setName("ZZ Slot " + label + " " + UUID.randomUUID());
-        country.setIsoCode("R" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

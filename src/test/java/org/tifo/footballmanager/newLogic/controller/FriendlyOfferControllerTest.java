@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.footballmanager.BaseTest;
@@ -55,7 +57,7 @@ class FriendlyOfferControllerTest extends BaseTest {
         while (tail.length() < 2) {
             tail = "0" + tail;
         }
-        country.setIsoCode("H" + tail);
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setReputation(1500);
         country = countries.save(country);
         human = club(country, "Human", true);

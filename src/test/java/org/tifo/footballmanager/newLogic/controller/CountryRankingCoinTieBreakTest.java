@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.CountrySeasonRankingPoints;
@@ -189,7 +191,7 @@ class CountryRankingCoinTieBreakTest extends BaseTest {
         country.setName(name);
         // ISO_CODE is three characters in the schema, so uniqueness comes from a counter rather than a
         // random suffix that would not fit.
-        country.setIsoCode("X" + (char) ('a' + (nextIso++ % 26)));
+        country.setIsoCode(UniqueIsoCodes.next());
         org.tifo.footballmanager.newLogic.model.Team side = new org.tifo.footballmanager.newLogic.model.Team();
         side.setName("NT " + name);
         side.setFormation("4-3-3");

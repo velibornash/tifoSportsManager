@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.BaseTest;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
 import org.tifo.footballmanager.newLogic.model.Country;
@@ -205,7 +207,7 @@ class TacticsRulesProviderTest extends BaseTest {
     private Team aClub(String label) {
         Country country = new Country();
         country.setName("ZZ Tactics " + label + " " + UUID.randomUUID());
-        country.setIsoCode("T" + UUID.randomUUID().toString().substring(0, 2).toUpperCase());
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);
 

@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.CountryRepository;
@@ -91,7 +93,7 @@ class NationalRatingServiceQueryCountTest {
         List<Country> world = new ArrayList<>();
         for (int i = 1; i <= countryCount; i++) {
             Country country = new Country();
-            country.setIsoCode(String.format("Q%02d", i));
+            country.setIsoCode(UniqueIsoCodes.next());
             country.setName("Nation " + i);
             country.setSeniorNationalTeam(nationalSide(i));
             country.setU21NationalTeam(nationalSide(i + 1000));

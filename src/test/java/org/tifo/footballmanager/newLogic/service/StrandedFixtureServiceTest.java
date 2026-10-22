@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -141,7 +143,7 @@ class StrandedFixtureServiceTest {
     private Competition myLeague() {
         long stamp = System.nanoTime();
         Country country = new Country();
-        country.setIsoCode("S" + (char) ('A' + (int) (stamp % 26)) + "T");
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setName("Stranded Probe " + stamp);
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);

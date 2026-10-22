@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.UniqueIsoCodes;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,7 +92,7 @@ class ActivatedCountryFieldsRealPlayersTest {
     private Country myCountryWithClubsAndPlayers() {
         long stamp = System.nanoTime();
         Country country = new Country();
-        country.setIsoCode("Z" + (char) ('A' + (int) (stamp % 26)) + (char) ('A' + (int) ((stamp / 26) % 26)));
+        country.setIsoCode(UniqueIsoCodes.next());
         country.setName("Activation Probe " + stamp);
         country.setState(CountryState.SIMULATED);
         country = countries.save(country);

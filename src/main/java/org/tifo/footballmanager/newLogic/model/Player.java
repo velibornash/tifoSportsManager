@@ -446,4 +446,14 @@ public class Player {
     @Column(name = "injury_surgery_done", nullable = false,
             columnDefinition = "boolean not null default false")
     private boolean injurySurgeryDone = false;
+
+    /**
+     * How many weeks this player has been at his current club.
+     *
+     * <p><b>Owner, 2026-10-22 (P0-17, without the tax):</b> no sale tax, but the club should be able
+     * to see how long a player has been with it. Incremented once a week for every player; reset to
+     * zero when he moves clubs.
+     */
+    @Column(name = "weeks_at_club", nullable = false, columnDefinition = "int not null default 0")
+    private int weeksAtClub = 0;
 }
