@@ -83,7 +83,15 @@ export function sortSquad(players) {
  * <p>Owns the selection it is drawing and nothing else. `render` can be called again at any time with a
  * new squad or a new formation; every change calls `onChange` with `{ starterIds, benchIds }`.
  */
-export function createLineupBoard({ players = [], formation = '4-4-2', isMobile = false, onChange } = {}) {
+/**
+ * The board the tactics setup and the match lineup share.
+ *
+ * @param poolFirst whether the **Available pool** sits above the **Selection Dock** on the desktop.
+ *   The owner asked for it on the tactics setup (2026-10-22): dragging a player out of the pool
+ *   into the dock was hard, because the dock's beginning was below the fold and the drag had to
+ *   start from a card he could not see. The match lineup keeps the dock first.
+ */
+export function createLineupBoard({ players = [], formation = '4-4-2', isMobile = false, poolFirst = false, onChange } = {}) {
     const squad = sortSquad(players);
     // Mutable: the tactics page changes the shape with its own buttons, and the board has to redraw
     // its slots from the new shape rather than keep the one it was built with.
@@ -216,21 +224,35 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
                 </div>
                 <div class="club-lineup-side-rail">
                     <div class="training-block club-lineup-side-card">
+                        ${poolFirst ? poolBlock() : dockBlock()}
+                        ${poolFirst ? dockBlock() : poolBlock()}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    /** The Selection Dock: the bench, and the eleven that are on the pitch next to it. */
+    function dockBlock() {
+        return `
                         <div class="club-lineup-panel-head">
                             <div>
                                 <h4>Selection Dock</h4>
-                                <p class="fm-subtle">Bench stays next to the pitch, with the remaining squad immediately below it.</p>
+                                <p class="fm-subtle">${poolFirst
+                                    ? 'The squad to pick from is above; drag a player down into the dock.'
+                                    : 'Bench stays next to the pitch, with the remaining squad immediately below it.'}</p>
                             </div>
                         </div>
-                        <div class="club-lineup-bench-grid">${benchSlots}</div>
+                        <div class="club-lineup-bench-grid">${benchSlots}</div>`;
+    }
+
+    /** The Available pool: everyone who is neither on the pitch nor on the bench. */
+    function poolBlock() {
+        return `
                         <div class="club-lineup-pool-head">
                             <h4>Available pool</h4>
                             <span>${poolCandidates().length} ready</span>
                         </div>
-                        <div class="lineup-slot-drop club-lineup-pool-list" data-zone="pool" data-index="-1">${pool || `<div class="club-lineup-pool-empty">No available players</div>`}</div>
-                    </div>
-                </div>
-            </div>`;
+                        <div class="lineup-slot-drop club-lineup-pool-list" data-zone="pool" data-index="-1">${pool || `<div class="club-lineup-pool-empty">No available players</div>`}</div>`;
     }
 
     function renderMobile() {

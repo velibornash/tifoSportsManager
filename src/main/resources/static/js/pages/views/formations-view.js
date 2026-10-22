@@ -46,6 +46,9 @@ export function createFormationsView(deps) {
         // screen has to look the same as this one (owner, 2026-10-16) and two copies of a pitch drift.
         // This page keeps what is genuinely its own: the formation and style pickers and the save.
         const board = createLineupBoard({
+            // The pool above the dock: the dock's beginning was below the fold, and a drag that
+            // starts from a card you cannot see is a drag you cannot make (owner, 2026-10-22).
+            poolFirst: true,
             players,
             formation: state.formation,
             isMobile,
