@@ -154,13 +154,13 @@ public class FormAndMoraleJob implements DayJob {
         long lastId = 0L;
         while (true) {
             final long from = lastId;
-            Long next = requiresNew.execute(status -> settleOnePage(from, playedThisWeek, onTheMarket,
-                    clubsWithFixtures));
-            if (next == null) {
+            Page settledPage = requiresNew.execute(status -> settleOnePage(from, playedThisWeek,
+                    onTheMarket, clubsWithFixtures));
+            if (settledPage == null) {
                 break;
             }
-            lastId = next;
-            settled += BATCH;
+            lastId = settledPage.lastId();
+            settled += settledPage.settled();
         }
 
         log.info("Week {} season {}: form settled and standing pressures applied for {} player(s). "
@@ -170,15 +170,17 @@ public class FormAndMoraleJob implements DayJob {
     /**
      * One page of players, settled and committed.
      *
-     * @return the id of the last player in the page, or {@code null} when there are no more
+     * @return the page's last id and how many players it settled, or {@code null} when there are no
+     *         more
      */
-    private Long settleOnePage(long from, Set<Long> playedThisWeek, Set<Long> onTheMarket,
+    private Page settleOnePage(long from, Set<Long> playedThisWeek, Set<Long> onTheMarket,
                                Set<Long> clubsWithFixtures) {
         List<Player> page = players.findByIdGreaterThanOrderByIdAsc(from, PageRequest.of(0, BATCH));
         if (page.isEmpty()) {
             return null;
         }
 
+        int settled = 0;
         for (Player player : page) {
             if (!isClubPlayer(player)) {
                 // A national squad's rows are copies of club players' rows, and a generated stand-in
@@ -189,11 +191,21 @@ public class FormAndMoraleJob implements DayJob {
             boolean inTheSide = playedThisWeek.contains(player.getId())
                     || !clubsWithFixtures.contains(clubIdOf(player));
             morale.settleWeek(player, inTheSide, onTheMarket.contains(player.getId()));
+            settled++;
         }
 
         // The entities are managed in this transaction, so the changed rows are written when it
         // commits — and a row whose form and morale did not move is not written at all.
-        return page.get(page.size() - 1).getId();
+        return new Page(page.get(page.size() - 1).getId(), settled);
+    }
+
+    /**
+     * One page's place in the sweep.
+     *
+     * @param lastId the id of the last player in the page
+     * @param settled how many players the page settled
+     */
+    private record Page(Long lastId, int settled) {
     }
 
     /**
