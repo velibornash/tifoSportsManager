@@ -231,7 +231,10 @@ class StadiumSectionServiceTest extends BaseTest {
     void aQuoteWithNothingToDoIsRefusedRatherThanCharged() {
         Stadium ground = aGround(10_000);
 
-        assertEquals("Nothing to build: choose some seats to add, or a roof.",
+        // **The sentence grew a clause on 2026-10-19**, when a seating-type change became a thing a
+        // manager could ask for and the refusal was removed. A quote with nothing to do may now also
+        // be a quote that only changes the material, and the reason says so.
+        assertEquals("Nothing to build: choose some seats to add, a roof, or a different seating type.",
                 sections.quote(ground, StandPosition.NORTH, SeatingType.SEATS, 0, false, 1).get("reason"));
         assertEquals("Capacity cannot shrink. A ground only grows here.",
                 sections.quote(ground, StandPosition.NORTH, SeatingType.SEATS, -500, false, 1).get("reason"));
@@ -261,16 +264,24 @@ class StadiumSectionServiceTest extends BaseTest {
 
     @Test
     @Transactional
-    @DisplayName("a section is not rebuilt in a different material")
-    void aBuiltSectionKeepsItsSeatingType() {
+    @DisplayName("a section can be rebuilt in a different material, and the old seats cost money")
+    void aSectionCanBeRebuiltInADifferentMaterial() {
+        // **This test asserted the opposite for years, and it was right to.** The rule changed on
+        // 2026-10-19, at the owner's request: *"u Club - Stadium ne dozvoljava da izaberem novije
+        // stolice / lepse ako vec ima neke - POGRESNO, treba da dozvoli i da u troskovima jasno
+        // istakne, uklanjanjae postojecih kosta toliko, nove toliko, krov ako ima tolik"*. A ground
+        // is no longer a terrace for ever, and the quote says what the change costs.
         Stadium ground = aGround(0);
         Team club = aTeamWithGround(ground);
         sections.build(club, StandPosition.NORTH, SeatingType.STANDING, 1000, false, 1, 1);
 
         Map<String, Object> change = sections.quote(ground, StandPosition.NORTH, SeatingType.HEATED, 500, false, 1);
 
-        assertFalse(Boolean.TRUE.equals(change.get("ok")),
-                "there is no demolition model in this game, so the section stays a terrace");
+        assertTrue(Boolean.TRUE.equals(change.get("ok")),
+                "a section can be rebuilt in a different material now, and the quote says what it "
+                        + "costs: " + change.get("reason"));
+        assertTrue(((Number) change.get("removalCost")).doubleValue() > 0,
+                "and the old seats are removed, which costs something: " + change.get("removalCost"));
     }
 
     @Test

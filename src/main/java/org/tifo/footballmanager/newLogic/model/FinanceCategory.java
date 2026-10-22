@@ -24,6 +24,16 @@ public enum FinanceCategory {
     STAFF_SEVERANCE(false, "Staff severance"),
     FACILITY_UPKEEP(false, "Facility upkeep"),
     PITCH_MAINTENANCE(false, "Pitch maintenance"),
+    /**
+     * Building on the ground: new seats, a roof, a change of seating type.
+     *
+     * <p><b>It was missing, and the club's money still went.</b> A stadium build took the budget
+     * down and wrote nothing to the ledger, so the money vanished: neither the Office inbox nor the
+     * Finances page showed that the club had spent a hundred thousand on a roof. The weekly
+     * {@code FACILITY_UPKEEP} line is the upkeep of a ground that stands; this is the work of
+     * changing one.
+     */
+    STADIUM_CONSTRUCTION(false, "Stadium construction"),
     JUNIOR_SCHOOL(false, "Junior school"),
     TRANSFER_FEE_OUT(false, "Transfer fees paid"),
     LISTING_FEE(false, "Listing fees"),

@@ -3,9 +3,12 @@ package org.tifo.footballmanager.newLogic.service;
 import org.tifo.footballmanager.newLogic.model.SeatingType;
 import org.tifo.footballmanager.newLogic.model.Stadium;
 import org.tifo.footballmanager.newLogic.model.StadiumSection;
+import org.tifo.footballmanager.newLogic.model.FinanceCategory;
+import org.tifo.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.tifo.footballmanager.newLogic.model.StandPosition;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.StadiumRepository;
+import org.tifo.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
 import org.tifo.footballmanager.newLogic.repository.StadiumSectionRepository;
 import org.tifo.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.stereotype.Service;
@@ -66,12 +69,14 @@ public class StadiumSectionService {
     private final StadiumSectionRepository sections;
     private final StadiumRepository stadiums;
     private final TeamRepository teams;
+    private final FinanceLedgerEntryRepository ledger;
 
     public StadiumSectionService(StadiumSectionRepository sections, StadiumRepository stadiums,
-                                 TeamRepository teams) {
+                                 TeamRepository teams, FinanceLedgerEntryRepository ledger) {
         this.sections = sections;
         this.stadiums = stadiums;
         this.teams = teams;
+        this.ledger = ledger;
     }
 
     /**
@@ -250,6 +255,16 @@ public class StadiumSectionService {
         recomputeDerived(stadium);
         stadiums.save(stadium);
 
+        // **The money has to be seen.**
+        //
+        // The build took the budget down and wrote nothing to the ledger, so the club's money simply
+        // went: neither the Office inbox nor the Finances page showed that a hundred thousand had been
+        // spent on a roof. The ledger is where a manager reads what his club spends money on, and a
+        // line that is not in it did not happen as far as he is concerned.
+        ledger.save(FinanceLedgerEntry.of(team, currentSeason, currentWeek,
+                FinanceCategory.STADIUM_CONSTRUCTION, -cost, buildNote(position, seatingType,
+                        capacityToAdd, wantsRoof, cost)));
+
         return mapOf("built", true,
                 "section", position.label(),
                 "seatingType", seatingType.label(),
@@ -258,6 +273,27 @@ public class StadiumSectionService {
                 "closedUntilWeek", section.getClosedUntilWeek(),
                 "sectionCapacity", section.getCapacity(),
                 "newCapacity", stadium.getCapacity());
+    }
+
+    /**
+     * What the ledger line says.
+     *
+     * <p>A manager reads this line in the Office inbox months later, so it has to say what was built
+     * and not merely that something was: which stand, what it is now, how many seats, and whether it
+     * has a roof.
+     */
+    private String buildNote(StandPosition position, SeatingType seatingType, int capacityToAdd,
+                              boolean wantsRoof, double cost) {
+        StringBuilder note = new StringBuilder(position.label()).append(" rebuilt as ")
+                .append(seatingType.label());
+        if (capacityToAdd > 0) {
+            note.append(", ").append(capacityToAdd).append(" new seats");
+        }
+        if (wantsRoof) {
+            note.append(", roof");
+        }
+        note.append(" - ").append(money(cost));
+        return note.toString();
     }
 
     /**

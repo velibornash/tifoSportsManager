@@ -299,6 +299,11 @@ public class DatabaseInitializer {
         // never widened, so every doctor insert failed and the recruiting market has never once
         // succeeded in this world - staff_member had no rows at all. See the method.
         resetService.alignStaffRoleConstraint();
+        // The same fault, a fourth time, and this one is the ledger's category: a CHECK constraint
+        // written before the enum grew is not widened by ddl-auto, so a line of a new kind is refused
+        // by the database while the code believes it was written. The stadium build found it - the
+        // club's money went and the line did not.
+        resetService.alignFinanceCategoryConstraint();
         // The same fault, a third time, and this one is a column rather than a constraint: the name
         // pool's column was renamed to name_value, and ddl-auto adds a column and never drops one - so
         // the old NOT NULL 'value' stayed on the table and refused every insert into the pool. The

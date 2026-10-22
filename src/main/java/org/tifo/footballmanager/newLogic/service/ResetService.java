@@ -129,6 +129,43 @@ public class ResetService {
     }
 
     /**
+     * The ledger's category constraint, rebuilt from the enum.
+     *
+     * <p><b>The same trap as the notification kinds and the staff roles, and the same repair.</b> The
+     * database carries a {@code CHECK} constraint listing the categories by name, and
+     * {@code ddl-auto=update} <b>never widens a check constraint</b> - it is not a column. So the day a
+     * category was added to the enum, every line of that kind would have been <b>refused by the
+     * database</b> while the code believed it had been written. The stadium build is what found it:
+     * the club's money went and the line did not.
+     *
+     * <p>So the constraint is rebuilt from the enum at boot, the same way the other two are.
+     *
+     * <p><b>And with the same {@code @Transactional}.</b> The first version of this repair had no
+     * annotation, and the boot died with *"TransactionRequiredException: Executing an update/delete
+     * query"* - the native ALTER is an update, and an update needs a transaction. The three repairs
+     * beside it all carry the annotation for exactly that reason.
+     */
+    @Transactional
+    public void alignFinanceCategoryConstraint() {
+        String[] categories = java.util.Arrays.stream(
+                        org.tifo.footballmanager.newLogic.model.FinanceCategory.values())
+                .map(Enum::name)
+                .toArray(String[]::new);
+        if (categories.length == 0) {
+            return;
+        }
+        // As above: the list carries its own quotes, so the log prints what the constraint holds.
+        String allowed = quotedList(categories);
+        log.info("Aligning finance_ledger_entry category constraint with {} category/categories...",
+                categories.length);
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS finance_ledger_entry DROP CONSTRAINT IF EXISTS "
+                + "finance_ledger_entry_category_check").executeUpdate();
+        entityManager.createNativeQuery("ALTER TABLE IF EXISTS finance_ledger_entry ADD CONSTRAINT "
+                + "finance_ledger_entry_category_check CHECK (category IN (" + allowed + "))").executeUpdate();
+        log.info("finance_ledger_entry now accepts every FinanceCategory: {}", allowed);
+    }
+
+    /**
      * The name pool's {@code value} column, which no code writes any more.
      *
      * <p>Owner, 2026-10-22, from the live log of his own Reset and Initialize:
