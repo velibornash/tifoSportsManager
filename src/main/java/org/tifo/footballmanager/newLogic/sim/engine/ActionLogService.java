@@ -92,7 +92,7 @@ public class ActionLogService {
     /** Append a tagged, minute-prefixed line to the shared log, the full-log
      *  file, and (compact mode: notable tags only) stdout. */
     public void log(String tag, String msg) {
-        String line = "[" + minute() + "|" + tag + "] " + msg;
+        String line = "[" + String.format("%d:%02d", state.getMatchTicks() / TICKS_PER_MINUTE, state.getMatchTicks() % TICKS_PER_MINUTE * 60 / TICKS_PER_MINUTE) + "|" + tag + "] " + msg;
         // The story and the decisions are kept whatever happens; the per-player traces are capped.
         if (CONSOLE_NOTABLE.contains(tag) || "DECISION".equals(tag)
                 || eventLog.size() < MAX_EVENT_LOG_LINES) {
@@ -150,18 +150,4 @@ public class ActionLogService {
         return sb.toString();
     }
 
-    /**
-     * Minute of play, formatted {@code M:SS} (40 ticks = 1 min of match time).
-     *
-     * <p>The seconds are {@code (ticks % 40) * 60 / 40}, not {@code * 90 / 40}. Forty ticks make a
-     * <b>minute</b>, so a tick is one and a half seconds and the remainder has to be scaled to
-     * sixty. Multiplying by ninety produces 0-87 and prints things like {@code 44:65} and
-     * {@code 32:87} — a clock with eighty-seven seconds in it. {@code %02d} does not care, it
-     * prints whatever it is given, which is why this sat unnoticed.
-     */
-    public String minute() {
-        return String.format("%d:%02d",
-                state.getMatchTicks() / TICKS_PER_MINUTE,
-                state.getMatchTicks() % TICKS_PER_MINUTE * 60 / TICKS_PER_MINUTE);
-    }
 }

@@ -849,19 +849,6 @@ public class MatchOrchestrator {
         return actionLog.formatDecision(carrier, result);
     }
 
-    private String minute() {
-        return actionLog.minute();
-    }
-
-    /** Resolve which team a player (matched by short label) belongs to. */
-    private String resolveTeamByLabel(String label) {
-        if (label == null) return null;
-        for (Player p : state.getPlayers()) {
-            if (label.equals(p.getLabel())) return p.getTeam();
-        }
-        return null;
-    }
-
     /** Map an executed decision to its enriched event type (null = no event). */
     private String actionEventType(ActionType type) {
         return switch (type) {

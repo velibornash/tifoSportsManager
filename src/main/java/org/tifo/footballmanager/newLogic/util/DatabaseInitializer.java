@@ -644,12 +644,6 @@ public class DatabaseInitializer {
         resetAndInitializeDatabase();
     }
 
-    public void resetOnly() {
-        log.info("Počinje soft reset baze podataka (čuvaju se korisnici, taktike, struktura)...");
-        resetService.resetFootballDataOnly();
-        log.info("Soft reset baze završen.");
-    }
-
     /** Clear all football data but preserve user account + tactics profiles. Does NOT rebuild structure. */
     public void clearDatabaseOnly() {
         clearDatabaseOnly(message -> {});
@@ -1719,28 +1713,6 @@ public class DatabaseInitializer {
      */
     private record DivisionJob(Long leagueId, int teamCount, boolean includeOmladinac,
                                 List<String> preferredNames) {
-    }
-
-    private Country createCountryIfNotExists(String name, String isoCode, int reputation, int youthRating) {
-        return countryRepository.findByIsoCode(isoCode)
-                .map(existing -> {
-                    if ((existing.getFlagImagePath() == null || existing.getFlagImagePath().isBlank())
-                            && "SRB".equalsIgnoreCase(isoCode)) {
-                        existing.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
-                        return countryRepository.save(existing);
-                    }
-                    return existing;
-                })
-                .orElseGet(() -> {
-                    Country c = new Country();
-                    c.setName(name);
-                    c.setIsoCode(isoCode);
-                    c.setFlagImagePath(resolveCountryFlagImagePath(isoCode));
-                    c.setCurrencyCode(isoCode.equals("SRB") ? "RSD" : "EUR");
-                    c.setReputation(reputation);
-                    c.setYouthRating(youthRating);
-                    return countryRepository.save(c);
-                });
     }
 
     private String resolveCountryFlagImagePath(String isoCode) {

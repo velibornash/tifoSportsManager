@@ -357,18 +357,6 @@ public class FriendlyRequestService {
                 || (f.getAwayTeam() != null && Objects.equals(f.getAwayTeam().getId(), teamId));
     }
 
-    private boolean hasPendingOrAccepted(Long teamId, Integer season, Integer week, int slot) {
-        for (FriendlyRequest r : requests.findBySeasonAndWeek(season, week)) {
-            if (!Objects.equals(r.getSlot(), slot)) continue;
-            boolean mine = Objects.equals(r.getRequesterTeamId(), teamId)
-                    || Objects.equals(r.getOpponentTeamId(), teamId);
-            boolean live = r.getStatus() == FriendlyStatus.PENDING
-                    || r.getStatus() == FriendlyStatus.ACCEPTED;
-            if (mine && live) return true;
-        }
-        return false;
-    }
-
     private MatchFixture createFixture(FriendlyRequest request) {
         Team home = teams.findById(request.getRequesterTeamId()).orElseThrow();
         Team away = teams.findById(request.getOpponentTeamId()).orElseThrow();

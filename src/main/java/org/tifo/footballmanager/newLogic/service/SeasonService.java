@@ -1364,7 +1364,4 @@ public class SeasonService {
         return LeagueTableOrder.sort(entries, tieBreaks.worldDraw(getActiveSeasonYear()));
     }
 
-    private int safe(Integer value) {
-        return value == null ? 0 : value;
-    }
 }

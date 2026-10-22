@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.SeasonCalendar;
 import org.tifo.footballmanager.newLogic.dto.CountrySummaryDTO;
 import org.tifo.footballmanager.newLogic.dto.LeagueTableDTO;
@@ -446,28 +447,7 @@ public class CountryController {
     }
 
     private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
-    }
-
-    /** The national Elo for one level. Senior reputation and youth rating are different columns. */
-    private double ratingOf(Country country, boolean youth) {
-        Number value = youth ? country.getYouthRating() : country.getReputation();
-        return value == null ? 0d : value.doubleValue();
-    }
-
-    /**
-     * Whether this country has played anything at this level, so a seed rating is not shown as a result.
-     *
-     * <p>A country that has not played holds the starting rating, and a ranking table that shows it
-     * without saying so reads as "they are exactly average", which is a claim nobody has earned.
-     */
-    private boolean hasResults(Country country, boolean youth) {
-        Team side = youth ? country.getU21NationalTeam() : country.getSeniorNationalTeam();
-        if (side == null || side.getId() == null) {
-            return false;
-        }
-        return matchRepository.findPlayedNationalScoredInOrder().stream()
-                .anyMatch(match -> side.getId().equals(match.homeTeamId()) || side.getId().equals(match.awayTeamId()));
+        return Rounding.to2(value);
     }
 
     /**

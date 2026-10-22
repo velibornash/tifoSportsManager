@@ -608,57 +608,6 @@ public class ResetService {
         log.warn("Reset removed {} account(s); {} kept.", removed, PRESERVED_ACCOUNTS);
     }
 
-    /**
-     * The previous implementation, kept only as the record of what the reset used to miss.
-     *
-     * <p>Deleted deliberately rather than commented out: the 39-table list is what let 86 tables
-     * survive, and leaving it in the file is leaving the reason in the file.
-     */
-    private List<String> supersededTruncateList() {
-        return List.of(
-                "community_message",
-                "registration_request",
-                "training_week_report",
-                "team_training_setup",
-                "training",
-                "team_tactics_profile",
-                "match_player_stats",
-                "match_event",
-                "lineup_starting_players",
-                "lineup_substitutes",
-                "lineup",
-                "match_fixture",
-                "match",
-                "promotion_rule",
-                "competition_entry",
-                "season_competition",
-                "junior",
-                "player",
-                "team",
-                "competition",
-                "season",
-                "country",
-                "game_clock",
-                "user",
-                // Basketball tables (children before parents for TRUNCATE CASCADE safety)
-                "bb_match_fixtures",
-                "bb_matches",
-                "bb_player_season_stats",
-                "bb_competition_entries",
-                "bb_season_competitions",
-                "bb_players",
-                "bb_teams",
-                "bb_leagues",
-                // American Football tables
-                "af_match_fixtures",
-                "af_matches",
-                "af_player_season_stats",
-                "af_competition_entries",
-                "af_season_competitions",
-                "af_players",
-                "af_teams"
-        );
-    }
 
     /**
      * Soft reset: clears only match/season/player/team data.
