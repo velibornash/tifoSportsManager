@@ -149,8 +149,7 @@ public class NationalTeamService {
         activeAppointment(country.getId(), level).ifPresent(appointment -> {
             User selector = appointment.getSelector();
             out.put("selectorName", selector == null ? null
-                    : (selector.getDisplayName() != null && !selector.getDisplayName().isBlank()
-                            ? selector.getDisplayName() : selector.getUsername()));
+                    : org.tifo.commonmanager.util.DisplayNames.of(selector));
             out.put("selectorIsProvisional", !appointment.isElected());
             out.put("mandateEndsAt", appointment.getMandateEndsAt());
         });

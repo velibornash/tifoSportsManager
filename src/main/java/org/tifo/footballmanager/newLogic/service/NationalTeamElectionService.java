@@ -355,8 +355,7 @@ public class NationalTeamElectionService {
         if (user == null) {
             return "Unknown";
         }
-        return user.getDisplayName() != null && !user.getDisplayName().isBlank()
-                ? user.getDisplayName() : user.getUsername();
+        return org.tifo.commonmanager.util.DisplayNames.of(user);
     }
 
     private NationalTeamElection requireElection(Country country, NationalTeamLevel level, int seasonYear) {
@@ -482,8 +481,7 @@ public class NationalTeamElectionService {
     }
 
     private static String displayName(User user) {
-        return user.getDisplayName() != null && !user.getDisplayName().isBlank()
-                ? user.getDisplayName() : user.getUsername();
+        return org.tifo.commonmanager.util.DisplayNames.of(user);
     }
 
     /** Election rows for the admin screen. */

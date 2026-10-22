@@ -246,8 +246,7 @@ public class FriendlyController {
             for (org.tifo.commonmanager.model.User manager
                     : users.findByNameFragment(fragment, page)) {
                 org.tifo.footballmanager.newLogic.model.Team club = manager.getFootballTeam();
-                String label = manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
-                        ? manager.getDisplayName() : manager.getUsername();
+                String label = org.tifo.commonmanager.util.DisplayNames.of(manager);
                 String detail = club == null ? "No club"
                         : "Runs " + club.getName() + " · " + describeTeam(club);
                 out.add(row("USER", manager.getId(), label, detail,

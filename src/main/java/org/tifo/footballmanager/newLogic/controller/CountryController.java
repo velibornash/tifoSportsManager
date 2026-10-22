@@ -961,8 +961,8 @@ public class CountryController {
                     e.getTeam().getEloRating(),
                     e.getTeam().getEloDelta(),
                     manager == null ? null : manager.getId(),
-                    manager == null ? null : displayNameOrLogin(manager),
-                    manager != null && manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
+                    org.tifo.commonmanager.util.DisplayNames.of(manager),
+                    org.tifo.commonmanager.util.DisplayNames.hasChosen(manager)
             ));
         }
 
@@ -999,18 +999,6 @@ public class CountryController {
         return byTeamId;
     }
 
-    /**
-     * The name to show for a manager: what he calls himself, or his login when he has not chosen one.
-     *
-     * <p>Fifth independent copy of this fallback. {@link org.tifo.commonmanager.model.User} documents
-     * two of the others, and every one was written separately — which is why every self-registered
-     * manager shows an email address beside his posts.
-     */
-    private static String displayNameOrLogin(User user) {
-        return user.getDisplayName() != null && !user.getDisplayName().isBlank()
-                ? user.getDisplayName().trim()
-                : user.getUsername();
-    }
 
     @GetMapping("/leagues/{leagueId}/matches")
     public List<MatchDTO> getLeagueMatches(@PathVariable Long leagueId,
@@ -1103,8 +1091,8 @@ public class CountryController {
                     row.put("awayTeamStrength", insights.awayTeamStrength());
                     row.put("homeTeamForm", insights.homeTeamForm());
                     row.put("awayTeamForm", insights.awayTeamForm());
-                    row.put("prediction", toPredictionMap(insights.prediction()));
-                    row.put("matchDate", f.getMatchDate() != null ? f.getMatchDate().toString().substring(0, 16).replace("T", " ") : "N/A");
+                    row.put("prediction", org.tifo.footballmanager.newLogic.util.PredictionPayload.toMap(insights.prediction()));
+                    row.put("matchDate", org.tifo.footballmanager.newLogic.util.DateTimes.format(f.getMatchDate()));
                     return row;
                 })
                 .toList();
@@ -1119,18 +1107,6 @@ public class CountryController {
         return seasonService.buildPlayoffSummary(league, activeSeasonYear);
     }
 
-    private Map<String, Object> toPredictionMap(ScheduleInsightService.Prediction prediction) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("homeWinProbability", prediction.homeWinProbability());
-        payload.put("drawProbability", prediction.drawProbability());
-        payload.put("awayWinProbability", prediction.awayWinProbability());
-        payload.put("expectedHomeGoals", prediction.expectedHomeGoals());
-        payload.put("expectedAwayGoals", prediction.expectedAwayGoals());
-        payload.put("mostLikelyResult", prediction.mostLikelyResult());
-        payload.put("confidence", prediction.confidence());
-        payload.put("analysis", prediction.analysis());
-        return payload;
-    }
 
     @GetMapping("/leagues/{leagueId}/seasons")
     public List<Map<String, Object>> getLeagueSeasons(@PathVariable Long leagueId) {

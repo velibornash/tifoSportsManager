@@ -87,8 +87,7 @@ public class SearchController {
         if (wantUser) {
             for (org.tifo.commonmanager.model.User manager : users.findByNameFragment(fragment, page)) {
                 Team club = manager.getFootballTeam();
-                String name = manager.getDisplayName() != null && !manager.getDisplayName().isBlank()
-                        ? manager.getDisplayName() : manager.getUsername();
+                String name = org.tifo.commonmanager.util.DisplayNames.of(manager);
                 String detail = club == null
                         ? "Manager · no club"
                         : "Runs " + club.getName() + " · " + describe(club);

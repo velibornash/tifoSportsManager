@@ -437,10 +437,7 @@ public class ForumService {
         if (user == null) {
             return "Someone";
         }
-        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
-            return user.getDisplayName().trim();
-        }
-        return user.getUsername();
+        return org.tifo.commonmanager.util.DisplayNames.of(user);
     }
 
     private static boolean hasChosenName(User user) {

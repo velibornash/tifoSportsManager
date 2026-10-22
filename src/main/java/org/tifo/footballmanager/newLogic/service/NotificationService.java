@@ -235,9 +235,6 @@ public class NotificationService {
         if (user == null) {
             return "a manager";
         }
-        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
-            return user.getDisplayName().trim();
-        }
-        return user.getUsername();
+        return org.tifo.commonmanager.util.DisplayNames.of(user);
     }
 }

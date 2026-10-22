@@ -956,7 +956,7 @@ public class TeamController {
         // Without the replay id a hidden row's "Watch your match" has nothing to open - the fixture id
         // and the replay id are not the same number, and guessing costs the manager the button.
         row.put("replayId", playedMatch != null ? playedMatch.getReplayId() : null);
-        row.put("matchDate", formatDateTime(fixture.getMatchDate()));
+        row.put("matchDate", org.tifo.footballmanager.newLogic.util.DateTimes.format(fixture.getMatchDate()));
         row.put("stadium", resolveStadiumName(fixture));
         // The picture comes from the ground's own field rather than from matching its name. The name
         // matcher was a function nothing called, which is why three real ground images were
@@ -973,23 +973,11 @@ public class TeamController {
         row.put("awayTeamStrength", insights.awayTeamStrength());
         row.put("homeTeamForm", insights.homeTeamForm());
         row.put("awayTeamForm", insights.awayTeamForm());
-        row.put("prediction", toPredictionMap(insights.prediction()));
+        row.put("prediction", org.tifo.footballmanager.newLogic.util.PredictionPayload.toMap(insights.prediction()));
         row.put("h2h", h2hSummary != null ? h2hSummary : emptyHeadToHeadSummary());
         return row;
     }
 
-    private Map<String, Object> toPredictionMap(ScheduleInsightService.Prediction prediction) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("homeWinProbability", prediction.homeWinProbability());
-        payload.put("drawProbability", prediction.drawProbability());
-        payload.put("awayWinProbability", prediction.awayWinProbability());
-        payload.put("expectedHomeGoals", prediction.expectedHomeGoals());
-        payload.put("expectedAwayGoals", prediction.expectedAwayGoals());
-        payload.put("mostLikelyResult", prediction.mostLikelyResult());
-        payload.put("confidence", prediction.confidence());
-        payload.put("analysis", prediction.analysis());
-        return payload;
-    }
 
     private Map<Long, Map<String, Object>> buildHeadToHeadByOpponent(Long teamId) {
         return matchRepository.findByHomeTeamIdOrAwayTeamId(teamId, teamId).stream()
@@ -1059,7 +1047,7 @@ public class TeamController {
         summary.put("goalsAgainst", goalsAgainst);
         summary.put("summary", String.format("H2H %d-%d-%d · Goals %d:%d", wins, draws, losses, goalsFor, goalsAgainst));
         summary.put("lastMeetingSummary", buildLastMeetingSummary(teamId, lastMeeting));
-        summary.put("lastMeetingDate", lastMeeting != null ? formatDateTime(lastMeeting.getMatchDate()) : "N/A");
+        summary.put("lastMeetingDate", lastMeeting != null ? org.tifo.footballmanager.newLogic.util.DateTimes.format(lastMeeting.getMatchDate()) : "N/A");
         return summary;
     }
 
@@ -1117,9 +1105,6 @@ public class TeamController {
         return "N/A";
     }
 
-    private String formatDateTime(java.time.LocalDateTime dateTime) {
-        return dateTime != null ? dateTime.toString().substring(0, 16).replace("T", " ") : "N/A";
-    }
 
     private List<Long> parseIdList(Object raw, int limit) {
         if (!(raw instanceof List<?> list)) {

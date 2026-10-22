@@ -126,9 +126,7 @@ public class MatchDTO {
     }
 
     public static MatchDTO from(Match match, Long viewerTeamId) {
-        String formattedDate = match.getMatchDate() != null
-                ? match.getMatchDate().toString().substring(0, 16).replace("T", " ")  // npr. "2026-02-20 12:00"
-                : "N/A";
+        String formattedDate = org.tifo.footballmanager.newLogic.util.DateTimes.format(match.getMatchDate());
 
         boolean viewerIsHome = viewerTeamId != null
                 && match.getHomeTeam() != null

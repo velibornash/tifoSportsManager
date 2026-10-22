@@ -136,8 +136,7 @@ public class UserController {
         dto.setId(resolvedUser.getId());
         dto.setUsername(resolvedUser.getUsername());
         dto.setEmail(resolvedUser.getEmail());
-        dto.setDisplayName(resolvedUser.getDisplayName() != null && !resolvedUser.getDisplayName().isBlank()
-                ? resolvedUser.getDisplayName() : resolvedUser.getUsername());
+        dto.setDisplayName(org.tifo.commonmanager.util.DisplayNames.of(resolvedUser));
         dto.setPlusSubscription(resolvedUser.isPlusSubscriber());
         dto.setRole(resolvedUser.getRole().name());
 
