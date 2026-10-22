@@ -364,9 +364,8 @@ public class TransferService {
     public void removeFromTransferList(Long playerId, Long actingTeamId) {
         Transfer transfer = getActiveTransfer(playerId);
 requireSeller(transfer, actingTeamId, "remove a player from the transfer list");
-        // A player who is objecting cannot be quietly taken off the list either. Removing is how a
-        // club would make the objection go away, so it is the action the objection has to block.
-        listingObjections.requireResolved(transfer, "remove this player from the transfer list");
+        // **Owner, 2026-10-22:** a player may not refuse the transfer list. When a manager lists him,
+        // he is listed - the objection is surfaced for information, but it never blocks delisting or a sale.
         // Only a PRICED offer blocks delisting. A bare "register interest" entry is not an offer,
         // so treating it as one used to soft-lock the player on the list forever: canRemove went
         // false while canRejectOffer stayed false too, leaving no escape route.
@@ -552,8 +551,8 @@ requireSeller(transfer, actingTeamId, "remove a player from the transfer list");
     public TransferDTO acceptOffer(Long playerId, Long offerId, Long actingTeamId) {
         Transfer transfer = getOpenOfferTransfer(playerId);
         requireSeller(transfer, actingTeamId, "accept an incoming offer");
-        // Accepting a bid is the act of selling him, so it is exactly what an objection is about.
-        listingObjections.requireResolved(transfer, "accept an offer");
+        // **Owner, 2026-10-22:** a player may not refuse the transfer list, so an objection never
+        // blocks a sale either. When a manager accepts a bid, the player moves.
 
         if (offerId == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "OFFER_REQUIRED",
