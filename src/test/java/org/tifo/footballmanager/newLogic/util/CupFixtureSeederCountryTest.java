@@ -55,6 +55,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
     @Autowired private CountryRepository countries;
     @Autowired private org.tifo.footballmanager.newLogic.repository.PlayerRepository players;
     @Autowired private org.tifo.footballmanager.newLogic.service.SeasonService seasonService;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
 
     private CupFixtureSeeder seeder;
     private java.util.Map<Long, Integer> indexById;
@@ -66,7 +67,7 @@ class CupFixtureSeederCountryTest extends BaseTest {
     void setUp() {
         // The real SeasonService, not a mock: the seeder reads the active season from it, and a stub
         // returning a different number would draw into a season the test never inspects.
-        seeder = new CupFixtureSeeder(competitions, fixtures, teams, players, seasonService);
+        seeder = new CupFixtureSeeder(competitions, fixtures, teams, players, seasonService, transactionManager);
     }
 
     /**

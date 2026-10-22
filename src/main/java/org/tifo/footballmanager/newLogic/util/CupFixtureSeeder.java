@@ -26,6 +26,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The cup draw, so a country has a cup with rounds and a bracket rather than a name in a table
@@ -137,16 +139,47 @@ public class CupFixtureSeeder {
     private final TeamRepository teams;
     private final PlayerRepository players;
 
+    /**
+     * How many cups are drawn at once.
+     *
+     * <p>Four, the same number {@code SimulatedWorldSeeder} and {@code MatchdayScheduler} use: enough to
+     * cut the wall time roughly fourfold, few enough that the draw does not spend its time contending for
+     * connections.
+     */
+    private static final int DRAW_THREADS = 4;
+
+    /**
+     * The transaction each cup is drawn in, when the loop drives it.
+     *
+     * <p>Same shape as {@code SimulatedWorldSeeder.perCountry}: one transaction per unit of work, committed
+     * as it goes, so a cup that fails costs that cup and the rest still draw. The alternative — one
+     * transaction for all forty-eight — meant nothing committed until the last cup finished, and a failure
+     * at cup forty threw away thirty-nine draws that were already correct.
+     */
+    private final org.springframework.transaction.support.TransactionTemplate perCup;
+
+    private final java.util.concurrent.ExecutorService executor;
+
     /** Two constructors, so Spring is told which one. Same trap as TransferActivitySeeder and
      *  NationalTeamSeeder; a unit test cannot catch it because it never goes through Spring. */
     @org.springframework.beans.factory.annotation.Autowired
     public CupFixtureSeeder(CompetitionRepository competitions, MatchFixtureRepository fixtures,
-                            TeamRepository teams, PlayerRepository players, SeasonService seasons) {
+                            TeamRepository teams, PlayerRepository players, SeasonService seasons,
+                            org.springframework.transaction.PlatformTransactionManager transactionManager) {
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.teams = teams;
         this.players = players;
         this.seasons = seasons;
+        this.perCup = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        this.perCup.setPropagationBehavior(
+                org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.executor = java.util.concurrent.Executors.newFixedThreadPool(DRAW_THREADS);
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        executor.shutdown();
     }
 
     @Transactional
@@ -294,34 +327,58 @@ public class CupFixtureSeeder {
         if (round <= 0) {
             return 0;
         }
-        int drawn = 0;
         List<Competition> nationalCups = competitions.findByTypeAndScope(
                 CompetitionType.CUP, CompetitionScope.NATIONAL);
-        for (Competition cup : nationalCups) {
-            if (cup.getCountry() == null || cup.getCountry().getId() == null) {
-                continue;
-            }
-            // The same "has it been drawn?" question, on the per-round path. Counting unplayed ties meant
-            // a round that had been played read as never drawn, so the scheduled draw would deal it again
-            // on any rewind. The job runner's done-flag covers a slot that has not been rewound and covers
-            // nothing at all for one that has.
-            long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumber(
-                    cup.getId(), seedSeason(), round);
-            if (existing > 0) {
-                continue;
-            }
-            List<Team> survivors = survivorsOf(cup, round);
-            if (survivors.size() < 2) {
-                log.info("Cup {} ({}) round {}: {} survivor(s), nothing to pair.", cup.getName(),
-                        cup.getCountry().getIsoCode(), round, survivors.size());
-                continue;
-            }
-            int cupDrawn = drawRound(cup, round, survivors, seedSeason()).size();
-            drawn += cupDrawn;
-            log.info("Cup draw: {} tie(s) drawn for {} ({}) round {}.", cupDrawn, cup.getName(),
-                    cup.getCountry().getIsoCode(), round);
+
+        // **Parallel, and one transaction per cup.** The forty-eight national cups are independent — their
+        // own competition, their own clubs, their own ties — and this used to draw them one after another in
+        // a single transaction, so nothing committed until the last cup of the world finished. Each cup now
+        // draws and commits on its own; a cup that fails costs that cup and the log says so.
+        AtomicInteger drawn = new AtomicInteger(0);
+        List<CompletableFuture<Void>> futures = nationalCups.stream()
+                .filter(cup -> cup.getCountry() != null && cup.getCountry().getId() != null)
+                .map(cup -> CompletableFuture.runAsync(() -> {
+                    Integer cupDrawn = perCup.execute(status -> drawOneCup(cup.getId(), round));
+                    if (cupDrawn != null) {
+                        drawn.addAndGet(cupDrawn);
+                    }
+                }, executor))
+                .toList();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        return drawn.get();
+    }
+
+    /**
+     * Draws one cup's round, in its own transaction.
+     *
+     * <p>The cup is re-read by id rather than passed in: the list the loop walks was loaded outside these
+     * transactions, and a detached country reached from a detached cup is how a draw ends in a
+     * {@code LazyInitializationException} on the one cup whose country happened not to be fetched.
+     */
+    private int drawOneCup(Long cupId, int round) {
+        Competition cup = competitions.findById(cupId).orElse(null);
+        if (cup == null) {
+            return 0;
         }
-        return drawn;
+        // The same "has it been drawn?" question, on the per-round path. Counting unplayed ties meant
+        // a round that had been played read as never drawn, so the scheduled draw would deal it again
+        // on any rewind. The job runner's done-flag covers a slot that has not been rewound and covers
+        // nothing at all for one that has.
+        long existing = fixtures.countByCompetitionIdAndSeasonYearAndRoundNumber(
+                cup.getId(), seedSeason(), round);
+        if (existing > 0) {
+            return 0;
+        }
+        List<Team> survivors = survivorsOf(cup, round);
+        if (survivors.size() < 2) {
+            log.info("Cup {} ({}) round {}: {} survivor(s), nothing to pair.", cup.getName(),
+                    cup.getCountry().getIsoCode(), round, survivors.size());
+            return 0;
+        }
+        int cupDrawn = drawRound(cup, round, survivors, seedSeason()).size();
+        log.info("Cup draw: {} tie(s) drawn for {} ({}) round {}.", cupDrawn, cup.getName(),
+                cup.getCountry().getIsoCode(), round);
+        return cupDrawn;
     }
 
     /**
