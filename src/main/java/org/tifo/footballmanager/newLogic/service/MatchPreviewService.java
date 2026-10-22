@@ -1,7 +1,11 @@
 package org.tifo.footballmanager.newLogic.service;
 
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.tifo.commonmanager.model.User;
+import org.tifo.footballmanager.newLogic.model.ManagerTenure;
 import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.ManagerTenureRepository;
+import org.tifo.commonmanager.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,14 +46,20 @@ public class MatchPreviewService {
     private final ScheduleInsightService insights;
     private final ShapePreviewService shapePreview;
     private final org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository;
+    private final UserRepository userRepository;
+    private final ManagerTenureRepository managerTenureRepository;
 
     public MatchPreviewService(
             ScheduleInsightService insights,
             ShapePreviewService shapePreview,
-            org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository) {
+            org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository,
+            UserRepository userRepository,
+            ManagerTenureRepository managerTenureRepository) {
         this.insights = insights;
         this.shapePreview = shapePreview;
         this.matchFixtureRepository = matchFixtureRepository;
+        this.userRepository = userRepository;
+        this.managerTenureRepository = managerTenureRepository;
     }
 
     /**
@@ -158,10 +168,108 @@ public class MatchPreviewService {
         preview.put("homeLineup", List.of());
         preview.put("awayLineup", List.of());
 
+        // **Manager H2H (P0-21).** The two managers in charge, their tenure at the club, and the
+        // meetings between them. All existing H2H in the code is club-level; this is the managers'.
+        preview.put("managerH2H", managerH2H(home, away, fixtureId));
+
         preview.put("matchDate", matchDate);
         preview.put("played", played);
         preview.put("fixtureId", fixtureId);
         return preview;
+    }
+
+    /**
+     * The two managers in charge and their record against each other.
+     *
+     * <p><b>P0-21.</b> The prerequisite ({@code manager_tenure}) is already written by
+     * {@link JobOfferService}; this surfaces it. For each club we find the manager who holds it now and
+     * his current tenure. For their past meetings we take the played fixtures between these two clubs
+     * and count those in which <i>both</i> of these two managers were in charge at the time - so a
+     * meeting counts only when it was genuinely between them, not between their predecessors.
+     */
+    private Map<String, Object> managerH2H(Team home, Team away, Long fixtureId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+
+        User homeManager = managerOf(home);
+        User awayManager = managerOf(away);
+
+        out.put("homeManagerName", homeManager == null ? null : homeManager.getUsername());
+        out.put("awayManagerName", awayManager == null ? null : awayManager.getUsername());
+
+        ManagerTenure homeTenure = currentTenure(homeManager, home);
+        ManagerTenure awayTenure = currentTenure(awayManager, away);
+        out.put("homeManagerStartedSeason", homeTenure == null ? null : homeTenure.getStartedSeason());
+        out.put("homeManagerStartedWeek", homeTenure == null ? null : homeTenure.getStartedWeek());
+        out.put("awayManagerStartedSeason", awayTenure == null ? null : awayTenure.getStartedSeason());
+        out.put("awayManagerStartedWeek", awayTenure == null ? null : awayTenure.getStartedWeek());
+
+        int meetings = 0, homeWins = 0, draws = 0, awayWins = 0;
+        try {
+            List<org.tifo.footballmanager.newLogic.model.MatchFixture> past =
+                    matchFixtureRepository.findPlayedBetween(home.getId(), away.getId());
+            if (past != null) {
+                for (org.tifo.footballmanager.newLogic.model.MatchFixture f : past) {
+                    if (f.getPlayedMatch() == null) continue;
+                    org.tifo.footballmanager.newLogic.model.Match played = f.getPlayedMatch();
+                    Integer season = f.getSeasonYear();
+                    Integer week = f.getRoundNumber();
+                    // Only count it if both of these two managers were in charge at the time.
+                    if (!inCharge(homeManager, home, season, week)) continue;
+                    if (!inCharge(awayManager, away, season, week)) continue;
+                    meetings++;
+                    int hg = played.getHomeGoals();
+                    int ag = played.getAwayGoals();
+                    boolean homeWasHome = f.getHomeTeam() != null
+                            && f.getHomeTeam().getId().equals(home.getId());
+                    if (hg == ag) draws++;
+                    else if ((homeWasHome && hg > ag) || (!homeWasHome && ag > hg)) homeWins++;
+                    else awayWins++;
+                }
+            }
+        } catch (RuntimeException e) {
+            // A failure here must not take the whole preview down.
+        }
+        out.put("meetings", meetings);
+        out.put("homeWins", homeWins);
+        out.put("draws", draws);
+        out.put("awayWins", awayWins);
+        return out;
+    }
+
+    private User managerOf(Team team) {
+        if (team == null || team.getId() == null) return null;
+        List<User> users = userRepository.findAllByFootballTeamId(team.getId());
+        return users.isEmpty() ? null : users.get(0);
+    }
+
+    private ManagerTenure currentTenure(User user, Team team) {
+        if (user == null || team == null) return null;
+        List<ManagerTenure> open = managerTenureRepository.findByUserIdAndEndedAtIsNull(user.getId());
+        for (ManagerTenure t : open) {
+            if (t.getTeam() != null && t.getTeam().getId().equals(team.getId())) return t;
+        }
+        // Fall back to the most recent spell at this club.
+        List<ManagerTenure> all = managerTenureRepository.findByTeamIdOrderByStartedAtDesc(team.getId());
+        for (ManagerTenure t : all) {
+            if (t.getUser() != null && t.getUser().getId().equals(user.getId())) return t;
+        }
+        return null;
+    }
+
+    private boolean inCharge(User manager, Team team, Integer season, Integer week) {
+        if (manager == null || team == null || season == null || week == null) return false;
+        for (ManagerTenure t : managerTenureRepository.findByUserIdOrderByStartedAtDesc(manager.getId())) {
+            if (t.getTeam() == null || !t.getTeam().getId().equals(team.getId())) continue;
+            int s0 = t.getStartedSeason() == null ? Integer.MIN_VALUE : t.getStartedSeason();
+            int w0 = t.getStartedWeek() == null ? 0 : t.getStartedWeek();
+            int s1 = t.getEndedSeason() == null ? Integer.MAX_VALUE : t.getEndedSeason();
+            int w1 = t.getEndedWeek() == null ? Integer.MAX_VALUE : t.getEndedWeek();
+            if (season < s0 || season > s1) continue;
+            if (season == s0 && week < w0) continue;
+            if (season == s1 && week > w1) continue;
+            return true;
+        }
+        return false;
     }
 
     /** The two strength figures the owner's screenshot showed as "Both sides are of similar quality". */

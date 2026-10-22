@@ -14,6 +14,11 @@ import java.util.Optional;
 public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long> {
     List<MatchFixture> findByHomeTeamIdOrAwayTeamId(Long homeTeamId, Long awayTeamId);
 
+    /** Played fixtures between these two clubs, in either direction (manager H2H, P0-21). */
+    @Query("select f from MatchFixture f where f.played = true and "
+           + "((f.homeTeam.id = :a and f.awayTeam.id = :b) or (f.homeTeam.id = :b and f.awayTeam.id = :a))")
+    List<MatchFixture> findPlayedBetween(@Param("a") Long teamA, @Param("b") Long teamB);
+
     /**
      * The fixture a played match came from.
      *
