@@ -2316,6 +2316,34 @@ select option {
     color: var(--accent);
 }
 
+/*
+ * The away squad's name cell has the First Team's arrangement (owner, 2026-10-22: *"ime je lose
+ * prelomljeno ... bolje ime da se skalira i raspored kolona kao kod first team ... isto kao sto je za
+ * first team"*).
+ *
+ * <p>On the First Team the name drops under the mini card because the card is 74px inside a 95px cell
+ * and no word of the name fits in what is left - so the name ends up with the whole cell, which is why
+ * "Šumenko Dabić" is two lines there and "Ivica Tomić" is one. This table's card is only the photo, 30px,
+ * which used to leave the name about 65px: narrow enough that almost every name in the world broke in
+ * two, and wide enough that none of them moved down to the room beside it.
+ *
+ * <p>So the name is given a floor rather than a squeeze: it wraps to the next line unless it can have
+ * at least twelve characters where it stands. On a phone that is the First Team's stack; on a desktop,
+ * where the name cell is 409px, the photo and the name sit on one line, also as they do there. No media
+ * query, because the condition is the cell's width, not the device's.
+ */
+.fm-squad--away .sq-player-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+}
+
+.fm-squad--away .sq-player-cell .sq-player-link {
+    flex: 0 1 auto;
+    min-width: 12ch;
+}
+
 .fm-club-cell {
     justify-content: flex-start;
 }

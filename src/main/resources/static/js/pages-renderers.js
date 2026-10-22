@@ -595,6 +595,36 @@ export function buildSquadTableHtml(players, options = {}) {
  *
  * <p>This screen renders the columns it means and none other, and it is fed by a response that has no
  * skill field on it at all — so there is nothing here to hide by mistake.
+ *
+ * <h2>The same columns and the same phone behaviour as the First Team (owner, 2026-10-22)</h2>
+ *
+ * <p>The owner, looking at this table on his phone: <i>"losa je tabela. ime je lose prelomljeno, tabela
+ * se na pravom mob uredjajku ne skrola udesno (na developee mode moze)"</i>, and then: <i>"bolje ime da
+ * se skalira i raspored kolona kao kod first team ... isto kao sto je za first team"</i>.
+ *
+ * <p>He was describing one cause with two symptoms. On a phone `html.is-mobile-nav` hides the
+ * appearances, the goals and the assists of every squad table, and this one was no exception — so the
+ * numbers the screen exists for were gone, the six remaining columns fitted the screen, and a table
+ * that fits has nothing to scroll. In a narrow desktop window the class is not set, the columns stay,
+ * and the table scrolls; that is the difference he saw between his phone and developer mode.
+ *
+ * <p>So the columns follow the First Team's order — the name, then the numbers a manager reads, then
+ * who the player is — and the table carries `fm-squad--stats-first`, the class the First Team uses to
+ * keep those stat columns on a phone. The table is then wider than the screen, it scrolls sideways,
+ * and the name gets the width it has on the First Team's table. Form stays where this screen's own
+ * columns put it: after the four numbers it was asked for.
+ *
+ * <p>The name cell is the First Team's shape as well: the photo in a `.fm-pcard-mini`, the name beside
+ * it, and a floor under the name. The floor is what makes the two tables behave alike. On the First Team
+ * the name drops under the mini card because that card is 74px wide in a 95px cell and no word of the
+ * name fits in what is left; this card is only the photo, so the photo alone does not push the name down
+ * — it left it about 65px, which broke almost every name in the world into two lines. `dashboard.css`
+ * therefore gives the name at least twelve characters where it stands (`.fm-squad--away
+ * .sq-player-cell .sq-player-link`), and the name moves to the next line instead, where it has the whole
+ * cell: on a phone that is the First Team's arrangement, and in the 409px cell of a desktop the two sit
+ * on one line, also as they do there. The badge the mini card usually carries is left out rather than
+ * shown empty: this screen shows no skills, and a "—" in the rating slot is a placeholder for a number
+ * the page must not show.
  */
 export function renderAwaySquadView(players, { clubName, teamId, onBack } = {}) {
     const mainContent = document.getElementById('main-content');
@@ -619,17 +649,19 @@ export function renderAwaySquadView(players, { clubName, teamId, onBack } = {}) 
                     data-rating="${Number.isFinite(avg) ? avg : 0}">
                     <td class="sq-name">
                         <span class="sq-player-cell">
-                            <img class="fm-pcard-mini-photo" src="/images/player.jpg" alt="">
+                            <span class="fm-pcard-mini">
+                                <img class="fm-pcard-mini-photo" src="/images/player.jpg" alt="">
+                            </span>
                             <span class="sq-player-link">${escape(player?.name || 'Unknown')}</span>
                         </span>
                     </td>
-                    <td class="sq-pos">${escape(player?.position || '-')}</td>
-                    <td class="sq-age">${escape(player?.age ?? '-')}</td>
-                    <td class="sq-form">${Number(player?.form ?? 0).toFixed(1)}</td>
                     <td class="sq-rating">${played > 0 ? rating(player?.averageRating) : '-'}</td>
                     <td class="sq-games">${played > 0 ? played : '-'}</td>
                     <td class="sq-goals">${number(player?.goals)}</td>
                     <td class="sq-goals">${number(player?.assists)}</td>
+                    <td class="sq-form">${Number(player?.form ?? 0).toFixed(1)}</td>
+                    <td class="sq-pos">${escape(player?.position || '-')}</td>
+                    <td class="sq-age">${escape(player?.age ?? '-')}</td>
                 </tr>`;
         }).join('');
 
@@ -656,17 +688,17 @@ export function renderAwaySquadView(players, { clubName, teamId, onBack } = {}) 
                     <span class="fm-panel-action">${rows.length} registered</span>
                 </div>
                 <div class="fm-squad-wrap fm-squad-wrap--sortable">
-                    <table class="fm-squad fm-squad--away">
+                    <table class="fm-squad fm-squad--away fm-squad--stats-first">
                         <thead>
                             <tr>
                                 <th class="sq-name">Name</th>
-                                <th>Position</th>
-                                <th class="sq-age">Age</th>
-                                <th class="sq-form sortable" data-sort="form">Form \u21c5</th>
                                 <th class="sq-rating sortable" data-sort="rating">Av Rat \u21c5</th>
                                 <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
                                 <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
                                 <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
+                                <th class="sq-form sortable" data-sort="form">Form \u21c5</th>
+                                <th>Position</th>
+                                <th class="sq-age">Age</th>
                             </tr>
                         </thead>
                         <tbody>${body}</tbody>
