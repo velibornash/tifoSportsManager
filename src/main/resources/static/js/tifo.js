@@ -1,4 +1,5 @@
 import { escapeHtml } from './ui/escape.js';
+import { byPosition, positionRank } from './ui/position-order.js';
 ﻿// tifo.js - Clean Sheet Text Mode (in-memory)
 
 let gameState = null;
@@ -1567,8 +1568,7 @@ function renderPlayers(el) {
     const players = gameState?.roster || [];
     let html = `<h2>First Team (${players.length})</h2>`;
 
-    const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-    const sorted = [...players].sort((a, b) => (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5));
+    const sorted = [...players].sort(byPosition());
 
     html += `<div style="display:flex; gap:6px; padding:8px 14px; color:var(--cs-text-soft); font-size:0.75em; text-transform:uppercase; letter-spacing:0.1em;">
         <div class="cs-player-pos">POS</div>
@@ -1602,8 +1602,7 @@ function renderPlayers(el) {
 // --- Training ---
 function renderTraining(el) {
     const players = gameState?.roster || [];
-    const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-    const sorted = [...players].sort((a, b) => (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5));
+    const sorted = [...players].sort(byPosition());
 
     const avgFatigue = players.length ? (players.reduce((s, p) => s + fatigueOf(p), 0) / players.length).toFixed(1) : '—';
     const avgForm = players.length ? (players.reduce((s, p) => s + (p.form || 0), 0) / players.length).toFixed(1) : '—';
@@ -1782,8 +1781,7 @@ async function renderTeamDetail(teamId) {
     const data = await res.json();
     const team = data.team;
     const roster = data.roster || [];
-    const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-    const sorted = [...roster].sort((a, b) => (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5));
+    const sorted = [...roster].sort(byPosition());
 
     let html = `<div class="manager-card">
         <button class="big-button" onclick="tifoNav('leagueTable')" style="margin-bottom:16px;">Back</button>
@@ -2158,7 +2156,6 @@ function showMatchTab(tab) {
 }
 
 function buildLineupsHtml(match) {
-    const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
     let html = '';
 
     const substitutionEvents = (match.events || [])
@@ -2242,7 +2239,7 @@ function buildLineupsHtml(match) {
 
     const sortLineupRows = (a, b) => {
         if (a.isStarter !== b.isStarter) return a.isStarter ? -1 : 1;
-        const posDiff = (posOrder[a.position] ?? 5) - (posOrder[b.position] ?? 5);
+        const posDiff = positionRank(a.position) - positionRank(b.position);
         if (posDiff !== 0) return posDiff;
         const minutesDiff = (Number(b.minutesPlayed) || 0) - (Number(a.minutesPlayed) || 0);
         if (minutesDiff !== 0) return minutesDiff;

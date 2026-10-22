@@ -1,6 +1,7 @@
 // pages/views/training-view.js
 import { htmlEscape } from './utils.js';
 import { authFetchQuiet, apiErrorMessage } from '../../auth.js';
+import { positionRank } from '../../ui/position-order.js';
 
 export function createTrainingView(deps) {
     const { authFetch, getTeamId, buildTrainingActionsHtml, buildPlayerProfileHeroHtml } = deps;
@@ -529,7 +530,6 @@ export function createTrainingView(deps) {
 
         function renderReportCards(report) {
             if (!report) return `<p class="training-empty">Select a week report.</p>`;
-            const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
             /**
          * The facility a player trained under, and what it did for them.
          *
@@ -556,7 +556,7 @@ export function createTrainingView(deps) {
                 .sort((a, b) => {
                     const aPlayer = playerById.get(a.playerId);
                     const bPlayer = playerById.get(b.playerId);
-                    const posDiff = (posOrder[aPlayer?.position] ?? 5) - (posOrder[bPlayer?.position] ?? 5);
+                    const posDiff = positionRank(aPlayer?.position) - positionRank(bPlayer?.position);
                     if (posDiff !== 0) return posDiff;
                     return String(a.playerName || "").localeCompare(String(b.playerName || ""));
                 })

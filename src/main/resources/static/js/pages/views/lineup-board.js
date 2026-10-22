@@ -15,12 +15,11 @@
 // `match-lineup-view.js`, which saves on every change instead.
 
 import { htmlEscape } from './utils.js';
+import { positionRank } from '../../ui/position-order.js';
 
 /** Eleven is a law. Seven on the bench, because that is what the substitution rules can draw on. */
 export const STARTERS = 11;
 export const BENCH_SLOTS = 7;
-
-const ROLE_ORDER = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
 
 /**
  * Which positions a player may fill in a slot.
@@ -70,8 +69,8 @@ export function isUnavailable(player) {
 /** Squad order: by role, then by rating. The dock is read left to right, so this is what it shows. */
 export function sortSquad(players) {
     return [...players].sort((a, b) => {
-        const left = ROLE_ORDER[String(a.position || '').toUpperCase()] ?? 9;
-        const right = ROLE_ORDER[String(b.position || '').toUpperCase()] ?? 9;
+        const left = positionRank(a.position, 9);
+        const right = positionRank(b.position, 9);
         if (left !== right) return left - right;
         return Number(b.overall || 0) - Number(a.overall || 0);
     });

@@ -1,4 +1,5 @@
 // pages/views/match-view.js
+import { byPosition } from '../../ui/position-order.js';
 import {
     htmlEscape, parseMatchDate, formatDateTimeLabel, formatRatingBadge,
     formatCompactPlayerName, buildLineupEventBadges
@@ -1078,10 +1079,7 @@ export function createMatchView(deps) {
                 }
                 const seasonYear = deps.getCurrentSeasonYear?.() || null;
                 const renderLineup = (teamName, teamId, players) => {
-                    const sorted = [...(players || [])].sort((a, b) => {
-                        const posOrder = { GK: 0, DEF: 1, MID: 2, WNG: 3, ATT: 4 };
-                        return (posOrder[a.position] ?? 9) - (posOrder[b.position] ?? 9);
-                    });
+                    const sorted = [...(players || [])].sort(byPosition(9));
                     if (sorted.length === 0) return `<p class="fm-subtle">No lineup data.</p>`;
                     // **A standard table, like every other table in the app** (owner, 2026-10-20: "remove
                     // that button around player name, standard table as everywhere across app"). The
