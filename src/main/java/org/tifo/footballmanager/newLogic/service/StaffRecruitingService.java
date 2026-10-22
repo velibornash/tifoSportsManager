@@ -159,6 +159,9 @@ public class StaffRecruitingService {
         if (club == null) {
             throw new StaffRecruitingException("no_club", "This account is not managing a club.");
         }
+        // Re-fetch inside this transaction: `club` may be a detached lazy proxy coming from the
+        // security context, and reading a field off it would throw "no Session".
+        club = teams.findById(club.getId()).orElse(club);
         if (club.getBudget() != null && club.getBudget() < 0) {
             throw new StaffRecruitingException("in_debt", "The club is in debt and cannot hire staff.");
         }
