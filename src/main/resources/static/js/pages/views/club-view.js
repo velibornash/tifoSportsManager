@@ -4,6 +4,30 @@ import { apiErrorMessage } from '../../auth.js';
 import { createFriendlyPanel } from './friendly-panel.js';
 import { createFriendlyBoard } from './friendly-board.js';
 
+
+function buildKitJerseyHtml(homeColor, awayColor, pattern) {
+    const h = htmlEscape(homeColor || '#539bf5');
+    const a = htmlEscape(awayColor || '#f97583');
+    let bg;
+    switch (pattern) {
+        case 'STRIPES':
+            bg = `repeating-linear-gradient(90deg, ${h} 0 6px, ${a} 6px 12px)`;
+            break;
+        case 'HOOPS':
+            bg = `repeating-linear-gradient(0deg, ${h} 0 6px, ${a} 6px 12px)`;
+            break;
+        case 'HALVES':
+            bg = `linear-gradient(90deg, ${h} 50%, ${a} 50%)`;
+            break;
+        default:
+            bg = h;
+    }
+    // A shirt silhouette: rounded shoulders, a V-neck collar, slightly tapered body.
+    return `<div style="width:100%;height:100%;background:${bg};position:relative;">
+        <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:18px;height:9px;background:#fff;border-radius:0 0 6px 6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.1);"></div>
+    </div>`;
+}
+
 export function createClubView(deps) {
     const { authFetch, getTeamId, buildClubActionsHtml, openLeagueById, loadPage } = deps;
     const friendlyPanel = createFriendlyPanel({ authFetch });
@@ -136,10 +160,17 @@ export function createClubView(deps) {
                              alt="${htmlEscape(profile.name)}"
                              onerror="this.src='/images/logoside.jpg'">
                     </div>
-                    <div class="club-profile-kit" style="display:flex;gap:6px;margin-top:8px;">
-                        <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${htmlEscape(profile.homeKitColor || '#539bf5')};border:1px solid #ccc;" title="Home kit"></span>
-                        <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${htmlEscape(profile.awayKitColor || '#f97583')};border:1px solid #ccc;" title="Away kit"></span>
-                        <span style="font-size:11px;color:#666;margin-left:4px;">${htmlEscape(profile.kitPattern || 'SOLID')}</span>
+                    <div class="club-profile-kit" style="display:flex;gap:10px;margin-top:8px;align-items:center;">
+                        <div class="kit-jersey" data-kit-jersey
+                             style="width:56px;height:64px;border-radius:8px 8px 4px 4px;position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.15);"
+                             title="Home kit (pattern: ${htmlEscape(profile.kitPattern || 'SOLID')})">
+                            ${buildKitJerseyHtml(profile.homeKitColor || '#539bf5', profile.awayKitColor || '#f97583', profile.kitPattern || 'SOLID')}
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <span style="display:inline-block;width:18px;height:18px;border-radius:3px;background:${htmlEscape(profile.homeKitColor || '#539bf5')};border:1px solid #ccc;" title="Home colour"></span>
+                            <span style="display:inline-block;width:18px;height:18px;border-radius:3px;background:${htmlEscape(profile.awayKitColor || '#f97583')};border:1px solid #ccc;" title="Away colour"></span>
+                        </div>
+                        <span style="font-size:11px;color:#666;">${htmlEscape(profile.kitPattern || 'SOLID')}</span>
                     </div>
                     <div class="club-profile-kit-editor" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <label style="font-size:11px;">Home <input type="color" class="kit-home-color" value="${htmlEscape(profile.homeKitColor || '#539bf5')}" style="width:32px;height:24px;border:1px solid #ccc;border-radius:4px;"></label>
@@ -235,6 +266,25 @@ export function createClubView(deps) {
             });
         });
 
+        // **Live preview**: the jersey follows the colour pickers and the pattern selector, so the
+        // manager sees the kit change before he saves it.
+        const refreshKitPreview = () => {
+            const homeColor = mainContent.querySelector('.kit-home-color')?.value || '#539bf5';
+            const awayColor = mainContent.querySelector('.kit-away-color')?.value || '#f97583';
+            const pattern = mainContent.querySelector('.kit-pattern')?.value || 'SOLID';
+            const jersey = mainContent.querySelector('[data-kit-jersey]');
+            if (jersey) jersey.innerHTML = buildKitJerseyHtml(homeColor, awayColor, pattern);
+            const squares = mainContent.querySelectorAll('.club-profile-kit > div:nth-child(2) span');
+            if (squares[0]) squares[0].style.background = homeColor;
+            if (squares[1]) squares[1].style.background = awayColor;
+            const patternLabel = mainContent.querySelector('.club-profile-kit > span:last-child');
+            if (patternLabel) patternLabel.textContent = pattern;
+        };
+        mainContent.querySelectorAll('.kit-home-color, .kit-away-color, .kit-pattern').forEach(el => {
+            el.addEventListener('input', refreshKitPreview);
+            el.addEventListener('change', refreshKitPreview);
+        });
+
         const kitSave = mainContent.querySelector('.kit-save-btn');
         if (kitSave) {
             kitSave.addEventListener('click', async () => {
@@ -248,6 +298,20 @@ export function createClubView(deps) {
                         body: JSON.stringify({ homeKitColor: homeColor, awayKitColor: awayColor, kitPattern: pattern })
                     });
                     if (res.ok) {
+                        // **Refresh the preview in place**, so the manager sees the new colours on the
+                        // jersey immediately rather than on the next page load.
+                        const jersey = mainContent.querySelector('[data-kit-jersey]');
+                        if (jersey) {
+                            jersey.innerHTML = buildKitJerseyHtml(homeColor, awayColor, pattern);
+                            jersey.title = 'Home kit (pattern: ' + (pattern || 'SOLID') + ')';
+                        }
+                        const swatches = mainContent.querySelectorAll('.club-profile-kit span[title^="Home colour"], .club-profile-kit span[title^="Away colour"]');
+                        // simpler: update the two colour squares by order
+                        const squares = mainContent.querySelectorAll('.club-profile-kit > div:nth-child(2) span');
+                        if (squares[0]) squares[0].style.background = homeColor;
+                        if (squares[1]) squares[1].style.background = awayColor;
+                        const patternLabel = mainContent.querySelector('.club-profile-kit > span:last-child');
+                        if (patternLabel) patternLabel.textContent = pattern || 'SOLID';
                         alert('Kit saved.');
                     } else {
                         alert('Failed to save kit.');
