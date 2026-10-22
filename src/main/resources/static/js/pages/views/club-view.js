@@ -141,6 +141,17 @@ export function createClubView(deps) {
                         <span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:${htmlEscape(profile.awayKitColor || '#f97583')};border:1px solid #ccc;" title="Away kit"></span>
                         <span style="font-size:11px;color:#666;margin-left:4px;">${htmlEscape(profile.kitPattern || 'SOLID')}</span>
                     </div>
+                    <div class="club-profile-kit-editor" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <label style="font-size:11px;">Home <input type="color" class="kit-home-color" value="${htmlEscape(profile.homeKitColor || '#539bf5')}" style="width:32px;height:24px;border:1px solid #ccc;border-radius:4px;"></label>
+                        <label style="font-size:11px;">Away <input type="color" class="kit-away-color" value="${htmlEscape(profile.awayKitColor || '#f97583')}" style="width:32px;height:24px;border:1px solid #ccc;border-radius:4px;"></label>
+                        <select class="kit-pattern" style="font-size:11px;padding:2px 4px;">
+                            <option value="SOLID" ${profile.kitPattern === 'SOLID' ? 'selected' : ''}>Solid</option>
+                            <option value="STRIPES" ${profile.kitPattern === 'STRIPES' ? 'selected' : ''}>Stripes</option>
+                            <option value="HOOPS" ${profile.kitPattern === 'HOOPS' ? 'selected' : ''}>Hoops</option>
+                            <option value="HALVES" ${profile.kitPattern === 'HALVES' ? 'selected' : ''}>Halves</option>
+                        </select>
+                        <button type="button" class="fm-action-btn secondary kit-save-btn" style="font-size:11px;padding:2px 8px;">Save kit</button>
+                    </div>
                     <h3>${htmlEscape(profile.name || 'Club')}</h3>
                     <p class="fm-subtle">Serbian club profile with our existing app data.</p>
                     <button type="button" class="fm-action-btn secondary club-profile-stadium-btn" data-stadium-image="${htmlEscape(stadiumImage)}" data-stadium-name="${htmlEscape(profile.stadium || 'Stadium')}">Open Stadium View</button>
@@ -223,6 +234,29 @@ export function createClubView(deps) {
                 }
             });
         });
+
+        const kitSave = mainContent.querySelector('.kit-save-btn');
+        if (kitSave) {
+            kitSave.addEventListener('click', async () => {
+                const homeColor = mainContent.querySelector('.kit-home-color')?.value;
+                const awayColor = mainContent.querySelector('.kit-away-color')?.value;
+                const pattern = mainContent.querySelector('.kit-pattern')?.value;
+                try {
+                    const res = await authFetch(`/teams/${teamId}/kit`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ homeKitColor: homeColor, awayKitColor: awayColor, kitPattern: pattern })
+                    });
+                    if (res.ok) {
+                        alert('Kit saved.');
+                    } else {
+                        alert('Failed to save kit.');
+                    }
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                }
+            });
+        }
 
         const stadiumButton = mainContent.querySelector('.club-profile-stadium-btn');
         if (stadiumButton) {
