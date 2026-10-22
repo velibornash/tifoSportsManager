@@ -91,9 +91,9 @@ public class JobStatusService {
         out.put("failureCount", failedEver);
         // **The fixtures that were left behind** (owner, 2026-10-19). A job that failed is visible
         // above; this is what the failure left on the pitch. The two are different questions and the
-        // panel has to be able to answer both.
-        int stranded = strandedFixtures.count(clock.position());
-        out.put("stranded", stranded);
+        // panel has to be able to answer both. The count comes from the clock's own snapshot, so it is
+        // one query and one answer.
+        out.put("stranded", snapshot.get("stranded"));
         out.put("strandedFixtures", strandedFixtures.stranded(clock.position()));
         return out;
     }

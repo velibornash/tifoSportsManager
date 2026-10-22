@@ -82,6 +82,34 @@ class GameClockReportsStrandedFixturesTest {
     }
 
     @Test
+    @DisplayName("every answer carries the count, not only the walk's")
+    void everyAnswerCarriesTheCount() {
+        MatchFixtureRepository fixtureRepository = mock(MatchFixtureRepository.class);
+        when(fixtureRepository.countUnplayedBefore(any(), any(), any())).thenReturn(5L);
+
+        GameClock clock = new GameClock();
+        clock.setId(1L);
+        clock.setAnchorDate(LocalDate.of(2026, 1, 5).atStartOfDay());
+
+        GameClockRepository clocks = mock(GameClockRepository.class);
+        when(clocks.save(any(GameClock.class))).thenAnswer(call -> call.getArgument(0));
+        SeasonService seasons = mock(SeasonService.class);
+        when(seasons.getOrCreateClock()).thenReturn(clock);
+
+        JobRunner runner = new JobRunner(List.of(), mock(JobRunRepository.class),
+                mock(PlatformTransactionManager.class));
+        GameClockService service = new GameClockService(clocks, seasons, runner,
+                new StrandedFixtureService(fixtureRepository), Clock.systemUTC(), Runnable::run);
+
+        // **The snapshot is what everybody reads** - the dashboard's twenty-second poll, the clock's
+        // advance, the admin panel's jobs report. A count that only the walk's own answer carried
+        // would be a count nobody sees.
+        assertEquals(5, service.snapshot().get("stranded"),
+                "the clock's own answer has to say it, because that answer is what the dashboard "
+                        + "polls and what the admin panel reads");
+    }
+
+    @Test
     @DisplayName("a world with nothing left behind says nothing")
     void aWholeWorldSaysNothing() {
         MatchFixtureRepository fixtureRepository = mock(MatchFixtureRepository.class);

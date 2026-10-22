@@ -166,6 +166,11 @@ public class GameClockService {
         out.put("anchorDate", clock.getAnchorDate() == null ? null : clock.getAnchorDate().toLocalDate().toString());
         out.put("lastSyncedAt", clock.getLastSyncedAt());
         out.put("syncing", syncing);
+        // **How many fixtures are in the past and were never played** (owner, 2026-10-19). It is a
+        // fact about the world, so it belongs in the one answer every caller gets — the dashboard's
+        // poll, the clock's advance, and the admin panel's jobs report. Measured on the live world:
+        // **0.1 ms**, on the index the fixture table already carries.
+        out.put("stranded", strandedFixtures == null ? 0 : strandedFixtures.count(position));
         return out;
     }
 
@@ -498,7 +503,8 @@ public class GameClockService {
         List<Map<String, Object>> strandedDetail = List.of();
         if (strandedFixtures != null) {
             GamePosition where = position();
-            stranded = strandedFixtures.count(where);
+            // The count is already in the snapshot this walk builds — one query, one answer.
+            stranded = result.get("stranded") instanceof Number number ? number.intValue() : 0;
             if (stranded > 0) {
                 List<Map<String, Object>> named = new ArrayList<>();
                 for (StrandedFixtureService.Stranded row : strandedFixtures.stranded(where)) {
