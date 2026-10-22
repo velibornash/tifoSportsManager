@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -712,7 +713,7 @@ public class TrainingProgressionService {
     }
 
     private double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     private boolean isGoalkeeper(Player player) {

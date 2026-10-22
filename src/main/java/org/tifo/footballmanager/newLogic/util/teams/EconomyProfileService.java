@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util.teams;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.Stadium;
 import org.tifo.footballmanager.newLogic.model.Team;
@@ -144,6 +145,6 @@ public class EconomyProfileService {
 
     /** Ticket money to 2dp — it is a price, not a score. */
     private double roundMoney(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 }

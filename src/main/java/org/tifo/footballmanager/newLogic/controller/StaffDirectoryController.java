@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import org.tifo.footballmanager.newLogic.model.Sponsor;
 import org.tifo.footballmanager.newLogic.model.StaffMember;
@@ -102,7 +103,7 @@ public class StaffDirectoryController {
             row.put("endSeason", s.getEndSeason());
             row.put("performanceBonusClause", s.getPerformanceBonusClause());
             row.put("active", s.isActive(season));
-            row.put("weeklyIncome", Math.round(s.weeklyIncome(season) * 100.0) / 100.0);
+            row.put("weeklyIncome", Rounding.to2(s.weeklyIncome(season)));
             rows.add(row);
             weekly += s.weeklyIncome(season);
         }
@@ -111,7 +112,7 @@ public class StaffDirectoryController {
         out.put("teamId", teamId);
         out.put("teamName", club.getName());
         out.put("sponsors", rows);
-        out.put("weeklyIncome", Math.round(weekly * 100.0) / 100.0);
+        out.put("weeklyIncome", Rounding.to2(weekly));
         return ResponseEntity.ok(out);
     }
 

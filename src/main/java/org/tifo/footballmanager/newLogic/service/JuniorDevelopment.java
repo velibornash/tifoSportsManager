@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.Junior;
 import org.tifo.footballmanager.newLogic.model.Personality;
 import org.tifo.footballmanager.newLogic.model.Position;
@@ -242,7 +243,7 @@ public final class JuniorDevelopment {
     }
 
     static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     /** The gym level of a club's ground, or null when it has no recorded stadium. */

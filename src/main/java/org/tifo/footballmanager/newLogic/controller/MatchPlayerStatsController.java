@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.dto.MatchLineupPlayerDTO;
 import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.MatchPlayerStats;
@@ -42,7 +43,7 @@ public class MatchPlayerStatsController {
         Map<String, Object> payload = new HashMap<>();
         payload.put("playerId", playerId);
         payload.put("matchesPlayed", stats.size());
-        payload.put("averageRating100", Math.round(averageRating100 * 100.0) / 100.0);
+        payload.put("averageRating100", Rounding.to2(averageRating100));
         payload.put("averageRating10", stats.isEmpty() ? null : Math.round(averageRating10 * 10.0) / 10.0);
         return ResponseEntity.ok(payload);
     }

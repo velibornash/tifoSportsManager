@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import org.tifo.footballmanager.newLogic.sim.MatchEngineRules;
 import org.tifo.footballmanager.newLogic.model.Lineup;
@@ -403,7 +404,7 @@ public class ScheduleInsightService {
     }
 
     private double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     public record TeamSnapshot(int strength, double form, int recentMatchCount) {}

@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.FinanceCategory;
 import org.tifo.footballmanager.newLogic.model.GameClock;
 import org.tifo.footballmanager.newLogic.model.FinanceLedgerEntry;
@@ -203,6 +204,6 @@ public class FinanceLedgerService {
     }
 
     private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 }

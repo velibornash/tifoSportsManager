@@ -126,7 +126,7 @@ public class BotLeagueStandardBackfill {
 
         Map<Integer, Double> averages = new LinkedHashMap<>();
         tierTotals.forEach((tier, total) ->
-                averages.put(tier, round(Math.round(total / tierCounts.get(tier) * 100.0) / 100.0)));
+                averages.put(tier, Rounding.to2(total / tierCounts.get(tier))));
 
         Result result = new Result(clubCount, playerCount, averages);
         log.info("Bot league standards: re-standardised {} player(s) across {} club(s). Average by tier: {}",
@@ -153,9 +153,5 @@ public class BotLeagueStandardBackfill {
         }
         totals.merge(key, total, Double::sum);
         counts.merge(key, squad.size(), Integer::sum);
-    }
-
-    private double round(double value) {
-        return Math.round(value * 100.0) / 100.0;
     }
 }

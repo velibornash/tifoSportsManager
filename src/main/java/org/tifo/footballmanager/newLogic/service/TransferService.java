@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.transaction.Transactional;
@@ -1051,7 +1052,7 @@ public TransferDTO resolveListingObjection(Long playerId, ObjectionResolution re
     }
 
     private double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     private void maybeCreateAiListing(List<Team> aiTeams, Map<Long, Transfer> transferByPlayerId) {

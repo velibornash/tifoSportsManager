@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.SeatingType;
 import org.tifo.footballmanager.newLogic.model.Stadium;
 import org.tifo.footballmanager.newLogic.model.StadiumSection;
@@ -496,6 +497,6 @@ public class StadiumSectionService {
     }
 
     private static double round(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 }

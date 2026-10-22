@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.SkillName;
 import org.tifo.footballmanager.newLogic.model.StaffMember;
 import org.tifo.footballmanager.newLogic.model.StaffRole;
@@ -96,6 +97,6 @@ public final class CoachWage {
     }
 
     private static double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 }

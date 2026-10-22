@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.PlayerZoneLoad;
@@ -190,7 +191,7 @@ public class ZoneLoadRecorder {
     }
 
     private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     private static double round3(double value) {

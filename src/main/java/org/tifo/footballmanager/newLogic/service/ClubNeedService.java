@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.Position;
@@ -324,6 +325,6 @@ public class ClubNeedService {
     }
 
     private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 }

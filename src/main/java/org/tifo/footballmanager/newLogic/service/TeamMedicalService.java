@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import org.tifo.footballmanager.newLogic.dto.PlayerDTO;
 import org.tifo.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
@@ -203,7 +204,7 @@ public class TeamMedicalService {
     }
 
     private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     /**

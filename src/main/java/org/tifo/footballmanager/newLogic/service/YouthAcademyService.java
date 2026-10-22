@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.tifo.footballmanager.newLogic.dto.junior.JuniorAcademyItemDTO;
@@ -1013,7 +1014,7 @@ public static final int MAX_ACTIVE_JUNIORS = 10;
     }
 
     private double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     private static class SkillBuild {

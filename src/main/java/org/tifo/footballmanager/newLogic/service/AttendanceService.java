@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.Stadium;
@@ -273,7 +274,7 @@ public class AttendanceService {
     }
 
     private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 
     private String safe(String s) {

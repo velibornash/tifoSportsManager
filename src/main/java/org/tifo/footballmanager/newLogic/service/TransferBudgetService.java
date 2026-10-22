@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
@@ -149,7 +150,7 @@ public class TransferBudgetService {
     }
 
     private double round2(double v) {
-        return Math.round(v * 100.0) / 100.0;
+        return Rounding.to2(v);
     }
 
     /** What the board has granted, and why. */

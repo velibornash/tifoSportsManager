@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.tifo.footballmanager.newLogic.dto.junior.JuniorSchoolStateDTO;
@@ -296,7 +297,7 @@ public class JuniorSchoolService {
      * the UI happens to format it. Rounding at the source means every consumer gets a clean number.
      */
     private static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     private void requireWindow(int weekNumber, int required, String action) {

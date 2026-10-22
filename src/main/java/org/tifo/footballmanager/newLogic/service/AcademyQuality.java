@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.footballmanager.newLogic.model.StaffMember;
 import org.tifo.footballmanager.newLogic.model.Stadium;
 
@@ -106,6 +107,6 @@ public final class AcademyQuality {
     }
 
     static double round2(double value) {
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 }

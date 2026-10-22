@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.service;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import org.tifo.commonmanager.model.User;
 import org.tifo.commonmanager.model.UserRole;
 import org.tifo.footballmanager.newLogic.model.Junior;
@@ -225,7 +226,7 @@ public class PlusFeatureService {
         if (value == null) {
             return null;
         }
-        return Math.round(value * 100.0) / 100.0;
+        return Rounding.to2(value);
     }
 
     /** The training percentage, or null when the viewer may not see it. */

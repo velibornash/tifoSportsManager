@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.controller;
 
+import org.tifo.footballmanager.newLogic.util.Rounding;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -96,7 +97,7 @@ public class ZoxApiController {
         preview.put("homeRecentForm", "");
         preview.put("awayRecentForm", "");
         preview.put("expectedResult", homeP > 0.53 ? "Home win" : homeP < 0.47 ? "Away win" : "Draw");
-        preview.put("homeWinProbability", Math.round(homeP * 100.0) / 100.0);
+        preview.put("homeWinProbability", Rounding.to2(homeP));
         // **The draw is not a quarter.**
         //
         // Every other number on this endpoint is read from the match or computed from it. This one was
@@ -107,7 +108,7 @@ public class ZoxApiController {
         // The prediction is recomputed from the two squads, so a replayed match shows the same card an
         // unplayed fixture does rather than a different set of invented numbers.
         preview.put("drawProbability", playedDrawProbability(homeRating, awayRating));
-        preview.put("awayWinProbability", Math.round((1.0 - homeP - 0.25) * 100.0) / 100.0);
+        preview.put("awayWinProbability", Rounding.to2(1.0 - homeP - 0.25));
         preview.put("expectedHomeGoals", Math.round(homeP * 2.5 * 10.0) / 10.0);
         preview.put("expectedAwayGoals", Math.round((1.0 - homeP) * 2.5 * 10.0) / 10.0);
         preview.put("homeFormation", match.getHomeFormation() != null ? match.getHomeFormation() : "4-3-3");
