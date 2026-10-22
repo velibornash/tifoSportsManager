@@ -227,7 +227,7 @@ public class CleanDecisionEngine {
      * come back down, because a weighted selector uses CLEAR as the fallback
      * without it having to be a large share of touches.
      */
-    public static final double CLEAR_FREQUENCY_GATE = 0.34; // public: MatchEngineVersion fingerprints it
+    public static final double CLEAR_FREQUENCY_GATE = 0.45; // public: MatchEngineVersion fingerprints it
 
     /**
      * TEMPORARY MEASUREMENT SWITCH for the "a gated shot must not become a
@@ -248,7 +248,7 @@ public class CleanDecisionEngine {
      * 5-10 per match; at 0.4 the engine played 106 a match. A good playmaker
      * reads the defence more often, so the gate scales with the skill.
      */
-    public static final double THRU_FREQUENCY_GATE = 0.032; // public: MatchEngineVersion fingerprints it
+    public static final double THRU_FREQUENCY_GATE = 0.045; // public: MatchEngineVersion fingerprints it
 
     /**
      * Share of eligible moments that become a cross or a centre. Real sides
@@ -323,9 +323,24 @@ public class CleanDecisionEngine {
         double forward = getForwardDirection(carrier.getTeam());
         Position carryLine = new Position(carrierRow + forward * 3.0, carrier.getPosition().getColumn());
         boolean roomAhead = !isPathBlocked(state, carrier, carryLine);
-        if (inOwnDefensiveThird && pressured && !roomAhead && passOption.getScore() > UNAVAILABLE) {
+        // A defender approaching for a duel (within 0.5 cells) makes carrying
+        // into him a bad idea even when there is open space ahead: the carrier
+        // must move the ball (pass / clear / long pass) rather than run into
+        // the tackle. Open space alone is still allowed (Q1, owner 2026-10-22).
+        boolean defenderApproaching = false;
+        for (Player opp : state.getPlayers()) {
+            if (opp.getTeam().equals(carrier.getTeam())) continue;
+            if (opp.isUnavailable() || opp.isLocked()) continue;
+            if (SimUtils.distance(opp.getPosition(), carrier.getPosition()) <= 0.5) {
+                defenderApproaching = true;
+                break;
+            }
+        }
+        boolean blockDribble = defenderApproaching || (pressured && !roomAhead);
+        if (inOwnDefensiveThird && blockDribble && passOption.getScore() > UNAVAILABLE) {
             carryOption = new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
-                    "DRIBBLE: pressed with no room ahead in his own third, and a pass is available");
+                    "DRIBBLE: defender approaching or pressed with no room ahead in his own third, "
+                            + "and a pass is available");
         }
 
         // A GATED SHOT MUST NOT BECOME A DRIBBLE.
