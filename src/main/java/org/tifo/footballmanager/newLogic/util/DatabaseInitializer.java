@@ -335,6 +335,31 @@ public class DatabaseInitializer {
      * list is gone, so without this a fresh install builds a Serbian pyramid against a world with no
      * countries in it.
      */
+    /**
+     * Draws the national squads, and it has to happen <b>after</b> the pyramid.
+     *
+     * <p><b>What was wrong, measured on the owner's own world.</b> A national side is drawn from the
+     * players of its own country's clubs ({@code NationalTeamSeeder.squadsFor}) — that is the whole
+     * idea of it. But the squads were seeded in {@link #seedWorldBeforePyramid()}, <b>before</b> any
+     * club existed, so the played country had nothing to draw from and its side came out
+     * <b>empty</b>: Serbia's senior side held <b>0 players</b> and its U-21 side <b>0</b>, while the
+     * forty-seven simulated countries — which are seeded with <b>bot</b> squads, because they have no
+     * clubs either — were fine.
+     *
+     * <p>The world's own code says the side must not be a stand-in: <em>"AKTIVNA liga MORA imati
+     * STVARNE igrace a ne simulirane"</em> — an ACTIVE league must have real players. A country that
+     * is played and cannot field a side is not a played country.
+     *
+     * <p><b>Why this is idempotent and safe to run again.</b> The seeder tops a short side up, leaves
+     * a full one of real players alone, and replaces a bot squad with real players once there are
+     * players to draw. Running it twice is therefore the same as running it once — and running it
+     * before the pyramid as well as after it is harmless: the first pass simply finds nothing to
+     * draw and returns.
+     */
+    private void seedNationalSquadsAfterThePyramid() {
+        nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
+    }
+
     private void seedWorldBeforePyramid() {
         worldCatalogSeeder.seedAll();
         nationalTeamSeeder.seedIfMissing(countryRepository.findAll());
@@ -582,6 +607,9 @@ public class DatabaseInitializer {
             seedWorldBeforePyramid();
             seedWorldBeforePyramid();
         initSerbianFootballStructure();
+            // **After the pyramid, not before** — the played country's national side is drawn from
+            // its clubs, and it had none to draw from when the squads were seeded above.
+            seedNationalSquadsAfterThePyramid();
             ensureSidLeague();
             backfillClubCountries();
             backfillStadiumCeilings();
@@ -1472,6 +1500,9 @@ public class DatabaseInitializer {
     public void buildSerbianStructure() {
         seedWorldBeforePyramid();
         initSerbianFootballStructure();
+        // **After the pyramid, not before.** The played country's national side is drawn from its
+        // clubs, and it had no clubs to draw from when the squads were seeded above.
+        seedNationalSquadsAfterThePyramid();
         ensureSidLeague();
         backfillClubCountries();
         backfillStadiumCeilings();

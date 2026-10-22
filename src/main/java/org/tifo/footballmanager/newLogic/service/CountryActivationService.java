@@ -6,6 +6,7 @@ import org.tifo.footballmanager.newLogic.model.CountryState;
 import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
 import org.tifo.footballmanager.newLogic.repository.CountryRepository;
 import org.tifo.footballmanager.newLogic.util.PyramidBuilder;
+import org.tifo.footballmanager.newLogic.util.NationalTeamSeeder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -35,17 +36,20 @@ public class CountryActivationService {
     private final PyramidBuilder pyramids;
     private final SeasonService seasons;
     private final CountryNamePoolService namePools;
+    private final NationalTeamSeeder nationalTeams;
 
     public CountryActivationService(CountryRepository countries,
                                     CompetitionRepository competitions,
                                     PyramidBuilder pyramids,
                                     SeasonService seasons,
-                                    CountryNamePoolService namePools) {
+                                    CountryNamePoolService namePools,
+                                    NationalTeamSeeder nationalTeams) {
         this.countries = countries;
         this.competitions = competitions;
         this.pyramids = pyramids;
         this.seasons = seasons;
         this.namePools = namePools;
+        this.nationalTeams = nationalTeams;
     }
 
     /** What activating a country produced, for the panel to show rather than "done". */
@@ -83,6 +87,11 @@ public class CountryActivationService {
                 countries.save(country);
                 log.info("{} already had a pyramid; marked it ACTIVE.", country.getName());
             }
+            // **The side is drawn from the country's own players, and it can only be drawn once the
+            // country is ACTIVE.** Before that it is a simulated country, and the seeder gives it a
+            // stand-in squad of generated players — which is what an activated country must not
+            // field. Measured on the owner's world: Serbia's senior side held 0 real players.
+            nationalTeams.seedIfMissing(java.util.List.of(country));
             return new Result(country.getIsoCode(), country.getName(), CountryState.ACTIVE,
                     built.divisions(), built.clubs(), true);
         }
@@ -97,6 +106,10 @@ public class CountryActivationService {
         if (names > 0) {
             log.info("{}: {} name(s) loaded from the pool file.", country.getName(), names);
         }
+        // **And the national side, drawn from the players the pyramid has just created.** The
+        // seeder replaces the stand-in squad with real ones, so an activated country fields real
+        // players from the first match rather than generated names.
+        nationalTeams.seedIfMissing(java.util.List.of(country));
         log.info("Activated {}: {} division(s), {} club(s).", country.getName(), built.divisions(), built.clubs());
         return new Result(country.getIsoCode(), country.getName(), CountryState.ACTIVE,
                 built.divisions(), built.clubs(), false);
