@@ -200,7 +200,7 @@ public class MovementEngine {
             // wall-ring of players pressing the ball can never starve a restart.
             Position resolved = (carrierOffBall || nearClaimSpot)
                     ? newPosition
-                    : separateFromOpponents(p, newPosition, state);
+                    : iterativeSeparate(p, newPosition, state);
             newPosition = resolved;
 
             // FIELD BOUNDARY (user 2026-09-23): players NEVER leave the pitch.
@@ -236,6 +236,32 @@ public class MovementEngine {
      * straight backward into pressure. A straight push-away ring is only the
      * fallback when neither perpendicular direction improves clearance.
      */
+    /**
+     * Iterative separation (F-MV-1, owner decision 2026-10-22): repeat the
+     * single-pass slide until no opponent lies inside MIN_PLAYER_DISTANCE or a
+     * small iteration cap is reached, so a cluster of three or more players
+     * converges instead of leaving the last one overlapping.
+     */
+    private Position iterativeSeparate(Player p, Position proposed, MatchState state) {
+        Position current = proposed;
+        for (int iter = 0; iter < 5; iter++) {
+            Position next = separateFromOpponents(p, current, state);
+            boolean moved = Math.abs(next.getRow() - current.getRow()) > 1e-9
+                    || Math.abs(next.getColumn() - current.getColumn()) > 1e-9;
+            current = next;
+            boolean stable = true;
+            for (Player other : state.getPlayers()) {
+                if (other == p || other.isUnavailable() || other.isLocked()) continue;
+                if (SimUtils.distance(other.getPosition(), current) < MIN_PLAYER_DISTANCE - 1e-9) {
+                    stable = false;
+                    break;
+                }
+            }
+            if (stable || !moved) break;
+        }
+        return current;
+    }
+
     private Position separateFromOpponents(Player p, Position proposed, MatchState state) {
         // Movement-direction unit vector (0,0 when no movement) — used to pick
         // the perpendicular (tangent) slide for the go-around, not the raw
