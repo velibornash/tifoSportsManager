@@ -417,4 +417,33 @@ public class Player {
      */
     @Column(name = "bot_player", nullable = false, columnDefinition = "boolean not null default false")
     private boolean botPlayer = false;
+
+    /**
+     * How this injury happened, in a sentence a manager can read.
+     *
+     * <p><b>Owner, 2026-10-22:</b> *"bilo bi dobro ako mozemo da saznamo kako i zasto bas ovaj
+     * igrac (jel imao fatigue, jel bio duel, jel izvrsena izmena?)"* - it would be good if we could
+     * find out how and why this particular player got hurt: was he fatigued, was it a duel, was a
+     * substitution made?
+     *
+     * <p>The engine knew all three at the moment it injured him and wrote none of them down. The
+     * record said only *"INJURY Nenad Kačar(DR) - KNEE, 34 days, at 14'"* - which is the same in
+     * every injury there has ever been.
+     *
+     * <p>Declared <b>last</b>, for the reason {@code botPlayer} is: Lombok builds the all-args
+     * constructor in field order, and three tests spell every argument out positionally.
+     */
+    @Column(name = "injury_cause", length = 240)
+    private String injuryCause;
+
+    /**
+     * Whether the medical centre has already operated on this injury.
+     *
+     * <p>One operation per injury, because the operation <em>halves</em> what is left and halving it
+     * twice is not a medical decision but a money sink. The flag is what stops the button offering
+     * itself twice.
+     */
+    @Column(name = "injury_surgery_done", nullable = false,
+            columnDefinition = "boolean not null default false")
+    private boolean injurySurgeryDone = false;
 }

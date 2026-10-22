@@ -42,6 +42,14 @@ public class PlayerDTO {
     private Double averageRating10;
     private int injuryDaysRemaining;
     private boolean injured;
+    /** How the injury happened, in a sentence the medical page can show. */
+    private String injuryCause;
+    /** Whether the medical centre can operate on this injury right now. */
+    private boolean surgeryAvailable;
+    /** What the operation would cost. */
+    private double surgeryCost;
+    /** Why it cannot be done, when it cannot. */
+    private String surgeryNote;
 
     /**
      * The player's talent, 1-10 (Sprint 5.3, owner 2026-09-27).
@@ -121,6 +129,9 @@ public class PlayerDTO {
         dto.setAverageRating10(averageRating10);
         dto.setInjuryDaysRemaining(player.getInjuryDaysRemaining());
         dto.setInjured(player.isInjured());
+        // **And how it happened**, so the medical page can answer the question rather than leave the
+        // manager to guess at a number.
+        dto.setInjuryCause(player.getInjuryCause());
         return dto;
     }
 

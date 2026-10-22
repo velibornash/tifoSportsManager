@@ -3,18 +3,24 @@ package org.tifo.footballmanager.newLogic.service;
 import lombok.RequiredArgsConstructor;
 import org.tifo.footballmanager.newLogic.dto.PlayerDTO;
 import org.tifo.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
+import org.tifo.footballmanager.newLogic.exception.ApiException;
+import org.tifo.footballmanager.newLogic.model.FinanceCategory;
+import org.tifo.footballmanager.newLogic.model.FinanceLedgerEntry;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.StaffMember;
 import org.tifo.footballmanager.newLogic.model.StaffRole;
 import org.tifo.footballmanager.newLogic.model.SkillName;
 import org.tifo.footballmanager.newLogic.model.Skills;
 import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.repository.FinanceLedgerEntryRepository;
 import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
 import org.tifo.footballmanager.newLogic.repository.StaffMemberRepository;
 import org.tifo.footballmanager.newLogic.repository.TeamRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -30,11 +36,18 @@ public class TeamMedicalService {
      * injured, and a floor of zero would make the medical centre useless to everybody who has not hired.
      */
     private static final double NO_PHYSIO_FACTOR = 0.6;
+
+    private static final double SURGERY_BASE_FEE = 40_000.0;
+    private static final double SURGERY_PER_DOCTOR_POINT = 2_500.0;
+    private static final double SURGERY_MIN_SHARE = 0.30;
+    private static final double SURGERY_MAX_SHARE = 0.50;
     private static final int RECOVERY_DAY_REDUCTION = 3;
 
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
     private final StaffMemberRepository staffMemberRepository;
+    private final FinanceLedgerEntryRepository ledger;
+    private final SeasonService seasons;
 
     @Transactional(readOnly = true)
     public TeamMedicalOverviewDTO buildOverview(Long teamId) {
@@ -95,6 +108,104 @@ public class TeamMedicalService {
         return buildOverview(team);
     }
 
+    @Transactional
+    public TeamMedicalOverviewDTO applySurgery(Long teamId, Long playerId) {
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return null;
+        }
+        Player player = playerRepository.findById(playerId)
+                .filter(p -> p.getTeam() != null && Objects.equals(p.getTeam().getId(), teamId))
+                .orElse(null);
+        if (player == null) {
+            return null;
+        }
+        if (!player.isInjured() || player.getInjuryDaysRemaining() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NOT_INJURED",
+                    "There is nothing to operate on - he is not injured.");
+        }
+        if (player.isInjurySurgeryDone()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "ALREADY_OPERATED",
+                    "He has already had this operation. One injury, one operation.");
+        }
+        StaffMember doctor = staffMemberRepository.findByTeamId(teamId).stream()
+                .filter(sm -> sm.getRole() == StaffRole.DOCTOR).findFirst().orElse(null);
+        if (doctor == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NO_DOCTOR",
+                    "The club has no doctor, so nobody can operate. Hire one and he can.");
+        }
+
+        int fitness = Math.max(0, Math.min(20, doctor.getFitness() == null ? 0 : doctor.getFitness()));
+        double cost = SURGERY_BASE_FEE + fitness * SURGERY_PER_DOCTOR_POINT;
+        double budget = team.getBudget() == null ? 0.0 : team.getBudget();
+        if (cost > budget) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NO_MONEY",
+                    "The operation costs " + money(cost) + " and the club has " + money(budget) + ".");
+        }
+
+        double share = SURGERY_MIN_SHARE
+                + (fitness / 20.0) * (SURGERY_MAX_SHARE - SURGERY_MIN_SHARE);
+        int remaining = player.getInjuryDaysRemaining();
+        int next = Math.max(0, (int) Math.round(remaining - remaining * share));
+        player.setInjuryDaysRemaining(next);
+        player.setInjurySurgeryDone(true);
+        if (next == 0) {
+            player.setInjurySeasonNumber(null);
+            player.setInjuryWeekNumber(null);
+            player.setInjured(false);
+        }
+        playerRepository.save(player);
+
+        team.setBudget(round2(budget - cost));
+        teamRepository.save(team);
+        ledger.save(FinanceLedgerEntry.of(team, seasonYear(), weekNumber(),
+                FinanceCategory.MEDICAL, -cost,
+                "Operation on " + player.getName() + " - " + remaining + " days of rehab cut to "
+                        + next + " by " + (doctor.getName() == null ? "the club doctor" : doctor.getName())
+                        + " - " + money(cost)));
+
+        return buildOverview(team);
+    }
+
+    private SurgeryOffer surgeryOffer(Team team, Player player) {
+        int remaining = player.getInjuryDaysRemaining();
+        if (!player.isInjured() || remaining <= 0) {
+            return null;
+        }
+        if (player.isInjurySurgeryDone()) {
+            return new SurgeryOffer(false, 0.0, "He has already had this operation.");
+        }
+        StaffMember doctor = staffMemberRepository.findByTeamId(team.getId()).stream()
+                .filter(sm -> sm.getRole() == StaffRole.DOCTOR).findFirst().orElse(null);
+        if (doctor == null) {
+            return new SurgeryOffer(false, 0.0, "The club has no doctor.");
+        }
+        int fitness = Math.max(0, Math.min(20, doctor.getFitness() == null ? 0 : doctor.getFitness()));
+        double cost = SURGERY_BASE_FEE + fitness * SURGERY_PER_DOCTOR_POINT;
+        double share = SURGERY_MIN_SHARE + (fitness / 20.0) * (SURGERY_MAX_SHARE - SURGERY_MIN_SHARE);
+        int next = Math.max(0, (int) Math.round(remaining - remaining * share));
+        return new SurgeryOffer(true, cost, remaining + " days of rehab would become " + next + ".");
+    }
+
+    private record SurgeryOffer(boolean available, double cost, String note) {
+    }
+
+    private int seasonYear() {
+        return seasons.getActiveSeasonYear();
+    }
+
+    private int weekNumber() {
+        return seasons.getCurrentWeek();
+    }
+
+    private String money(double amount) {
+        return String.format("%,.0f EUR", amount);
+    }
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
     /**
      * What the club's physio is worth to a recovery session (owner, 2026-10-18).
      *
@@ -145,6 +256,22 @@ public class TeamMedicalService {
                         .thenComparing(Player::getName, String.CASE_INSENSITIVE_ORDER))
                 .map(PlayerDTO::from)
                 .toList();
+
+        List<PlayerDTO> rows = new ArrayList<>();
+        for (PlayerDTO row : queue) {
+            Player player = players.stream()
+                    .filter(p -> Objects.equals(p.getId(), row.getId()))
+                    .findFirst().orElse(null);
+            if (player != null && player.isInjured()) {
+                SurgeryOffer offer = surgeryOffer(team, player);
+                if (offer != null) {
+                    row.setSurgeryAvailable(offer.available());
+                    row.setSurgeryCost(offer.cost());
+                    row.setSurgeryNote(offer.note());
+                }
+            }
+            rows.add(row);
+        }
 
         return new TeamMedicalOverviewDTO(
                 team.getId(),

@@ -148,6 +148,12 @@ class RealSquadFactoryTest {
                 null,
                 null,
                 // botPlayer (2026-10-20): these are club players, not a bot squad's stand-ins.
+                false,
+                // injuryCause and injurySurgeryDone (2026-10-22): how this injury happened, and
+                // whether the medical centre has already operated on it. The same two rules the
+                // entity's own note gives: "add it at the end" keeps the order stable but never
+                // avoids touching the call sites.
+                null,
                 false);
     }
 

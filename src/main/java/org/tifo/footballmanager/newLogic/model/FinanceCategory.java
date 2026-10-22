@@ -34,6 +34,13 @@ public enum FinanceCategory {
      * changing one.
      */
     STADIUM_CONSTRUCTION(false, "Stadium construction"),
+    /**
+     * An operation, and the medical work that goes with it.
+     *
+     * <p>The doctor's fee is money the club spends to get a player back sooner, and a manager reads
+     * the ledger to know what his club spends money on.
+     */
+    MEDICAL(false, "Medical treatment"),
     JUNIOR_SCHOOL(false, "Junior school"),
     TRANSFER_FEE_OUT(false, "Transfer fees paid"),
     LISTING_FEE(false, "Listing fees"),

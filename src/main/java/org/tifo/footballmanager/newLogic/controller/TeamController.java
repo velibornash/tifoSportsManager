@@ -572,6 +572,25 @@ public class TeamController {
         return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
     }
 
+    /**
+     * The doctor operates: the absence is cut by a share of what is left, and the club pays for it.
+     *
+     * <p>Owner, 2026-10-22: *"stavi da medical center (uz neko placanje koje i nije najjeftinije) moze
+     * da se prepolovi vreme. koliko moze i koliko kosta zavisi od doktora, bez doktora ne moze."*
+     *
+     * <p>Guarded like the recovery session above, because it moves money and it heals a player.
+     */
+    @PostMapping("/{teamId}/medical/surgery/{playerId}")
+    public ResponseEntity<TeamMedicalOverviewDTO> applySurgery(@PathVariable Long teamId,
+                                                                @PathVariable Long playerId,
+                                                                @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        TeamMedicalOverviewDTO overview = teamMedicalService.applySurgery(teamId, playerId);
+        return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
+    }
+
     @GetMapping("/{teamId}/lineup-template")
     public ResponseEntity<Map<String, Object>> getLineupTemplate(@PathVariable Long teamId) {
         Lineup template = lineupRepository.findFirstByTeamIdAndMatchIsNullOrderByIdDesc(teamId).orElse(null);

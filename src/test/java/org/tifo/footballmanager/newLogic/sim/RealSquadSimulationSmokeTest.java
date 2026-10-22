@@ -109,7 +109,15 @@ class RealSquadSimulationSmokeTest {
                 // order stable but never avoids touching the call sites, exactly as the notes above
                 // predicted. Null: nobody in a squad-building test has retired.
                 null,
+                // retiredSeason is an Integer and comes before the boolean below, so it is a null
+                // of its own. One null too few here and every argument after it shifts.
+                null,
                 // botPlayer (2026-10-20): these are club players, not bots.
+                false,
+                // injuryCause and injurySurgeryDone (2026-10-22): how this injury happened, and
+                // whether the medical centre has already operated on it. The entity's own note says
+                // it: "add it at the end" keeps the order stable but never avoids touching the call
+                // sites, exactly as the notes above predicted.
                 null,
                 false);
     }

@@ -151,7 +151,10 @@ class ConditionalSubstitutionFiresInAMatchTest {
                 0, 0, null, false, 0, null, null, null,
                 null, null, 100.0, null, null,
                 // botPlayer (2026-10-20), appended for the same reason: a real player, not a bot.
-                null, null, null, false);
+                null, null, null, false,
+                // injuryCause and injurySurgeryDone (2026-10-22), appended for the same reason:
+                // how this injury happened, and whether the medical centre has already operated.
+                null, false);
     }
 
     private static org.tifo.footballmanager.newLogic.model.Lineup lineupWith(List<Player> starters) {

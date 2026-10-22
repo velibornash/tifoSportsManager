@@ -35,6 +35,14 @@ public class Player {
     private String injuryType;
     /** Days out, decremented by the season loop. Sprint 1.6. */
     private int injuryDaysRemaining;
+    /**
+     * Why he went down, in a sentence a manager can read.
+     *
+     * <p>Owner, 2026-10-22: "bilo bi dobro ako mozemo da saznamo kako i zasto bas ovaj igrac (jel
+     * imao fatigue, jel bio duel, jel izvrsena izmena?)" - the engine knew at the moment it injured
+     * him and wrote none of it down.
+     */
+    private String injuryCause;
     private boolean substituted;
     /**
      * On the bench: in the matchday squad but not on the pitch. A benched player exists so he can
@@ -152,6 +160,8 @@ public class Player {
     public String getInjuryType() { return injuryType; }
     public void setInjuryType(String injuryType) { this.injuryType = injuryType; }
     public int getInjuryDaysRemaining() { return injuryDaysRemaining; }
+    public String getInjuryCause() { return injuryCause; }
+    public void setInjuryCause(String injuryCause) { this.injuryCause = injuryCause; }
     public void setInjuryDaysRemaining(int d) { this.injuryDaysRemaining = d; }
 
     public boolean isSubstituted() { return substituted; }

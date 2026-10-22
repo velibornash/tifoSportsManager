@@ -830,6 +830,9 @@ public class SimMatchService {
                 dbPlayer.setInjuryDaysRemaining(p.getInjuryDaysRemaining());
                 dbPlayer.setInjurySeasonNumber(season);
                 dbPlayer.setInjuryWeekNumber(week);
+                // **And why it happened**, so the medical page can answer the question instead of
+                // leaving the manager to guess.
+                dbPlayer.setInjuryCause(p.getInjuryCause());
             }
             playerRepository.save(dbPlayer);
         }

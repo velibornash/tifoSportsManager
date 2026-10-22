@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.sim.engine;
 
 import org.tifo.footballmanager.newLogic.sim.model.MatchState;
 import org.tifo.footballmanager.newLogic.sim.model.Player;
+import org.tifo.footballmanager.newLogic.sim.recording.MatchEvent;
 import org.tifo.footballmanager.newLogic.sim.recording.MatchRecorder;
 import org.tifo.footballmanager.newLogic.sim.result.ProposalStatsCollector;
 import org.tifo.footballmanager.newLogic.sim.util.SimulationRandom;
@@ -71,6 +72,12 @@ public class InjuryService {
 
     /** Fatigue is 0..1 here; above ~0.5 the risk curve starts to bite. */
     private static final double FATIGUE_THRESHOLD = 0.5;
+
+    /** Above this a player was already spent when he went down, and the record says so. */
+    private static final double EXHAUSTED_FATIGUE = 0.5;
+
+    /** How many recent events are searched for the duel that caused an injury. */
+    private static final int RECENT_EVENTS = 40;
     private static final double FATIGUE_SLOPE = 0.00022;
 
     /** Winger and striker take more risks, so they go down slightly more often. */
@@ -97,6 +104,23 @@ public class InjuryService {
         this.stats = stats;
     }
 
+    /**
+     * The longest absence a single injury can cause, in days.
+     *
+     * <p><b>Owner, 2026-10-22:</b> *"34 dana povreda, sa 2 ligaske utakmice nedeljno plus
+     * potencijalno internationl / cup ili friendly to je skoro 20 utakmica... koliko god to verovatno
+     * bilo realno, ljude koji vole igrice to smara... ok imamo medical center but still"*.
+     *
+     * <p>A week is seven days and the club plays two league games in it, so a month is about eight
+     * matches — and a player who misses eight matches in a season is a quarter of his football. A
+     * thirty-four-day absence was a third of the season, and it was the engine's own roll rather than
+     * a decision: a knee could run to thirty-five days and a fracture to ninety.
+     *
+     * <p><b>Three weeks.</b> Long enough to be a real absence and short enough that a season is not
+     * decided by one injury — and the medical centre can halve what is left of it.
+     */
+    public static final int MAX_INJURY_DAYS = 23;
+
     /** Injury types with realistic absence ranges. Weighted by frequency. */
     public enum InjuryType {
         KNOCK(1, 4, 0.20),          // dead leg, bruising
@@ -120,6 +144,20 @@ public class InjuryService {
 
         public int minDays() { return minDays; }
         public int maxDays() { return maxDays; }
+    }
+
+    /**
+     * How many days this injury keeps him out.
+     *
+     * <p>The type's range is how long that injury <em>can</em> last; the cap is how long the game will
+     * have anybody missing. A knee ran to thirty-five days and a fracture to ninety, and a week is
+     * seven days and the club plays two league games in it - so a month was a third of a season.
+     *
+     * @param type the injury
+     * @param rolled the number of days the roll produced
+     */
+    public static int daysOutFor(InjuryType type, int rolled) {
+        return Math.min(rolled, MAX_INJURY_DAYS);
     }
 
     /** Called once per tick by the orchestrator. */
@@ -156,16 +194,22 @@ public class InjuryService {
 
         InjuryType type = rollType();
         int days = SimulationRandom.nextInt(type.maxDays() - type.minDays() + 1) + type.minDays();
+        // **And never more than three weeks.** The type's range is how long that injury *can* last; the
+        // cap is how long the game will have anyone missing.
+        days = daysOutFor(type, days);
+        // **Why he went down.** The engine knew at this moment and wrote none of it down.
+        String cause = causeOf(player, tick);
 
         player.setInjured(true);
         player.setInjuryType(type.name());
         player.setInjuryDaysRemaining(days);
+        player.setInjuryCause(cause);
         // An injury costs condition on top of the lay-off.
         player.setFatigue(Math.min(1.0, player.getFatigue() + 0.06));
 
         int minute = tick / 40;
         String msg = "INJURY " + player.getLabel() + "(" + player.getRole() + ") - " + type
-                + ", " + days + " days, at " + minute + "'";
+                + ", " + days + " days, at " + minute + "' (" + cause + ")";
         if (state.getActionLogger() != null) state.getActionLogger().log("INJ", msg);
         if (recorder != null) {
             recorder.appendEvent(tick, "INJURY", msg, player, null);
@@ -173,6 +217,58 @@ public class InjuryService {
         if (stats != null) {
             stats.onInjury(team, player.getId(), type.name(), days);
         }
+    }
+
+    /**
+     * Why this player went down, in a sentence a manager can read.
+     *
+     * <p><b>Owner, 2026-10-22:</b> *"bilo bi dobro ako mozemo da saznamo kako i zasto bas ovaj
+     * igrac (jel imao fatigue, jel bio duel, jel izvrsena izmena?)"* - was he fatigued, was it a
+     * duel, was a substitution made?
+     *
+     * <p>Three things the engine knows at the moment it injures a player, and all three used to be
+     * thrown away:
+     * <ul>
+     *   <li><b>How tired he was.</b> The fatigue the match has already put into him, on a 0-1 scale. A
+     *       player above the halfway mark was already spent when it happened.</li>
+     *   <li><b>Whether it came out of a duel.</b> The recorder holds every duel of the match with the
+     *       two players named in it, so the last one this player was in is findable.</li>
+     *   <li><b>Whether he had only just come on.</b> A substitute who is hurt five minutes after
+     *       walking on is a different story from a starter who is hurt in the eightieth minute, and the
+     *       manager reading the medical page cannot tell them apart without being told.</li>
+     * </ul>
+     */
+    private String causeOf(Player player, int tick) {
+        boolean exhausted = player.getFatigue() >= EXHAUSTED_FATIGUE;
+        String duel = lastDuelInvolving(player.getLabel());
+        if (duel != null) {
+            return exhausted ? "in a duel, and he was already exhausted" : "in a duel";
+        }
+        if (player.isSubstituted()) {
+            return exhausted ? "seconds after coming on, and exhausted" : "seconds after coming on";
+        }
+        return exhausted ? "the wear and tear of a tired player" : "the wear and tear of the season";
+    }
+
+    /**
+     * The last duel this player was in, or null if the match had not seen one.
+     *
+     * <p>Read from the recorder, which holds every duel with both players named. Only the last few
+     * events are looked at: a duel from the first minute is not what injured him in the eightieth.
+     */
+    private String lastDuelInvolving(String label) {
+        List<MatchEvent> events = recorder.getEvents();
+        for (int i = events.size() - 1; i >= 0 && i >= events.size() - RECENT_EVENTS; i--) {
+            MatchEvent event = events.get(i);
+            if (!"DUEL".equals(event.getType())) {
+                continue;
+            }
+            String description = event.getDescription();
+            if (description != null && description.contains(label)) {
+                return "in a duel";
+            }
+        }
+        return null;
     }
 
     /**

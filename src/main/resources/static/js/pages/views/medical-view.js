@@ -24,8 +24,19 @@ export function createMedicalView(deps) {
                 const fatigueText = Number.isFinite(fatigue) ? `${Math.round(fatigue)} fatigue` : 'Fatigue n/a';
                 const injuryText = player?.injured
                     ? `Injured \u00B7 ${player?.injuryDaysRemaining ?? 0} days`
+                        + (player?.injuryCause ? ` \u00B7 ${player.injuryCause}` : '')
                     : 'Available \u00B7 managed recovery';
                 const actionLabel = player?.injured ? 'Speed up recovery' : 'Recovery session';
+                // **The operation, and what it costs.** The doctor decides how much of the absence he
+                // can take and what the club pays for it, and a manager cannot decide on a button
+                // that does not say either.
+                const surgeryNote = player?.injured && !player?.surgeryAvailable && player?.surgeryNote
+                    ? `<div class="fm-medical-card-subtle">${htmlEscape(player.surgeryNote)}</div>`
+                    : '';
+                const surgeryButton = player?.injured && player?.surgeryAvailable
+                    ? `<button type="button" class="fm-action-btn secondary"
+                        data-medical-surgery-player="${player?.id ?? ''}">Operate \u00B7 ${Math.round(player?.surgeryCost ?? 0).toLocaleString('en-US')} EUR</button>`
+                    : '';
                 return `
                     <tr>
                         <td class="sq-name"><strong>${htmlEscape(player?.name || 'Player')}</strong></td>
@@ -47,8 +58,10 @@ export function createMedicalView(deps) {
                         <td>
                             <div class="fm-medical-actions">
                                 <button type="button" class="fm-action-btn secondary" data-medical-recover-player="${player?.id ?? ''}">${actionLabel}</button>
+                                ${surgeryButton}
                                 <button type="button" class="fm-action-btn secondary" data-medical-open-player="${player?.id ?? ''}">Open player</button>
                             </div>
+                            ${surgeryNote}
                         </td>
                     </tr>`;
             };
@@ -134,6 +147,23 @@ export function createMedicalView(deps) {
                         // manager pressed a button and deserves to read the answer.
                         console.error('Medical recovery failed:', err);
                         window.alert(apiErrorMessage(err, 'The recovery could not be arranged.'));
+                        button.disabled = false;
+                    }
+                });
+            });
+            mainContent.querySelectorAll('[data-medical-surgery-player]').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const playerId = Number(button.dataset.medicalSurgeryPlayer || 0);
+                    if (!playerId) return;
+                    button.disabled = true;
+                    try {
+                        await authFetch(`/teams/${teamId}/medical/surgery/${playerId}`, { method: 'POST' });
+                        await loadMedicalCenter();
+                    } catch (err) {
+                        // The server refused and says why - no doctor, no money, or he has already had
+                        // this operation. The sentence is shown, because a manager pressed a button.
+                        console.error('The operation failed:', err);
+                        window.alert(apiErrorMessage(err, 'The operation could not be arranged.'));
                         button.disabled = false;
                     }
                 });
