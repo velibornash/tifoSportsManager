@@ -231,6 +231,41 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+                **A test run must never open a browser on the owner's machine.**
+
+                <p>{@code BrowserLauncher} is an {@code ApplicationRunner}, and {@code @SpringBootTest}
+                runs the application runners. It has three guards against opening a browser in a test —
+                the {@code test} profile, {@code application-test.properties} setting
+                {@code app.open-browser=false}, and the property being honoured only when set — and
+                <b>all three were defeated by the same thing</b>: the {@code test} profile is never
+                activated. {@code application.properties} sets {@code spring.profiles.active=dev}, the
+                dev profile points at the owner's PostgreSQL, and there is no surefire configuration
+                to say otherwise. So the profile is {@code dev}, {@code application-test.properties} is
+                never read, and the launcher ran with {@code matchIfMissing = true} — and on macOS
+                {@code /usr/bin/open http://localhost:8080/login.html} opened <b>the owner's own
+                browser</b>, once for every test run that booted a context.
+
+                <p>The property is set here, as a system property, because it is the one thing that has
+                to be true of every test run and does not depend on a profile, a properties file or a
+                code path somebody has to remember. It changes nothing else: the datasource stays
+                where it is, the clock stays where it is, and the owner's own start from the IDE still
+                opens the browser — that is the {@code app.open-browser} default and it is not touched
+                here.
+
+                <p>Turning the whole suite onto the H2 test database is the other half of this and is
+                a decision of its own (the suite's PostgreSQL-only behaviour has to be checked against
+                it first). It is filed, not done.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <app.open-browser>false</app.open-browser>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
