@@ -107,7 +107,9 @@ public class PlayerFactory {
                     .seededWeeklyWage(value, age);
             double height = (double) row[5];
             double weight = (double) row[6];
-            double form = (double) row[7];
+            // **P0-55:** column 7 holds 10-18, which is off the 0-10 form scale. The owner's data is
+            // his, but the value has to land on the scale, so it is clamped here and on every read.
+            double form = Math.min(10.0, Math.max(0.0, (double) row[7]));
             int stamina = (int) row[9];
             int keeper = (int) row[10];
             int defender = (int) row[11];
