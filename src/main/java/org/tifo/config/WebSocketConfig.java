@@ -1,46 +1,14 @@
 package org.tifo.config;
 
-import org.tifo.commonmanager.util.websocket.JwtHandshakeInterceptor;
-import org.tifo.commonmanager.util.websocket.MatchEventWSHandler;
-import org.tifo.commonmanager.util.websocket.PositionWSHandler;
-import org.tifo.commonmanager.util.old.MatchEventWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.web.socket.config.annotation.EnableWebSocket;
-import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
-import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
+/**
+ * Scheduling is enabled here. The WebSocket endpoints that used to live in this class are gone: they
+ * had no client (P0-19), so they were dead weight - open sockets, a JWT handshake on every upgrade,
+ * and handlers that nothing ever called.
+ */
 @Configuration
-@EnableWebSocket
 @EnableScheduling
-public class WebSocketConfig implements WebSocketConfigurer {
-
-    private final MatchEventWebSocketHandler matchEventHandler;
-    private final PositionWSHandler demoPositionHandler;
-    private final MatchEventWSHandler demoEventHandler;
-    private final MatchEventWSHandler matchLiveHandler;
-    private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
-
-
-    public WebSocketConfig(
-            MatchEventWebSocketHandler matchEventHandler,
-            @Lazy PositionWSHandler demoPositionHandler,
-            @Lazy MatchEventWSHandler demoEventHandler,
-            @Lazy MatchEventWSHandler matchLiveHandler,
-            JwtHandshakeInterceptor jwtHandshakeInterceptor) {
-        this.matchEventHandler = matchEventHandler;
-        this.demoPositionHandler = demoPositionHandler;
-        this.demoEventHandler = demoEventHandler;
-        this.matchLiveHandler = matchLiveHandler;
-        this.jwtHandshakeInterceptor = jwtHandshakeInterceptor;
-    }
-
-    @Override
-    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(matchEventHandler, "/match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOriginPatterns("*");
-        registry.addHandler(demoPositionHandler, "/demo-position-updates").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
-        registry.addHandler(demoEventHandler, "/demo-match-events").addInterceptors(jwtHandshakeInterceptor).setAllowedOrigins("*");
-        registry.addHandler(matchLiveHandler, "/ws/match-live").addInterceptors(jwtHandshakeInterceptor).setAllowedOriginPatterns("*");
-    }
+public class WebSocketConfig {
 }
