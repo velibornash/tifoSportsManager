@@ -253,15 +253,33 @@
                 opens the browser — that is the {@code app.open-browser} default and it is not touched
                 here.
 
-                <p>Turning the whole suite onto the H2 test database is the other half of this and is
-                a decision of its own (the suite's PostgreSQL-only behaviour has to be checked against
-                it first). It is filed, not done.
+                <p><b>What this cannot do.</b> A handful of tests are PostgreSQL-only - the ledger's
+                `DISTINCT ON` query, the check constraints, the unique indexes the seeders trip over -
+                and they are the ones that need a real PostgreSQL to talk to. A test that exercises
+                PostgreSQL-only behaviour against H2 is a test that does not exercise it, and those
+                tests say so in their own assertions.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
+                        <!-- **The clock does not move, and no browser opens.**
+                             The dev profile points at the owner's world and has the game clock's
+                             scheduler ON, so a test run wrote into it and the matchday job persisted
+                             real matches into it - measured: nine of them, from one test class's
+                             context boot. A "green" test run moved the owner's season.
+
+                             **The clock, and only the clock.** The world itself is not isolated,
+                             and it cannot be: the suite is written against a populated world. Measured,
+                             the service package alone is 623 errors against an empty database and
+                             721 against H2, because the tests count the clubs, the players and the
+                             fixtures of a real one. A test that cannot see the world cannot measure
+                             it. So the world stays, and what stops is the **movement**: with the
+                             scheduler off, a test run no longer advances the owner's season.
+                             (The database `sokker_test` was created for the attempt and is left
+                             there; it is not used.) -->
+                        <game.clock.scheduler-enabled>false</game.clock.scheduler-enabled>
                         <app.open-browser>false</app.open-browser>
                     </systemPropertyVariables>
                 </configuration>
