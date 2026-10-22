@@ -45,7 +45,7 @@ public final class MatchEngineRules {
      * power is a guess in all three directions, and a named constant that can be checked against a
      * measured home win rate is worth more than a formula nobody can verify.
      */
-    public static final double HOME_ADVANTAGE_DUEL_POWER = 0.3;
+    public static final double HOME_ADVANTAGE_DUEL_POWER = 0.0;
 
     /** Whether a team label is the home side. Named once so the engine cannot disagree with itself. */
     public static boolean isHome(String team) {

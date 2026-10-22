@@ -241,12 +241,11 @@ public class DuelEngine {
     }
 
     /**
-     * How sharply a duel rewards skill. Chosen so the measured duel win rate of
-     * the stronger side is ~52% at a 1-point gap, ~60% at 2, ~67% at 4 and ~86% at
-     * 10 — a clear edge that is never certainty. At 0.5 a single point of skill
-     * decided three duels in four.
+     * How sharply a duel rewards skill. Raised from 0.18 to 0.22 (owner, 2026-10-22) so a
+     * defender's edge bites a little harder: ~53% at a 1-point gap, ~62% at 2, ~70% at 4.
+     * A clear edge that is never certainty.
      */
-    private static final double DUEL_SKILL_SENSITIVITY = 0.18;
+    private static final double DUEL_SKILL_SENSITIVITY = 0.22;
 
     /**
      * Apply duel result (winner gets ball).
