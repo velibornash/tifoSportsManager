@@ -114,7 +114,22 @@ public class TacticsRulesProvider {
      * class of confusion that produced the P0 fixture/match defect, and the keys are different kinds of
      * thing, so they are never mixed in one map.
      */
-    private final Map<Long, TacticsRules> cache = new ConcurrentHashMap<>();
+    /**
+     * Bounded LRU cache for parsed tactic rules.
+     *
+     * <p><b>P0-54:</b> this used to be an unbounded {@code ConcurrentHashMap} that held every
+     * club's parsed rules for the life of the JVM - 14,723 clubs, each around 132 KB of JSON,
+     * which is what killed the day-5 cup prepare (54 ties, OOM, Tomcat poller dead, world
+     * stuck). Bounding it keeps the hot tactics in memory and lets the rest be re-parsed on
+     * demand, which costs a parse but not the heap.
+     */
+    private final Map<Long, TacticsRules> cache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<Long, TacticsRules>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<Long, TacticsRules> eldest) {
+                    return size() > 512;
+                }
+            });
 
     /** Which tactic is a club's default, or absent when it has none. Kept out of {@link #cache}. */
     private final Map<Long, Long> defaultTacticByTeam = new ConcurrentHashMap<>();
@@ -135,7 +150,13 @@ public class TacticsRulesProvider {
      * around 132 KB, and uncached it would be re-read on every match construction for every club that has
      * not been given a tactic.
      */
-    private final Map<Long, TacticsRules> legacyCache = new ConcurrentHashMap<>();
+    private final Map<Long, TacticsRules> legacyCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<Long, TacticsRules>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<Long, TacticsRules> eldest) {
+                    return size() > 128;
+                }
+            });
 
     public TacticsRulesProvider(TeamTacticsProfileRepository profiles, TeamRepository teams,
                                 org.tifo.footballmanager.newLogic.repository.TacticRepository tactics) {
