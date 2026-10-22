@@ -133,7 +133,7 @@ public class SimulationController {
                     .body(Map.of("status", "error", "code", "NO_TEAM",
                             "message", "Your account does not manage a club."));
         }
-        GameClock clock = gameClockService.getOrCreateClock();
+        org.tifo.footballmanager.newLogic.model.GameClock clock = seasonService.getOrCreateClock();
         int gameDay = (clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) * 1000
                 + (clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) * 10
                 + (clock.getCurrentDay() == null ? 1 : clock.getCurrentDay());
