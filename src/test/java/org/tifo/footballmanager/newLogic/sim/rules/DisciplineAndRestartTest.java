@@ -166,32 +166,6 @@ class DisciplineAndRestartTest {
         assertTrue(taker.isAttacker(), "penalty taker should be an attacker");
     }
 
-    @Test
-    void deferredOffsideCreatesFreeKickAndRecorderEvent() {
-        MatchState state = new MatchState();
-        Player carrier = attacker(new Position(4.5, 3.5), "STL");
-        Player receiver = player("HOME", new Position(7.0, 3.5), "STR");
-        Player defender = player("AWAY", new Position(6.5, 3.5), "DCL");
-        state.getPlayers().add(carrier);
-        state.getPlayers().add(receiver);
-        state.getPlayers().add(defender);
-        state.setCarrier(carrier);
-        state.setPendingVARReview("ONSIDE_CHECK", receiver, "AWAY");
-        state.setOffsideDeferred(true);
-        state.setOffsideDeferredDecisionForward(true);
-
-        MatchRecorder recorder = new MatchRecorder();
-        OffsideService service = new OffsideService(
-                state, null, recorder, new RestartManager());
-        service.resolvePendingVAROffside(state);
-
-        assertEquals("AWAY", state.getRestartTeam());
-        assertEquals("FREE_KICK", state.getSetPieceType());
-        assertNull(state.getCarrier());
-        assertEquals(1, recorder.getEvents().stream()
-                .filter(event -> "OFFSIDE".equals(event.getType()))
-                .count());
-    }
 
     // ------------------------------------------------------------------- VAR
 

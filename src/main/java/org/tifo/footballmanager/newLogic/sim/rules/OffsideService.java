@@ -288,12 +288,11 @@ public class OffsideService implements EngineInterfaces.OffsideService {
             return false;
         }
 
-        if (state.isOffsideDeferredDecisionForward()) {
-            confirmOffside(receiver, carrierTeam(receiver, state), state,
-                    "offside (deferred, forward-attack)");
-            return true;
-        }
-
+        // No forward-attack deferred branch: nothing in newLogic ever sets
+        // offsideDeferredDecisionForward, and a marginally offside player who
+        // never scores is not called offside under the current model (the
+        // whistle fires at reception for the 0.30+ band; the 0-0.30 band is
+        // held for VAR review on goal only). Removed as dead code (F-DE-4).
         state.clearPendingVARReview();
         state.setOffsideDeferred(false);
         return false;
