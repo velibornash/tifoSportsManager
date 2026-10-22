@@ -139,16 +139,16 @@ export function createCountryView(deps) {
                             <div class="fm-subtle">${htmlEscape(cup.cup)} · ${htmlEscape(cup.places)} place${cup.places === 1 ? '' : 's'}</div>
                             <div class="fm-squad-wrap">
                             <table class="fm-squad fm-league-table fm-qualifying-table">
-                                <thead><tr><th>Pos</th><th>Club</th><th>Pts</th><th>GD</th><th>Status</th></tr></thead>
+                                <thead><tr>
+                                    <th class="fq-pos">Pos</th>
+                                    <th class="fq-club">Club</th>
+                                    <th class="fq-pts">Pts</th>
+                                    <th class="fq-gd">GD</th>
+                                    <th class="fq-status">Status</th>
+                                </tr></thead>
                                 <tbody>${(Array.isArray(cup.standings) ? cup.standings : []).map(row => {
-                                    // T1-13b: build the class list rather than assigning one class.
-                                    // The old code was `class="is-qualified"` which OVERWRITES any
-                                    // existing class, so a club that is both qualifying AND the
-                                    // manager's own could only ever show one of the two.
                                     const classes = [];
                                     if (row.qualifies) classes.push('is-qualified');
-                                    // Compare by id, not by name. Name comparison has been burned
-                                    // four times in this codebase.
                                     const myTeamId = deps.getTeamId?.() ?? null;
                                     if (myTeamId !== null && myTeamId !== undefined
                                             && row.teamId !== null && row.teamId !== undefined
@@ -157,11 +157,11 @@ export function createCountryView(deps) {
                                     }
                                     return `
                                     <tr${classes.length ? ` class="${classes.join(' ')}"` : ''}>
-                                        <td>${htmlEscape(String(row.position ?? '—'))}</td>
-                                        <td>${htmlEscape(row.teamName || 'Unknown club')}</td>
-                                        <td>${htmlEscape(String(row.points ?? 0))}</td>
-                                        <td>${htmlEscape(String(row.goalDifference ?? 0))}</td>
-                                        <td>${row.qualifies ? 'Qualifies' : 'Candidate'}</td>
+                                        <td class="fq-pos">${htmlEscape(String(row.position ?? '—'))}</td>
+                                        <td class="fq-club">${htmlEscape(row.teamName || 'Unknown club')}</td>
+                                        <td class="fq-pts">${htmlEscape(String(row.points ?? 0))}</td>
+                                        <td class="fq-gd">${htmlEscape(String(row.goalDifference ?? 0))}</td>
+                                        <td class="fq-status">${row.qualifies ? 'Qualifies' : 'Candidate'}</td>
                                     </tr>`;
                                 }).join('')}</tbody>
                             </table>

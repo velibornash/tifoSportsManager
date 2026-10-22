@@ -599,7 +599,7 @@
     .fm-page--country .fm-world-table,
     .fm-page--country .fm-qualifying-table,
     .fm-clubs-ranking .fm-clubs-ranking-table {
-        min-width: 540px;
+        min-width: 360px;
     }
     /* The World page's competitions list. It has three columns and the last one carries a status
        sentence ("120 fixtures . week 5 . season 1"), which is what pushed it off the right edge.
