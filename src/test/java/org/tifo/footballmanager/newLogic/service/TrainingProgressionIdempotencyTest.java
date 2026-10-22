@@ -252,7 +252,6 @@ class TrainingProgressionIdempotencyTest {
     private TrainingFacilityService neutralFacilities() {
         TrainingFacilityService service = mock(TrainingFacilityService.class);
         when(service.trainingMultiplier(any())).thenReturn(1.0);
-        when(service.tacticalMultiplier(any())).thenReturn(1.0);
         return service;
     }
 

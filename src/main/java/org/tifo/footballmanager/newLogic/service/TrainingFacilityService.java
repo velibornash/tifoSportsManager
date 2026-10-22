@@ -138,19 +138,6 @@ public class TrainingFacilityService {
     }
 
     /**
-     * How well this club's shape works, from the TACTICAL facility (T-FAC-1).
-     *
-     * <p>Same curve and same reasoning as {@link #trainingMultiplier}, on the other half of the owner's
-     * sentence. It is the facility a manager reads as *the tactical room*.
-     *
-     * @return a multiplier on the shape's quality; 1.0 at level 1, and never less than 1.0
-     */
-    @Transactional(readOnly = true)
-    public double tacticalMultiplier(Team team) {
-        return multiplierFor(team, Facility.TACTICAL);
-    }
-
-    /**
      * The shared curve, so the two facilities cannot drift apart.
      *
      * <p>One method rather than two: a training multiplier at {@code sqrt} and a tactical multiplier at

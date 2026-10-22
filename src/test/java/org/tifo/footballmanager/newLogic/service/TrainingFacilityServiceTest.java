@@ -213,18 +213,6 @@ class TrainingFacilityServiceTest {
     }
 
     @Test
-    @DisplayName("the tactical facility shapes better, on the same curve")
-    void theTacticalFacilityShapesBetter() {
-        Team level1 = aClubWith(1, 1, 1, 1);
-        Team level10 = aClubWith(1, 1, 10, 1);
-        assertTrue(service.tacticalMultiplier(level10) > service.tacticalMultiplier(level1),
-                "the tactical facility does nothing, which is half of what he paid for");
-        // The same curve, so a club cannot buy one and get more out of it than the other.
-        assertEquals(service.trainingMultiplier(aClubWith(12, 1, 1, 1)),
-                service.tacticalMultiplier(aClubWith(1, 1, 12, 1)), 0.0001);
-    }
-
-    @Test
     @DisplayName("level 18 buys less than level 2 - diminishing returns")
     void theCurveFlattens() {
         double at2 = service.trainingMultiplier(aClubWith(2, 1, 1, 1)) - 1.0;
@@ -251,7 +239,6 @@ class TrainingFacilityServiceTest {
         club.setName("ZZ No ground " + System.nanoTime());
         club = teams.save(club);
         assertEquals(1.0, service.trainingMultiplier(club), 0.0001);
-        assertEquals(1.0, service.tacticalMultiplier(null), 0.0001);
     }
 
     /**
