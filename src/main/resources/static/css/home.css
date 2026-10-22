@@ -315,4 +315,47 @@ body {
     html {
         font-size: 18px;
     }
+
+    /*
+     * **The four cards have to fit on a laptop, not scroll.**
+     *
+     * <p>Owner, 2026-10-22: "treba naslov TIFO MANAGER, podnaslov Sports lobby kao i ove 4 kocke sa
+     * sportovima podignuti malo ka gore jer ima prostora pa da ih ne odseca sa donje strane pa mora da
+     * se skroluje da se vide lepo sve 4 kocke."
+     *
+     * <p>On the desktop the page had 100px of air above the title, 60px between the subtitle and the
+     * cards, and cards of 285px - so the second row fell below the fold and the whole lobby had to be
+     * scrolled to see all four. The title and the subtitle are lifted with them, so the block reads as
+     * one thing rather than as a heading with a grid hanging under it.
+     *
+     * <p><b>What is given back, and where.</b> 44px of the top padding, 24px of the gap under the
+     * subtitle, and 28px off each card - 12 of padding, 8 of the icon's margin, 8 of the button's -
+     * which is 16px per row of cards. **The cards come out 257px tall instead of 285**, and the second
+     * row ends 124px higher than it did.
+     *
+     * <p>The tablet and the phone are untouched: they carry their own rules, and on a phone the four
+     * cards are one column and the page scrolls whatever happens.
+     *
+     * <p><b>Computed from the stylesheet, not measured in a browser</b> - the numbers above are the
+     * card's own measurement and this block's own paddings.
+     */
+    .home-wrapper {
+        padding-top: 56px;
+    }
+
+    .hero {
+        margin-bottom: 36px;
+    }
+
+    .game-card {
+        padding: 26px 24px;
+    }
+
+    .game-card-icon {
+        margin-bottom: 8px;
+    }
+
+    .game-card-status {
+        margin-top: 12px;
+    }
 }
