@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import jakarta.transaction.Transactional;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
@@ -200,6 +201,6 @@ public class NationalTournamentWorldService {
     public java.time.LocalDateTime now() {
         return clocks.findById(1L)
                 .map(org.tifo.footballmanager.newLogic.model.GameClock::getCurrentDate)
-                .orElse(java.time.LocalDateTime.of(2026, 7, 1, 12, 0));
+                .orElse(org.tifo.footballmanager.newLogic.model.GameTimeline.seasonStartFallback());
     }
 }

@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.GameClock;
@@ -112,7 +113,7 @@ public class NationalTournamentSeeder {
 
     private LocalDateTime seasonStart() {
         return clocks.findById(1L).map(GameClock::getCurrentDate)
-                .orElse(LocalDateTime.of(2026, 7, 1, 12, 0));
+                .orElse(GameTimeline.seasonStartFallback());
     }
 
     // ---------- entrants ----------

@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
 import org.tifo.footballmanager.newLogic.model.CompetitionScope;
@@ -87,7 +88,7 @@ public class InternationalFixtureSeeder {
     private LocalDateTime seasonStart() {
         return clocks.findById(1L)
                 .map(org.tifo.footballmanager.newLogic.model.GameClock::getCurrentDate)
-                .orElse(LocalDateTime.of(2026, 7, 1, 12, 0));
+                .orElse(GameTimeline.seasonStartFallback());
     }
 
     public InternationalFixtureSeeder(CompetitionRepository competitions,

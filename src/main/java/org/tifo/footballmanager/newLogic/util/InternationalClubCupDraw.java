@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.util;
 
+import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionEntry;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
@@ -134,7 +135,7 @@ public class InternationalClubCupDraw {
     private java.time.LocalDateTime seasonStart() {
         return clocks.findById(1L)
                 .map(org.tifo.footballmanager.newLogic.model.GameClock::getCurrentDate)
-                .orElse(java.time.LocalDateTime.of(2026, 7, 1, 12, 0));
+                .orElse(org.tifo.footballmanager.newLogic.model.GameTimeline.seasonStartFallback());
     }
 
     public InternationalClubCupDraw(org.tifo.footballmanager.newLogic.service.RankingTieBreakService tieBreaks,

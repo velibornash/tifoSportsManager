@@ -55,6 +55,24 @@ public final class GameTimeline {
      */
     public static final ZoneId GAME_ZONE = ZoneId.of("Europe/Belgrade");
 
+    /**
+     * The season start to use when the clock row is missing.
+     *
+     * <p><b>Not a calendar date.</b> Five fallbacks used to answer this question with their own copy of
+     * a fixed July-2026 noon — literal year, month, hour and minute in five different files. A season
+     * here is twelve weeks counted from 1 and there is no calendar year anywhere in it, so that literal
+     * was not "the start of a season": it was the day the repository happened to be written, and once
+     * real time passed it the fallback stamped fixtures into the past.
+     *
+     * <p>{@code SeasonService.getOrCreateClock} already answers it the only way that stays true: a new
+     * world starts at season 1, week 1, day 1, so its anchor is <b>now</b>. This is the same rule, so a
+     * caller that reaches it while the row is still being created stamps the same date the row is
+     * about to hold.
+     */
+    public static LocalDateTime seasonStartFallback() {
+        return LocalDateTime.now(GAME_ZONE).withSecond(0).withNano(0);
+    }
+
     /** A season is twelve weeks of seven days. Read from the calendar rather than restated. */
     public static final int DAYS_PER_SEASON = SeasonCalendar.WEEKS_PER_SEASON * GameDay.LAST;
 
