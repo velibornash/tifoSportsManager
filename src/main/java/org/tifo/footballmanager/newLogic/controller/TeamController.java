@@ -277,6 +277,36 @@ public class TeamController {
         return ResponseEntity.ok(Map.of("name", trimmed));
     }
 
+    /**
+     * Kit editor (P0-32 follow-up): change the club's home/away kit colours and pattern.
+     */
+    @PutMapping("/{teamId}/kit")
+    public ResponseEntity<Map<String, Object>> updateKit(@PathVariable Long teamId,
+                                                          @RequestBody Map<String, String> body,
+                                                          @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.notFound().build();
+        }
+        String home = body.get("homeKitColor");
+        String away = body.get("awayKitColor");
+        String pattern = body.get("kitPattern");
+        if (home != null && home.matches("#[0-9a-fA-F]{6}")) team.setHomeKitColor(home);
+        if (away != null && away.matches("#[0-9a-fA-F]{6}")) team.setAwayKitColor(away);
+        if (pattern != null) {
+            try { team.setKitPattern(Team.KitPattern.valueOf(pattern.toUpperCase())); }
+            catch (IllegalArgumentException ignored) { }
+        }
+        teamRepository.save(team);
+        return ResponseEntity.ok(Map.of(
+                "homeKitColor", team.getHomeKitColor(),
+                "awayKitColor", team.getAwayKitColor(),
+                "kitPattern", team.getKitPattern().name()));
+    }
+
     @GetMapping("/{teamId}/coaches")
     public ResponseEntity<List<Map<String, Object>>> getCoaches(@PathVariable Long teamId) {
         List<Map<String, Object>> coaches = new ArrayList<>();
