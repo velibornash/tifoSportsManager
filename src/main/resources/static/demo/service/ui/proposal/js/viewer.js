@@ -261,7 +261,7 @@ class OverlayManager {
     this._subEl.textContent = '';
     this._el.className = 'overlay visible var-decision';
     this._active = true;
-    this._resumeTime = performance.now() + 2200; // 2.2 seconds
+    this._resumeTime = performance.now() + 2000; // 2.0 seconds
   }
 
   /** Show kickoff overlay (0:0, ball at center, waiting to start) */
@@ -292,7 +292,7 @@ class OverlayManager {
     this._subEl.textContent = `${team === 'HOME' ? homeName : awayName} ${homeScore} - ${awayScore} ${team === 'HOME' ? awayName : homeName}`;
     this._el.className = 'overlay visible goal';
     this._active = true;
-    this._resumeTime = performance.now() + 4500; // 4.5 seconds, non-blocking
+    this._resumeTime = performance.now() + 3000; // 3 seconds, non-blocking
     this._goalAnim = { team, startRealTime: performance.now() };
   }
 
@@ -1416,7 +1416,7 @@ class MatchViewer {
           if (!this._varReviewQueued) {
             this._varReviewQueued = true;
             this._varOverlayTick = ev.tick;
-            this.overlays.showVAR(ev.description || 'Reviewing incident...', 3500);
+            this.overlays.showVAR(ev.description || 'Reviewing incident...', 2500);
             break;
           }
           // Re-entry after the review overlay dismissed — fall through to the

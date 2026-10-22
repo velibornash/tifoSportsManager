@@ -199,15 +199,11 @@ public class DuelService {
             String varType = varType(res.varDecision());
             String msg = "VAR " + res.varDecision() + " — " + res.description();
             log("VAR", msg);
-            // A discipline VAR review is a real stoppage, so the replay viewer is
-            // told the review started (VAR_IN_PROGRESS -> blocking review overlay)
-            // and then how it ended (typed VAR_<TYPE>_CONFIRMED/_OVERTURNED).
-            // The held-live offside check deliberately does NOT emit
-            // VAR_IN_PROGRESS — play continues during it by design.
-            appendDisciplineEvent("VAR_IN_PROGRESS",
-                    "VAR review: " + varType + " (" + res.description() + ")",
-                    offender.getTeam(), offender, fouled,
-                    null, null, null, null, varType, null);
+            // The replay viewer is told the review started (VAR_IN_PROGRESS ->
+            // blocking review overlay) and then how it ended (typed
+            // VAR_<TYPE>_CONFIRMED/_OVERTURNED). VAR_IN_PROGRESS is emitted by
+            // VARService.logVARReviewStarted, which every VAR review routes
+            // through, so it is not duplicated here.
             appendDisciplineEvent("VAR_" + varType + "_" + decisionSuffix(res.varDecision()),
                     msg, offender.getTeam(), offender, fouled,
                     null, null, null, null, varType, res.varDecision());

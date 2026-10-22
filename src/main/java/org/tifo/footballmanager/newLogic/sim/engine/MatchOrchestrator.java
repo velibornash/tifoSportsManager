@@ -295,7 +295,7 @@ public class MatchOrchestrator {
         this.movementEngine = new MovementEngine();
         this.ballEngine = new BallPhysicsEngine();
         this.clockService = new MatchClockService();
-        this.varService = new VARService(state, SimulationRandom.rng());
+        this.varService = new VARService(state, SimulationRandom.rng(), recorder);
         this.restartManager = new RestartManager(tactics);
         this.offsideService = new OffsideService(state, varService, recorder, restartManager);
         this.offsideService.setStats(stats);

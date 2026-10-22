@@ -307,8 +307,10 @@ public class OffsideService implements EngineInterfaces.OffsideService {
         state.setCarrier(null);
         state.getBall().setPosition(receiver.getPosition());
         if (recorder != null) {
+            double m = state.getOffsideDeferredMargin();
+            String marginText = m > 0 ? String.format(java.util.Locale.US, " (margin=%.2f cell, %d m)", m, Math.round(m * 14)) : "";
             recorder.appendEvent(state.getMatchTicks(), "OFFSIDE",
-                    reason + " by " + receiver.getLabel(), receiver, null);
+                    reason + " by " + receiver.getLabel() + marginText, receiver, null);
         }
         if (stats != null) stats.onOffside(receiver.getTeam());
         if (restartManager != null) {

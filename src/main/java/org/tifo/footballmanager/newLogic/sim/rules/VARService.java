@@ -18,14 +18,21 @@ public class VARService implements EngineInterfaces.VARService {
 
     private final MatchState state;
     private final Random random;
+    private final org.tifo.footballmanager.newLogic.sim.recording.MatchRecorder recorder;
 
     private String lastVARDecision = "NONE";
 
     static final double OFFSIDE_MERGE_THRESHOLD = 1.5;
 
     public VARService(MatchState state, Random random) {
+        this(state, random, null);
+    }
+
+    public VARService(MatchState state, Random random,
+                      org.tifo.footballmanager.newLogic.sim.recording.MatchRecorder recorder) {
         this.state = state;
         this.random = random;
+        this.recorder = recorder;
     }
 
     @Override
