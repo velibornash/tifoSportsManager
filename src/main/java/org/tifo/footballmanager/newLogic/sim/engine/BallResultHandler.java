@@ -141,13 +141,20 @@ public class BallResultHandler {
                         // claims/clears (defender gets the ball).
                         if (receiver != null && state.isPendingDeliveryAirborne()
                                 && state.getPendingDeliveryHeight() > 0.3) {
+                            // All defenders who can reach the jump (within 2.0 cells in the
+                            // box) are candidates; the best aerial defender contests (P2-67,
+                            // owner 2026-10-22). Nearest-first was wrong: a full-back next to
+                            // the striker would contest instead of the centre-back.
                             Player def = null;
-                            double best = 0.51;
+                            double bestPower = -1;
                             for (Player pp : state.getPlayers()) {
                                 if (pp.getTeam().equals(receiver.getTeam())) continue;
                                 if (pp.isUnavailable() || pp.isLocked()) continue;
+                                if ("GK".equals(pp.getRole())) continue;
                                 double d = org.tifo.footballmanager.newLogic.sim.util.SimUtils.distance(pp.getPosition(), receiver.getPosition());
-                                if (d <= 0.5 && d < best) { best = d; def = pp; }
+                                if (d > 2.0) continue; // must be able to reach the jump
+                                double aerPower = pp.heightSkill() * 0.6 + pp.getSkills().defender() * 0.4;
+                                if (aerPower > bestPower) { bestPower = aerPower; def = pp; }
                             }
                             if (def != null) {
                                 DuelEngine.DuelType dt = DuelEngine.DuelType.AERIAL;
