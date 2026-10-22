@@ -81,7 +81,7 @@ public class DecisionQualityDiag {
         System.out.printf("carrier pressed (opponent within 1.5, targeting carrier): %d  (%.2f%%)%n", carrierPressed,
                 100.0 * carrierPressed / (ticksTotal == 0 ? 1 : ticksTotal));
         System.out.println();
-        System.out.println("--- lone attacker in danger zone (no defender within 1.5 cells) ---");
+        System.out.println("--- lone attacker in danger zone (no defender within 0.5 cells / 7 m) ---");
         System.out.printf("occurrences: %d   pressed by threat override: %d  (%.1f%%)%n",
                 loneAttackerInDanger, loneAttackerPressed,
                 loneAttackerInDanger == 0 ? 0 : 100.0 * loneAttackerPressed / loneAttackerInDanger);
@@ -149,7 +149,7 @@ public class DecisionQualityDiag {
             for (Player def : state.getPlayers()) {
                 if (!defTeam.equals(def.getTeam())) continue;
                 if (def.isSentOff() || def.isInjured()) continue;
-                if (SimUtils.distance(def.getPosition(), att.getPosition()) <= 1.5) {
+                if (SimUtils.distance(def.getPosition(), att.getPosition()) <= 0.5) {
                     hasDefenderNear = true; break;
                 }
             }
