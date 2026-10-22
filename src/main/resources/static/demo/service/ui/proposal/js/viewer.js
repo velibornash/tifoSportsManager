@@ -464,13 +464,29 @@ class PitchRenderer {
     ctx.fillStyle = PITCH_GREEN;
     ctx.fillRect(fx1, fy1, fx2 - fx1, fy2 - fy1);
 
-    // Stripes on playing field only
-    for (let r = FIELD_ROW_MIN; r < FIELD_ROW_MAX; r += 2) {
-      const [sx] = this.toCanvas(r, 0);
-      const [ex] = this.toCanvas(r + 1, 0);
-      ctx.fillStyle = PITCH_STRIPE;
-      ctx.fillRect(sx, fy1, ex - sx, fy2 - fy1);
+    // Pitch pattern (P2-33): PLAIN / STRIPES / CHECKERBOARD.
+    const pattern = (this.data && this.data.pitchPattern) || 'STRIPES';
+    if (pattern === 'STRIPES') {
+      for (let r = FIELD_ROW_MIN; r < FIELD_ROW_MAX; r += 2) {
+        const [sx] = this.toCanvas(r, 0);
+        const [ex] = this.toCanvas(r + 1, 0);
+        ctx.fillStyle = PITCH_STRIPE;
+        ctx.fillRect(sx, fy1, ex - sx, fy2 - fy1);
+      }
+    } else if (pattern === 'CHECKERBOARD') {
+      for (let r = FIELD_ROW_MIN; r < FIELD_ROW_MAX; r++) {
+        for (let c = FIELD_COL_MIN; c < FIELD_COL_MAX; c++) {
+          if ((r + c) % 2 === 0) continue;
+          const [sx] = this.toCanvas(r, 0);
+          const [sy] = this.toCanvas(0, c);
+          const [ex] = this.toCanvas(r + 1, 0);
+          const [ey] = this.toCanvas(0, c + 1);
+          ctx.fillStyle = PITCH_STRIPE;
+          ctx.fillRect(sx, sy, ex - sx, ey - sy);
+        }
+      }
     }
+    // PLAIN: no stripes (solid green)
 
     // Field boundary (touchlines + goal lines)
     ctx.strokeStyle = PITCH_LINE;

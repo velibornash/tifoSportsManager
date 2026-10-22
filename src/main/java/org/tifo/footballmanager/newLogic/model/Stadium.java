@@ -235,6 +235,24 @@ public class Stadium {
      */
     private Integer expandableTo;
 
+    /**
+     * Pitch pattern (P2-33). Default PLAIN.
+     */
+    public enum PitchPattern { PLAIN, STRIPES, CHECKERBOARD }
+
+    /**
+     * Floodlight style (P2-33). Default STANDARD.
+     */
+    public enum FloodlightStyle { STANDARD, MODERN, CLASSIC }
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pitch_pattern", columnDefinition = "varchar(16) not null default 'PLAIN'")
+    private PitchPattern pitchPattern = PitchPattern.PLAIN;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "floodlight_style", columnDefinition = "varchar(16) not null default 'STANDARD'")
+    private FloodlightStyle floodlightStyle = FloodlightStyle.STANDARD;
+
     @OneToOne(mappedBy = "stadium")
     @EqualsAndHashCode.Exclude
     @JsonManagedReference

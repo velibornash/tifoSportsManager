@@ -63,6 +63,7 @@ public class ProposalMatchExporter {
         view.put("homeTeamName", "Home FC");
         view.put("awayTeamName", "Away United");
         view.put("homeKitColor", "#539bf5");
+        view.put("pitchPattern", "STRIPES");
         view.put("awayKitColor", "#f97583");
         view.put("homeKitPattern", "SOLID");
         view.put("awayKitPattern", "SOLID");

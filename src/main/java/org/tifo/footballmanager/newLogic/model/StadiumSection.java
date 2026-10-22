@@ -33,10 +33,21 @@ public class StadiumSection {
     @Column(nullable = false)
     private StandPosition position;
 
+    public enum StandDecor { NONE, BANNERS, FLAGS, ADS }
+
     /** Null until this section has been built out. */
     @Enumerated(EnumType.STRING)
     @Column
     private SeatingType seatingType;
+
+    /** Seat colour for this section (hex), null = default. */
+    @Column(name = "seat_color", length = 7)
+    private String seatColor;
+
+    /** Decoration on this stand. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stand_decor")
+    private StandDecor standDecor = StandDecor.NONE;
 
     /** The capacity this one section contributes to the whole ground. */
     @Column(nullable = false)

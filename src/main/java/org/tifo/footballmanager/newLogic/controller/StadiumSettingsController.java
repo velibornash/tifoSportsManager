@@ -301,6 +301,43 @@ public class StadiumSettingsController {
     }
 
     /**
+     * Sets the ground's cosmetic look (P2-33): pitch pattern, floodlight style.
+     *
+     * <p>Ownership is checked through {@code PlusFeatureService}, like every other write on this
+     * controller.
+     */
+    @PostMapping("/cosmetics")
+    public ResponseEntity<?> setCosmetics(@PathVariable Long teamId,
+                                          @RequestBody(required = false) Map<String, String> in,
+                                          @AuthenticationPrincipal User principal) {
+        if (!mayManage(principal, teamId)) {
+            return notYourClub();
+        }
+        Team team = teamId == null ? null : teamRepository.findById(teamId).orElse(null);
+        if (team == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No such club"));
+        }
+        Stadium ground = team.getStadium();
+        if (ground == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No stadium"));
+        }
+        if (in != null) {
+            String pp = in.get("pitchPattern");
+            if (pp != null) {
+                try { ground.setPitchPattern(Stadium.PitchPattern.valueOf(pp.trim().toUpperCase())); }
+                catch (IllegalArgumentException ignored) { }
+            }
+            String fs = in.get("floodlightStyle");
+            if (fs != null) {
+                try { ground.setFloodlightStyle(Stadium.FloodlightStyle.valueOf(fs.trim().toUpperCase())); }
+                catch (IllegalArgumentException ignored) { }
+            }
+        }
+        teamRepository.save(team);
+        return ResponseEntity.ok(Map.of("stadium", view(team).get("stadium")));
+    }
+
+    /**
      * May this caller change <b>this</b> club's ground?
      *
      * <p>The same rule {@code TeamController} and the stadium's own {@code /image} route already apply. It
@@ -437,6 +474,8 @@ public class StadiumSettingsController {
         stadium.put("seatQuality", s.getSeatQuality() == null ? 10 : s.getSeatQuality());
         stadium.put("roof", s.isRoof());
         stadium.put("expandableTo", s.getExpandableTo());
+        stadium.put("pitchPattern", s.getPitchPattern() == null ? "PLAIN" : s.getPitchPattern().name());
+        stadium.put("floodlightStyle", s.getFloodlightStyle() == null ? "STANDARD" : s.getFloodlightStyle().name());
         // The eight sections, each with its own capacity, seating type, roof, price and recommendation —
         // this is the whole build-out model now, so the page has one place to read it from.
         stadium.put("sections", sections);
