@@ -26,7 +26,8 @@ public class DuelEngine {
     // these five radii could NEVER fire — they were unreachable by construction. The only live path
     // to a dribble duel was
     //
-    //     defender.isThreatOverrideActive() ? PRESS_DRIB_DUEL_RADIUS : DRIBBLE_DUEL_RADIUS
+    //     a single radius (DRIBBLE_DUEL_RADIUS = 0.45) for every defender (F-DU-1, owner
+    //     decision 2026-10-22): the press radius is geometry, not a tactical flag.
     //
     // i.e. you could only tackle someone if ThreatOverrideEngine had routed that defender to you.
     // A defender 1.4 m away with no override could not contest the ball at all; the identical
@@ -147,9 +148,11 @@ public class DuelEngine {
         // Dribble duel. A presser who arrived with momentum gets a slightly wider challenge, which
         // is a statement about HOW he got there — not about whether he is allowed to try. The old
         // version chose the radius by reading a tactics flag, so the radius was really a permission.
-        double dribbleRadius = defender.isThreatOverrideActive()
-                ? PRESS_DRIB_DUEL_RADIUS
-                : DRIBBLE_DUEL_RADIUS;
+        // Single radius for every defender (F-DU-1, owner decision 2026-10-22):
+        // the press radius is a function of geometry, not of a tactical flag.
+        // ThreatOverrideEngine sets the flag, but the contest distance is the
+        // same for a standing defender as for a pressing one — 0.45 cells.
+        double dribbleRadius = DRIBBLE_DUEL_RADIUS;
         if (distance <= dribbleRadius && contestsTheBall(attacker, defender, distance, state)) {
             if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS, state)) {
                 markDuel(attacker, defender, state);
