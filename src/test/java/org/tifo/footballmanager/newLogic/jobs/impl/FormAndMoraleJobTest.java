@@ -9,9 +9,12 @@ import org.tifo.footballmanager.newLogic.jobs.JobContext;
 import org.tifo.footballmanager.newLogic.model.CompetitionTeamType;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.model.Team;
+import org.tifo.footballmanager.newLogic.model.TrainingIntensity;
 import org.tifo.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.tifo.footballmanager.newLogic.repository.MatchRepository;
 import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamTrainingSetupRepository;
 import org.tifo.footballmanager.newLogic.repository.TransferRepository;
 import org.tifo.footballmanager.newLogic.service.MoraleService;
 
@@ -49,6 +52,9 @@ class FormAndMoraleJobTest {
     private final MatchPlayerStatsRepository stats = mock(MatchPlayerStatsRepository.class);
     private final TransferRepository transfers = mock(TransferRepository.class);
     private final MatchRepository matches = mock(MatchRepository.class);
+    private final PlayerTrainingIntensityRepository intensityOverrides =
+            mock(PlayerTrainingIntensityRepository.class);
+    private final TeamTrainingSetupRepository trainingSetups = mock(TeamTrainingSetupRepository.class);
     private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
 
     @Test
@@ -71,6 +77,8 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of());
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
@@ -97,11 +105,13 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of());
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of(10L));
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(played), eq(true), eq(false), eq(1), eq(2));
-        verify(morale).settleWeek(eq(benched), eq(false), eq(false), eq(1), eq(2));
+        verify(morale).settleWeek(eq(played), eq(true), eq(false), eq(1), eq(2), any(TrainingIntensity.class));
+        verify(morale).settleWeek(eq(benched), eq(false), eq(false), eq(1), eq(2), any(TrainingIntensity.class));
     }
 
     @Test
@@ -117,10 +127,12 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of(1L));
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of(10L));
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(listed), eq(true), eq(true), eq(1), eq(2));
+        verify(morale).settleWeek(eq(listed), eq(true), eq(true), eq(1), eq(2), any(TrainingIntensity.class));
     }
 
     @Test
@@ -138,10 +150,12 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of());
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale).settleWeek(eq(player), eq(true), eq(false), eq(1), eq(2));
+        verify(morale).settleWeek(eq(player), eq(true), eq(false), eq(1), eq(2), any(TrainingIntensity.class));
     }
 
     @Test
@@ -161,10 +175,12 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of());
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of(50L));
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
-        verify(morale, times(0)).settleWeek(any(), any(Boolean.class), any(Boolean.class), anyInt(), anyInt());
+        verify(morale, times(0)).settleWeek(any(), any(Boolean.class), any(Boolean.class), anyInt(), anyInt(), any(TrainingIntensity.class));
     }
 
     @Test
@@ -182,14 +198,16 @@ class FormAndMoraleJobTest {
         when(transfers.findActiveListedPlayerIds()).thenReturn(List.of());
         when(matches.findHomeClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of(10L));
         when(matches.findAwayClubIdsWithFixturesInWeek(1, 2)).thenReturn(List.of());
+        when(intensityOverrides.findBySeasonAndWeek(1, 2)).thenReturn(List.of());
+        when(trainingSetups.findBySeasonNumberAndWeekNumber(1, 2)).thenReturn(List.of());
 
         job().run(new JobContext(1, 2, 6, 15));
 
         // The cursor moves by id, so the second page starts after the first one's last player.
         verify(players).findByIdGreaterThanOrderByIdAsc(eq(0L), any(Pageable.class));
         verify(players).findByIdGreaterThanOrderByIdAsc(eq(1L), any(Pageable.class));
-        verify(morale).settleWeek(eq(first), eq(true), eq(false), eq(1), eq(2));
-        verify(morale).settleWeek(eq(second), eq(true), eq(false), eq(1), eq(2));
+        verify(morale).settleWeek(eq(first), eq(true), eq(false), eq(1), eq(2), any(TrainingIntensity.class));
+        verify(morale).settleWeek(eq(second), eq(true), eq(false), eq(1), eq(2), any(TrainingIntensity.class));
     }
 
     @Test
@@ -202,7 +220,8 @@ class FormAndMoraleJobTest {
 
     private FormAndMoraleJob job() {
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-        return new FormAndMoraleJob(morale, players, stats, transfers, matches, transactionManager);
+        return new FormAndMoraleJob(morale, players, stats, transfers, matches, intensityOverrides,
+                trainingSetups, transactionManager);
     }
 
     private Team club(Long id) {

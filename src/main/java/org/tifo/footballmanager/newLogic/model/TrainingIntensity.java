@@ -46,6 +46,28 @@ public enum TrainingIntensity {
         return growthMultiplier;
     }
 
+    /**
+     * How fast a player's form comes back under this much training.
+     *
+     * <p><b>This is the manager's lever over a player in a bad run.</b> The form settles a quarter of
+     * the way back to its natural level every week, and the settle is where a player who is out of
+     * form gets his way back. Light work is what a club does with a player it is nursing - the
+     * enum's own description is <em>"a pre-season or an injury rehabilitation"</em> - so a light week
+     * <b>doubles</b> the recovery, and a hard week <b>halves</b> it, because a week of maximum
+     * training does not leave a player sharper, it leaves him tired.
+     *
+     * <p>The owner's words: <em>"razmisli kako da korisnik moze da utice na igracevu formu,
+     * pogotovo nisku"</em> - think about how the user can affect a player's form, especially a low
+     * one. Playing him is the first answer; how hard the club trains him is the second.
+     */
+    public double formRecoveryMultiplier() {
+        return switch (this) {
+            case LIGHT -> 2.0;
+            case NORMAL -> 1.0;
+            case VERY_HARD -> 0.5;
+        };
+    }
+
     /** Fatigue added per training week, before the player's own condition is considered. */
     public int weeklyFatigue() {
         return weeklyFatigue;

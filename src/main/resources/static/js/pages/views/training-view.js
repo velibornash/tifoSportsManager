@@ -23,6 +23,16 @@ export function createTrainingView(deps) {
     // It silently substitutes a default for anything it does not recognise, so a screen offering a
     // different list would let a manager pick something the engine then ignores.
     const TRAINING_GROUPS = ['GK', 'DEF', 'MID', 'ATT'];
+
+    /** The three intensities the backend knows. The name is what it stores. */
+    const INTENSITIES = ['LIGHT', 'NORMAL', 'VERY_HARD'];
+
+    /** What the three are called on the screen. */
+    const intensityLabel = option => ({
+        LIGHT: 'Light - rest and recover',
+        NORMAL: 'Normal - the usual week',
+        VERY_HARD: 'Very hard - push the squad'
+    }[option] || option);
     const SKILLS_BY_GROUP = {
         GK: ['goalkeeper', 'pace', 'defending', 'technique', 'passing'],
         DEF: ['defending', 'pace', 'technique', 'passing'],
@@ -71,10 +81,15 @@ export function createTrainingView(deps) {
             groupSkills: {},
             advanced: [],
             general: [],
+            // **How hard the squad works this week.** It was written to the setup and read by the
+            // training, and it had no control anywhere, so a manager could not set it.
+            intensity: 'NORMAL',
             busy: false,
             message: '',
             messageIsError: false
         };
+        const savedIntensity = String(setup?.trainingIntensity || 'NORMAL').toUpperCase();
+        state.intensity = INTENSITIES.includes(savedIntensity) ? savedIntensity : 'NORMAL';
         TRAINING_GROUPS.forEach(group => {
             const saved = setup?.groupSkills?.[group];
             state.groupSkills[group] = SKILLS_BY_GROUP[group].includes(saved)
@@ -134,7 +149,8 @@ export function createTrainingView(deps) {
                     body: JSON.stringify({
                         teamId,
                         groupSkills: state.groupSkills,
-                        advancedAssignments: state.advanced.map(a => ({ playerId: a.playerId, role: a.role }))
+                        advancedAssignments: state.advanced.map(a => ({ playerId: a.playerId, role: a.role })),
+                        trainingIntensity: state.intensity
                     })
                 });
                 return true;
@@ -200,6 +216,30 @@ export function createTrainingView(deps) {
                                         </select>
                                     </div>
                                 </div>`).join('')}
+                        </div>
+                    </section>
+
+                    <section class="fm-panel">
+                        <div class="fm-panel-head">
+                            <div>
+                                <h3>This week's work</h3>
+                                <p class="training-note">How hard the whole squad works this week. A light
+                                    week is what a club does with a player it is nursing: it grows less, tires
+                                    less, and <strong>brings a player out of a bad run back twice as fast</strong>.
+                                    A very hard week grows more, tires more, and leaves his form where it was.</p>
+                            </div>
+                            <span class="fm-panel-action">${state.intensity}</span>
+                        </div>
+                        <div class="training-grid">
+                            <div class="training-block">
+                                <div class="training-group-row">
+                                    <span class="group-tag">Intensity</span>
+                                    <select class="group-skill-select" id="training-intensity"
+                                            aria-label="How hard the squad works this week">
+                                        ${INTENSITIES.map(option => `<option value="${option}"${option === state.intensity ? ' selected' : ''}>${intensityLabel(option)}</option>`).join('')}
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -279,11 +319,19 @@ export function createTrainingView(deps) {
         }
 
         function bindUi() {
-            mainContent.querySelectorAll('.group-skill-select').forEach(sel => {
+            // **Only the group selects.** The week's intensity carries the same class so it looks
+            // like the rest of the screen, and it is bound on its own below.
+            mainContent.querySelectorAll('.group-skill-select[data-group]').forEach(sel => {
                 sel.addEventListener('change', () => {
                     state.groupSkills[sel.getAttribute('data-group')] = sel.value;
                 });
             });
+            const intensitySelect = mainContent.querySelector('#training-intensity');
+            if (intensitySelect) {
+                intensitySelect.addEventListener('change', () => {
+                    state.intensity = intensitySelect.value;
+                });
+            }
             mainContent.querySelectorAll('[data-adv-role]').forEach(sel => {
                 sel.addEventListener('change', () => {
                     const row = state.advanced.find(a => a.playerId === Number(sel.getAttribute('data-adv-role')));

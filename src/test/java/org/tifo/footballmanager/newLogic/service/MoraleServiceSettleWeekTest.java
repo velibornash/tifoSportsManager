@@ -3,6 +3,7 @@ package org.tifo.footballmanager.newLogic.service;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.TrainingIntensity;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,7 +27,7 @@ class MoraleServiceSettleWeekTest {
     void theFormSettles() {
         Player hot = playerWithForm(10.0);
 
-        morale.settleWeek(hot, true, false, 1, 5);
+        morale.settleWeek(hot, true, false, 1, 5, null);
 
         // The settle is a quarter of the distance, and the week's small wander is on top of it, so
         // the number is a tenth either side of the arithmetic.
@@ -41,7 +42,7 @@ class MoraleServiceSettleWeekTest {
     void aBadWeekRecovers() {
         Player cold = playerWithForm(2.0);
 
-        morale.settleWeek(cold, true, false, 1, 5);
+        morale.settleWeek(cold, true, false, 1, 5, null);
 
         assertTrue(cold.getForm() > 2.9 && cold.getForm() < 3.1,
                 "a player on two gains a quarter of the four points below the natural level. He is on "
@@ -54,7 +55,7 @@ class MoraleServiceSettleWeekTest {
         Player fresh = new Player();
         fresh.setMorale(60.0);
 
-        morale.settleWeek(fresh, true, false, 1, 5);
+        morale.settleWeek(fresh, true, false, 1, 5, null);
 
         assertTrue(Math.abs(fresh.getForm() - MoraleService.NATURAL_FORM) <= MoraleService.WEEKLY_FORM_RANDOM,
                 "a player with no form has not been in a week yet, and the natural level is where he "
@@ -74,10 +75,10 @@ class MoraleServiceSettleWeekTest {
         Player otherPlayer = playerWithForm(8.0);
         otherPlayer.setId(9999L);
 
-        morale.settleWeek(first, true, false, 1, 5);
-        morale.settleWeek(second, true, false, 1, 5);
-        morale.settleWeek(otherWeek, true, false, 1, 6);
-        morale.settleWeek(otherPlayer, true, false, 1, 5);
+        morale.settleWeek(first, true, false, 1, 5, null);
+        morale.settleWeek(second, true, false, 1, 5, null);
+        morale.settleWeek(otherWeek, true, false, 1, 6, null);
+        morale.settleWeek(otherPlayer, true, false, 1, 5, null);
 
         assertEquals(first.getForm(), second.getForm(), 0.0001,
                 "the same player in the same week gets the same wander - the world rebuilds to the "
@@ -102,7 +103,7 @@ class MoraleServiceSettleWeekTest {
         Player benched = playerWithForm(6.0);
         benched.setMorale(60.0);
 
-        morale.settleWeek(benched, false, false, 1, 5);
+        morale.settleWeek(benched, false, false, 1, 5, null);
 
         assertEquals(58.8, benched.getMorale(), 0.001,
                 "being left out of the side is one of the standing pressures — 1.2 morale");
@@ -114,7 +115,7 @@ class MoraleServiceSettleWeekTest {
         Player regular = playerWithForm(6.0);
         regular.setMorale(60.0);
 
-        morale.settleWeek(regular, true, false, 1, 5);
+        morale.settleWeek(regular, true, false, 1, 5, null);
 
         assertEquals(60.0, regular.getMorale(), 0.001,
                 "a player in his side is not out of it, and the pressure does not apply");
@@ -128,8 +129,8 @@ class MoraleServiceSettleWeekTest {
         Player benched = playerWithForm(6.0);
         benched.setMorale(60.0);
 
-        morale.settleWeek(listed, true, true, 1, 5);
-        morale.settleWeek(benched, false, false, 1, 5);
+        morale.settleWeek(listed, true, true, 1, 5, null);
+        morale.settleWeek(benched, false, false, 1, 5, null);
 
         assertEquals(56.0, listed.getMorale(), 0.001,
                 "being put on the market is four points of morale — more than being benched");
@@ -144,8 +145,8 @@ class MoraleServiceSettleWeekTest {
         Player hopeless = playerWithForm(0.0);
 
         for (int week = 0; week < 20; week++) {
-            morale.settleWeek(perfect, true, false, 1, 5);
-            morale.settleWeek(hopeless, true, false, 1, 5);
+            morale.settleWeek(perfect, true, false, 1, 5, null);
+            morale.settleWeek(hopeless, true, false, 1, 5, null);
         }
 
         assertTrue(perfect.getForm() <= 10.0, "form never goes above ten: " + perfect.getForm());

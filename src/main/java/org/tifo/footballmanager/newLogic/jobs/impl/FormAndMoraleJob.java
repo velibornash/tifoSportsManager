@@ -10,14 +10,21 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
 import org.tifo.footballmanager.newLogic.model.Player;
+import org.tifo.footballmanager.newLogic.model.PlayerTrainingIntensity;
+import org.tifo.footballmanager.newLogic.model.TeamTrainingSetup;
+import org.tifo.footballmanager.newLogic.model.TrainingIntensity;
 import org.tifo.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
 import org.tifo.footballmanager.newLogic.repository.MatchRepository;
 import org.tifo.footballmanager.newLogic.repository.PlayerRepository;
+import org.tifo.footballmanager.newLogic.repository.PlayerTrainingIntensityRepository;
+import org.tifo.footballmanager.newLogic.repository.TeamTrainingSetupRepository;
 import org.tifo.footballmanager.newLogic.repository.TransferRepository;
 import org.tifo.footballmanager.newLogic.service.MoraleService;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -85,16 +92,22 @@ public class FormAndMoraleJob implements DayJob {
     private final MatchPlayerStatsRepository stats;
     private final TransferRepository transfers;
     private final MatchRepository matches;
+    private final PlayerTrainingIntensityRepository intensityOverrides;
+    private final TeamTrainingSetupRepository trainingSetups;
     private final TransactionTemplate requiresNew;
 
     public FormAndMoraleJob(MoraleService morale, PlayerRepository players,
                             MatchPlayerStatsRepository stats, TransferRepository transfers,
-                            MatchRepository matches, PlatformTransactionManager transactionManager) {
+                            MatchRepository matches, PlayerTrainingIntensityRepository intensityOverrides,
+                            TeamTrainingSetupRepository trainingSetups,
+                            PlatformTransactionManager transactionManager) {
         this.morale = morale;
         this.players = players;
         this.stats = stats;
         this.transfers = transfers;
         this.matches = matches;
+        this.intensityOverrides = intensityOverrides;
+        this.trainingSetups = trainingSetups;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -150,12 +163,29 @@ public class FormAndMoraleJob implements DayJob {
         Set<Long> clubsWithFixtures = new HashSet<>(matches.findHomeClubIdsWithFixturesInWeek(season, week));
         clubsWithFixtures.addAll(matches.findAwayClubIdsWithFixturesInWeek(season, week));
 
+        // **How hard each player was trained this week** - the manager's lever over a player in a bad
+        // run. A player's own override, or his club's setting, or the ordinary week. Two more queries
+        // for the whole world, because asked per player it would be seven thousand a week.
+        Map<Long, TrainingIntensity> ownIntensity = new HashMap<>();
+        for (PlayerTrainingIntensity row : intensityOverrides.findBySeasonAndWeek(season, week)) {
+            if (row.getPlayerId() != null && row.getIntensity() != null) {
+                ownIntensity.put(row.getPlayerId(), row.getIntensity());
+            }
+        }
+        Map<Long, TrainingIntensity> clubIntensity = new HashMap<>();
+        for (TeamTrainingSetup setup : trainingSetups.findBySeasonNumberAndWeekNumber(season, week)) {
+            TrainingIntensity parsed = TrainingIntensity.byName(setup.getTrainingIntensity());
+            if (setup.getTeam() != null && setup.getTeam().getId() != null && parsed != null) {
+                clubIntensity.put(setup.getTeam().getId(), parsed);
+            }
+        }
+
         int settled = 0;
         long lastId = 0L;
         while (true) {
             final long from = lastId;
             Page settledPage = requiresNew.execute(status -> settleOnePage(from, playedThisWeek,
-                    onTheMarket, clubsWithFixtures, season, week));
+                    onTheMarket, clubsWithFixtures, season, week, ownIntensity, clubIntensity));
             if (settledPage == null) {
                 break;
             }
@@ -174,7 +204,9 @@ public class FormAndMoraleJob implements DayJob {
      *         more
      */
     private Page settleOnePage(long from, Set<Long> playedThisWeek, Set<Long> onTheMarket,
-                               Set<Long> clubsWithFixtures, int season, int week) {
+                               Set<Long> clubsWithFixtures, int season, int week,
+                               Map<Long, TrainingIntensity> ownIntensity,
+                               Map<Long, TrainingIntensity> clubIntensity) {
         List<Player> page = players.findByIdGreaterThanOrderByIdAsc(from, PageRequest.of(0, BATCH));
         if (page.isEmpty()) {
             return null;
@@ -190,8 +222,10 @@ public class FormAndMoraleJob implements DayJob {
             }
             boolean inTheSide = playedThisWeek.contains(player.getId())
                     || !clubsWithFixtures.contains(clubIdOf(player));
+            TrainingIntensity intensity = ownIntensity.getOrDefault(player.getId(),
+                    clubIntensity.getOrDefault(clubIdOf(player), TrainingIntensity.NORMAL));
             morale.settleWeek(player, inTheSide, onTheMarket.contains(player.getId()),
-                    season, week);
+                    season, week, intensity);
             settled++;
         }
 

@@ -11,6 +11,7 @@ import org.tifo.footballmanager.newLogic.repository.TeamRepository;
 import org.tifo.footballmanager.newLogic.repository.TeamTrainingSetupRepository;
 import org.tifo.footballmanager.newLogic.repository.TrainingWeekReportRepository;
 import org.tifo.footballmanager.newLogic.exception.ApiException;
+import org.tifo.footballmanager.newLogic.model.TrainingIntensity;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +68,18 @@ public class TrainingProgressionService {
                     : request.getAdvancedAssignments().stream().limit(10).toList();
             setup.setAdvancedAssignmentsJson(objectMapper.writeValueAsString(assignments));
         } catch (Exception ignored) {}
+        // **How hard the squad works this week.** Null means NORMAL, and an unrecognised name is
+        // refused rather than quietly stored: a manager who asked for a hard week and got a normal
+        // one would have no way of knowing.
+        String requestedIntensity = request.getTrainingIntensity();
+        if (requestedIntensity != null && !requestedIntensity.isBlank()) {
+            TrainingIntensity parsed = TrainingIntensity.byName(requestedIntensity);
+            if (parsed == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "UNKNOWN_INTENSITY",
+                        "'" + requestedIntensity + "' is not an intensity. Use LIGHT, NORMAL or VERY_HARD.");
+            }
+            setup.setTrainingIntensity(parsed.name());
+        }
         setup.setUpdatedAt(LocalDateTime.now());
         setup = teamTrainingSetupRepository.save(setup);
         return toSetupDto(setup);
@@ -380,6 +393,7 @@ public class TrainingProgressionService {
                 "ATT", normalizeDtSkill(setup.getDtSkillAtt(), "ATT")
         ));
         dto.setAdvancedAssignments(parseAssignments(setup));
+        dto.setTrainingIntensity(setup.getTrainingIntensity());
         return dto;
     }
 

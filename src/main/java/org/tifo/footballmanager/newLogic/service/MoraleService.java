@@ -1,6 +1,7 @@
 package org.tifo.footballmanager.newLogic.service;
 
 import org.tifo.footballmanager.newLogic.model.Personality;
+import org.tifo.footballmanager.newLogic.model.TrainingIntensity;
 import org.tifo.footballmanager.newLogic.model.MatchPlayerStats;
 import org.tifo.footballmanager.newLogic.model.Player;
 import org.tifo.footballmanager.newLogic.repository.MatchPlayerStatsRepository;
@@ -213,17 +214,26 @@ public class MoraleService {
      * @param listedForTransfer whether his club has put him on the market
      * @param season            the season the week belongs to
      * @param week              the week
+     * @param intensity          how hard the club trained him this week - the manager's lever over a
+     *                            player in a bad run
      */
     @Transactional
     public void settleWeek(Player player, boolean inSide, boolean listedForTransfer,
-                            int season, int week) {
+                            int season, int week, TrainingIntensity intensity) {
         if (player == null) return;
         // **The same reading the rest of this class uses.** A form of zero means "never set", not
         // "as bad as it gets" - `formOf` says so, and `applyMatch` reads it the same way. Settling a
         // player whose form was never set from zero would leave him at one and a half, which is a
         // form he has never earned and the rest of the class would not agree with.
         double form = formOf(player);
-        double settled = form + (NATURAL_FORM - form) * WEEKLY_FORM_DECAY;
+        // **The recovery rate is the manager's to set.** A player in a bad run comes back at a
+        // quarter of the distance a week; a light week of training doubles that and a hard week
+        // halves it. This is the second half of the owner's question - "how the user can affect a
+        // player's form, especially a low one" - and it is the same lever the enum already describes
+        // as "a pre-season or an injury rehabilitation".
+        double recovery = WEEKLY_FORM_DECAY
+                * (intensity == null ? 1.0 : intensity.formRecoveryMultiplier());
+        double settled = form + (NATURAL_FORM - form) * recovery;
         settled += weeklyWander(player, season, week) * WEEKLY_FORM_RANDOM;
         player.setForm(clamp(settled, 0, 10));
         applyStanding(player, inSide, listedForTransfer);
