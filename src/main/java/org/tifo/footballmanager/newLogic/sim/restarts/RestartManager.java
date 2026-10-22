@@ -245,6 +245,12 @@ public class RestartManager {
         // blocked by it. It does not route through here - handleOffsideFreeKick sets the restart up
         // itself and clears the pending penalty explicitly, which is where that rule lives.
         if (!penalty && state.isPenaltyPending()) {
+            // A free kick must not quietly erase a penalty the referee awarded.
+            // Say so instead of vanishing (F-RS-6).
+            if (state.getActionLogger() != null) {
+                state.getActionLogger().log("RST",
+                        "free kick dropped — penalty pending; restart not created");
+            }
             return;
         }
         state.clearPassContext();
