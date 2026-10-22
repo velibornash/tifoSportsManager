@@ -117,7 +117,18 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
         // caution rate 35% (≈10 yellows/match), which is what produced 2.7 reds
         // and 7.5 yellows per match.
         boolean straightRedRolled = SimulationRandom.nextDouble() < STRAIGHT_RED_RATE;
-        boolean yellowWorthy = !straightRedRolled && SimulationRandom.nextDouble() < YELLOW_RATE;
+        // **Red-card offences (P0-23):** a tackle from behind or a professional foul (last man
+        // stopping a clear goal-scoring opportunity) is a straight red regardless of the roll.
+        boolean dogso = isTackleFromBehind(defender, attacker) || isProfessionalFoul(defender, attacker);
+        if (dogso) {
+            straightRedRolled = true;
+        }
+        boolean yellowWorthy = !straightRedRolled && SimulationRandom.nextDouble() < YELLOW_RATE
+                && !isDangerousPlay(defender, attacker);
+        // Dangerous play is a caution even when the roll said no.
+        if (isDangerousPlay(defender, attacker)) {
+            yellowWorthy = true;
+        }
 
         boolean yellowConfirmed = false;
         boolean redConfirmed = false;
@@ -215,21 +226,57 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
 
     // --- Individual rule methods (add rules here) ---
 
-    /** Tackle from behind — automatic yellow unless last-man (red). */
+    /**
+     * Tackle from behind - a challenge where the defender is behind the attacker relative to the
+     * goal he is attacking. Such a tackle is a caution at minimum; if it also stops a clear
+     * goal-scoring opportunity it is a red (DOGSO).
+     */
     private boolean isTackleFromBehind(Player defender, Player attacker) {
-        // TODO: check relative positions, tackle direction
-        return false;
+        if (defender == null || attacker == null) return false;
+        Position dPos = defender.getPosition();
+        Position aPos = attacker.getPosition();
+        if (dPos == null || aPos == null) return false;
+        boolean homeAttacking = "HOME".equals(attacker.getTeam());
+        // Defender behind the attacker = lower row when attacking home, higher row when attacking away.
+        return homeAttacking
+                ? dPos.getRow() < aPos.getRow() - 0.5
+                : dPos.getRow() > aPos.getRow() + 0.5;
     }
 
-    /** Dangerous play without contact — caution (yellow). */
+    /**
+     * Dangerous play without contact - high boot, studs-up, late challenge.
+     *
+     * <p>The engine has no ball-height or speed data, so a true call cannot be made; this returns
+     * false and leaves the caution to the probability gate. The TODO is closed by acknowledging the
+     * limit rather than inventing a signal that does not exist.
+     */
     private boolean isDangerousPlay(Player defender, Player attacker) {
-        // TODO: e.g. high boot, studs-up, late challenge
         return false;
     }
 
-    /** Professional foul — last-man stopping clear goal-scoring opportunity = red. */
+    /**
+     * Professional foul - the defender is the last man between the attacker and the goal, stopping
+     * a clear goal-scoring opportunity. That is a straight red (DOGSO).
+     */
     private boolean isProfessionalFoul(Player defender, Player attacker) {
-        // TODO: check if attacker was through on goal
-        return false;
+        if (defender == null || attacker == null) return false;
+        Position dPos = defender.getPosition();
+        Position aPos = attacker.getPosition();
+        if (dPos == null || aPos == null) return false;
+        boolean homeAttacking = "HOME".equals(attacker.getTeam());
+        // The goal the attacker is heading for.
+        double goalRow = homeAttacking ? 9.0 : 0.0;
+        // Defender must be the last man: no teammate of his between him and the goal.
+        // Count defenders (same team as the fouling defender) closer to the goal than the attacker.
+        // We only have the two players here, so approximate: the defender is last man if he is
+        // nearer the goal than the attacker.
+        boolean defenderNearerGoal = homeAttacking
+                ? dPos.getRow() > aPos.getRow()
+                : dPos.getRow() < aPos.getRow();
+        // And the attacker must be in the attacking half, heading for goal.
+        boolean attackerInAttackingHalf = homeAttacking
+                ? aPos.getRow() >= 4.5
+                : aPos.getRow() <= 4.5;
+        return defenderNearerGoal && attackerInAttackingHalf;
     }
 }
