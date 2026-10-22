@@ -85,8 +85,13 @@ class AdminJobsViewTest {
     void narrowScreensKeepTheColumnsThatMatter() throws IOException {
         String css = stripComments(css());
 
-        assertTrue(css.contains("@media (max-width: 640px)"),
-                "there is a narrow-screen rule");
+        assertTrue(narrowScreenRuleThatDropsTheJobsColumns(css),
+                "there is a narrow-screen rule that drops the trigger column and the next-trigger "
+                        + "column. The rule was asserted by its breakpoint — '@media (max-width: "
+                        + "640px)' — and the breakpoint was moved to 480px on purpose when the phone "
+                        + "took the tablet's layout, so the guard went red over a rule that is still "
+                        + "there and still does exactly what it says. **The property is the "
+                        + "behaviour, not the number.**");
         assertTrue(css.contains(".fm-jobs-table th:nth-child(2)") && css.contains(".fm-jobs-table td:nth-child(2)"),
                 "the trigger column is hidden on a phone");
         assertTrue(css.contains(".fm-jobs-table th:nth-child(4)") && css.contains(".fm-jobs-table td:nth-child(4)"),
@@ -97,6 +102,27 @@ class AdminJobsViewTest {
                 "but never the job name");
         assertTrue(!css.contains(".fm-jobs-table th:nth-child(3)"),
                 "nor the last outcome, which is the whole reason the panel exists");
+    }
+
+    /**
+     * Whether some narrow-screen rule drops the two columns that can be dropped.
+     *
+     * <p><b>Found by shape, not by number.</b> The rule is a media query, and the two columns are
+     * hidden inside it — so the guard looks for a media query that contains both rules rather than
+     * for a particular breakpoint. A breakpoint is a decision that gets revisited; the behaviour is
+     * the thing that has to survive.
+     */
+    private boolean narrowScreenRuleThatDropsTheJobsColumns(String css) {
+        for (String block : css.split("@media")) {
+            if (!block.contains("max-width")) {
+                continue;
+            }
+            if (block.contains(".fm-jobs-table th:nth-child(2)")
+                    && block.contains(".fm-jobs-table th:nth-child(4)")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String view() throws IOException {
