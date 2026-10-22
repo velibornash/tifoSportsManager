@@ -403,6 +403,7 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
             if ("GK".equals(teammate.getRole())) continue;
             if (teammate.isSentOff() || teammate.isInjured() || teammate.isLocked()) continue;
             if (teammate == state.getCarrier()) continue;
+            if (teammate == state.getRestartTaker()) continue; // F-TO-3
 
             double otherDistance = SimUtils.distance(teammate.getPosition(), threat.getPosition());
             if (otherDistance + 1e-9 < candidateDistance) return false;
