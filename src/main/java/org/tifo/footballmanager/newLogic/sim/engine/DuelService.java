@@ -46,29 +46,57 @@ public class DuelService {
         if (state.getCarrier() == null) return;
         Player carrier = state.getCarrier();
 
+        // Pick the most dangerous qualifying opponent (F-DU-3, owner decision
+        // 2026-10-22): among all opponents that can contest the ball this tick,
+        // the one nearest the carrier's own goal line is the threat — the ball is
+        // behind him and our net is in front of him. List order used to decide
+        // this by accident (HOME-first, formation order), so a full-back could be
+        // preferred to a striker.
+        boolean carrierHome = "HOME".equals(carrier.getTeam());
+        Player chosenOpponent = null;
+        DuelEngine.DuelType chosenType = null;
         for (Player opponent : state.getPlayers()) {
             if (opponent.getTeam().equals(carrier.getTeam())) continue;
             if (opponent.isUnavailable() || opponent.isLocked()) continue;
 
             DuelEngine.DuelType duelType = duelEngine.checkDuel(carrier, opponent, state);
-            if (duelType != null) {
-                Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
+            if (duelType == null) continue;
 
-                // Discipline — only on a genuine defensive contest where the DEFENDER
-                // won (tackle/dribble/receive). Evaluated BEFORE applyDuelResult so
-                // state.getCarrier() still points at the fouled attacker for the foul
-                // position/penalty-box checks. A foul replaces the duel's ball outcome:
-                // the game restarts from the foul spot for the fouled team.
-                boolean foulAwarded = false;
-                if (winner == opponent && (duelType == DuelEngine.DuelType.DRIBBLE
-                        || duelType == DuelEngine.DuelType.TACKLE
-                        || duelType == DuelEngine.DuelType.RECEIVE_PASS)) {
-                    foulAwarded = evaluateDiscipline(opponent, carrier);
-                }
-                if (foulAwarded) {
-                    break; // the restart already replaced the duel outcome — stop contesting
-                }
+            if (chosenOpponent == null) {
+                chosenOpponent = opponent;
+                chosenType = duelType;
+                continue;
+            }
+            double chosenRow = chosenOpponent.getPosition().getRow();
+            double oppRow = opponent.getPosition().getRow();
+            // nearest to our own goal line: min row for HOME (goal at row 1),
+            // max row for AWAY (goal at row 8).
+            boolean oppMoreDangerous = carrierHome ? (oppRow < chosenRow) : (oppRow > chosenRow);
+            if (oppMoreDangerous) {
+                chosenOpponent = opponent;
+                chosenType = duelType;
+            }
+        }
 
+        if (chosenOpponent != null) {
+            Player opponent = chosenOpponent;
+            DuelEngine.DuelType duelType = chosenType;
+            Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
+
+            // Discipline — only on a genuine defensive contest where the DEFENDER
+            // won (tackle/dribble/receive). Evaluated BEFORE applyDuelResult so
+            // state.getCarrier() still points at the fouled attacker for the foul
+            // position/penalty-box checks. A foul replaces the duel's ball outcome:
+            // the game restarts from the foul spot for the fouled team.
+            boolean foulAwarded = false;
+            if (winner == opponent && (duelType == DuelEngine.DuelType.DRIBBLE
+                    || duelType == DuelEngine.DuelType.TACKLE
+                    || duelType == DuelEngine.DuelType.RECEIVE_PASS)) {
+                foulAwarded = evaluateDiscipline(opponent, carrier);
+            }
+            if (foulAwarded) {
+                // the restart already replaced the duel outcome — stop contesting
+            } else {
                 if (winner != carrier) {
                     state.clearPassContext();
                 }
@@ -80,12 +108,6 @@ public class DuelService {
                 log("DUL", duelMsg);
                 recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
                 stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
-
-                // ONE contest per tick. The loop used to keep going after a duel
-                // resolved, so a carrier surrounded by opponents could win five
-                // duels in the same tick — the ball never moved and the match
-                // stalled. One contest, then normal play resumes.
-                break;
             }
         }
     }
