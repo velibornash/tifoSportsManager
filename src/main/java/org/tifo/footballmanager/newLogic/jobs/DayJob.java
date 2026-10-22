@@ -42,6 +42,21 @@ public interface DayJob {
     int hour();
 
     /**
+     * The minute of the hour the job fires at.
+     *
+     * <p><b>The hour alone is not enough, and the day-1 internationals are why.</b> The club week
+     * gives day 1 a 20:45 kickoff, so the matchday has to be prepared at 19:45 and published at
+     * 20:45 (owner, 2026-10-22: "ako je mec u 20:45, u 19:45 treba matchday-prepare-1"). A trigger
+     * that only knows the hour fires at 19:00 and at 20:00 - forty-five minutes early for the lock,
+     * and forty-five minutes before the whistle for the publish.
+     *
+     * <p>Zero for every job that does not care, which is all of them but the day-1 pair.
+     */
+    default int minute() {
+        return 0;
+    }
+
+    /**
      * Runs before others on the same hour.
      *
      * <p>Several jobs read each other's output - finance settles before fixtures are created,

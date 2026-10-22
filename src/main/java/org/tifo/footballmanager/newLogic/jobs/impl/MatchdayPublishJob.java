@@ -30,22 +30,44 @@ public class MatchdayPublishJob implements DayJob {
     private static final Logger log = LoggerFactory.getLogger(MatchdayPublishJob.class);
 
     private final int day;
-    private final Integer kickoffHour;
+    private final java.time.LocalTime kickoff;
     private final Integer week;
     private final String phase;
     private final MatchFixtureRepository fixtures;
     private final MatchdayScheduler scheduler;
 
-    /** The club calendar: the kickoff hour comes from {@link org.tifo.footballmanager.newLogic.model.GameDay}. */
+    /** The club calendar: the kickoff comes from {@link org.tifo.footballmanager.newLogic.model.GameDay}. */
     public MatchdayPublishJob(int day, MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
-        this(day, org.tifo.footballmanager.newLogic.model.GameDay.of(day).kickoffHour(),
+        this(day, org.tifo.footballmanager.newLogic.model.GameDay.of(day).kickoffTime(),
                 DayJob.ANY_WEEK, fixtures, scheduler);
     }
 
     /** An explicit kickoff hour, for a day whose kickoff is not in the club calendar. */
     public MatchdayPublishJob(int day, Integer kickoffHour, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
-        this(day, kickoffHour, DayJob.ANY_WEEK, null, fixtures, scheduler);
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0),
+                DayJob.ANY_WEEK, null, fixtures, scheduler);
+    }
+
+    /**
+     * The whole kickoff, hour and minute, for the club calendar.
+     *
+     * <p>The publish is the moment the match reaches the manager, and on day 1 that is 20:45 - the
+     * kickoff itself, not the hour it falls in (owner, 2026-10-22: "onda matchday-publish-1 pomeri
+     * mec na dashboardima iz next u recents"). An hour-only trigger publishes at 20:00, three quarters
+     * of an hour before the whistle, and moves a match that has not started into the results.
+     */
+    public MatchdayPublishJob(int day, java.time.LocalTime kickoff, MatchFixtureRepository fixtures,
+                              MatchdayScheduler scheduler) {
+        this(day, kickoff, DayJob.ANY_WEEK, null, fixtures, scheduler);
+    }
+
+    /**
+     * A week as well as a kickoff, for the national calendar.
+     */
+    public MatchdayPublishJob(int day, java.time.LocalTime kickoff, Integer week,
+                              MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
+        this(day, kickoff, week, null, fixtures, scheduler);
     }
 
     /**
@@ -57,14 +79,22 @@ public class MatchdayPublishJob implements DayJob {
      */
     public MatchdayPublishJob(int day, Integer kickoffHour, Integer week, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
-        this(day, kickoffHour, week, null, fixtures, scheduler);
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0), week, null, fixtures,
+                scheduler);
     }
 
     /** With an explicit phase word in the key, so a second pair on the same day does not collide. */
     public MatchdayPublishJob(int day, Integer kickoffHour, Integer week, String phase, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0), week, phase, fixtures,
+                scheduler);
+    }
+
+    /** The whole kickoff and the week. */
+    public MatchdayPublishJob(int day, java.time.LocalTime kickoff, Integer week, String phase,
+                              MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
         this.day = day;
-        this.kickoffHour = kickoffHour;
+        this.kickoff = kickoff;
         this.week = week == null ? DayJob.ANY_WEEK : week;
         this.phase = phase;
         this.fixtures = fixtures;
@@ -101,10 +131,19 @@ public class MatchdayPublishJob implements DayJob {
         return fixtures.stream().map(MatchFixture::getId).filter(java.util.Objects::nonNull).toList();
     }
 
-    /** The kickoff hour itself, from the template. Day 1 is 20:45 and lands on hour 20. */
+    /**
+     * The kickoff itself, from the template. Day 1 is 20:45 - the hour is 20 and the minute is 45,
+     * and the publish waits for both.
+     */
     @Override
     public int hour() {
-        return kickoffHour == null ? 0 : kickoffHour;
+        return kickoff == null ? 0 : kickoff.getHour();
+    }
+
+    /** The minute of the kickoff: 45 on day 1, 0 on the days that kick off on the hour. */
+    @Override
+    public int minute() {
+        return kickoff == null ? 0 : kickoff.getMinute();
     }
 
     @Override

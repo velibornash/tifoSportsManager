@@ -92,17 +92,18 @@ public class JobRunner {
     /**
      * Runs everything due for the given clock position.
      *
+     * @param minute the minute inside the hour, so a job that fires at 19:45 is not due at 19:30
      * @return one entry per job considered, so the caller can see what ran, what was already done
      *         and what failed. Returning the detail rather than a count is what makes an advancing
      *         clock diagnosable instead of opaque.
      */
-    public Map<String, Object> runDue(int seasonYear, int weekNumber, int dayNumber, int hour) {
+    public Map<String, Object> runDue(int seasonYear, int weekNumber, int dayNumber, int hour, int minute) {
         List<Map<String, Object>> outcomes = new ArrayList<>();
         String dayKey = seasonYear + "/" + weekNumber + "/" + dayNumber;
         Set<String> doneToday = doneJobs.computeIfAbsent(dayKey, ignored -> new HashSet<>());
 
         for (DayJob job : jobs) {
-            if (!isDue(job, weekNumber, dayNumber, hour)) {
+            if (!isDue(job, weekNumber, dayNumber, hour, minute)) {
                 continue;
             }
             // **D4: a job that has already run today does not need asking again.**
@@ -164,20 +165,46 @@ public class JobRunner {
     }
 
     /**
+     * Runs everything due in a whole hour, minute ignored.
+     *
+     * <p>Used for an hour that has already gone by: the catch-up walks the hours it missed, and a
+     * trigger inside one of them (the 19:45 prepare) still has to run - so an hour that is over is
+     * walked at its end ({@code 59}), and everything due in it is due.
+     */
+    public Map<String, Object> runDue(int seasonYear, int weekNumber, int dayNumber, int hour) {
+        return runDue(seasonYear, weekNumber, dayNumber, hour, 59);
+    }
+
+    /**
      * Whether a job's trigger has been reached.
      *
      * <p>The hour comparison is not "greater or equal" in general: a job at 14:00 is not due at
      * 09:00, which is the case that made this whole framework necessary. A job at 00:00 is due from
      * the first hour of the day.
+     *
+     * <p><b>The minute is part of the trigger, and day 1 is why.</b> The internationals kick off at
+     * 20:45, so the prepare fires at 19:45 and the publish at 20:45 (owner, 2026-10-22). An
+     * hour-only trigger fires the lock three quarters of an hour early and the publish before the
+     * whistle - and a job that fires early is worse than one that fires late, because a manager can
+     * still see a late result and cannot un-see an early one.
+     *
+     * <p>Past hours are walked at the end of the hour, so a trigger inside an hour that has already
+     * gone by is still picked up by the catch-up.
      */
-    private boolean isDue(DayJob job, int weekNumber, int dayNumber, int hour) {
+    private boolean isDue(DayJob job, int weekNumber, int dayNumber, int hour, int minute) {
         if (job.week() != DayJob.ANY_WEEK && job.week() != weekNumber) {
             return false;
         }
         if (job.day() != DayJob.ANY_DAY && job.day() != dayNumber) {
             return false;
         }
-        return hour >= job.hour();
+        if (hour > job.hour()) {
+            return true;
+        }
+        if (hour < job.hour()) {
+            return false;
+        }
+        return minute >= job.minute();
     }
 
     /**
@@ -218,7 +245,7 @@ public class JobRunner {
         outcome.put("key", job.key());
         outcome.put("trigger", "w" + (job.week() == DayJob.ANY_WEEK ? "*" : job.week())
                 + " d" + (job.day() == DayJob.ANY_DAY ? "*" : job.day())
-                + " " + job.hour() + ":00");
+                + " " + String.format("%02d:%02d", job.hour(), job.minute()));
 
         var existing = runs.findBySeasonYearAndWeekNumberAndDayNumberAndJobKey(
                 seasonYear, weekNumber, dayNumber, job.key());
@@ -399,6 +426,8 @@ public class JobRunner {
             row.put("week", job.week() == DayJob.ANY_WEEK ? "every" : job.week());
             row.put("day", job.day() == DayJob.ANY_DAY ? "every" : job.day());
             row.put("hour", job.hour());
+            row.put("minute", job.minute());
+            row.put("trigger", String.format("%02d:%02d", job.hour(), job.minute()));
             row.put("order", job.order());
             return row;
         }).toList();

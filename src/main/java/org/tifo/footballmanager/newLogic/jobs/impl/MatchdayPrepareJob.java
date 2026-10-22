@@ -36,17 +36,17 @@ public class MatchdayPrepareJob implements DayJob {
     private static final Logger log = LoggerFactory.getLogger(MatchdayPrepareJob.class);
 
     private final int day;
-    private final Integer kickoffHour;
+    private final java.time.LocalTime kickoff;
     private final Integer week;
     private final String phase;
     private final MatchFixtureRepository fixtures;
     private final MatchdayScheduler scheduler;
 
     /**
-     * The club calendar: the kickoff hour comes from {@link org.tifo.footballmanager.newLogic.model.GameDay}.
+     * The club calendar: the kickoff comes from {@link org.tifo.footballmanager.newLogic.model.GameDay}.
      */
     public MatchdayPrepareJob(int day, MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
-        this(day, org.tifo.footballmanager.newLogic.model.GameDay.of(day).kickoffHour(),
+        this(day, org.tifo.footballmanager.newLogic.model.GameDay.of(day).kickoffTime(),
                 DayJob.ANY_WEEK, fixtures, scheduler);
     }
 
@@ -59,7 +59,28 @@ public class MatchdayPrepareJob implements DayJob {
      */
     public MatchdayPrepareJob(int day, Integer kickoffHour, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
-        this(day, kickoffHour, DayJob.ANY_WEEK, null, fixtures, scheduler);
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0),
+                DayJob.ANY_WEEK, fixtures, scheduler);
+    }
+
+    /**
+     * The whole kickoff, hour and minute, for the club calendar.
+     *
+     * <p>The minute is not a detail here: day 1 kicks off at 20:45, so the lock has to land at 19:45
+     * (owner, 2026-10-22) and an hour that knows only "19" lands it at 19:00 - three quarters of an
+     * hour of extra time for a manager to change his eleven after the matchday was computed.
+     */
+    public MatchdayPrepareJob(int day, java.time.LocalTime kickoff, MatchFixtureRepository fixtures,
+                              MatchdayScheduler scheduler) {
+        this(day, kickoff, DayJob.ANY_WEEK, null, fixtures, scheduler);
+    }
+
+    /**
+     * A week as well as a kickoff, for the national calendar.
+     */
+    public MatchdayPrepareJob(int day, java.time.LocalTime kickoff, Integer week,
+                              MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
+        this(day, kickoff, week, null, fixtures, scheduler);
     }
 
     /**
@@ -71,14 +92,22 @@ public class MatchdayPrepareJob implements DayJob {
      */
     public MatchdayPrepareJob(int day, Integer kickoffHour, Integer week, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
-        this(day, kickoffHour, week, null, fixtures, scheduler);
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0), week, null, fixtures,
+                scheduler);
     }
 
     /** With an explicit phase word in the key, so a second pair on the same day does not collide. */
     public MatchdayPrepareJob(int day, Integer kickoffHour, Integer week, String phase, MatchFixtureRepository fixtures,
                               MatchdayScheduler scheduler) {
+        this(day, kickoffHour == null ? (java.time.LocalTime) null : java.time.LocalTime.of(kickoffHour, 0), week, phase, fixtures,
+                scheduler);
+    }
+
+    /** The whole kickoff and the week, for the club calendar. */
+    public MatchdayPrepareJob(int day, java.time.LocalTime kickoff, Integer week, String phase,
+                              MatchFixtureRepository fixtures, MatchdayScheduler scheduler) {
         this.day = day;
-        this.kickoffHour = kickoffHour;
+        this.kickoff = kickoff;
         this.week = week == null ? DayJob.ANY_WEEK : week;
         this.phase = phase;
         this.fixtures = fixtures;
@@ -111,13 +140,26 @@ public class MatchdayPrepareJob implements DayJob {
     /**
      * The hour before kickoff, read from the template rather than restated.
      *
-     * <p>Day 1 is a 20:45 slot, so "an hour before" is hour 19; the league days are 19:00 and 16:00,
-     * so theirs are 18 and 15. A literal per day would be four more numbers to drift, and the drift
-     * would be exactly the kind nobody notices: the lock landing at the wrong hour.
+     * <p>Day 1 is a 20:45 slot, so "an hour before" is 19:45; the league days are 19:00 and 16:00,
+     * so theirs are 18:00 and 15:00. A literal per day would be four more numbers to drift, and the
+     * drift would be exactly the kind nobody notices: the lock landing at the wrong hour.
      */
     @Override
     public int hour() {
-        return kickoffHour == null ? 0 : Math.max(0, kickoffHour - 1);
+        return prepareTime() == null ? 0 : prepareTime().getHour();
+    }
+
+    /**
+     * The minute of that hour, which is 45 on day 1 and 0 on the days that kick off on the hour.
+     */
+    @Override
+    public int minute() {
+        return prepareTime() == null ? 0 : prepareTime().getMinute();
+    }
+
+    /** The moment the matchday is computed: exactly an hour before the kickoff. */
+    private java.time.LocalTime prepareTime() {
+        return kickoff == null ? null : kickoff.minusHours(1);
     }
 
     @Override

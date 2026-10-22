@@ -50,13 +50,20 @@ public class GameClockScheduler {
     }
 
     /**
-     * Every half hour, on the hour and on the half.
+     * Every five minutes, on the five.
+     *
+     * <p><b>Five minutes, not thirty</b> (owner, 2026-10-22: "u 19:45 treba matchday-prepare-1").
+     * The internationals kick off at 20:45, so the matchday is prepared at 19:45 and published at
+     * 20:45, and a half-hourly tick cannot land on either: it fires at :00 and :30, and the two
+     * triggers are at :45 of their hours. A tick that misses the hour a job is due in is a job that
+     * runs late, and a lock that lands late is a manager whose eleven was changed after it was
+     * computed.
      *
      * <p>Off in dev and test by default: a season that moves underneath a test run makes every season
      * test time-dependent. The advance buttons and {@code POST /api/game-clock/advance} are the manual
      * path and work identically.
      */
-    @Scheduled(cron = "${game.clock.cron:0 */30 * * * *}")
+    @Scheduled(cron = "${game.clock.cron:0/5 * * * * *}")
     public void synchronise() {
         if (!enabled) {
             return;

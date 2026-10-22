@@ -78,6 +78,17 @@ public enum GameDay {
     }
 
     /**
+     * The whole kickoff, hour and minute together.
+     *
+     * <p>This is what the matchday jobs need: the prepare fires an hour before it and the publish at
+     * it, and "an hour before 20:45" is 19:45 — a number the hour alone cannot express (owner,
+     * 2026-10-22). Null on a day with no fixture: finance, training, morale.
+     */
+    public java.time.LocalTime kickoffTime() {
+        return kind.kickoff();
+    }
+
+    /**
      * The day for a 1..7 value.
      *
      * <p>Out-of-range input falls back to day 1 rather than throwing: a corrupt clock value should

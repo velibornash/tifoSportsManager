@@ -391,10 +391,27 @@ public class GameClockService {
         // already been settled.
         long steps = Math.max(0, Math.min(delta, MAX_CATCH_UP_HOURS));
 
+        // The hours the walk covers, each with the minute inside it that the jobs are judged against.
+        //
+        // **The hour that is running is walked with the real minute; the hours behind it with the end
+        // of the hour.** A trigger that falls inside the hour that is running - the 19:45 prepare - has
+        // to wait for the clock to reach it, and a trigger inside an hour that has gone by must not be
+        // missed by the catch-up.
+        int nowMinute = now.atZone(GameTimeline.GAME_ZONE).getMinute();
+        List<long[]> hoursToWalk = new ArrayList<>();
         for (long step = 1; step <= steps; step++) {
-            GamePosition position = GameTimeline.atHourIndex(fromIndex + step);
+            hoursToWalk.add(new long[] { fromIndex + step, fromIndex + step == toIndex ? nowMinute : 59 });
+        }
+        // **The running hour is checked on every tick**, whether or not the clock crossed an hour
+        // boundary. The walk's own steps are whole hours, so a 19:45 trigger inside the hour that is
+        // running would otherwise be seen only at the next hour - and a job that fires late is a
+        // different defect from one that fires early, but it is still a job that fires late.
+        hoursToWalk.add(new long[] { toIndex, nowMinute });
+
+        for (long[] hour : hoursToWalk) {
+            GamePosition position = GameTimeline.atHourIndex(hour[0]);
             Map<String, Object> result = jobRunner.runDue(position.season(), position.week(),
-                    position.day(), position.hour());
+                    position.day(), position.hour(), (int) hour[1]);
             for (Object entry : asJobs(result)) {
                 if (!(entry instanceof Map<?, ?> job)) {
                     continue;
@@ -555,7 +572,7 @@ public class GameClockService {
     public Map<String, Object> runDueNow() {
         GamePosition current = position();
         Map<String, Object> result = jobRunner.runDue(current.season(), current.week(), current.day(),
-                current.hour());
+                current.hour(), gameTime().atZone(GameTimeline.GAME_ZONE).getMinute());
         return result;
     }
 }

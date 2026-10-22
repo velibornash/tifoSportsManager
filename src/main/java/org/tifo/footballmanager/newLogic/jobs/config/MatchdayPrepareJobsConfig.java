@@ -21,9 +21,12 @@ import org.springframework.context.annotation.Configuration;
  *   <li><b>at kickoff</b> — the results are released and the watch links open.</li>
  * </ul>
  *
- * <p>Both hours are read from the seven-day template rather than restated, so the pair cannot drift
- * apart: day 1 is a 20:45 slot and so prepares at 19 and publishes at 20; the league days are 19:00 and
- * 16:00 and so prepare at 18 and 15.
+ * <p>Both times are read from the seven-day template rather than restated, so the pair cannot drift
+ * apart: day 1 is a 20:45 slot and so prepares at <b>19:45</b> and publishes at <b>20:45</b>; the
+ * league days are 19:00 and 16:00 and so prepare at 18:00 and 15:00; the cup day is 18:00 and
+ * prepares at 17:00 (owner, 2026-10-22). The minute is part of the trigger, not a detail of it: an
+ * hour-only trigger prepared the day-1 matchday at 19:00 and published it at 20:00, three quarters
+ * of an hour before the whistle, and moved a match that had not started into the results.
  *
  * <p><b>Eight separate {@code @Bean} methods, on purpose.</b> This was first written as two beans
  * returning {@code List<DayJob>} and then as two arrays, and the whole pair was invisible to the
