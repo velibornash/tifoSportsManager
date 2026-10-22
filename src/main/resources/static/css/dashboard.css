@@ -5765,25 +5765,35 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     }
 
     /*
-     * The recent matches get the same treatment: one card per screen, with a counter saying which
-     * one it is (owner, 2026-10-20: "pripremi isto 1/3 i swipe i za recent matches - kad ih bude
-     * dovoljno"). A club that plays internationals has more than two; the counter says how many
-     * there are.
+     * The recent matches get the same treatment: one card per screen, in the same strip (owner,
+     * 2026-10-20: "pripremi isto 1/3 i swipe i za recent matches - kad ih bude dovoljno"; and again
+     * 2026-10-22, because they were going one under the other: "ne idu recent matches jedan ispod
+     * drugog nego swipe pile isto kako na next matches").
+     *
+     * <p>**The strip is the list inside the section, not the section's own box.** The cards are the
+     * club's own match card now (`buildScheduleFixtureCardHtml`, the same builder the club's Matches
+     * page uses) and they arrive wrapped in a `.fm-fixtures` list. The rules here used to point at the
+     * box and at `.match-row`, which is the card that predates them - so the scroller had nothing to
+     * scroll sideways and the three cards simply stacked, which is exactly what the owner saw on his
+     * phone.
      */
-    .fm-dashboard-section--recent .fm-dashboard-cards--single {
+    .fm-dashboard-section--recent .fm-fixtures {
         display: flex;
-        grid-row: auto;
-        grid-template-rows: none;
         gap: 10px;
         overflow-x: auto;
         scroll-snap-type: x mandatory;
         -webkit-overflow-scrolling: touch;
+        /* The right padding is the room the next card needs: a card that is 100% of the content box
+           and a strip with no right padding ends flush against the screen edge. */
         padding: 2px 12px 8px 2px;
     }
 
-    .fm-dashboard-section--recent .match-row {
+    .fm-dashboard-section--recent .fm-fixture {
         flex: 0 0 100%;
         scroll-snap-align: start;
+        /* A flex item will not shrink below its content's minimum width without this, and a club name
+           that refuses to shrink is a card wider than the phone. */
+        min-width: 0;
     }
 
     /* The next-match tile earns its width: it is the one tile a manager looks at on the way in. */
@@ -6111,6 +6121,19 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     background: var(--surface-2-grad);
     border: 1px solid var(--border-faint);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+/*
+ * The ground is not on this card (owner, 2026-10-22: "recent matches widget na dashboardu - skloni
+ * ime stadiona sa njega").
+ *
+ * <p>Only here: the same card on the club's Matches page keeps its venue, because there the strip is
+ * a page of fixtures and the ground is part of a fixture. On the dashboard the card shares its top
+ * line with the date and the calendar, and the venue was the third thing on a line that has room for
+ * two - the one the manager already knows, since he is reading his own last three results.
+ */
+.fm-dashboard-section--recent .fm-fixture .fx-venue {
+    display: none;
 }
 
 /*
