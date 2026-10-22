@@ -1448,11 +1448,17 @@
     background: rgba(120, 150, 210, 0.06);
     border: 1px solid transparent;
     min-width: 0;
+    position: relative;
 }
 
 .fm-page--country .fm-week-day.is-match {
     border-color: rgba(143, 208, 255, 0.4);
     background: rgba(90, 150, 220, 0.12);
+}
+
+.fm-page--country .fm-week-day.is-today {
+    border-color: rgba(159, 230, 176, 0.45);
+    background: rgba(80, 170, 120, 0.12);
 }
 
 .fm-page--country .fm-week-day-head {
@@ -1470,6 +1476,17 @@
 .fm-page--country .fm-week-day-time {
     font-size: 11px;
     color: #8fd0ff;
+}
+
+.fm-page--country .fm-week-day-today {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #9fe6b0;
 }
 
 .fm-page--country .fm-week-day-kind {
