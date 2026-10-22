@@ -7,7 +7,6 @@ import org.tifo.footballmanager.newLogic.model.Position;
 import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.model.Player;
-import org.tifo.footballmanager.newLogic.model.PlayerRole;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.LineupRepository;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
@@ -222,8 +221,8 @@ public class MatchLineupService {
             }
         }
 
-        boolean keeperOnBench = bench.stream().anyMatch(MatchLineupService::isKeeper);
-        long keepersStarting = starters.stream().filter(MatchLineupService::isKeeper).count();
+        boolean keeperOnBench = bench.stream().anyMatch(Player::isGoalkeeper);
+        long keepersStarting = starters.stream().filter(Player::isGoalkeeper).count();
 
         if (keepersStarting == 0) {
             warnings.add("No goalkeeper is in the starting eleven. The engine will put one in.");
@@ -312,16 +311,6 @@ public class MatchLineupService {
         Integer season = fixture == null || fixture.getSeasonYear() == null
                 ? null : fixture.getSeasonYear();
         return discipline.suspensionFor(player.getId(), season, fixture);
-    }
-
-    /**
-     * A goalkeeper, by the role the engine will treat him as.
-     *
-     * <p>{@code effectiveRole()} and not the position string, because a player with no explicit role gets
-     * one derived from his position — asking the position directly would call some keepers outfielders.
-     */
-    static boolean isKeeper(Player player) {
-        return player != null && player.effectiveRole() == PlayerRole.GOALKEEPER;
     }
 
     private static String displayName(Player player) {

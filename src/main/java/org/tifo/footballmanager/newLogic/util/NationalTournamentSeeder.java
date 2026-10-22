@@ -4,13 +4,11 @@ import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.Country;
 import org.tifo.footballmanager.newLogic.model.GameClock;
-import org.tifo.footballmanager.newLogic.model.Match;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.model.NationalStage;
 import org.tifo.footballmanager.newLogic.model.NationalTeamLevel;
 import org.tifo.footballmanager.newLogic.model.NationalTournamentSchedule;
 import org.tifo.footballmanager.newLogic.model.Player;
-import org.tifo.footballmanager.newLogic.model.SeasonCompetition;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.repository.CountryRepository;
 import org.tifo.footballmanager.newLogic.repository.GameClockRepository;
@@ -227,7 +225,7 @@ public class NationalTournamentSeeder {
                     "already drawn");
         }
 
-        ensureSeasonCompetition(competition, seasonYear);
+        seasonCompetitions.ensure(competition, seasonYear);
         List<List<Entrant>> groups = dealIntoGroups(ranked, competition, seasonYear);
         Map<Long, Integer> ratingOf = new LinkedHashMap<>();
         for (Entrant entrant : ranked) {
@@ -303,7 +301,7 @@ public class NationalTournamentSeeder {
     }
 
     DrawResult buildKnockouts(Competition competition, int seasonYear) {
-        ensureSeasonCompetition(competition, seasonYear);
+        seasonCompetitions.ensure(competition, seasonYear);
         List<MatchFixture> all = fixtures
                 .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(competition.getId(), seasonYear);
 
@@ -356,7 +354,7 @@ public class NationalTournamentSeeder {
             List<Team> winners = new ArrayList<>();
             List<MatchFixture> undecided = new ArrayList<>();
             for (MatchFixture tie : thisRound) {
-                Team winner = winnerOf(tie);
+                Team winner = TieWinners.winnerOf(tie);
                 if (winner == null) {
                     undecided.add(tie);
                 } else {
@@ -489,7 +487,7 @@ public class NationalTournamentSeeder {
                     || !tie.isPlayed()) {
                 continue;
             }
-            Team winner = winnerOf(tie);
+            Team winner = TieWinners.winnerOf(tie);
             if (winner != null) {
                 semiLosers.add(winner == tie.getHomeTeam() ? tie.getAwayTeam() : tie.getHomeTeam());
             }
@@ -504,44 +502,7 @@ public class NationalTournamentSeeder {
         return made;
     }
 
-    /**
-     * The winner of a played tie, or null when there is genuinely none.
-     *
-     * <p>A level tie is decided by the shootout columns. A tie that is level <i>and</i> has no shootout
-     * recorded returns null and stops the bracket, rather than being settled by a coin.
-     */
-    private Team winnerOf(MatchFixture tie) {
-        Match played = tie.getPlayedMatch();
-        if (played == null) {
-            return null;
-        }
-        int home = played.getHomeGoals();
-        int away = played.getAwayGoals();
-        if (home == away) {
-            Integer homePens = played.getHomePenaltyGoals();
-            Integer awayPens = played.getAwayPenaltyGoals();
-            if (homePens == null || awayPens == null || homePens.equals(awayPens)) {
-                log.warn("{} tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
-                        tie.getCompetition() == null ? "?" : tie.getCompetition().getName(), tie.getId(), home, away);
-                return null;
-            }
-            return homePens > awayPens ? tie.getHomeTeam() : tie.getAwayTeam();
-        }
-        return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
-    }
-
     // ---------- rows ----------
-
-    private SeasonCompetition ensureSeasonCompetition(Competition competition, int seasonYear) {
-        return seasonCompetitions.findByCompetitionAndSeasonYear(competition, seasonYear)
-                .orElseGet(() -> {
-                    SeasonCompetition sc = new SeasonCompetition();
-                    sc.setCompetition(competition);
-                    sc.setSeasonYear(seasonYear);
-                    sc.setFinished(false);
-                    return seasonCompetitions.save(sc);
-                });
-    }
 
     private int fixture(Competition competition, int seasonYear, Team home, Team away, int round, int week,
                         int day, String groupCode) {

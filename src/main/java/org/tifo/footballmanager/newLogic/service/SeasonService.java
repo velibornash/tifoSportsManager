@@ -188,15 +188,7 @@ public class SeasonService {
 
     @Transactional
     public SeasonCompetition ensureSeasonCompetition(Competition competition, int seasonYear) {
-        return seasonCompetitionRepository
-                .findByCompetitionAndSeasonYear(competition, seasonYear)
-                .orElseGet(() -> {
-                    SeasonCompetition sc = new SeasonCompetition();
-                    sc.setCompetition(competition);
-                    sc.setSeasonYear(seasonYear);
-                    sc.setFinished(false);
-                    return seasonCompetitionRepository.save(sc);
-                });
+        return seasonCompetitionRepository.ensure(competition, seasonYear);
     }
 
     /**

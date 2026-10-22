@@ -1,5 +1,7 @@
 package org.tifo.footballmanager.newLogic.sim.model;
 
+import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
+
 /**
  * Physical goal structure: posts + crossbar dimensions.
  * In 2D physics only posts are solid (point obstacles with radius).
@@ -43,15 +45,7 @@ public class GoalPhysical {
     /** Segment (prev→curr) hits either post? */
     public boolean segmentHitsPost(Position prev, Position curr, double ballRadius) {
         double threshold = POST_RADIUS + ballRadius;
-        return pointSegmentDist(goalLineRow, MOUTH_LEFT, prev, curr) <= threshold
-                || pointSegmentDist(goalLineRow, MOUTH_RIGHT, prev, curr) <= threshold;
-    }
-
-    static double pointSegmentDist(double r, double c, Position p1, Position p2) {
-        double dr = p2.getRow() - p1.getRow(), dc = p2.getColumn() - p1.getColumn();
-        double len2 = dr * dr + dc * dc;
-        if (len2 < 1e-9) return Math.hypot(r - p1.getRow(), c - p1.getColumn());
-        double t = Math.max(0, Math.min(1, ((r - p1.getRow()) * dr + (c - p1.getColumn()) * dc) / len2));
-        return Math.hypot(r - (p1.getRow() + dr * t), c - (p1.getColumn() + dc * t));
+        return SimUtils.pointSegmentDistance(goalLineRow, MOUTH_LEFT, prev, curr) <= threshold
+                || SimUtils.pointSegmentDistance(goalLineRow, MOUTH_RIGHT, prev, curr) <= threshold;
     }
 }

@@ -253,6 +253,21 @@ public class Player {
     }
 
     /**
+     * A goalkeeper, by the role the engine will treat him as.
+     *
+     * <p>{@link #effectiveRole()} and not the position string, because a player with no explicit role gets
+     * one derived from his position — asking the position directly would call some keepers outfielders.
+     *
+     * <p>Three copies of this question lived beside it: {@code MatchLineupService.isKeeper} asked
+     * {@code effectiveRole()}, {@code TrainingProgressionService.isGoalkeeper} and the decision engine's
+     * own asked something else, and the simulation model's {@code Player} had a fourth answered from its
+     * role string. One question, one answer.
+     */
+    public boolean isGoalkeeper() {
+        return effectiveRole() == PlayerRole.GOALKEEPER;
+    }
+
+    /**
      * Sets the role, and the position with it.
      *
      * <p>Assigning a role is what a manager means, and it implies the position — a centre back

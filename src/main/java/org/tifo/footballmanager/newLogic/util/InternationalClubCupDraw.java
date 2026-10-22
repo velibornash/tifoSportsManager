@@ -197,7 +197,7 @@ public class InternationalClubCupDraw {
 
     @Transactional
     DrawResult buildGroupStage(Competition cup, List<Team> entrants, int qualifyPerGroup, int seasonYear) {
-        SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
+        SeasonCompetition sc = seasonCompetitions.ensure(cup, seasonYear);
 
         // **Before the idempotency check, and deliberately (P0-CUPS-3).**
         //
@@ -370,7 +370,7 @@ public class InternationalClubCupDraw {
      */
     @Transactional
     DrawResult buildKnockouts(Competition cup, int qualifyPerGroup, int seasonYear) {
-        SeasonCompetition sc = ensureSeasonCompetition(cup, seasonYear);
+        SeasonCompetition sc = seasonCompetitions.ensure(cup, seasonYear);
         List<MatchFixture> allFixtures = fixtures
                 .findByCompetitionIdAndSeasonYearOrderByRoundNumberAscMatchDateAsc(cup.getId(), seasonYear);
 
@@ -497,7 +497,7 @@ public class InternationalClubCupDraw {
             List<Team> winners = new ArrayList<>();
             List<MatchFixture> undecided = new ArrayList<>();
             for (MatchFixture tie : thisRound) {
-                Team winner = winnerOf(tie);
+                Team winner = TieWinners.winnerOf(tie);
                 if (winner == null) {
                     undecided.add(tie);
                 } else {
@@ -568,7 +568,7 @@ public class InternationalClubCupDraw {
             if (tie.getRoundNumber() == null || tie.getRoundNumber() != ROUND_SEMI_FINAL || !tie.isPlayed()) {
                 continue;
             }
-            Team winner = winnerOf(tie);
+            Team winner = TieWinners.winnerOf(tie);
             if (winner == null) {
                 continue;
             }
@@ -628,7 +628,7 @@ public class InternationalClubCupDraw {
         for (MatchFixture tie : playedRound) {
             played.add(tie.getHomeTeam());
             played.add(tie.getAwayTeam());
-            Team winner = winnerOf(tie);
+            Team winner = TieWinners.winnerOf(tie);
             if (winner != null) {
                 winners.add(winner);
             }
@@ -639,32 +639,6 @@ public class InternationalClubCupDraw {
             }
         }
         return winners;
-    }
-
-    /**
-     * The winner of a played tie, or null when there is genuinely none.
-     *
-     * <p>Same rule as the national cup's: a level tie is decided by the shootout columns, and a tie that
-     * is level <i>and</i> has no shootout recorded stops the bracket instead of being settled by a coin
-     * toss. A cup that invents a winner is worse than a cup that is one club short and says so.
-     */
-    private Team winnerOf(MatchFixture tie) {
-        if (tie.getPlayedMatch() == null) {
-            return null;
-        }
-        int home = tie.getPlayedMatch().getHomeGoals();
-        int away = tie.getPlayedMatch().getAwayGoals();
-        if (home == away) {
-            Integer homePens = tie.getPlayedMatch().getHomePenaltyGoals();
-            Integer awayPens = tie.getPlayedMatch().getAwayPenaltyGoals();
-            if (homePens == null || awayPens == null || homePens.equals(awayPens)) {
-                log.warn("Cup tie {} finished level at {}-{} with no shootout recorded; no winner taken.",
-                        tie.getId(), home, away);
-                return null;
-            }
-            return homePens > awayPens ? tie.getHomeTeam() : tie.getAwayTeam();
-        }
-        return home > away ? tie.getHomeTeam() : tie.getAwayTeam();
     }
 
     /**
@@ -752,17 +726,6 @@ public class InternationalClubCupDraw {
                 entries.save(entry);
             }
         }
-    }
-
-    private SeasonCompetition ensureSeasonCompetition(Competition cup, int seasonYear) {
-        return seasonCompetitions.findByCompetitionAndSeasonYear(cup, seasonYear)
-                .orElseGet(() -> {
-                    SeasonCompetition sc = new SeasonCompetition();
-                    sc.setCompetition(cup);
-                    sc.setSeasonYear(seasonYear);
-                    sc.setFinished(false);
-                    return seasonCompetitions.save(sc);
-                });
     }
 
     private MatchFixture fixture(Competition cup, SeasonCompetition sc, Team home, Team away, int round,

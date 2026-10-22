@@ -12,6 +12,28 @@ import java.util.Optional;
 @Repository
 public interface SeasonCompetitionRepository extends JpaRepository<SeasonCompetition, Long> {
     Optional<SeasonCompetition> findByCompetitionAndSeasonYear(Competition league, Integer seasonYear);
+
+    /**
+     * This competition's row for this season, created if it is not there yet.
+     *
+     * <p>The find-or-create was written three times — {@code SeasonService.ensureSeasonCompetition} and a
+     * private copy each in {@code NationalTournamentSeeder} and {@code InternationalClubCupDraw}, the
+     * latter two byte for byte identical. It lives here because every one of those callers is holding
+     * this repository anyway, and because a season row is the table's own business rather than a rule of
+     * the draw that happens to need one.
+     *
+     * <p>Not transactional of its own accord: the caller decides. A draw already runs inside one, and the
+     * read-then-create is only correct while it does.
+     */
+    default SeasonCompetition ensure(Competition competition, int seasonYear) {
+        return findByCompetitionAndSeasonYear(competition, seasonYear).orElseGet(() -> {
+            SeasonCompetition seasonCompetition = new SeasonCompetition();
+            seasonCompetition.setCompetition(competition);
+            seasonCompetition.setSeasonYear(seasonYear);
+            seasonCompetition.setFinished(false);
+            return save(seasonCompetition);
+        });
+    }
     List<SeasonCompetition> findBySeasonYear(Integer seasonYear);
 
     /**

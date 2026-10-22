@@ -456,7 +456,7 @@ public class TrainingProgressionService {
         }
         skills.setExact(directSkill, skills.getExact(directSkill) + dt);
 
-        List<SkillName> generalSkills = isGoalkeeper(player)
+        List<SkillName> generalSkills = player.isGoalkeeper()
                 ? List.of(SkillName.GOALKEEPER, SkillName.DEFENDER, SkillName.PACE, SkillName.TECHNIQUE,
                 SkillName.PLAYMAKER, SkillName.PASSING, SkillName.STRIKER)
                 : List.of(SkillName.DEFENDER, SkillName.PACE, SkillName.TECHNIQUE,
@@ -716,7 +716,4 @@ public class TrainingProgressionService {
         return Rounding.to2(value);
     }
 
-    private boolean isGoalkeeper(Player player) {
-        return player != null && player.getPosition() == Position.GK;
-    }
 }

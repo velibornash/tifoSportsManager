@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.sim.probe;
 
 import org.tifo.footballmanager.newLogic.sim.engine.BallPhysicsEngine;
 import org.tifo.footballmanager.newLogic.sim.model.Position;
+import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -99,16 +100,10 @@ public class BallPhysicsProbe {
         return Math.max(0, Math.min(1, ((r - p1.getRow()) * dr + (c - p1.getColumn()) * dc) / len2));
     }
 
-    static double pointSegmentDist(double r, double c, Position p1, Position p2) {
-        double t = approachT(r, c, p1, p2);
-        return dist(r, c, p1.getRow() + (p2.getRow() - p1.getRow()) * t,
-                    p1.getColumn() + (p2.getColumn() - p1.getColumn()) * t);
-    }
-
     static boolean postSegmentHit(Position p1, Position p2) {
         for (double line : new double[]{HOME_GOAL_LINE, AWAY_GOAL_LINE}) {
             for (double postCol : new double[]{MOUTH_LEFT, MOUTH_RIGHT}) {
-                if (pointSegmentDist(line, postCol, p1, p2) <= POST_R + BALL_R) return true;
+                if (SimUtils.pointSegmentDistance(line, postCol, p1, p2) <= POST_R + BALL_R) return true;
             }
         }
         return false;
@@ -249,20 +244,20 @@ public class BallPhysicsProbe {
             double bestT = Double.MAX_VALUE; String ev = null; P p1 = null;
             boolean fast = spd >= FAST_CONTACT;
             if (s.pendingReceiver != null
-                    && pointSegmentDist(s.pendingReceiver.row, s.pendingReceiver.col, prev, b.pos) <= RECEIVE_R) {
+                    && SimUtils.pointSegmentDistance(s.pendingReceiver.row, s.pendingReceiver.col, prev, b.pos) <= RECEIVE_R) {
                 bestT = approachT(s.pendingReceiver.row, s.pendingReceiver.col, prev, b.pos);
                 ev = "RECEIVE"; p1 = s.pendingReceiver;
             }
             for (P p : s.players) {
                 if (p == s.pendingReceiver) continue;
                 if (p.team.equals(s.lastTouchTeam)) { // teammate body -> deflection only
-                    if (pointSegmentDist(p.row, p.col, prev, b.pos) <= DEFLECT_R
+                    if (SimUtils.pointSegmentDistance(p.row, p.col, prev, b.pos) <= DEFLECT_R
                             && approachT(p.row, p.col, prev, b.pos) < bestT) {
                         bestT = approachT(p.row, p.col, prev, b.pos);
                         ev = "DEFLECT"; p1 = p;
                     }
                 } else { // opponent body
-                    double d = pointSegmentDist(p.row, p.col, prev, b.pos);
+                    double d = SimUtils.pointSegmentDistance(p.row, p.col, prev, b.pos);
                     double t = approachT(p.row, p.col, prev, b.pos);
                     if (t >= bestT) continue;
                     if (d <= INTERCEPT_R && !fast) {

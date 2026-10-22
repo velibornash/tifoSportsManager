@@ -456,7 +456,7 @@ public class BallPhysicsEngine implements BallEngine {
 
         // pending receiver (same team as lastTouch) — RECEIVE if within radius
         if (pending != null) {
-            double d = pointSegmentDist(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
+            double d = SimUtils.pointSegmentDistance(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
             if (d <= RECEIVE_R) {
                 bestT = approachT(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
                 ev = "RECEIVE";
@@ -489,7 +489,7 @@ public class BallPhysicsEngine implements BallEngine {
                 continue;
             }
 
-            double d = pointSegmentDist(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+            double d = SimUtils.pointSegmentDistance(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
             double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
             if (t >= bestT) continue;
 
@@ -756,12 +756,5 @@ public class BallPhysicsEngine implements BallEngine {
         double len2 = dr * dr + dc * dc;
         if (len2 < 1e-9) return 0;
         return Math.max(0, Math.min(1, ((r - p1.getRow()) * dr + (c - p1.getColumn()) * dc) / len2));
-    }
-
-    private double pointSegmentDist(double r, double c, Position p1, Position p2) {
-        double t = approachT(r, c, p1, p2);
-        double rr = p1.getRow() + (p2.getRow() - p1.getRow()) * t;
-        double cc = p1.getColumn() + (p2.getColumn() - p1.getColumn()) * t;
-        return Math.hypot(r - rr, c - cc);
     }
 }

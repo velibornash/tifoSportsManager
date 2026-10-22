@@ -1119,7 +1119,7 @@ public class CleanDecisionEngine {
         double corridor = 0.35; // cells around the pass line that block it (interception needs ~0.14)
         for (Player opponent : state.getPlayers()) {
             if (!opponent.getTeam().equals(passer.getTeam())) {
-                double d = pointToLineDistance(opponent.getPosition(), a, b);
+                double d = SimUtils.pointSegmentDistance(a, b, opponent.getPosition());
                 if (d < corridor) {
                     return 1.0;
                 }
@@ -1136,7 +1136,7 @@ public class CleanDecisionEngine {
 
         for (Player candidate : state.getPlayers()) {
             if (!candidate.getTeam().equals(carrier.getTeam()) || candidate.equals(carrier)) continue;
-            if (isGoalkeeper(candidate)) continue;
+            if (candidate.isGoalkeeper()) continue;
             double openness = calculateOpenness(state, candidate);
             double col = candidate.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);
@@ -1155,7 +1155,7 @@ public class CleanDecisionEngine {
             // Absolute fallback: any non-GK teammate (never the GK at kickoff).
             for (Player candidate : state.getPlayers()) {
                 if (candidate.getTeam().equals(carrier.getTeam())
-                        && !candidate.equals(carrier) && !isGoalkeeper(candidate)) {
+                        && !candidate.equals(carrier) && !candidate.isGoalkeeper()) {
                     best = candidate;
                     break;
                 }
@@ -1164,10 +1164,6 @@ public class CleanDecisionEngine {
         if (best == null) return null;
         return new DecisionOption(ActionType.PASS, best, bestScore,
                 "kickoff pass to " + best.getRole());
-    }
-
-    private boolean isGoalkeeper(Player p) {
-        return "GK".equals(p.getRole());
     }
 
     private double calculateOpenness(MatchState state, Player player) {
@@ -1298,28 +1294,9 @@ public class CleanDecisionEngine {
         for (Player opponent : state.getPlayers()) {
             if (opponent.getTeam().equals(shooter.getTeam()) || opponent.isSentOff()) continue;
             if (opponent.isGoalkeeper()) continue;
-            minDist = Math.min(minDist, pointToLineDistance(opponent.getPosition(), from, aim));
+            minDist = Math.min(minDist, SimUtils.pointSegmentDistance(from, aim, opponent.getPosition()));
         }
         return Math.min(1.0, minDist / SHOT_OPENNESS_RADIUS);
-    }
-
-    private double pointToLineDistance(Position p, Position a, Position b) {
-        // Distance from point p to line segment a-b
-        double dx = b.getColumn() - a.getColumn();
-        double dy = b.getRow() - a.getRow();
-        double lengthSq = dx * dx + dy * dy;
-
-        if (lengthSq < 1e-9) {
-            return SimUtils.distance(p, a);
-        }
-
-        double t = ((p.getColumn() - a.getColumn()) * dx
-                  + (p.getRow() - a.getRow()) * dy) / lengthSq;
-        t = SimUtils.clamp(t, 0.0, 1.0);
-
-        double projRow = a.getRow() + t * dy;
-        double projCol = a.getColumn() + t * dx;
-        return SimUtils.distance(p, new Position(projRow, projCol));
     }
 
     /**
