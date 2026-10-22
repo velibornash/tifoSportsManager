@@ -251,9 +251,11 @@ public class PenaltyEngine {
 
         String defending = other(taker.getTeam());
         if (parriedWide) {
-            restarts.handleRestart(state, "CORNER");
+            // corner to the attacking side (the taker's team)
+            restarts.handleRestart(state, "CORNER_" + taker.getTeam());
         } else {
-            restarts.handleRestart(state, "GOAL_KICK");
+            // goal kick to the defending side (the keeper's team)
+            restarts.handleRestart(state, "GOAL_KICK_" + defending);
         }
         log.log("RST", (parriedWide ? "corner" : "goal kick") + " after penalty, " + defending);
     }
