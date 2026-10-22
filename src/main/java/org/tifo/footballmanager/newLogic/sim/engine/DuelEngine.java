@@ -255,6 +255,10 @@ public class DuelEngine {
         // Winner becomes carrier
         state.setCarrier(winner);
         state.setLastTouchTeam(winner.getTeam());
+        // The duel winner is now the last player to touch the ball, so the
+        // ball physics engine does not treat the previous toucher as the
+        // kicker on the very next contact (F-DU-4).
+        state.setLastTouchPlayer(winner);
 
         // RIGID RULE (user 2026-09-17): the ball stays where it physically is —
         // the winner is already within a duel radius (≤ 0.3 cells) of it and the
