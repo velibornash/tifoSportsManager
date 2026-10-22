@@ -2158,9 +2158,17 @@ async function loadUserProfile() {
                                 ? `${item.stopsClick ? 'event.preventDefault(); event.stopPropagation(); ' : ''}${item.onclick}`
                                 : ''))));
                 const icon = item.icon || icons[item.label] || '•';
-                return `<button type="button" onclick="${onclick}">
+                // **The back button is the arrow alone.** It carried the word "Back" beside the arrow
+                // that already says it, on the phone and on the desktop alike (owner, 2026-10-22:
+                // "u nav baru i na mob i na desktopu dugme back ima strelicu i rec back - ostavi samo
+                // strelicu bez reci back"). The word is kept as the button's accessible name and as its
+                // tooltip, so the control still says what it does to a screen reader and to a mouse.
+                const label = item.navBack
+                    ? ''
+                    : `<span>${htmlEscape(item.label)}</span>`;
+                return `<button type="button" onclick="${onclick}"${item.navBack ? ' aria-label="Back" title="Back"' : ''}>
                     <span class="desktop-nav-icon">${icon}</span>
-                    <span>${htmlEscape(item.label)}</span>
+                    ${label}
                 </button>`;
             }).join('');
     }
