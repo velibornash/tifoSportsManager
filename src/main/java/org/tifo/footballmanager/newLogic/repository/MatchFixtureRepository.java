@@ -1,6 +1,7 @@
 package org.tifo.footballmanager.newLogic.repository;
 
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -46,6 +47,56 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
     List<MatchFixture> findUnplayedOnDay(@Param("seasonYear") Integer seasonYear,
                                          @Param("weekNumber") Integer weekNumber,
                                          @Param("dayNumber") Integer dayNumber);
+
+    /**
+     * How many fixtures were left behind (owner, 2026-10-19).
+     *
+     * <p><b>Why the comparison is in the game's own frame and not in dates.</b> The owner's ruling is
+     * that <em>every match whose start is in the past must be played</em>, and the game has no calendar
+     * year — a fixture lives in a <b>(season, week, day)</b> slot, and the clock stands in a
+     * <b>(season, week, day, hour)</b> position. So "in the past" is that slot against that position.
+     *
+     * <p><b>Why {@code matchDate} is not used.</b> It looks like the answer and it is not: the three
+     * writers answer it three ways. The league stamps every fixture of a week with <em>that week's
+     * date</em> and changes only the hour, so a week-1 day-3 fixture and a week-1 day-7 fixture carry the
+     * <b>same date</b> with different hours — and the cup takes a date six days later than the league's.
+     * Measured on the owner's world: week 1 day 3 is 2026-10-22 19:00, week 1 day 7 is 2026-10-22 16:00
+     * and week 1 day 5 is 2026-10-28 18:00. **The dates do not order the slots**, so a date comparison
+     * would call a day-7 fixture older than a day-3 one.
+     *
+     * <p><b>Why the current day is not included.</b> A fixture in the day's slot that is running right
+     * now is not stranded — the publish job for that slot fires at its kickoff and may not have fired
+     * yet. A day is only counted once it is over.
+     */
+    @Query("""
+            select count(f) from MatchFixture f
+            where f.played = false
+              and ( f.seasonYear < :season
+                 or (f.seasonYear = :season and f.weekNumber < :week)
+                 or (f.seasonYear = :season and f.weekNumber = :week and f.dayNumber < :day) )
+            """)
+    long countUnplayedBefore(@Param("season") Integer season,
+                             @Param("week") Integer week,
+                             @Param("day") Integer day);
+
+    /**
+     * The fixtures that were left behind, oldest slot first.
+     *
+     * <p>The same rule as {@link #countUnplayedBefore(Integer, Integer, Integer)}, and paged because a
+     * missed matchday is hundreds of rows and the panel names a handful of them.
+     */
+    @Query("""
+            select f from MatchFixture f
+            where f.played = false
+              and ( f.seasonYear < :season
+                 or (f.seasonYear = :season and f.weekNumber < :week)
+                 or (f.seasonYear = :season and f.weekNumber = :week and f.dayNumber < :day) )
+            order by f.seasonYear asc, f.weekNumber asc, f.dayNumber asc, f.id asc
+            """)
+    List<MatchFixture> findUnplayedBefore(@Param("season") Integer season,
+                                           @Param("week") Integer week,
+                                           @Param("day") Integer day,
+                                           Pageable pageable);
 
     /**
      * Fixtures of a day that are not yet published (owner, 2026-10-11).

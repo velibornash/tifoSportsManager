@@ -58,6 +58,7 @@ public class GameClockService {
     private final GameClockRepository clocks;
     private final SeasonService seasons;
     private final JobRunner jobRunner;
+    private final StrandedFixtureService strandedFixtures;
     private final Clock time;
     private final Executor walkExecutor;
     private volatile boolean syncing;
@@ -67,8 +68,9 @@ public class GameClockService {
      * them — the same trap {@code NationalTeamSeeder} records.
      */
     @org.springframework.beans.factory.annotation.Autowired
-    public GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner) {
-        this(clocks, seasons, jobRunner, Clock.systemUTC());
+    public GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
+                             StrandedFixtureService strandedFixtures) {
+        this(clocks, seasons, jobRunner, strandedFixtures, Clock.systemUTC());
     }
 
     /**
@@ -95,15 +97,17 @@ public class GameClockService {
      * daylight-saving ones, so the test would be right almost always and wrong for a reason no failure
      * message would explain.
      */
-    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner, Clock time) {
-        this(clocks, seasons, jobRunner, time, newWalkExecutor());
+    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
+                 StrandedFixtureService strandedFixtures, Clock time) {
+        this(clocks, seasons, jobRunner, strandedFixtures, time, newWalkExecutor());
     }
 
-    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner, Clock time,
-                     Executor walkExecutor) {
+    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
+                     StrandedFixtureService strandedFixtures, Clock time, Executor walkExecutor) {
         this.clocks = clocks;
         this.seasons = seasons;
         this.jobRunner = jobRunner;
+        this.strandedFixtures = strandedFixtures;
         this.time = time;
         this.walkExecutor = walkExecutor;
     }
@@ -476,6 +480,45 @@ public class GameClockService {
         Map<String, Object> adv = summary((int) steps, ranKeys, failedKeys);
         adv.put("jobDetails", jobDetails);
         result.put("advance", adv);
+
+        // **The check the owner's ruling asks for** (owner, 2026-10-19): *"every match whose start is
+        // in the past must be played — the game looks only at its own season/week/day/hour against the
+        // current s/w/d/h — and the sync has to check it."*
+        //
+        // The walk offers every hour it crosses to the job runner, so a matchday missed while the app
+        // was down is replayed. **But nothing ever asked whether the walk actually caught up.** A
+        // matchday whose publish job failed, a publish job that found nothing to publish, a catch-up
+        // window longer than the cap: each of them leaves a fixture in the past that no job will ever
+        // play, and each of them looked exactly like a healthy world.
+        //
+        // So the sync asks, after every walk, and says so in the answer — in the log, and in the
+        // response the admin panel reads. It is the second half of the ruling, and it is the half that
+        // was missing.
+        int stranded = 0;
+        List<Map<String, Object>> strandedDetail = List.of();
+        if (strandedFixtures != null) {
+            GamePosition where = position();
+            stranded = strandedFixtures.count(where);
+            if (stranded > 0) {
+                List<Map<String, Object>> named = new ArrayList<>();
+                for (StrandedFixtureService.Stranded row : strandedFixtures.stranded(where)) {
+                    Map<String, Object> detail = new LinkedHashMap<>();
+                    detail.put("fixtureId", row.fixtureId());
+                    detail.put("competition", row.competition());
+                    detail.put("home", row.home());
+                    detail.put("away", row.away());
+                    detail.put("season", row.season());
+                    detail.put("week", row.week());
+                    detail.put("day", row.day());
+                    detail.put("kickedOffAt", row.kickedOffAt());
+                    named.add(detail);
+                }
+                strandedDetail = named;
+                log.warn("{} fixture(s) are in the past and have not been played.", stranded);
+            }
+        }
+        jobs.put("stranded", stranded);
+        jobs.put("strandedFixtures", strandedDetail);
         return result;
     }
 

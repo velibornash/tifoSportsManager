@@ -776,7 +776,21 @@ async function showJobs() {
                    failing quietly.</div>`
                 : '';
 
-            host.innerHTML = banner + `
+            // **The fixtures that were left behind** (owner, 2026-10-19). A failed job is the cause;
+            // this is the consequence, and the two are different questions. The owner's ruling is that
+            // every match whose start is in the past must be played, and that the sync has to check it
+            // and say so — so this is where it says so.
+            const stranded = Array.isArray(data.strandedFixtures) ? data.strandedFixtures : [];
+            const strandedBanner = data.stranded
+                ? `<div class="fm-callout fm-callout--warning">${data.stranded} fixture(s) are in the
+                   past and have not been played. No job will ever play them — the matchday that was
+                   meant to play them has gone by.${stranded.length ? '<br>' + stranded.map(row =>
+                     `${escapeHtml(row.home || '?')} - ${escapeHtml(row.away || '?')} `
+                     + `(S${escapeHtml(row.season)} W${escapeHtml(row.week)} D${escapeHtml(row.day)}, `
+                     + `${escapeHtml(row.competition || '')})`).join('<br>') : ''}</div>`
+                : '';
+
+            host.innerHTML = banner + strandedBanner + `
                 <p class="fm-subtle">Season ${escapeHtml(data.season)} · week ${escapeHtml(data.week)}
                     · ${escapeHtml(data.dayLabel || ('day ' + data.day))} · ${escapeHtml(data.hour)}:00</p>
                 <div class="fm-table-wrap">

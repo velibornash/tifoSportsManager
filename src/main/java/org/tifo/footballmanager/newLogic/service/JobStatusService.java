@@ -37,13 +37,16 @@ public class JobStatusService {
     private final List<DayJob> jobs;
     private final JobRunRepository runs;
     private final GameClockService clock;
+    private final StrandedFixtureService strandedFixtures;
 
-    public JobStatusService(List<DayJob> jobs, JobRunRepository runs, GameClockService clock) {
+    public JobStatusService(List<DayJob> jobs, JobRunRepository runs, GameClockService clock,
+                            StrandedFixtureService strandedFixtures) {
         this.jobs = jobs.stream()
                 .sorted(Comparator.comparingInt(DayJob::order).thenComparing(DayJob::key))
                 .toList();
         this.runs = runs;
         this.clock = clock;
+        this.strandedFixtures = strandedFixtures;
     }
 
     /** One job as the panel shows it. */
@@ -86,6 +89,12 @@ public class JobStatusService {
         out.put("jobs", rows);
         out.put("failing", failedEver > 0);
         out.put("failureCount", failedEver);
+        // **The fixtures that were left behind** (owner, 2026-10-19). A job that failed is visible
+        // above; this is what the failure left on the pitch. The two are different questions and the
+        // panel has to be able to answer both.
+        int stranded = strandedFixtures.count(clock.position());
+        out.put("stranded", stranded);
+        out.put("strandedFixtures", strandedFixtures.stranded(clock.position()));
         return out;
     }
 

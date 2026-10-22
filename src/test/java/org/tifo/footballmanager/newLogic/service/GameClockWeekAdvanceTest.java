@@ -7,6 +7,7 @@ import org.tifo.footballmanager.newLogic.model.GamePosition;
 import org.tifo.footballmanager.newLogic.model.GameTimeline;
 import org.tifo.footballmanager.newLogic.repository.GameClockRepository;
 import org.tifo.footballmanager.newLogic.repository.JobRunRepository;
+import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -82,7 +83,19 @@ class GameClockWeekAdvanceTest {
         when(clocks.save(any(GameClock.class))).thenAnswer(call -> call.getArgument(0));
         // Same-thread walk: the dispatch is the thing under test elsewhere, and a background thread
         // here would make every assertion a race against it.
-        clockService = new GameClockService(clocks, seasons, runner, time, Runnable::run);
+        clockService = new GameClockService(clocks, seasons, runner, noStrandedFixtures(), time, Runnable::run);
+    }
+
+    /**
+     * A check that finds nothing.
+     *
+     * <p>The walk asks it after every hour it crosses (owner, 2026-10-19), and this test is about the
+     * walk. A Mockito mock answers a {@code long} with zero and a {@code List} with an empty one, so
+     * the check reports a world with nothing left behind — which is what a world with no fixtures in
+     * it looks like, and what this test's world is.
+     */
+    private static StrandedFixtureService noStrandedFixtures() {
+        return new StrandedFixtureService(mock(MatchFixtureRepository.class));
     }
 
     @Test
@@ -150,9 +163,14 @@ class GameClockWeekAdvanceTest {
     void everyHourOfTheWeekIsOffered() {
         clockService.advanceWeek();
 
-        assertEquals(168, runner.offers.size(),
+        assertEquals(168, runner.distinctHours(),
                 "a whole week is 168 hours and each must be offered to the runner, or a trigger is "
                         + "stepped over. Offered: " + runner.offers.size());
+        assertEquals(169, runner.offers.size(),
+                "and the hour that is running is offered once more, with the minute it is running at "
+                        + "(owner, 2026-10-22): the tick fires every five minutes, so a 19:45 trigger "
+                        + "inside the hour has to be seen now and not at the next hour. The runner is "
+                        + "idempotent by key, so the second offer is a no-op.");
         assertEquals(new TreeSet<>(List.of(1, 2, 3, 4, 5, 6, 7)), runner.daysOffered(),
                 "not every day of the week reached the runner — days offered: " + runner.daysOffered());
         assertEquals(new TreeSet<>(List.of(1, 2)), runner.weeksOffered(),
@@ -234,7 +252,9 @@ class GameClockWeekAdvanceTest {
 
         // It used to be 48: the remaining hours were offered to the runner and then offered again by
         // advanceHours over the same range.
-        assertEquals(24, runner.offers.size(), "a whole day is 24 hours, and each exactly once");
+        assertEquals(24, runner.distinctHours(), "a whole day is 24 hours, and each exactly once");
+        assertEquals(25, runner.offers.size(),
+                "and the hour that is running is offered once more, with the minute it is running at");
         assertEquals(GameDay.DAY_2.number(), now().day(), "day 1 did not roll to day 2");
     }
 
@@ -269,7 +289,9 @@ class GameClockWeekAdvanceTest {
                 "the day-3 league matchday was missed while the app was down and never caught up");
         assertTrue(runner.offers.stream().anyMatch(o -> o.day() == GameDay.DAY_4.number() && o.hour() == 10),
                 "the day-4 training job was missed while the app was down and never caught up");
-        assertEquals(36, runner.offers.size(), "every hour crossed must be offered, not just the last");
+        assertEquals(36, runner.distinctHours(), "every hour crossed must be offered, not just the last");
+        assertEquals(37, runner.offers.size(),
+                "and the hour that is running is offered once more, with the minute it is running at");
     }
 
     @Test
@@ -285,8 +307,12 @@ class GameClockWeekAdvanceTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> jobs = (Map<String, Object>) result.get("jobs");
-        assertEquals(GameClockService.MAX_CATCH_UP_HOURS, runner.offers.size(),
-                "the walk must stop at the cap");
+        assertEquals(GameClockService.MAX_CATCH_UP_HOURS + 1, runner.distinctHours(),
+                "the walk stops at the cap after 168 hours, and the hour that is running is offered on "
+                        + "top of it — the tick still has to see the trigger inside it");
+        assertEquals(GameClockService.MAX_CATCH_UP_HOURS + 1, runner.offers.size(),
+                "and the hour that is running is offered once more — it is beyond the cap, and the "
+                        + "tick still has to see the trigger inside it");
         assertEquals(Boolean.TRUE, jobs.get("truncated"),
                 "a capped catch-up must say it was capped, or a manager whose month vanished has "
                         + "no way to know it was the cap rather than the game");
@@ -315,7 +341,7 @@ class GameClockWeekAdvanceTest {
         GameClockRepository clocks = mock(GameClockRepository.class);
         when(clocks.save(any(GameClock.class))).thenAnswer(call -> call.getArgument(0));
         GameClockService dispatching = new GameClockService(clocks, seasonsReturning(clock), slowRunner,
-                time, Executors.newSingleThreadExecutor());
+                noStrandedFixtures(), time, Executors.newSingleThreadExecutor());
 
         ExecutorService caller = Executors.newSingleThreadExecutor();
         try {
@@ -377,7 +403,7 @@ class GameClockWeekAdvanceTest {
         }
 
         @Override
-        public Map<String, Object> runDue(int seasonYear, int week, int day, int hour) {
+        public Map<String, Object> runDue(int seasonYear, int week, int day, int hour, int minute) {
             started.countDown();
             try {
                 finish.await(30, TimeUnit.SECONDS);
@@ -463,16 +489,50 @@ class GameClockWeekAdvanceTest {
             super(List.of(), mock(JobRunRepository.class), mock(PlatformTransactionManager.class));
         }
 
+        /**
+         * <b>The five-argument form, because that is the one the walk calls.</b>
+         *
+         * <p>This double used to override {@code runDue(season, week, day, hour)}, and when the job
+         * trigger gained a minute (owner, 2026-10-22) the walk began calling
+         * {@code runDue(season, week, day, hour, minute)} — so the double stopped intercepting the
+         * call, the base implementation ran instead, and <b>the double recorded nothing</b>. Seven
+         * tests went red saying "Offered: 0", which reads like a broken clock and was a broken
+         * <em>test double</em>: the clock was offering the hours and the recording had stopped
+         * listening.
+         *
+         * <p>The four-argument overload is still overridden, because a caller may use it, and a
+         * double that only answers one of the two is a double that will do this again.
+         */
         @Override
-        public Map<String, Object> runDue(int seasonYear, int week, int day, int hour) {
+        public Map<String, Object> runDue(int seasonYear, int week, int day, int hour, int minute) {
             offers.add(new Offer(week, day, hour));
             return Map.of();
+        }
+
+        @Override
+        public Map<String, Object> runDue(int seasonYear, int week, int day, int hour) {
+            return runDue(seasonYear, week, day, hour, 59);
         }
 
         private TreeSet<Integer> daysOffered() {
             TreeSet<Integer> days = new TreeSet<>();
             offers.forEach(offer -> days.add(offer.day()));
             return days;
+        }
+
+        /**
+         * How many <em>different</em> game hours were offered.
+         *
+         * <p>The raw count is one more than this when the walk crossed into the hour that is running:
+         * the running hour is offered twice — once at the end of the hour, with the catch-up, and once
+         * again with the minute it is actually running at (owner, 2026-10-22). The tick fires every
+         * five minutes, so a 19:45 trigger inside the hour has to be seen now and not at the next hour.
+         */
+        private long distinctHours() {
+            return offers.stream()
+                    .map(offer -> offer.week() + "/" + offer.day() + "/" + offer.hour())
+                    .distinct()
+                    .count();
         }
 
         private TreeSet<Integer> weeksOffered() {
