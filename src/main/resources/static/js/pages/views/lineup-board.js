@@ -246,6 +246,7 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
 
     /** The Available pool: everyone who is neither on the pitch nor on the bench. */
     function poolBlock() {
+        const pool = poolCandidates().map(player => chip(player, 'pool', -1)).join('');
         return `
                         <div class="club-lineup-pool-head">
                             <h4>Available pool</h4>
