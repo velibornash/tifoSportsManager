@@ -133,6 +133,8 @@ public class ActionExecutor {
                         carrier, carrier.getPosition(), aimedTarget, receiver, desiredSpeed);
 
         // Launch the ball toward the deviated aim
+        state.setPendingDeliveryAirborne(airborne);
+        state.setPendingDeliveryHeight(airborne ? 1.0 : 0.0);
         state.getBallEngine().launch(ball, carrier.getPosition(),
                 result.getActualTarget(), result.getSpeed(), airborne, result.getSpin());
 
@@ -257,6 +259,8 @@ public class ActionExecutor {
     private void launchDelivery(MatchState state, Player carrier, Player receiver,
                                 Position aim, boolean airborne, double speed) {
         Ball ball = state.getBall();
+        state.setPendingDeliveryAirborne(airborne);
+        state.setPendingDeliveryHeight(airborne ? 1.5 : 0.0);
         state.getBallEngine().launch(ball, carrier.getPosition(), aim, speed, airborne, 0.15);
 
         carrier.setTarget(null);

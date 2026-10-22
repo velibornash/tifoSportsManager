@@ -236,9 +236,18 @@ public class BallPhysicsEngine implements BallEngine {
 
         // 4. Deceleration (ground vs air), preserve heading
         spd = Math.max(0, spd - (ball.isAirborne() ? AIR_DECEL : GROUND_DECEL));
+        if (ball.isAirborne()) {
+            // height decays with flight; ~0.05 cells/tick for a lofted ball
+            ball.setHeight(ball.getHeight() - 0.05);
+            if (ball.getHeight() <= 0.0) {
+                ball.setHeight(0.0);
+                ball.setAirborne(false);
+            }
+        }
         if (spd <= STOP_SPEED) {
             ball.stop();
             ball.setAirborne(false);
+            ball.setHeight(0.0);
             // RIGID RULE: keep the pending receiver — the pass physically stopped,
             // next tick the stopped-ball pickup either completes it (receiver
             // reached the ball) or it becomes a LOOSE recovery by the nearest player.
@@ -257,6 +266,7 @@ public class BallPhysicsEngine implements BallEngine {
         // 6. Landing (air -> ground)
         if (ball.isAirborne() && spd < LANDING_SPEED) {
             ball.setAirborne(false);
+            ball.setHeight(0.0);
         }
 
         // 7. Post hit (before goal plane — posts sit exactly on the line)
@@ -353,6 +363,11 @@ public class BallPhysicsEngine implements BallEngine {
 
     /** Launch the ball toward an aim point with given speed (cells/tick), air/ground, spin. */
     public void launch(Ball ball, Position origin, Position aim, double speed, boolean airborne, double spin) {
+        launch(ball, origin, aim, speed, airborne, spin, airborne ? 1.5 : 0.0);
+    }
+
+    /** Launch with an explicit initial height (cells above ground). P2-67. */
+    public void launch(Ball ball, Position origin, Position aim, double speed, boolean airborne, double spin, double height) {
         deadTickCount = 0;
         ball.setPosition(origin);
         // P6: this is the STRIKE boundary. Each NEW pass flight re-decides the
@@ -370,6 +385,7 @@ public class BallPhysicsEngine implements BallEngine {
         ball.setAirborne(airborne);
         ball.setSpin(spin);
         ball.setLaunchSpeed(speed);
+        ball.setHeight(height);
     }
 
     // --- helpers ---
@@ -466,7 +482,7 @@ public class BallPhysicsEngine implements BallEngine {
             if (p.isGoalkeeper() && isTowardOwnGoal(state, p)) {
                 double d = goalkeeperEngine.distanceToSegment(p.getPosition(), prev, curr);
                 double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
-                if (t < bestT && goalkeeperEngine.trySave(p, d, spd)
+                if (t < bestT && goalkeeperEngine.trySave(p, d, spd, state.getBall().getHeight())
                         && onTrajectoryForGoal(state, p, prev, curr)) {
                     bestT = t; ev = "SAVE"; hit = p;
                 }

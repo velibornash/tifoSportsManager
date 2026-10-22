@@ -18,6 +18,7 @@ public class Ball {
     private double velY;      // cells/tick
     private double spin;      // 0..1 effect intensity
     private boolean airborne; // true = air decel, false = ground decel
+    private double height;     // cells above ground; 0 = on the ground (P2-67)
     private double launchSpeed; // speed at launch; readIntercept uses this, not the decelerated current speed
 
     public Ball(Position position) {
@@ -26,6 +27,7 @@ public class Ball {
         this.velY = 0;
         this.spin = 0;
         this.airborne = false;
+        this.height = 0.0;
     }
 
     // --- Position ---
@@ -50,6 +52,7 @@ public class Ball {
         this.velX = 0;
         this.velY = 0;
         this.airborne = false;
+        this.height = 0.0;
         this.launchSpeed = 0;
     }
 
@@ -63,6 +66,8 @@ public class Ball {
     // --- Airborne ---
     public boolean isAirborne() { return airborne; }
     public void setAirborne(boolean airborne) { this.airborne = airborne; }
+    public double getHeight() { return height; }
+    public void setHeight(double height) { this.height = Math.max(0.0, height); }
 
     // --- Derived state (needs carrier from MatchState) ---
     public BallState getBallState(Player carrier) {

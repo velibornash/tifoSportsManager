@@ -298,8 +298,11 @@ public class DuelEngine {
                 power = skills.defender() * 0.7 + player.heightSkill() * 0.3;
             }
             case AERIAL -> {
-                // Height + jumping
-                power = player.heightSkill() * 0.6 + skills.striker() * 0.4;
+                // Height + jumping. Use the better of striker/defender skill so a
+                // defender contests with his defending, not his (low) striker skill
+                // (P2-67: aerial reception).
+                double aerialSkill = Math.max(skills.striker(), skills.defender());
+                power = player.heightSkill() * 0.6 + aerialSkill * 0.4;
             }
         }
 

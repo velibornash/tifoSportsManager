@@ -188,7 +188,15 @@ public class GoalkeeperEngine {
      * @return true if he stops it
      */
     public boolean trySave(Player gk, double distance, double speed) {
+        return trySave(gk, distance, speed, 0.0);
+    }
+
+    /** Graded save attempt with ball height (P2-67). A lofted ball (height > 0) is
+     *  harder to reach: the keeper's effective reach shrinks with height. */
+    public boolean trySave(Player gk, double distance, double speed, double height) {
         double reach = effectiveReach(gk, speed);
+        // Height penalty: each cell of height reduces reach by 15%.
+        reach *= Math.max(0.5, 1.0 - height * 0.15);
         if (distance > reach) {
             // He cannot get a hand to it at all — it beats him.
             return false;

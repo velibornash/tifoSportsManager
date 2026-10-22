@@ -46,6 +46,7 @@ public class BallResultHandler {
     private final ProposalStatsCollector stats;
     private final RestartManager restartManager;
     private final VARService varService;
+    private final DuelEngine duelEngine = new DuelEngine();
     /**
      * The offside rules, for the one question the goal path has to ask them.
      *
@@ -134,6 +135,39 @@ public class BallResultHandler {
                             log("RST", "kickoff taken — half-line hold released");
                         }
                         Player receiver = state.getCarrier(); // already set by ball engine
+                        // P2-67: aerial reception. A lofted ball (height > 0.3) arriving
+                        // in the box triggers an AERIAL duel if a defender is within
+                        // 0.5 cells. Winner heads it (attacker keeps) or the defender
+                        // claims/clears (defender gets the ball).
+                        if (receiver != null && state.isPendingDeliveryAirborne()
+                                && state.getPendingDeliveryHeight() > 0.3) {
+                            Player def = null;
+                            double best = 0.51;
+                            for (Player pp : state.getPlayers()) {
+                                if (pp.getTeam().equals(receiver.getTeam())) continue;
+                                if (pp.isUnavailable() || pp.isLocked()) continue;
+                                double d = org.tifo.footballmanager.newLogic.sim.util.SimUtils.distance(pp.getPosition(), receiver.getPosition());
+                                if (d <= 0.5 && d < best) { best = d; def = pp; }
+                            }
+                            if (def != null) {
+                                DuelEngine.DuelType dt = DuelEngine.DuelType.AERIAL;
+                                Player winner = duelEngine.resolveDuel(receiver, def, dt, state);
+                                String aerialMsg = "AERIAL DUEL " + winner.getLabel()
+                                        + " (height " + String.format("%.2f", state.getPendingDeliveryHeight())
+                                        + ") " + receiver.getLabel() + " v " + def.getLabel();
+                                log("DUL", aerialMsg);
+                                recorder.appendEvent(state.getMatchTicks(), "AERIAL_DUEL", aerialMsg, state);
+                                if (winner != receiver) {
+                                    // defender claims/clears: he gets the ball
+                                    state.setCarrier(def);
+                                    state.setLastTouchTeam(def.getTeam());
+                                    state.getBall().stop();
+                                    state.getBall().setHeight(0.0);
+                                }
+                            }
+                        }
+                        state.setPendingDeliveryAirborne(false);
+                        state.setPendingDeliveryHeight(0.0);
                         Player flagged = state.getOffsideFlaggedReceiver();
                         if (flagged != null && flagged == receiver) {
                             // OFFSIDE AT RECEPTION (user rule 2026-09-23): the pass

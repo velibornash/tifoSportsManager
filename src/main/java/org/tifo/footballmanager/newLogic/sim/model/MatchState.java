@@ -215,6 +215,8 @@ public class MatchState {
     // Last action (for shot outcome attribution)
     private ActionType lastActionType;     // what the last decision executed (SHOT/PASS/DRIBBLE/CLEAR)
     private Player lastShooter;            // who fired the last shot (carrier is null during flight)
+    private boolean pendingDeliveryAirborne; // P2-67: was the in-flight delivery lofted?
+    private double pendingDeliveryHeight;    // P2-67: initial height of the in-flight delivery
     private boolean shotOutcomeEmitted;     // guards a single SHOT_* epilogue per shot
     private boolean lastShotOnTarget;      // predicted on-target by ExecutionQuality at fire time
 
@@ -684,6 +686,10 @@ public class MatchState {
     public void setLastActionType(ActionType lastActionType) { this.lastActionType = lastActionType; }
     public Player getLastShooter() { return lastShooter; }
     public void setLastShooter(Player lastShooter) { this.lastShooter = lastShooter; }
+    public boolean isPendingDeliveryAirborne() { return pendingDeliveryAirborne; }
+    public void setPendingDeliveryAirborne(boolean v) { this.pendingDeliveryAirborne = v; }
+    public double getPendingDeliveryHeight() { return pendingDeliveryHeight; }
+    public void setPendingDeliveryHeight(double h) { this.pendingDeliveryHeight = Math.max(0.0, h); }
     public boolean isShotOutcomeEmitted() { return shotOutcomeEmitted; }
     public void setShotOutcomeEmitted(boolean v) { this.shotOutcomeEmitted = v; }
     public boolean isLastShotOnTarget() { return lastShotOnTarget; }
