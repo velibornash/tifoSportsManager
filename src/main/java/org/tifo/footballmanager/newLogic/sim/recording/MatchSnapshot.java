@@ -34,6 +34,7 @@ public class MatchSnapshot {
     private final int passAttempts;
     private final int passCompletions;
     private final int shotsOnTarget;
+    private final double ballHeight; // P2-67: height above ground (cells)
 
     public MatchSnapshot(long tick, int round, List<PlayerSnapshot> players,
                          Position ballPosition, Position ballTarget,
@@ -44,6 +45,22 @@ public class MatchSnapshot {
                          MatchPhase phase, int homeGoals, int awayGoals,
                          int matchTicks, boolean halfTime, boolean matchFinished,
                          int passAttempts, int passCompletions, int shotsOnTarget) {
+        this(tick, round, players, ballPosition, ballTarget, ballState, ballCarrierId,
+                actionId, actionType, actingPlayerId, targetPlayerId, intendedTarget, actualTarget,
+                phase, homeGoals, awayGoals, matchTicks, halfTime, matchFinished,
+                passAttempts, passCompletions, shotsOnTarget, 0.0);
+    }
+
+    public MatchSnapshot(long tick, int round, List<PlayerSnapshot> players,
+                         Position ballPosition, Position ballTarget,
+                         Ball.BallState ballState, String ballCarrierId,
+                         String actionId, String actionType, String actingPlayerId,
+                         String targetPlayerId, Position intendedTarget,
+                         Position actualTarget,
+                         MatchPhase phase, int homeGoals, int awayGoals,
+                         int matchTicks, boolean halfTime, boolean matchFinished,
+                         int passAttempts, int passCompletions, int shotsOnTarget,
+                         double ballHeight) {
         this.tick = tick;
         this.round = round;
         this.players = players;
@@ -66,6 +83,7 @@ public class MatchSnapshot {
         this.passAttempts = passAttempts;
         this.passCompletions = passCompletions;
         this.shotsOnTarget = shotsOnTarget;
+        this.ballHeight = ballHeight;
     }
 
     public long getTick() { return tick; }
@@ -90,4 +108,5 @@ public class MatchSnapshot {
     public int getPassAttempts() { return passAttempts; }
     public int getPassCompletions() { return passCompletions; }
     public int getShotsOnTarget() { return shotsOnTarget; }
+    public double getBallHeight() { return ballHeight; }
 }

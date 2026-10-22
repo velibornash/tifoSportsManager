@@ -99,7 +99,8 @@ public class MatchRecorder {
                 state.getPhase(), state.getHomeGoals(), state.getAwayGoals(),
                 state.getMatchTicks(), state.isHalfTime(), state.isMatchFinished(),
                 state.getPassAttempts(), state.getPassesCompleted(),
-                state.getShotsOnTarget()));
+                state.getShotsOnTarget(),
+                state.getBall().getHeight()));
     }
 
     public MatchRecording buildRecording(String matchId) {

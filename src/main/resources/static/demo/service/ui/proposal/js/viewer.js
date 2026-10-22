@@ -756,13 +756,20 @@ class PitchRenderer {
   drawBall(pos) {
     if (!pos) return;
     const ctx = this.ctx;
+    const h = pos.height || 0;
+    // Height offset: a lofted ball is drawn higher (smaller y) with a ground
+    // shadow, so an air pass is visually distinct from a ground pass.
     const [x, y] = this.toCanvas(pos.row, pos.column);
+    const yOffset = h * CELL_H * 0.6; // lift the ball up
+    // ground shadow
     ctx.beginPath();
-    ctx.arc(x + 1, y + 2, 8, 0, Math.PI * 2);
-    ctx.fillStyle = BALL_SHADOW;
+    ctx.arc(x + 1, y + 2, 6 + h * 2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,0,0,${0.25 + h * 0.05})`;
     ctx.fill();
+    // ball
+    const ballR = 7 - Math.min(h * 0.5, 2);
     ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.arc(x, y - yOffset, ballR, 0, Math.PI * 2);
     ctx.fillStyle = BALL_COLOR;
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,.3)';
@@ -1217,7 +1224,7 @@ class MatchViewer {
   _getInterpolatedBall(interp) {
     if (!interp) return null;
     const a = interp.snap.ballPosition;
-    if (!a || !interp.next) return a;
+    if (!a || !interp.next) return a ? { row: a.row, column: a.column, height: interp.snap.ballHeight || 0 } : a;
     const b = interp.next.ballPosition;
     if (!b) return a;
     const t = interp.frac;
@@ -1246,13 +1253,16 @@ class MatchViewer {
       }
       if (t < 0.5) {
         const s = (t / 0.5) * 0.35;
-        return { row: lerp(a.row, outPt.row, s), column: lerp(a.column, outPt.column, s) };
+        const h = lerp(a.ballHeight || 0, outPt.ballHeight || 0, s);
+        return { row: lerp(a.row, outPt.row, s), column: lerp(a.column, outPt.column, s), height: h };
       }
       const s = (t - 0.5) / 0.5;
-      return { row: lerp(outPt.row, b.row, s), column: lerp(outPt.column, b.column, s) };
+      const h = lerp(outPt.ballHeight || 0, b.ballHeight || 0, s);
+      return { row: lerp(outPt.row, b.row, s), column: lerp(outPt.column, b.column, s), height: h };
     }
 
-    return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t) };
+    const h = lerp(a.ballHeight || 0, b.ballHeight || 0, t);
+    return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t), height: h };
   }
 
   _isOutOfBounds(p) {
