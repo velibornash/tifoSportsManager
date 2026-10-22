@@ -42,7 +42,15 @@ public enum MatchType {
      * A manager's own practice match. Costs fatigue, carries reduced injury risk, and changes nothing
      * else — not the table, not ratings, not a player's career record, not morale or form.
      */
-    EXHIBITION("Exhibition");
+    EXHIBITION("Exhibition"),
+
+    /**
+     * A short practice match: half length, no side effects at all (P2-32).
+     *
+     * <p>No fatigue, no injury risk, no table, no ratings, no career record, no morale, no form.
+     * Played purely for the manager to watch his team and test tactics.
+     */
+    PRACTICE("Practice");
 
     private final String label;
 
@@ -123,6 +131,7 @@ public enum MatchType {
     public double injuryRisk() {
         return switch (this) {
             case EXHIBITION -> 0.35;
+            case PRACTICE -> 0.0;
             case FRIENDLY -> 0.6;
             default -> 1.0;
         };

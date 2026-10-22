@@ -50,6 +50,7 @@ public class SimulationController {
     private final SimMatchService simMatchService;
     private final ClubRatingService clubRatingService;
     private final ExhibitionMatchService exhibitionMatches;
+    private final PracticeMatchService practiceMatches;
 
     @Transactional
     @PostMapping("/current-round/prepare")
@@ -113,6 +114,37 @@ public class SimulationController {
         payload.put("matchId", matchId);
         payload.put("message", "Exhibition played. It does not affect the table, ratings, "
                 + "career records or morale. Fatigue and injury risk still apply.");
+        return ResponseEntity.ok(payload);
+    }
+
+    /**
+     * Plays a short practice match (half length, no side effects) (P2-32).
+     *
+     * <p>Daily limit: one per club per game day. Charges nothing — no fatigue, no injury,
+     * no table, no ratings, no career record.
+     */
+    @PostMapping("/practice")
+    public ResponseEntity<Map<String, Object>> playPractice(
+            @AuthenticationPrincipal User user,
+            @RequestParam Long againstTeamId) {
+        Long homeTeamId = resolveUserTeamId(user);
+        if (homeTeamId == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("status", "error", "code", "NO_TEAM",
+                            "message", "Your account does not manage a club."));
+        }
+        GameClock clock = gameClockService.getOrCreateClock();
+        int gameDay = (clock.getCurrentSeason() == null ? 1 : clock.getCurrentSeason()) * 1000
+                + (clock.getCurrentWeek() == null ? 1 : clock.getCurrentWeek()) * 10
+                + (clock.getCurrentDay() == null ? 1 : clock.getCurrentDay());
+        Long matchId = practiceMatches.playPractice(homeTeamId, againstTeamId,
+                currentSeason(), currentWeek(), gameDay);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("status", "ok");
+        payload.put("action", "PRACTICE_PLAYED");
+        payload.put("matchId", matchId);
+        payload.put("message", "Practice match played (half length, no side effects).");
         return ResponseEntity.ok(payload);
     }
 

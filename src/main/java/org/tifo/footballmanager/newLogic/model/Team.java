@@ -217,6 +217,13 @@ public class Team {
 
     public enum KitPattern { SOLID, STRIPES, HOOPS, HALVES }
 
+    /**
+     * The game day (season*1000 + week*10 + day) of the last practice match (P2-32).
+     * 0 means never played. Used for the daily limit (1 practice match per day).
+     */
+    @Column(name = "last_practice_match_day", columnDefinition = "int not null default 0")
+    private int lastPracticeMatchDay = 0;
+
     private boolean humanControlled;
     @OneToMany(mappedBy = "team", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonIgnore

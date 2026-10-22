@@ -117,6 +117,9 @@ public class SimMatchService {
      * @param applySideEffects {@code false} reproduces the football and writes nothing.
      */
     public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects) {
+        return simulate(fixture, storeReplay, applySideEffects, SimMatchRunner.FULL_MATCH_TICKS); }
+
+    public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects, int ticks) {
         // Deterministic run: seed the engine RNG from the fixture id so
         // re-simulating the same fixture always reproduces the same match.
         SimulationRandom.seed(fixture != null && fixture.getId() != null
@@ -199,7 +202,7 @@ public class SimMatchService {
 
         applySubstitutionPlan(fixture, orchestrator);
 
-        orchestrator.simulate(SimMatchRunner.FULL_MATCH_TICKS);
+        orchestrator.simulate(ticks);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         // Fatigue and injuries are a consequence of playing. A replay is not playing, so it does not
         // charge them a second time (owner, 2026-10-17).
