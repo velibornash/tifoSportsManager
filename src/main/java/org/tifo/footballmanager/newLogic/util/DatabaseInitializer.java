@@ -610,7 +610,6 @@ public class DatabaseInitializer {
         log.warn("Core football data missing on startup. Bootstrapping baseline Serbian pyramid.");
         try {
             seedWorldBeforePyramid();
-            seedWorldBeforePyramid();
         initSerbianFootballStructure();
             // **After the pyramid, not before** — the played country's national side is drawn from
             // its clubs, and it had none to draw from when the squads were seeded above.
