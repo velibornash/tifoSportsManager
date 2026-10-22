@@ -29,6 +29,20 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 public class AdminDatabaseAsyncService {
 
+    /**
+     * The action that draws the international club cups.
+     *
+     * <p><b>The draw is not a request's work.</b> It gives a squad to every club that has none - a
+     * cup entrant without players is a club of zeroes - and then deals the groups, and on the server
+     * that took longer than nginx waits: the button answered <em>504 Server returned HTML instead of
+     * JSON</em> (owner, 2026-10-22). The work itself succeeded; the connection did not survive it.
+     *
+     * <p>So it runs on the job thread like the other world-building buttons, and the button answers
+     * at once. The two seasons travel in the action, because the panel can name them:
+     * {@code redraw-international-cups:qualified:drawnInto}.
+     */
+    public static final String ACTION_REDRAW_INTERNATIONAL_CUPS = "redraw-international-cups";
+
     private final StartupInitializer startupInitializer;
     private final BbController bbController;
     private final AfController afController;
@@ -44,6 +58,7 @@ public class AdminDatabaseAsyncService {
     private final org.tifo.footballmanager.newLogic.repository.TeamTacticsProfileRepository tacticsProfileRepository;
     private final org.tifo.footballmanager.newLogic.service.TrainingFacilityService trainingFacilities;
     private final org.tifo.footballmanager.newLogic.service.SchemaSynchronizer schemaSynchronizer;
+    private final org.tifo.footballmanager.newLogic.jobs.impl.InternationalClubCupJob internationalClubCupJob;
 
     /**
      * The session a job runs on. Held for the length of the job and closed after it — see
@@ -194,7 +209,26 @@ public class AdminDatabaseAsyncService {
         return currentSnapshot.get();
     }
 
+    /**
+     * Draws the international club cups, for the seasons named in the action.
+     *
+     * @param action {@code redraw-international-cups:qualified:drawnInto}
+     */
+    private void redrawInternationalClubCups(String action) {
+        String[] parts = String.valueOf(action).split(":");
+        int qualifying = parts.length > 1 ? Integer.parseInt(parts[1].trim()) : 1;
+        int drawnInto = parts.length > 2 ? Integer.parseInt(parts[2].trim()) : qualifying + 1;
+        internationalClubCupJob.drawGroupStagesFor(qualifying, drawnInto);
+    }
+
     private void execute(String action) {
+        // The cup draw first: it is not a database rebuild, so it skips the schema synchronisation
+        // below, and it is the one action that carries parameters.
+        if (String.valueOf(action).toLowerCase().startsWith(ACTION_REDRAW_INTERNATIONAL_CUPS)) {
+            redrawInternationalClubCups(action);
+            return;
+        }
+
         // **The schema first, before either action touches a table.** `ddl-auto=update` runs at startup and
         // not again, so a database that has fallen behind the code — because a backup from an older schema
         // was restored, or because the entities moved on while the application kept running — makes these
@@ -388,6 +422,9 @@ public class AdminDatabaseAsyncService {
     }
 
     private int stepsFor(String action) {
+        if (String.valueOf(action).toLowerCase().startsWith(ACTION_REDRAW_INTERNATIONAL_CUPS)) {
+            return 1;
+        }
         return switch (String.valueOf(action).toLowerCase()) {
             case "reset" -> 3;
             case "initialize" -> 4;
@@ -398,6 +435,9 @@ public class AdminDatabaseAsyncService {
     }
 
     private String messageFor(String action) {
+        if (String.valueOf(action).toLowerCase().startsWith(ACTION_REDRAW_INTERNATIONAL_CUPS)) {
+            return "Drawing the international club cups.";
+        }
         return switch (String.valueOf(action).toLowerCase()) {
             case "reset" -> "Clearing database (preserves user + tactics).";
             case "initialize" -> "Database initialization in progress.";

@@ -298,14 +298,25 @@ public class AdminController {
                     "hint", "Qualify off an earlier season, or draw into a later one."));
         }
 
-        internationalClubCupJob.drawGroupStagesFor(qualifying, season);
-        return ResponseEntity.ok(Map.of(
-                "activeSeason", active,
-                "qualifiedFromSeason", qualifying,
-                "drawnForSeason", season,
-                "week", InternationalClubCupJob.DRAW_WEEK,
-                "day", InternationalClubCupJob.DRAW_DAY,
-                "job", InternationalClubCupJob.KEY));
+        // **The draw runs on the job thread, not in the request.**
+        //
+        // It gives a squad to every entrant that has none - a cup entrant without players is a club
+        // of zeroes - and then deals the groups. On the server that took longer than nginx waits, so
+        // the button answered "504 Server returned HTML instead of JSON" (owner, 2026-10-22). The draw
+        // itself succeeded; the connection did not survive it.
+        //
+        // So the button answers at once, with the job's details, and the draw runs in the background
+        // where the panel's status poll can watch it - the same shape as Reset and Initialize.
+        Map<String, Object> started = toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob(
+                        AdminDatabaseAsyncService.ACTION_REDRAW_INTERNATIONAL_CUPS + ":" + qualifying + ":" + season));
+        started.put("activeSeason", active);
+        started.put("qualifiedFromSeason", qualifying);
+        started.put("drawnForSeason", season);
+        started.put("week", InternationalClubCupJob.DRAW_WEEK);
+        started.put("day", InternationalClubCupJob.DRAW_DAY);
+        started.put("job", InternationalClubCupJob.KEY);
+        return ResponseEntity.accepted().body(started);
     }
 
 /**
