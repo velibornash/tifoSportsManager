@@ -793,9 +793,18 @@ public class CleanDecisionEngine {
         String team = carrier.getTeam();
         double row = carrier.getPosition().getRow();
         boolean home = "HOME".equals(team);
+        double col = carrier.getPosition().getColumn();
         boolean inFinalThird = home ? row >= 5.0 : row <= 4.0;
         if (!inFinalThird) {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": not in final third");
+        }
+        // CENTER is not for players already in the box (penalty area). A corner position
+        // (row >= 6.5 but col outside 2.0-5.0) is NOT in the box — center is allowed there.
+        if (!fromFlank && home && row >= 6.5 && col >= 2.0 && col <= 5.0) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
+        }
+        if (!fromFlank && !home && row <= 2.5 && col >= 2.0 && col <= 5.0) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
         }
         double wide = Math.abs(carrier.getPosition().getColumn() - 4.0);
         // CENTER has no "crossing position" restriction (owner: "center koji moze da se
