@@ -35,6 +35,10 @@
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
+  .checks { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #9aa7bf; }
+  .checks label { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; line-height: 1.35; }
+  .checks input { accent-color: #4a9eff; margin-top: 2px; }
+  .checks b { color: #e8ecf4; }
   .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; line-height: 1.6; white-space: pre-line; }
   .info b { color: #e8ecf4; }
   .info .err { color: #ff7a7a; }
@@ -44,7 +48,7 @@
 <div class="wrap">
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
-    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
+    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag, <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
         <div class="line mid"></div>
@@ -64,6 +68,12 @@
     <div class="controls">
       <button id="reload">Reload tactic</button>
       <button id="reset">Ball to center</button>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" id="cb-carrier" checked><span><b>Carrier</b> — the ball is owned</span></label>
+      <label><input type="checkbox" id="cb-chase"><span><b>CHASE_BALL</b> — loose ball: nearest of each team runs at it</span></label>
+      <label><input type="checkbox" id="cb-threat-a"><span><b>THREAT A</b> — press the carrier (ends in a tackle duel)</span></label>
+      <label><input type="checkbox" id="cb-threat-b"><span><b>THREAT B</b> — press a dangerous opponent (approach only)</span></label>
     </div>
     <div class="info" id="info">Loading tactic…</div>
   </div>
@@ -133,6 +143,28 @@ const CELLS_PER_TICK = (PACE / 20) * PLAYER_SPEED_BASE;
 const TICKS_PER_SEC = 1.875;
 const PLAYER_CELLS_PER_SEC = CELLS_PER_TICK * TICKS_PER_SEC;
 
+// ===== Behavior constants (mirror the engines they copy) =====================
+// MovementEngine.looseBallChaser: the NEAREST available player of each team
+// (one per team, keepers included) goes for a loose ball, but only within
+// 4 cells of a STOPPED ball — and never at extra speed.
+const CHASE_RANGE_STOPPED = 4.0;
+// MovementEngine's wall parks a claimer this close to the ball: arrival.
+const CAPTURE_RADIUS = 0.35;
+// DuelEngine: a dribble duel fires within 0.45 cells, a presser's tackle duel
+// within 0.55; both contestants then wait DRIBBLE_COOLDOWN_TICKS (7) ticks.
+const DRIBBLE_DUEL_RADIUS = 0.45;
+const PRESS_DUEL_RADIUS = 0.55;
+const DUEL_COOLDOWN_MS = (7 / TICKS_PER_SEC) * 1000;
+// ThreatOverrideEngine: press within RANGE_A / RANGE_B = 1 cell; the carrier is
+// pressable only while FREE (no teammate within CARRIER_SPACE_RADIUS); a
+// dangerous opponent is one WITHOUT the ball, goal-side of it, inside our own
+// danger zone (DANGER_ZONE_ROW cells from our goal line).
+const RANGE_A = 1.0;
+const RANGE_B = 1.0;
+const CARRIER_SPACE_RADIUS = 1.0;
+const DANGER_ZONE_ROW = 2.0;
+const GOALSIDE_EPS = 0.2;
+
 // ===== State =================================================================
 const POSSESSION_CONTEXT = 'WE_HAVE_BALL';
 let slots = [];          // slotDefinitions from the endpoint
@@ -151,12 +183,30 @@ let homeViews = [];
 let awayViews = [];
 let viewsKey = null;
 
+// ===== Behavior state =========================================================
+// The Carrier checkbox is the engine's getCarrier() != null flag. A specific
+// carrier PLAYER appears when someone wins the ball (chase capture or duel);
+// unchecking Carrier releases him and the ball is loose again.
+let carrier = true;
+let carrierView = null;
+let chaseArmed = false;
+let threatA = false;
+let threatB = false;
+const duelLog = [];            // last results, newest first
+let chaseInfo = 'Chase: —';
+let pressAInfo = 'Threat A: —';
+let pressBInfo = 'Threat B: —';
+
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
 const cellsLayer = document.getElementById('cells');
 const gridLayer = document.getElementById('grid');
 const ballEl = document.getElementById('ball');
 const info = document.getElementById('info');
+const cbCarrier = document.getElementById('cb-carrier');
+const cbChase = document.getElementById('cb-chase');
+const cbA = document.getElementById('cb-threat-a');
+const cbB = document.getElementById('cb-threat-b');
 
 function apiHeaders() {
   const token = sessionStorage.getItem('token');
@@ -192,6 +242,7 @@ async function loadTactic() {
     });
     tacticName = (tactic.name || '') + ' (' + (editor.formation || tactic.formation) + ')';
     viewsKey = null;  // slot list may have changed — rebuild the circles
+    carrierView = null;  // the old views are gone with it
     render();
   } catch (e) {
     info.innerHTML = '<span class="err">Could not load the tactic: ' + String(e.message || e) +
@@ -248,7 +299,7 @@ function ensureViews() {
     el.className = 'player ' + side + (slot.line === 'GK' ? ' gk' : '');
     el.textContent = slot.slotKey;
     playersLayer.appendChild(el);
-    return { slot, el, pos: null, target: null };
+    return { slot, side, el, pos: null, target: null, ruleTarget: null, override: false, duelUntil: 0 };
   });
   homeViews = build('home');
   awayViews = build('away');
@@ -262,7 +313,8 @@ function drawPlayer(v) {
 }
 
 function placeView(v, rc) {
-  v.target = { row: rc.row, col: rc.col };
+  v.ruleTarget = { row: rc.row, col: rc.col };          // the tactic's own cell
+  if (!v.override) v.target = v.ruleTarget;             // a chase/press override wins until it ends
   if (!v.pos) {                                        // first placement snaps; later moves glide
     v.pos = { row: rc.row, col: rc.col };
     drawPlayer(v);
@@ -286,8 +338,9 @@ function render() {
 }
 
 function fmtView(v) {
+  const t = v.ruleTarget || v.target;
   return v.pos.row.toFixed(2) + '|' + v.pos.col.toFixed(2) +
-    ' (cell ' + Math.floor(v.target.row) + '_' + Math.floor(v.target.col) + ')';
+    ' (cell ' + Math.floor(t.row) + '_' + Math.floor(t.col) + ')';
 }
 
 function drawInfo(ballState, ballRc) {
@@ -296,10 +349,183 @@ function drawInfo(ballState, ballRc) {
     list += h.slot.slotKey + '\n   HOME ' + fmtView(h) + '\n   AWAY ' + fmtView(awayViews[i]) + '\n';
   });
   const [br, bc] = ballState.split('_').slice(1).map(Number);
+  const carrierLine = carrier
+    ? (carrierView ? carrierView.slot.slotKey + ' (' + carrierView.side.toUpperCase() + ')' : 'owned (no player holding it)')
+    : 'none — ball loose';
   info.innerHTML = '<b>Tactic:</b> ' + tacticName + '\n' +
     '<b>Ball cell:</b> ' + (br + 1) + '_' + (bc + 1) + '  <b>ball state:</b> ' + ballState + '\n' +
     '<b>Ball pos:</b> ' + ballRc.row.toFixed(2) + '|' + ballRc.col.toFixed(2) + '\n' +
+    '\n<b>Carrier:</b> ' + carrierLine + '\n' +
+    chaseInfo + '\n' + pressAInfo + '\n' + pressBInfo + '\n' +
+    duelLog.map(l => l).join('\n') + (duelLog.length ? '\n' : '') +
     '\n<b>Players (row|col):</b>\n' + list;
+}
+
+// ===== Match behaviors (mirror MovementEngine / DuelEngine / ThreatOverrideEngine) ==
+// CHASE_BALL — while the ball has no carrier, the nearest available player of
+// EACH team runs at it (one per team, keepers included, within 4 cells of a
+// stopped ball, at normal pace — chasing is never faster). The first to reach
+// it takes the ball and everything stops; if both end up together on it, the
+// DUEL decides — pWin = sigmoid(0.22 * skillGap), which for equal lab players
+// is exactly 0.50 (HOME_ADVANTAGE_DUEL_POWER is 0.0), the winner takes the
+// ball and both wait the engine's 7-tick duel cooldown.
+// THREAT A — the CLOSEST eligible opponent presses a FREE carrier within 1
+// cell; parked inside the press radius the tackle duel fires (ball can switch).
+// THREAT B — press the deepest goal-side opponent without the ball inside our
+// own danger zone (2 cells from our goal line) within 1 cell: approach only,
+// there is no ball to win there. A has priority over B; chase over both.
+
+function sideOf(v) { return v.side; }
+function distRc(a, b) { return Math.hypot(a.row - b.row, a.col - b.col); }
+function onCooldown(v, now) { return now < v.duelUntil; }
+
+function clearOverrides(all) {
+  all.forEach(v => { if (v.override) { v.override = false; v.target = v.ruleTarget; } });
+}
+function setOverride(v, rc) {
+  v.override = true;
+  v.target = rc;
+}
+
+// The ball belongs to v now: it snaps onto him, the Carrier flag follows, and
+// the result is logged for the info panel.
+function setCarrier(v, msg) {
+  carrierView = v;
+  carrier = true;
+  cbCarrier.checked = true;
+  const pct = rowColToPct(v.pos.row, v.pos.col);
+  ball.x = pct.x; ball.y = pct.y;
+  ballEl.style.left = ball.x + '%';
+  ballEl.style.top = ball.y + '%';
+  duelLog.unshift(msg);
+  if (duelLog.length > 3) duelLog.pop();
+}
+
+function duel(a, d, now, kind) {
+  // DuelEngine.resolveDuel: pWin = 1/(1+e^(-0.22*gap)); equal players -> 0.50.
+  const winner = Math.random() < 0.5 ? a : d;
+  a.duelUntil = now + DUEL_COOLDOWN_MS;
+  d.duelUntil = now + DUEL_COOLDOWN_MS;
+  const tag = (v) => v.slot.slotKey + '(' + (v.side === 'home' ? 'H' : 'A') + ')';
+  setCarrier(winner, 'Duel(' + kind + '): ' + tag(a) + ' vs ' + tag(d) +
+    ' → ' + tag(winner) + ' wins');
+}
+
+function updateChase(now, all) {
+  const chasers = new Set();
+  if (!chaseArmed) { chaseInfo = 'Chase: off'; return chasers; }
+  if (carrier) { chaseInfo = 'Chase: idle (ball owned)'; return chasers; }
+  const ballRc = toRowCol(ball.x, ball.y);
+  const picked = { home: null, away: null };
+  ['home', 'away'].forEach(side => {
+    let best = null, bestD = Infinity;
+    all.forEach(v => {
+      if (sideOf(v) !== side || v === carrierView) return;
+      const d = distRc(v.pos, ballRc);
+      if (d < bestD) { bestD = d; best = v; }
+    });
+    if (best && bestD <= CHASE_RANGE_STOPPED) {
+      picked[side] = best;
+      chasers.add(best);
+      setOverride(best, { row: ballRc.row, col: ballRc.col });
+    }
+  });
+  const h = picked.home, a = picked.away;
+  chaseInfo = (h || a)
+    ? 'Chase: ' + (h ? h.slot.slotKey + '(H) ' + distRc(h.pos, ballRc).toFixed(2) + 'c' : '—') +
+      ' vs ' + (a ? a.slot.slotKey + '(A) ' + distRc(a.pos, ballRc).toFixed(2) + 'c' : '—')
+    : 'Chase: nobody within ' + CHASE_RANGE_STOPPED + ' cells';
+  if (!h && !a) return chasers;
+  const dh = h ? distRc(h.pos, ballRc) : Infinity;
+  const da = a ? distRc(a.pos, ballRc) : Infinity;
+  if (Math.min(dh, da) > CAPTURE_RADIUS) return chasers;   // still running
+  const arrivee = dh <= da ? h : a;
+  const other = arrivee === h ? a : h;
+  const contested = other && distRc(arrivee.pos, other.pos) <= DRIBBLE_DUEL_RADIUS;
+  if (!contested) {
+    setCarrier(arrivee, 'Chase: ' + arrivee.slot.slotKey + '(' + (arrivee.side === 'home' ? 'H' : 'A') +
+      ') reaches the loose ball');
+  } else if (onCooldown(arrivee, now) || onCooldown(other, now)) {
+    setCarrier(arrivee, 'Chase: ' + arrivee.slot.slotKey + '(' + (arrivee.side === 'home' ? 'H' : 'A') +
+      ') claims it (the other on duel cooldown)');
+  } else {
+    duel(arrivee, other, now, 'chase');
+  }
+  return chasers;
+}
+
+function updateThreatA(now, all, chasers) {
+  pressAInfo = '';
+  if (!threatA) { pressAInfo = 'Threat A: off'; return null; }
+  const c = carrierView;
+  if (!c) { pressAInfo = 'Threat A: idle (no player holding the ball)'; return null; }
+  const covered = all.some(v => v !== c && sideOf(v) === sideOf(c) && distRc(v.pos, c.pos) <= CARRIER_SPACE_RADIUS);
+  if (covered) { pressAInfo = 'Threat A: idle (carrier covered by a teammate)'; return null; }
+  let best = null, bestD = Infinity;
+  all.forEach(v => {
+    if (sideOf(v) === sideOf(c) || v === c) return;   // only the other team
+    if (v.slot.line === 'GK' || chasers.has(v)) return;
+    const d = distRc(v.pos, c.pos);
+    if (d <= RANGE_A && d < bestD) { bestD = d; best = v; }
+  });
+  if (!best) { pressAInfo = 'Threat A: idle (no opponent within ' + RANGE_A + ' cell)'; return null; }
+  setOverride(best, { row: c.pos.row, col: c.pos.col });
+  pressAInfo = 'Threat A: ' + best.slot.slotKey + ' (' + best.side.toUpperCase() + ') presses ' +
+    c.slot.slotKey + ' — ' + bestD.toFixed(2) + 'c';
+  if (distRc(best.pos, c.pos) <= PRESS_DUEL_RADIUS && !onCooldown(best, now) && !onCooldown(c, now)) {
+    duel(best, c, now, 'tackle');                     // a parked press ends in a tackle duel
+  }
+  return best;
+}
+
+function goalSideOfBall(v, ballRc) {
+  // The attacker between the ball and the goal HE attacks (own goal at row 1
+  // for home, row 8 for away) — ThreatOverrideEngine.isGoalSideOfBall.
+  return sideOf(v) === 'home' ? v.pos.row > ballRc.row + GOALSIDE_EPS
+                              : v.pos.row < ballRc.row - GOALSIDE_EPS;
+}
+
+function updateThreatB(now, all, chasers, aPresser) {
+  if (!threatB) { pressBInfo = 'Threat B: off'; return; }
+  const ballRc = toRowCol(ball.x, ball.y);
+  const claimed = new Set(chasers);
+  if (aPresser) claimed.add(aPresser);
+  const presses = [];
+  ['home', 'away'].forEach(side => {
+    const ownGoalRow = side === 'home' ? 1 : 8;
+    // Opponents without the ball, inside OUR danger zone, goal-side of it.
+    const threats = all.filter(v =>
+      sideOf(v) !== side && v !== carrierView && v.slot.line !== 'GK' &&
+      Math.abs(v.pos.row - ownGoalRow) <= DANGER_ZONE_ROW && goalSideOfBall(v, ballRc));
+    threats.sort((x, y) => Math.abs(x.pos.row - ownGoalRow) - Math.abs(y.pos.row - ownGoalRow));
+    threats.forEach(t => {                            // deepest threat first
+      let best = null, bestD = Infinity;
+      all.forEach(d => {
+        if (sideOf(d) !== side || claimed.has(d) || d === carrierView) return;
+        if (d.slot.line === 'GK') return;
+        const dd = distRc(d.pos, t.pos);
+        if (dd <= RANGE_B && dd < bestD) { bestD = dd; best = d; }
+      });
+      if (!best) return;
+      claimed.add(best);
+      setOverride(best, { row: t.pos.row, col: t.pos.col });
+      presses.push(best.slot.slotKey + (side === 'home' ? '(H)' : '(A)') + '→' +
+        t.slot.slotKey + (t.side === 'home' ? '(H)' : '(A)'));
+    });
+  });
+  pressBInfo = presses.length ? 'Threat B: ' + presses.join(', ')
+                              : 'Threat B: no eligible threat in a danger zone';
+}
+
+function updateBehaviors(now, all) {
+  clearOverrides(all);
+  const chasers = updateChase(now, all);
+  const aPresser = updateThreatA(now, all, chasers);
+  updateThreatB(now, all, chasers, aPresser);
+  // The carrier holds the ball where he stands: movement stops on him.
+  if (carrierView && carrier) {
+    setOverride(carrierView, { row: carrierView.pos.row, col: carrierView.pos.col });
+  }
 }
 
 // ===== Movement loop ==========================================================
@@ -316,6 +542,7 @@ function tick(now) {
   let moving = false;
   const step = PLAYER_CELLS_PER_SEC * dt;
   const all = homeViews.concat(awayViews);
+  if (all.length) updateBehaviors(now, all);   // chase / press / duel set the targets
   all.forEach(v => {
     if (!v.pos || !v.target) return;
     const dr = v.target.row - v.pos.row;
@@ -331,7 +558,7 @@ function tick(now) {
     drawPlayer(v);
   });
   if (separateOverlaps(all)) moving = true;
-  if (moving) drawInfo(pctToCellKey(ball.x, ball.y), toRowCol(ball.x, ball.y));
+  if (all.length) drawInfo(pctToCellKey(ball.x, ball.y), toRowCol(ball.x, ball.y));
 
   requestAnimationFrame(tick);
 }
@@ -416,6 +643,15 @@ document.getElementById('reset').addEventListener('click', () => {
   render();
 });
 document.getElementById('reload').addEventListener('click', loadTactic);
+
+// ===== Behavior checkboxes ====================================================
+cbCarrier.addEventListener('change', () => {
+  carrier = cbCarrier.checked;
+  if (!carrier) carrierView = null;   // release: the ball is loose again
+});
+cbChase.addEventListener('change', () => { chaseArmed = cbChase.checked; });
+cbA.addEventListener('change', () => { threatA = cbA.checked; });
+cbB.addEventListener('change', () => { threatB = cbB.checked; });
 // No resize handler needed: everything is positioned in % of the pitch box.
 
 renderGrid();
