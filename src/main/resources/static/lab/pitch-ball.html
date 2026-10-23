@@ -25,8 +25,11 @@
   .cell-grid .hline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.18); }
   .cell-grid .vline { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,0.18); }
   .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
-  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); pointer-events: none; z-index: 2; letter-spacing: -0.5px; }
-  .player.gk { background: #f5a623; }
+  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); pointer-events: none; z-index: 2; letter-spacing: -0.5px; }
+  .player.home { background: #4a9eff; }
+  .player.home.gk { background: #f5a623; }
+  .player.away { background: #e05555; }
+  .player.away.gk { background: #ff9db0; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
   .controls { display: flex; flex-direction: column; gap: 10px; }
@@ -41,7 +44,7 @@
 <div class="wrap">
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
-    <p class="hint">Drag the white ball. Player circles glide to the target cell the saved tactic rules give for that ball state — at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick), not a teleport. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
+    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
         <div class="line mid"></div>
@@ -95,6 +98,29 @@ function rowColToPct(row, col) {
   return { x: (col - 1) * (100 / 6), y: (8 - row) * (100 / 7) };
 }
 
+// ===== Away perspective (mirror of TacticalPerspectiveTransformer.java) ======
+// The editor's coordinates are HOME's perspective. AWAY mirrors both axes:
+// row' = 9 - row, col' = 8 - col (rows 1..8, cols 1..7; the only symmetry axes
+// are 4.5 and 4.0). The away side therefore reads the SAME rules under the
+// mirrored ball, and its target cell comes back mirrored into physical coords.
+function toAwayRc(row, col) {
+  return { row: 9 - row, col: 8 - col };
+}
+function rcToCellKey(row, col) {
+  const r = Math.min(7, Math.max(1, Math.floor(row)));
+  const c = Math.min(6, Math.max(1, Math.floor(col)));
+  return 'CELL_' + (r - 1) + '_' + (c - 1);
+}
+function awaySlotTargetRc(slot, ballRow, ballCol) {
+  const awayBall = toAwayRc(ballRow, ballCol);
+  const rule = rulesMap[slot.slotKey + '|' + rcToCellKey(awayBall.row, awayBall.col) + '|' + POSSESSION_CONTEXT];
+  const parsed = parseCellKey(rule || slot.anchorCellKey || 'CELL_2_2');
+  const p = parsed ? parsed[0] : 2, w = parsed ? parsed[1] : 2;
+  // The rule's cell is the away side's editor view of it: the cell CENTER in
+  // editor display coords is (p + 1.5, w + 1.5), mirrored to physical space.
+  return { row: 7.5 - p, col: 6.5 - w };
+}
+
 // ===== Movement engine constants (mirror MovementEngine.java) =================
 // playerSpeedFor(pace) = (pace / 20) * PLAYER_SPEED_BASE cells/tick, pace 1..20.
 // The owner's instruction for this tool: use the max skill, pace 20 -> 0.75
@@ -118,9 +144,11 @@ let tacticName = '';
 // between columns 3 and 4 (no cell center is the center of an even-width grid).
 const BALL_CENTER = { x: 50, y: 50 };
 let ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
-// One persistent element per slot; positions are engine row/col coordinates
-// stepped by the animation loop (players glide, they do not teleport).
-let playerViews = [];
+// One persistent element per slot per side; positions are engine row/col
+// coordinates stepped by the animation loop (players glide, they do not
+// teleport). The away side plays the same tactic, mirrored.
+let homeViews = [];
+let awayViews = [];
 let viewsKey = null;
 
 const pitch = document.getElementById('pitch');
@@ -210,18 +238,20 @@ function renderGrid() {
   }
 }
 
-// One element per slot, created once and moved from then on.
+// One element per slot per side, created once and moved from then on.
 function ensureViews() {
   const key = slots.map(s => s.slotKey).join(',');
   if (key === viewsKey) return;
   playersLayer.innerHTML = '';
-  playerViews = slots.map(slot => {
+  const build = (side) => slots.map(slot => {
     const el = document.createElement('div');
-    el.className = 'player' + (slot.line === 'GK' ? ' gk' : '');
+    el.className = 'player ' + side + (slot.line === 'GK' ? ' gk' : '');
     el.textContent = slot.slotKey;
     playersLayer.appendChild(el);
     return { slot, el, pos: null, target: null };
   });
+  homeViews = build('home');
+  awayViews = build('away');
   viewsKey = key;
 }
 
@@ -231,32 +261,39 @@ function drawPlayer(v) {
   v.el.style.top = pct.y + '%';
 }
 
+function placeView(v, rc) {
+  v.target = { row: rc.row, col: rc.col };
+  if (!v.pos) {                                        // first placement snaps; later moves glide
+    v.pos = { row: rc.row, col: rc.col };
+    drawPlayer(v);
+  }
+}
+
 function render() {
   ballEl.style.left = ball.x + '%';
   ballEl.style.top = ball.y + '%';
 
+  const ballRc = toRowCol(ball.x, ball.y);
   const ballState = pctToCellKey(ball.x, ball.y);
 
   ensureViews();
-  playerViews.forEach(v => {
+  homeViews.forEach(v => {
     const t = slotTarget(v.slot, ballState);           // pct center of the rule's cell
-    const rc = toRowCol(t.x, t.y);                     // engine row/col space
-    v.target = { row: rc.row, col: rc.col };
-    if (!v.pos) {                                      // first placement snaps; later moves glide
-      v.pos = { row: rc.row, col: rc.col };
-      drawPlayer(v);
-    }
+    placeView(v, toRowCol(t.x, t.y));                  // editor perspective is HOME's own
   });
-  drawInfo(ballState);
+  awayViews.forEach(v => placeView(v, awaySlotTargetRc(v.slot, ballRc.row, ballRc.col)));
+  drawInfo(ballState, ballRc);
 }
 
-function drawInfo(ballState) {
-  const ballRc = toRowCol(ball.x, ball.y);
+function fmtView(v) {
+  return v.pos.row.toFixed(2) + '|' + v.pos.col.toFixed(2) +
+    ' (cell ' + Math.floor(v.target.row) + '_' + Math.floor(v.target.col) + ')';
+}
+
+function drawInfo(ballState, ballRc) {
   let list = '';
-  playerViews.forEach(v => {
-    const cell = Math.floor(v.target.row) + '_' + Math.floor(v.target.col);
-    list += v.slot.slotKey + ': ' + v.pos.row.toFixed(2) + '|' + v.pos.col.toFixed(2) +
-      ' (cell ' + cell + ')\n';
+  homeViews.forEach((h, i) => {
+    list += h.slot.slotKey + '\n   HOME ' + fmtView(h) + '\n   AWAY ' + fmtView(awayViews[i]) + '\n';
   });
   const [br, bc] = ballState.split('_').slice(1).map(Number);
   info.innerHTML = '<b>Tactic:</b> ' + tacticName + '\n' +
@@ -278,7 +315,8 @@ function tick(now) {
 
   let moving = false;
   const step = PLAYER_CELLS_PER_SEC * dt;
-  playerViews.forEach(v => {
+  const all = homeViews.concat(awayViews);
+  all.forEach(v => {
     if (!v.pos || !v.target) return;
     const dr = v.target.row - v.pos.row;
     const dc = v.target.col - v.pos.col;
@@ -292,9 +330,57 @@ function tick(now) {
     }
     drawPlayer(v);
   });
-  if (moving) drawInfo(pctToCellKey(ball.x, ball.y));
+  if (separateOverlaps(all)) moving = true;
+  if (moving) drawInfo(pctToCellKey(ball.x, ball.y), toRowCol(ball.x, ball.y));
 
   requestAnimationFrame(tick);
+}
+
+// ===== Collision: circles touch but never overlap =============================
+// The same hard limit the ball has for the pitch lines, applied player to
+// player: a player goes at most UP TO another player, so two circles stop
+// touching. Overlaps are pushed apart along the center-to-center axis, in
+// rendered pixel space (a row cell and a column cell are not the same size),
+// then everyone is clamped back inside the pitch like the ball is.
+const PLAYER_RADIUS_PX = 20;   // .player is 40px wide
+function separateOverlaps(all) {
+  const rect = pitch.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+  const colW = rect.width / 6, rowH = rect.height / 7;
+  const rX = (PLAYER_RADIUS_PX / rect.width) * 100;    // radius in % of pitch width
+  const rY = (PLAYER_RADIUS_PX / rect.height) * 100;   // radius in % of pitch height
+  const D = PLAYER_RADIUS_PX * 2;                      // touching distance, px
+  let moved = false;
+  for (let iter = 0; iter < 4; iter++) {               // settle chains (3+ on one cell)
+    let any = false;
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) {
+        const a = all[i], b = all[j];
+        if (!a.pos || !b.pos) continue;
+        let dr = b.pos.row - a.pos.row, dc = b.pos.col - a.pos.col;
+        let dx = dc * colW, dy = dr * rowH;
+        let d = Math.hypot(dx, dy);
+        if (d >= D) continue;
+        if (d < 1e-9) { dx = colW; dy = 0; d = colW; } // exactly stacked: split sideways
+        const push = (D - d) / 2 / d;                  // half the overlap each, px along the axis
+        a.pos = { row: a.pos.row - dy * push / rowH, col: a.pos.col - dx * push / colW };
+        b.pos = { row: b.pos.row + dy * push / rowH, col: b.pos.col + dx * push / colW };
+        clampView(a, rX, rY);
+        clampView(b, rX, rY);
+        any = true; moved = true;
+      }
+    }
+    if (!any) break;
+  }
+  if (moved) all.forEach(drawPlayer);
+  return moved;
+}
+function clampView(v, rX, rY) {
+  const p = rowColToPct(v.pos.row, v.pos.col);
+  const x = Math.max(rX, Math.min(100 - rX, p.x));
+  const y = Math.max(rY, Math.min(100 - rY, p.y));
+  const rc = toRowCol(x, y);
+  v.pos = { row: rc.row, col: rc.col };
 }
 
 // ===== Drag ==================================================================
