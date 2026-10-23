@@ -6165,6 +6165,51 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 
 /*
+ * The card's own lines start below the label and the crest (owner, 2026-10-23: "Recent matches rec na
+ * widgetu je potpuno prekrila datum i vreme na desktopu: spusti datum za jedan red i imena timova za
+ * jedan red i tip meca za jedan red").
+ *
+ * <p>Since 2026-10-19 the section's label floats over the top edge of its first card, absolutely
+ * positioned at -11px with z-index 2, so that the card starts on the same line as the tiles beside it.
+ * The card did not reserve room for that label: its padding-top is 12px, so its first line - the date -
+ * began at y=349 while the label's pill ran 341 to 363 and the crest 312 to 366. The title lay
+ * straight over the date and only its tail showed, and the crest lay over the right end of the line.
+ *
+ * <p>One padding moves the three lines he named, because they are in flow: the date, the two team
+ * names and the competition are each a line lower afterwards. 36px puts the date at y=373, clear of
+ * both the pill and the crest, and it is the card's own line rhythm (the rows are 21 and 24px apart)
+ * rather than an amount picked from the viewport.
+ *
+ * <p>The desktop only - on a phone the label is in the flow above the card and there is nothing over
+ * it (the owner: "na mobilnom izgleda ok"), so the phone keeps the card exactly as it is.
+ */
+@media (min-width: 1025px) {
+    .fm-dashboard-section--recent .fm-fixture {
+        padding-top: 36px;
+    }
+}
+
+/*
+ * The second date is not on this card (owner, 2026-10-23: "a desno ispod logoa isto imamo datum? jedan
+ * je visak").
+ *
+ * <p>The top line said the same fixture twice: "Season 1 · Week 1 · Day 3 · 19:00" on the left and the
+ * compact "S1 · D3 · Wk 1 · Rd 1" on the right, under the crest - and on the desktop the crest covered
+ * the end of it anyway. The full line is the one that goes: it carries the time, which is the half he
+ * asked to see. The compact form comes from the schedule's fixture card builder
+ * (`buildScheduleFixtureCardHtml`) and stays on the schedule and the match lists; only this widget, and
+ * only on a desktop, drops it.
+ *
+ * <p>The desktop only, like everything above: he said the phone looks right, and on the phone the two
+ * sit side by side with the crest over neither.
+ */
+@media (min-width: 1025px) {
+    .fm-dashboard-section--recent .fx-calendar {
+        display: none;
+    }
+}
+
+/*
  * The dashboard reads a little larger on a desktop (owner, 2026-10-19: "povecaj malko za sve font").
  *
  * <p>Scoped to the dashboard and to the desktop, and raised by a point rather than a jump: the
