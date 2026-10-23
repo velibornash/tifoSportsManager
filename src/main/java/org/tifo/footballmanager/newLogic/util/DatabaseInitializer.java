@@ -1423,6 +1423,16 @@ public class DatabaseInitializer {
         List<String> unmatched = new ArrayList<>();
         for (TacticsProfileSnapshot snapshot : wanted) {
             Team team = teamRepository.findFirstByNameOrderByIdAsc(snapshot.teamName).orElse(null);
+            // **The world default survives a reset no matter what.** If its club's name no longer
+            // resolves (a renamed or missing club), fall back to the first available team so the
+            // designation is never lost. The owner's rule: "da NE moze NISTA da je pregazi ili izbrise".
+            if ((team == null || team.getId() == null) && snapshot.worldDefault) {
+                team = teamRepository.findAll().stream().findFirst().orElse(null);
+                if (team != null) {
+                    log.warn("World-default tactic's club '{}' not found after reset; attaching to '{}'.",
+                            snapshot.teamName, team.getName());
+                }
+            }
             if (team == null || team.getId() == null) {
                 // Named rather than skipped. The old `continue` made a profile that could not be placed
                 // indistinguishable from there being none, which is how four of the owner's five
