@@ -182,15 +182,6 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
                 </div>`;
         }).join('');
 
-        const benchSlots = benchIds.map((selected, idx) => {
-            const player = byId(selected);
-            return `
-                <div class="lineup-slot-drop club-lineup-bench-slot" data-zone="bench" data-index="${idx}">
-                    <div class="club-lineup-slot-label">Bench ${idx + 1}</div>
-                    ${player ? chip(player, 'bench', idx) : `<div class="club-lineup-slot-placeholder">Drop player</div>`}
-                </div>`;
-        }).join('');
-
         const pool = poolCandidates().map(player => chip(player, 'pool', -1)).join('');
 
         return `
@@ -232,6 +223,14 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
 
     /** The Selection Dock: the bench, and the eleven that are on the pitch next to it. */
     function dockBlock() {
+        const benchSlots = benchIds.map((selected, idx) => {
+            const player = byId(selected);
+            return `
+                <div class="lineup-slot-drop club-lineup-bench-slot" data-zone="bench" data-index="${idx}">
+                    <div class="club-lineup-slot-label">Bench ${idx + 1}</div>
+                    ${player ? chip(player, 'bench', idx) : `<div class="club-lineup-slot-placeholder">Drop player</div>`}
+                </div>`;
+        }).join('');
         return `
                         <div class="club-lineup-panel-head">
                             <div>
