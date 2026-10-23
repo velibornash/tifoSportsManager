@@ -202,6 +202,12 @@ public class SimMatchService {
 
         applySubstitutionPlan(fixture, orchestrator);
 
+        // Tick snapshots are only ever read by the replay viewer and the zone load, and the zone load
+        // is only written for matches involving a human club. Recording 3600 of them for every bot
+        // match is the bulk of the per-match memory and the thing that OOMs a full matchday.
+        boolean involvesManager = isHumanClub(homeTeam) || isHumanClub(awayTeam);
+        orchestrator.getRecorder().setSnapshotsEnabled(storeReplay || involvesManager);
+
         orchestrator.simulate(ticks);
         ProposalMatchOutcome outcome = orchestrator.buildOutcome();
         // Fatigue and injuries are a consequence of playing. A replay is not playing, so it does not

@@ -14,6 +14,16 @@ public class MatchRecorder {
     private final List<MatchEvent> events = new ArrayList<>();
     private final List<MatchSnapshot> snapshots = new ArrayList<>();
 
+    /**
+     * Whether tick snapshots are recorded. Events are always recorded (they feed the post-match
+     * report); only the per-tick position snapshots can be skipped, and they are the bulk of the
+     * per-match memory. Disabled for matches nobody will replay (bot-vs-bot with no replay store).
+     */
+    private volatile boolean snapshotsEnabled = true;
+
+    public void setSnapshotsEnabled(boolean enabled) { this.snapshotsEnabled = enabled; }
+    public boolean isSnapshotsEnabled() { return snapshotsEnabled; }
+
     public void appendEvent(long tick, String type, String description) {
         events.add(new MatchEvent(tick, type, description, null, null, null, null, null, null, null, type));
     }
@@ -70,6 +80,9 @@ public class MatchRecorder {
     }
 
     public void captureSnapshot(MatchState state) {
+        if (!snapshotsEnabled) {
+            return;
+        }
         List<PlayerSnapshot> playerSnapshots = state.getPlayers().stream()
                 // ME-1 (owner 2026-10-23): a red card REMOVES the player from the pitch. He used to
                 // freeze on his last spot and stay in every snapshot for the rest of the match —
