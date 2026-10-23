@@ -898,6 +898,8 @@ public class TeamController {
             m.put("offsideMargin", CleanDecisionEngine.offsideMargin(state, carrier, mate));
             inBox.add(m);
         }
+        dbg.put("inBoxHome", inBox);
+
         // Simulate findBestReceiver filtering to debug why PASS shows "no receiver"
         int eligibleCount = 0;
         List<String> eligibleIds = new ArrayList<>();
