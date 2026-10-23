@@ -716,8 +716,8 @@ document.getElementById('decide').addEventListener('click', async () => {
   try {
     const rc = toRowCol(ball.x, ball.y);
     const params = new URLSearchParams();
-    params.set('ballRow', String(rc.row));
-    params.set('ballCol', String(rc.col));
+    params.set('ballRow', rc.row.toFixed(2));
+    params.set('ballCol', rc.col.toFixed(2));
     if (loadedFormation) params.set('formation', loadedFormation);
     if (loadedTacticId != null) params.set('tacticId', String(loadedTacticId));
     const data = await apiGet('/teams/' + loadedTeamId + '/decide?' + params.toString());
