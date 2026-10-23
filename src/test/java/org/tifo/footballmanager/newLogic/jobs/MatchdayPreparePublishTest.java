@@ -213,7 +213,7 @@ class MatchdayPreparePublishTest extends org.tifo.footballmanager.BaseTest {
     void preparingDoesNotPublish() {
         SimMatchService sim = mock(SimMatchService.class);
         MatchFixtureRepository repo = mock(MatchFixtureRepository.class);
-        MatchdayScheduler real = new MatchdayScheduler(repo, mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS);
+        MatchdayScheduler real = new MatchdayScheduler(repo, mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS, null);
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
@@ -245,7 +245,7 @@ class MatchdayPreparePublishTest extends org.tifo.footballmanager.BaseTest {
         MatchFixtureRepository repo = mock(MatchFixtureRepository.class);
         org.tifo.footballmanager.newLogic.repository.MatchRepository matches =
                 mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class);
-        MatchdayScheduler real = new MatchdayScheduler(repo, matches, sim, NO_TRANSACTIONS);
+        MatchdayScheduler real = new MatchdayScheduler(repo, matches, sim, NO_TRANSACTIONS, null);
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
@@ -292,7 +292,7 @@ class MatchdayPreparePublishTest extends org.tifo.footballmanager.BaseTest {
         SimMatchService sim = mock(SimMatchService.class);
         MatchFixtureRepository repo = mock(MatchFixtureRepository.class);
         MatchdayScheduler real = new MatchdayScheduler(repo,
-                mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS);
+                mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS, null);
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
@@ -356,7 +356,7 @@ class MatchdayPreparePublishTest extends org.tifo.footballmanager.BaseTest {
 
         MatchdayScheduler real = new MatchdayScheduler(repo,
                 mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class),
-                sim, recording);
+                sim, recording, null);
 
         real.prepareUnplayedOn(1, 2, DAY, List.of(42L));
 
@@ -378,7 +378,7 @@ class MatchdayPreparePublishTest extends org.tifo.footballmanager.BaseTest {
         SimMatchService sim = mock(SimMatchService.class);
         MatchFixtureRepository repo = mock(MatchFixtureRepository.class);
         MatchdayScheduler real = new MatchdayScheduler(repo,
-                mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS);
+                mock(org.tifo.footballmanager.newLogic.repository.MatchRepository.class), sim, NO_TRANSACTIONS, null);
 
         MatchFixture fixture = new MatchFixture();
         fixture.setId(42L);
