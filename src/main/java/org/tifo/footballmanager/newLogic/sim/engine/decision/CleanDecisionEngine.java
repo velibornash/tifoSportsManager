@@ -985,6 +985,12 @@ public class CleanDecisionEngine {
 
         for (Player teammate : state.getPlayers()) {
             if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
+            // ME-1 (owner 2026-10-23): never pass to a player who has left the pitch — sent off,
+            // injured off, or already substituted. Every other pool in the engine (restarts,
+            // loose balls, movement, offside) already skips isUnavailable(); this one didn't, and
+            // the sent-off player — standing still in space, with nobody marking him — was the
+            // most open man on the pitch, so he kept receiving the ball.
+            if (teammate.isUnavailable()) continue;
 
             // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
             // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
@@ -1144,6 +1150,8 @@ public class CleanDecisionEngine {
         for (Player candidate : state.getPlayers()) {
             if (!candidate.getTeam().equals(carrier.getTeam()) || candidate.equals(carrier)) continue;
             if (candidate.isGoalkeeper()) continue;
+            // ME-1: a player who is off the pitch (sent off, injured, subbed) is not a target.
+            if (candidate.isUnavailable()) continue;
             double openness = calculateOpenness(state, candidate);
             double col = candidate.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);
@@ -1162,7 +1170,8 @@ public class CleanDecisionEngine {
             // Absolute fallback: any non-GK teammate (never the GK at kickoff).
             for (Player candidate : state.getPlayers()) {
                 if (candidate.getTeam().equals(carrier.getTeam())
-                        && !candidate.equals(carrier) && !candidate.isGoalkeeper()) {
+                        && !candidate.equals(carrier) && !candidate.isGoalkeeper()
+                        && !candidate.isUnavailable()) {
                     best = candidate;
                     break;
                 }

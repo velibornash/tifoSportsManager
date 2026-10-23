@@ -71,6 +71,10 @@ public class MatchRecorder {
 
     public void captureSnapshot(MatchState state) {
         List<PlayerSnapshot> playerSnapshots = state.getPlayers().stream()
+                // ME-1 (owner 2026-10-23): a red card REMOVES the player from the pitch. He used to
+                // freeze on his last spot and stay in every snapshot for the rest of the match —
+                // a ghost circle the other eleven kept passing to.
+                .filter(p -> !p.isSentOff())
                 .map(p -> new PlayerSnapshot(
                         p.getId(), p.getLabel(), p.getTeam(), p.getRole(),
                         p.getPosition(), p.getTarget(), p.isLocked(),

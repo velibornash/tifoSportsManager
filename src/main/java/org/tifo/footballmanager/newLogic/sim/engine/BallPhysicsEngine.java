@@ -450,6 +450,10 @@ public class BallPhysicsEngine implements BallEngine {
     private BallStepResult playerContact(MatchState state, Position prev, Position curr, double spd) {
         boolean fast = spd >= FAST_CONTACT;
         Player pending = state.getPendingReceiver();
+        // ME-1: never hand the ball to a player who has left the pitch. The target pools no longer
+        // pick an unavailable player, but the in-flight pending receiver is trusted blindly here —
+        // one line so the contract holds even if he is carded while the ball is in the air.
+        if (pending != null && pending.isUnavailable()) pending = null;
         double bestT = Double.MAX_VALUE;
         String ev = null;
         Player hit = null;
