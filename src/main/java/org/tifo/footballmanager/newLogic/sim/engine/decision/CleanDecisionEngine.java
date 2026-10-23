@@ -450,8 +450,25 @@ public class CleanDecisionEngine {
     }
 
     /**
-     * Carrying the ball, on the common scale.
-     *
+     * Every pass this carrier can actually play, each scored the way {@link #scorePassOptions}
+     * scores the one he picks — so a debug view (the lab pitch's DECIDE box) can show the whole
+     * candidate table, not just the winner.
+     */
+    public List<DecisionOption> passCandidateOptions(MatchState state, Player carrier) {
+        List<DecisionOption> result = new ArrayList<>();
+        for (Player teammate : state.getPlayers()) {
+            if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
+            if (teammate.isUnavailable()) continue;
+            if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
+            double offsideMargin = offsideMargin(state, carrier, teammate);
+            if (offsideMargin > OFFSIDE_HARD_LIMIT) continue;
+            boolean marginalOffside = offsideMargin > 0;
+            if (marginalOffside && !carrierWillRiskOffside(carrier)) continue;
+            result.add(scorePassOptions(state, carrier, teammate));
+        }
+        return result;
+    }
+    /**
      * <p>A carry is worth the ground it wins and the room it has to win it in, less what the
      * defenders around him will take off him. The pressure term is the largest single number here,
      * which is correct: carrying into three men is how possession is lost.

@@ -763,7 +763,8 @@ public class TeamController {
             @RequestParam("ballRow") double ballRow,
             @RequestParam("ballCol") double ballCol,
             @RequestParam(value = "formation", required = false) String formation,
-            @RequestParam(value = "tacticId", required = false) Long tacticId) {
+            @RequestParam(value = "tacticId", required = false) Long tacticId,
+            @RequestParam(value = "carrierSlot", required = false) String carrierSlot) {
         TacticsEditorDTO dto = teamTacticsService.getTacticsEditor(teamId, formation, tacticId);
         if (dto == null) return ResponseEntity.notFound().build();
 
@@ -797,13 +798,28 @@ public class TeamController {
                     awayPos, awayPos, skills));
         }
 
-        // Carrier = home player nearest the ball; place him on the ball.
+        // Carrier = chosen slot (or nearest non-GK home player to the ball).
         org.tifo.footballmanager.newLogic.sim.model.Player carrier = null;
-        double bestD = Double.MAX_VALUE;
-        for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) {
-            if (!"HOME".equals(p.getTeam())) continue;
-            double d = SimUtils.distance(p.getPosition(), new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
-            if (d < bestD) { bestD = d; carrier = p; }
+        if (carrierSlot != null && !carrierSlot.isBlank()) {
+            for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) {
+                if ("HOME".equals(p.getTeam()) && p.getId().equals(carrierSlot)) { carrier = p; break; }
+            }
+        }
+        if (carrier == null) {
+            double bestD = Double.MAX_VALUE;
+            for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) {
+                if (!"HOME".equals(p.getTeam()) || p.isGoalkeeper()) continue;
+                double d = SimUtils.distance(p.getPosition(), new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
+                if (d < bestD) { bestD = d; carrier = p; }
+            }
+        }
+        if (carrier == null) {  // fallback (shouldn't happen)
+            double bestD = Double.MAX_VALUE;
+            for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) {
+                if (!"HOME".equals(p.getTeam())) continue;
+                double d = SimUtils.distance(p.getPosition(), new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
+                if (d < bestD) { bestD = d; carrier = p; }
+            }
         }
         if (carrier != null) {
             carrier.setPosition(new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
@@ -829,9 +845,17 @@ public class TeamController {
         for (DecisionOption o : res.getOptions()) opts.add(optionToMap(o));
         out.put("options", opts);
 
+        // Per-receiver pass scores: the carrier evaluates every (eligible) teammate.
+        List<Map<String, Object>> passCands = new ArrayList<>();
+        for (DecisionOption po : engine.passCandidateOptions(state, carrier)) {
+            passCands.add(optionToMap(po));
+        }
+        out.put("passCandidates", passCands);
+
         // Debug info for the lab tool: positions and offside margins.
         Map<String, Object> dbg = new LinkedHashMap<>();
         dbg.put("carrierPos", carrier.getPosition().getRow() + "|" + carrier.getPosition().getColumn());
+        dbg.put("carrierId", carrier.getId());
         List<Map<String, Object>> inBox = new ArrayList<>();
         String team = carrier.getTeam();
         for (org.tifo.footballmanager.newLogic.sim.model.Player mate : state.getPlayers()) {

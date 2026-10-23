@@ -35,7 +35,7 @@
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
-  #decideOut { width: 100%; height: 120px; margin: 8px 0 12px; padding: 8px; border-radius: 6px; border: 1px solid #3a4a6b; background: #0b1220; color: #e8ecf4; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; white-space: pre-wrap; word-wrap: break-word; overflow: auto; }
+  #decideOut { width: 100%; height: 260px; margin: 8px 0 12px; padding: 8px; border-radius: 6px; border: 1px solid #3a4a6b; background: #0b1220; color: #e8ecf4; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; white-space: pre-wrap; word-wrap: break-word; overflow: auto; }
   .checks { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #9aa7bf; }
   .checks label { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; line-height: 1.35; }
   .checks input { accent-color: #4a9eff; margin-top: 2px; }
@@ -50,6 +50,7 @@
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
     <div class="controls" style="margin-bottom:8px;">
+      <label style="font-size:12px;color:#9aa7bf;">Carrier: <select id="carrierSlot" style="margin-left:6px;padding:4px;border-radius:4px;background:#1a2338;color:#e8ecf4;border:1px solid #3a4a6b;"></select></label>
       <button id="decide">DECIDE</button>
     </div>
     <textarea id="decideOut" readonly spellcheck="false" placeholder="Click DECIDE to run the decision engine on the current ball position (carrier = HOME)."></textarea>
@@ -246,6 +247,23 @@ async function loadTactic() {
     const editor = await apiGet('/teams/' + teamId + '/tactics-editor?' + params.toString());
 
     slots = Array.isArray(editor.slotDefinitions) ? editor.slotDefinitions : [];
+    // carrier dropdown: home slots, default to a midfielder (never the keeper)
+    const sel = document.getElementById('carrierSlot');
+    sel.innerHTML = '';
+    let defaultSlot = null;
+    slots.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.slotKey;
+      opt.textContent = s.slotKey + ' (' + s.line + ')';
+      sel.appendChild(opt);
+      if (!defaultSlot && s.line !== 'GK') defaultSlot = s.slotKey;
+    });
+    // prefer MR/CMR/CML/STL/STR over generic first
+    const preferred = ['MR','CMR','CML','ML','STL','STR','DR','DL'];
+    for (const pk of preferred) {
+      if (slots.some(s => s.slotKey === pk)) { defaultSlot = pk; break; }
+    }
+    if (defaultSlot) sel.value = defaultSlot;
     rulesMap = {};
     (editor.movementRules || []).forEach(r => {
       if (r && r.slotKey && r.ballStateKey && r.possessionContext && r.targetCellKey) {
@@ -720,6 +738,7 @@ document.getElementById('decide').addEventListener('click', async () => {
     params.set('ballCol', rc.col.toFixed(2));
     if (loadedFormation) params.set('formation', loadedFormation);
     if (loadedTacticId != null) params.set('tacticId', String(loadedTacticId));
+    params.set('carrierSlot', document.getElementById('carrierSlot').value);
     const data = await apiGet('/teams/' + loadedTeamId + '/decide?' + params.toString());
     let text = '';
     if (data.chosen) {
@@ -735,6 +754,25 @@ document.getElementById('decide').addEventListener('click', async () => {
         (o.targetLabel ? '  -> ' + o.targetLabel + ' (' + o.target + ')' : '') +
         (o.reason ? '   // ' + o.reason : '') + '\n';
     });
+    if (data.passCandidates && data.passCandidates.length) {
+      text += '\nPASS CANDIDATES (' + data.passCandidates.length + '):\n';
+      data.passCandidates.forEach(o => {
+        text += '  ' + (o.targetLabel ? o.targetLabel.padEnd(6) : '?'.padEnd(6)) +
+          ' (' + o.target + ')  ' + Number(o.score).toFixed(2).padStart(7) +
+          (o.reason ? '   // ' + o.reason : '') + '\n';
+      });
+    }
+    if (data.debug) {
+      const d = data.debug;
+      text += '\nDEBUG:\n';
+      text += '  carrierPos: ' + d.carrierPos + '\n';
+      text += '  awayDefRows (sorted desc): ' + (d.awayDefRowsSorted || []).map(x => Number(x).toFixed(2)).join(', ') + '\n';
+      text += '  offsideLine (2nd): ' + (d.offsideLine2nd == null ? 'n/a' : Number(d.offsideLine2nd).toFixed(2)) + '\n';
+      text += '  in-box home teammates:\n';
+      (d.inBoxHome || []).forEach(m => {
+        text += '    ' + m.id + ' @ ' + m.pos + '  offsideMargin=' + Number(m.offsideMargin).toFixed(2) + '\n';
+      });
+    }
     out.value = text;
   } catch (e) {
     out.value = 'ERROR: ' + String(e.message || e);
