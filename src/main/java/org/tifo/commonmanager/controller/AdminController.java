@@ -148,6 +148,13 @@ public class AdminController {
         ));
     }
 
+    @PostMapping("/repair-stranded")
+    public ResponseEntity<Map<String, Object>> repairStrandedMatchdays() {
+        return ResponseEntity.accepted().body(toDatabaseJobResponse(
+                adminDatabaseAsyncService.startOrGetRunningJob("repair-stranded")
+        ));
+    }
+
     /**
      * Makes one club's tactical-editor profile the world's starting tactic.
      *
