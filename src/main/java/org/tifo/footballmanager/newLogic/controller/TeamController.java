@@ -898,7 +898,24 @@ public class TeamController {
             m.put("offsideMargin", CleanDecisionEngine.offsideMargin(state, carrier, mate));
             inBox.add(m);
         }
-        dbg.put("inBoxHome", inBox);
+        // Simulate findBestReceiver filtering to debug why PASS shows "no receiver"
+        int eligibleCount = 0;
+        List<String> eligibleIds = new ArrayList<>();
+        for (org.tifo.footballmanager.newLogic.sim.model.Player tm : state.getPlayers()) {
+            if (!tm.getTeam().equals(carrier.getTeam()) || tm.equals(carrier)) continue;
+            if (tm.isUnavailable()) { eligibleIds.add(tm.getId() + "(unavail)"); continue; }
+            boolean _sh = "HOME".equals(carrier.getTeam()) ? carrier.getPosition().getRow() >= 6.0 : carrier.getPosition().getRow() <= 3.0;
+            boolean _oh = "HOME".equals(tm.getTeam()) ? tm.getPosition().getRow() < 4.5 : tm.getPosition().getRow() > 4.5;
+            if (_sh && _oh) { eligibleIds.add(tm.getId() + "(ownhalf)"); continue; }
+            double om = CleanDecisionEngine.offsideMargin(state, carrier, tm);
+            if (om > CleanDecisionEngine.OFFSIDE_HARD_LIMIT) { eligibleIds.add(tm.getId() + "(offside " + String.format("%.2f", om) + ")"); continue; }
+            boolean marg = om > 0;
+            if (marg && !CleanDecisionEngine.carrierWillRiskOffsidePublic(carrier)) { eligibleIds.add(tm.getId() + "(risk fail)"); continue; }
+            eligibleCount++;
+            eligibleIds.add(tm.getId() + "(OK)");
+        }
+        dbg.put("eligibleForPass", eligibleIds);
+        dbg.put("eligibleCount", eligibleCount);
         List<String> allPos = new ArrayList<>();
         for (org.tifo.footballmanager.newLogic.sim.model.Player pp : state.getPlayers()) {
             allPos.add(pp.getId() + "=" + pp.getPosition().getRow() + "|" + pp.getPosition().getColumn());

@@ -77,6 +77,10 @@ public class CleanDecisionEngine {
     /** Cache key for the frequency roll, named so the gate can be re-armed by hand. */
     private static final String CLEAR_GATE_KEY = "CLEAR_GATE";
 
+    public static boolean carrierWillRiskOffsidePublic(Player carrier) {
+        return carrierWillRiskOffside(carrier);
+    }
+
     /** How far out is worth zero chance, in cells. Five cells is 70 m. */
     private static final double CHANCE_DISTANCE_RANGE = 5.0;
 

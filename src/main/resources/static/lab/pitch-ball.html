@@ -777,6 +777,8 @@ document.getElementById('decide').addEventListener('click', async () => {
         text += '    ' + m.id + ' @ ' + m.pos + '  offsideMargin=' + Number(m.offsideMargin).toFixed(2) + '\n';
       });
       if (!(d.inBoxHome || []).length) text += '    (none)\n';
+      text += '  pass-eligible (findBestReceiver filter): ' + (d.eligibleCount == null ? '?' : d.eligibleCount) + '\n';
+      (d.eligibleForPass || []).forEach(e => { text += '    ' + e + '\n'; });
       text += '  all positions:\n';
       (d.allPositions || []).forEach(p => { text += '    ' + p + '\n'; });
     }
