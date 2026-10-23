@@ -865,6 +865,12 @@ public class TeamController {
             if (sample.size() >= 4) break;
         }
         dbg.put("awaySampleLookups", sample);
+        List<String> homeTargets = new ArrayList<>();
+        for (TacticsSlotDTO sl : dto.getSlotDefinitions()) {
+            org.tifo.footballmanager.newLogic.sim.model.Position hp = slotTarget(sl, ballState, rulesMap, true);
+            homeTargets.add(sl.getSlotKey() + " target=" + hp.getRow() + "|" + hp.getColumn());
+        }
+        dbg.put("homeSlotTargets", homeTargets);
         List<String> homeSample = new ArrayList<>();
         for (TacticsSlotDTO sl : dto.getSlotDefinitions()) {
             String k = sl.getSlotKey() + "|" + ballState + "|WE_HAVE_BALL";
