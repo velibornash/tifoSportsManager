@@ -25,7 +25,7 @@
   .cell-grid .hline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.18); }
   .cell-grid .vline { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,0.18); }
   .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
-  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); pointer-events: none; z-index: 2; letter-spacing: -0.5px; transition: left 0.15s linear, top 0.15s linear; }
+  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); pointer-events: none; z-index: 2; letter-spacing: -0.5px; }
   .player.gk { background: #f5a623; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
@@ -41,7 +41,7 @@
 <div class="wrap">
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
-    <p class="hint">Drag the white ball. Player circles snap to the target cell the saved tactic rules give for that ball state — loaded live from <code>/teams/{id}/tactics-editor</code>, transformed like the app does (rows 1-7 bottom-up, cols 1-6). Open this page through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
+    <p class="hint">Drag the white ball. Player circles glide to the target cell the saved tactic rules give for that ball state — at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick), not a teleport. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
         <div class="line mid"></div>
@@ -90,6 +90,22 @@ function pctToCellKey(xPct, yPct) {
   const col = Math.min(6, Math.max(1, Math.floor(rc.col)));
   return 'CELL_' + (row - 1) + '_' + (col - 1);
 }
+// Inverse of toRowCol: engine row/col coordinate -> internal 0-100% for rendering.
+function rowColToPct(row, col) {
+  return { x: (col - 1) * (100 / 6), y: (8 - row) * (100 / 7) };
+}
+
+// ===== Movement engine constants (mirror MovementEngine.java) =================
+// playerSpeedFor(pace) = (pace / 20) * PLAYER_SPEED_BASE cells/tick, pace 1..20.
+// The owner's instruction for this tool: use the max skill, pace 20 -> 0.75
+// cells/tick. Goalkeeper factor is 1.0 as of 2026-10-23, so keepers run at the
+// same cap as everyone else and no branch is needed here.
+const PACE = 20;
+const PLAYER_SPEED_BASE = 0.75;
+const CELLS_PER_TICK = (PACE / 20) * PLAYER_SPEED_BASE;
+// Wall clock: the proposal viewer plays 1.875 ticks per second at 1x.
+const TICKS_PER_SEC = 1.875;
+const PLAYER_CELLS_PER_SEC = CELLS_PER_TICK * TICKS_PER_SEC;
 
 // ===== State =================================================================
 const POSSESSION_CONTEXT = 'WE_HAVE_BALL';
@@ -102,6 +118,10 @@ let tacticName = '';
 // between columns 3 and 4 (no cell center is the center of an even-width grid).
 const BALL_CENTER = { x: 50, y: 50 };
 let ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
+// One persistent element per slot; positions are engine row/col coordinates
+// stepped by the animation loop (players glide, they do not teleport).
+let playerViews = [];
+let viewsKey = null;
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
@@ -109,11 +129,6 @@ const cellsLayer = document.getElementById('cells');
 const gridLayer = document.getElementById('grid');
 const ballEl = document.getElementById('ball');
 const info = document.getElementById('info');
-
-function toPx(xPct, yPct) {
-  const r = pitch.getBoundingClientRect();
-  return { left: (xPct / 100) * r.width, top: (yPct / 100) * r.height };
-}
 
 function apiHeaders() {
   const token = sessionStorage.getItem('token');
@@ -148,6 +163,7 @@ async function loadTactic() {
       }
     });
     tacticName = (tactic.name || '') + ' (' + (editor.formation || tactic.formation) + ')';
+    viewsKey = null;  // slot list may have changed — rebuild the circles
     render();
   } catch (e) {
     info.innerHTML = '<span class="err">Could not load the tactic: ' + String(e.message || e) +
@@ -187,44 +203,98 @@ function renderGrid() {
       const el = document.createElement('div');
       el.className = 'cell-label';
       el.textContent = (p + 1) + '_' + (w + 1);   // row_col, 1-based, row 1 = bottom
-      const px = toPx(c.x, c.y);
-      el.style.left = px.left + 'px';
-      el.style.top = px.top + 'px';
+      el.style.left = c.x + '%';
+      el.style.top = c.y + '%';
       cellsLayer.appendChild(el);
     }
   }
 }
 
-function render() {
-  const bp = toPx(ball.x, ball.y);
-  ballEl.style.left = bp.left + 'px';
-  ballEl.style.top = bp.top + 'px';
-
-  const ballState = pctToCellKey(ball.x, ball.y);
-  const ballRc = toRowCol(ball.x, ball.y);
-
+// One element per slot, created once and moved from then on.
+function ensureViews() {
+  const key = slots.map(s => s.slotKey).join(',');
+  if (key === viewsKey) return;
   playersLayer.innerHTML = '';
-  let list = '';
-  slots.forEach(slot => {
-    const target = slotTarget(slot, ballState);
+  playerViews = slots.map(slot => {
     const el = document.createElement('div');
     el.className = 'player' + (slot.line === 'GK' ? ' gk' : '');
     el.textContent = slot.slotKey;
-    const px = toPx(target.x, target.y);
-    el.style.left = px.left + 'px';
-    el.style.top = px.top + 'px';
     playersLayer.appendChild(el);
-
-    const rc = toRowCol(target.x, target.y);
-    list += slot.slotKey + ': ' + rc.row.toFixed(2) + '|' + rc.col.toFixed(2) + ' (cell ' +
-      Math.floor(rc.row) + '_' + Math.floor(rc.col) + ')\n';
+    return { slot, el, pos: null, target: null };
   });
+  viewsKey = key;
+}
 
+function drawPlayer(v) {
+  const pct = rowColToPct(v.pos.row, v.pos.col);
+  v.el.style.left = pct.x + '%';
+  v.el.style.top = pct.y + '%';
+}
+
+function render() {
+  ballEl.style.left = ball.x + '%';
+  ballEl.style.top = ball.y + '%';
+
+  const ballState = pctToCellKey(ball.x, ball.y);
+
+  ensureViews();
+  playerViews.forEach(v => {
+    const t = slotTarget(v.slot, ballState);           // pct center of the rule's cell
+    const rc = toRowCol(t.x, t.y);                     // engine row/col space
+    v.target = { row: rc.row, col: rc.col };
+    if (!v.pos) {                                      // first placement snaps; later moves glide
+      v.pos = { row: rc.row, col: rc.col };
+      drawPlayer(v);
+    }
+  });
+  drawInfo(ballState);
+}
+
+function drawInfo(ballState) {
+  const ballRc = toRowCol(ball.x, ball.y);
+  let list = '';
+  playerViews.forEach(v => {
+    const cell = Math.floor(v.target.row) + '_' + Math.floor(v.target.col);
+    list += v.slot.slotKey + ': ' + v.pos.row.toFixed(2) + '|' + v.pos.col.toFixed(2) +
+      ' (cell ' + cell + ')\n';
+  });
   const [br, bc] = ballState.split('_').slice(1).map(Number);
   info.innerHTML = '<b>Tactic:</b> ' + tacticName + '\n' +
     '<b>Ball cell:</b> ' + (br + 1) + '_' + (bc + 1) + '  <b>ball state:</b> ' + ballState + '\n' +
     '<b>Ball pos:</b> ' + ballRc.row.toFixed(2) + '|' + ballRc.col.toFixed(2) + '\n' +
     '\n<b>Players (row|col):</b>\n' + list;
+}
+
+// ===== Movement loop ==========================================================
+// Mirrors MovementEngine.moveAllTowardTargets for the tool: each frame every
+// player steps toward his rule-given target at playerSpeedFor(pace) cells per
+// tick converted to wall clock, with step = min(speed, dist) and an exact
+// landing — the engine's guard against overshooting and oscillating.
+let lastFrame = performance.now();
+function tick(now) {
+  let dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  if (dt > 0.1) dt = 0.1;   // a backgrounded tab must not jump the players
+
+  let moving = false;
+  const step = PLAYER_CELLS_PER_SEC * dt;
+  playerViews.forEach(v => {
+    if (!v.pos || !v.target) return;
+    const dr = v.target.row - v.pos.row;
+    const dc = v.target.col - v.pos.col;
+    const dist = Math.hypot(dr, dc);
+    if (dist < 1e-6) return;
+    moving = true;
+    if (step >= dist - 1e-12) {
+      v.pos = { row: v.target.row, col: v.target.col };   // land exactly, no FP wiggle
+    } else {
+      v.pos = { row: v.pos.row + (dr / dist) * step, col: v.pos.col + (dc / dist) * step };
+    }
+    drawPlayer(v);
+  });
+  if (moving) drawInfo(pctToCellKey(ball.x, ball.y));
+
+  requestAnimationFrame(tick);
 }
 
 // ===== Drag ==================================================================
@@ -260,9 +330,10 @@ document.getElementById('reset').addEventListener('click', () => {
   render();
 });
 document.getElementById('reload').addEventListener('click', loadTactic);
-window.addEventListener('resize', render);
+// No resize handler needed: everything is positioned in % of the pitch box.
 
 renderGrid();
+requestAnimationFrame(tick);
 loadTactic();
 </script>
 </body>
