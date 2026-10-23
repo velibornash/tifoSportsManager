@@ -122,58 +122,63 @@ public class AsyncSimulationRunner {
         }
     }
 
+    /**
+     * A small bounded pool. Fixtures are independent and each carries its own transaction, so they
+     * can run side by side; the pool keeps memory bounded (snapshots are already off for bot matches).
+     * Four threads keeps the DB connection pool from being exhausted while still giving ~4x throughput.
+     */
+    private static final int SIM_POOL_SIZE = 4;
+
     private void simulateBatch(List<Long> fixtureIds) {
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(SIM_POOL_SIZE);
+        java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>(fixtureIds.size());
         for (Long fixtureId : fixtureIds) {
-            try {
-                // **The outcome is decided inside the lambda, not after it.**
-                //
-                // This `return` used to leave the lambda and the loop carried straight on to
-                // `simulatedCount.incrementAndGet()`. A fixture with no home side, or no away side, was
-                // therefore reported as a match that had been played — which is the one thing this
-                // counter must never say, because "we simulated 240" is how a season quietly loses a
-                // fixture and nobody notices until the table is wrong.
-                //
-                // The three outcomes are distinguished rather than lumped, because they mean different
-                // things to whoever is waiting: nothing to do, could not be done, and was done. Only the
-                // last one increments `simulatedCount`.
-                Outcome outcome = transactionTemplate.execute(status -> {
-                        MatchFixture fixture = matchFixtureRepository.findById(fixtureId).orElse(null);
-                        if (fixture == null) return Outcome.ALREADY_GONE;
-                        if (fixture.isPlayed()) return Outcome.ALREADY_GONE;
-                        if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
-                            return Outcome.UNPLAYABLE;
-                        }
+            futures.add(pool.submit(() -> {
+                try {
+                    // **The outcome is decided inside the lambda, not after it.**
+                    Outcome outcome = transactionTemplate.execute(status -> {
+                            MatchFixture fixture = matchFixtureRepository.findById(fixtureId).orElse(null);
+                            if (fixture == null) return Outcome.ALREADY_GONE;
+                            if (fixture.isPlayed()) return Outcome.ALREADY_GONE;
+                            if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
+                                return Outcome.UNPLAYABLE;
+                            }
 
-                        SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, false);
-                        simMatchService.persist(fixture, sim.outcome(), -1L, sim.snapshots());
-                        return Outcome.SIMULATED;
-                    });
+                            SimMatchService.SimMatchOutcome sim = simMatchService.simulate(fixture, false);
+                            simMatchService.persist(fixture, sim.outcome(), -1L, sim.snapshots());
+                            return Outcome.SIMULATED;
+                        });
 
-                if (outcome == Outcome.UNPLAYABLE) {
-                    // Counted with the failures, not with the simulations: it was equally not played,
-                    // and reporting it as done is the defect. It is named in the log and held in
-                    // `failedIds` so the status endpoint can distinguish it from a thrown exception.
+                    if (outcome == Outcome.UNPLAYABLE) {
+                        failedCount.incrementAndGet();
+                        failedIds.add(fixtureId);
+                        log.warn("Fixture {} has no home side or no away side and was not played.", fixtureId);
+                        return;
+                    }
+                    if (outcome == Outcome.ALREADY_GONE) {
+                        return;
+                    }
+                    simulatedCount.incrementAndGet();
+                    if (simulatedCount.get() % 10 == 0) {
+                        log.info("Background progress: {}/{}", simulatedCount.get(), totalCount.get());
+                    }
+                } catch (Exception e) {
                     failedCount.incrementAndGet();
                     failedIds.add(fixtureId);
-                    log.warn("Fixture {} has no home side or no away side and was not played.", fixtureId);
-                    continue;
+                    log.error("Failed to simulate fixture {} in background ({}/{} so far)",
+                            fixtureId, failedCount.get(), totalCount.get(), e);
                 }
-                if (outcome == Outcome.ALREADY_GONE) {
-                    continue;
-                }
-                simulatedCount.incrementAndGet();
-                if (simulatedCount.get() % 10 == 0) {
-                    log.info("Background progress: {}/{}", simulatedCount.get(), totalCount.get());
-                }
-            } catch (Exception e) {
-                // Counted, named, and logged — a failed fixture is an unplayed match, and leaving it
-                // only in the log is how a season quietly loses a few percent of its football.
-                failedCount.incrementAndGet();
-                failedIds.add(fixtureId);
-                log.error("Failed to simulate fixture {} in background ({}/{} so far)",
-                        fixtureId, failedCount.get(), totalCount.get(), e);
+            }));
+        }
+        for (java.util.concurrent.Future<?> f : futures) {
+            try {
+                f.get();
+            } catch (Exception ignored) {
+                // already counted inside the task
             }
         }
+        pool.shutdown();
     }
 
     /**
