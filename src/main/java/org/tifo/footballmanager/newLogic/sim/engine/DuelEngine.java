@@ -194,8 +194,8 @@ public class DuelEngine {
      */
     public Player resolveDuel(Player attacker, Player defender,
                                 DuelType duelType, MatchState state) {
-        double attackerPower = calculateDuelPower(attacker, duelType);
-        double defenderPower = calculateDuelPower(defender, getDefensiveDuelType(duelType));
+        double attackerPower = calculateDuelPower(attacker, duelType, true);
+        double defenderPower = calculateDuelPower(defender, getDefensiveDuelType(duelType), false);
 
         // **The ground counts.**
         //
@@ -276,7 +276,7 @@ public class DuelEngine {
         loser.setLastDuelTick(state.getMatchTicks());
     }
 
-    private double calculateDuelPower(Player player, DuelType duelType) {
+    private double calculateDuelPower(Player player, DuelType duelType, boolean isAttacker) {
         double power = 0.0;
         PlayerSkills skills = player.getSkills();
 
@@ -298,10 +298,10 @@ public class DuelEngine {
                 power = skills.defender() * 0.7 + player.heightSkill() * 0.3;
             }
             case AERIAL -> {
-                // Height + jumping. Use the better of striker/defender skill so a
-                // defender contests with his defending, not his (low) striker skill
-                // (P2-67: aerial reception).
-                double aerialSkill = Math.max(skills.striker(), skills.defender());
+                // Height + jumping. Attacker uses striker skill, defender uses defender
+                // skill (P2-67, owner decision 2026-10-22): a defender contests with
+                // his defending, an attacker with his finishing.
+                double aerialSkill = isAttacker ? skills.striker() : skills.defender();
                 power = player.heightSkill() * 0.6 + aerialSkill * 0.4;
             }
         }

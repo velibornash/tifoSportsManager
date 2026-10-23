@@ -41,11 +41,11 @@ class MatchEngineVersionTest {
         // still detectable. Asserting only that fingerprint() is stable would pass against a
         // fingerprint that ignored the rules entirely.
         Map<String, String> before = new LinkedHashMap<>(Map.of(
-                "decision.shotGate", "0.30",
+                "decision.clearGate", "0.45",
                 "ball.groundDecel", "0.08"));
 
         Map<String, String> retuned = new LinkedHashMap<>(before);
-        retuned.put("decision.shotGate", "0.31");
+        retuned.put("decision.clearGate", "0.46");
 
         assertNotEquals(
                 MatchEngineVersion.fingerprintOf("2026.10.18-1", before),
@@ -55,7 +55,7 @@ class MatchEngineVersionTest {
 
     @Test
     void theFingerprintMovesWhenTheVersionMoves() {
-        Map<String, String> rules = Map.of("decision.shotGate", "0.30");
+        Map<String, String> rules = Map.of("decision.clearGate", "0.45");
         assertNotEquals(
                 MatchEngineVersion.fingerprintOf("2026.10.18-1", rules),
                 MatchEngineVersion.fingerprintOf("2026.10.18-2", rules));
@@ -159,18 +159,19 @@ class MatchEngineVersionTest {
         assertTrue(rules.size() >= 20,
                 "a ruleset of " + rules.size() + " entries cannot describe a season: " + rules.keySet());
 
-        // These five are the numbers that decide how often each thing happens. If one of them is
+        // These are the numbers that decide how often each thing happens. If one of them is
         // missing, a change to it would not show up on any stored match.
-        assertTrue(rules.containsKey("decision.shotGate"), rules.keySet().toString());
+        assertTrue(rules.containsKey("decision.shotFloor"), rules.keySet().toString());
         assertTrue(rules.containsKey("decision.clearGate"), rules.keySet().toString());
         assertTrue(rules.containsKey("decision.thruGate"), rules.keySet().toString());
         assertTrue(rules.containsKey("decision.deliveryGate"), rules.keySet().toString());
 
-        // And the values must be read live from the engine, not copied. If someone retunes the shot
-        // gate and the copy is not updated, this fails — which is the only way a duplicated number is
-        // ever caught.
-        assertEquals(String.valueOf(CleanDecisionEngine.SHOT_FREQUENCY_GATE),
-                rules.get("decision.shotGate"));
+        // And the values must be read live from the engine, not copied. If someone retunes one and
+        // the copy is not updated, this fails — which is the only way a duplicated number is ever
+        // caught. (decision.shotGate was removed with the shot frequency gate; the position-based
+        // shot floor is its ME-3 successor, 2026-10-23.)
+        assertEquals(String.valueOf(CleanDecisionEngine.SHOT_CHANCE_FLOOR),
+                rules.get("decision.shotFloor"));
         assertEquals(String.valueOf(BallPhysicsEngine.GROUND_DECEL), rules.get("ball.groundDecel"));
     }
 

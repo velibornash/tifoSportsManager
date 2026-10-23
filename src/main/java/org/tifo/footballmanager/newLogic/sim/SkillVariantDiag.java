@@ -37,27 +37,30 @@ public class SkillVariantDiag {
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 200;
         long baseSeed = args.length > 1 ? Long.parseLong(args[1]) : 42L;
 
-        int[][] variants = {{15, 15}, {20, 15}, {20, 12}};
-        String[] names = {"A (15 vs 15)", "B (20 vs 15)", "C (20 vs 12)"};
-
-        for (int v = 0; v < variants.length; v++) {
-            int homeSkill = variants[v][0];
-            int awaySkill = variants[v][1];
-            runVariant(names[v], n, baseSeed, homeSkill, awaySkill);
+        String[][] variants = {
+                {"A (15 vs 15)", "uniform", "15", "15"},
+                {"B (20 vs 15)", "uniform", "20", "15"},
+                {"C (20 vs 12)", "uniform", "20", "12"},
+                {"D (home attack 20, rest 13 vs 15)", "attack", "13", "15"},
+                {"E (home defense 20, rest 13 vs 15)", "defense", "13", "15"},
+                {"F (home defense+GK 20, rest 13 vs 15)", "defensegk", "13", "15"},
+        };
+        for (String[] v : variants) {
+            runVariant(v[0], n, baseSeed, v[1], Integer.parseInt(v[2]), Integer.parseInt(v[3]));
         }
     }
 
-    private static void runVariant(String label, int n, long baseSeed, int homeSkill, int awaySkill) {
+    private static void runVariant(String label, int n, long baseSeed, String homeProfile, int homeBase, int awaySkill) {
         Map<String, Double> home = newTotals();
         Map<String, Double> away = newTotals();
         int homeWins = 0, awayWins = 0, draws = 0, scoreless = 0, maxGoals = 0;
 
         for (int i = 0; i < n; i++) {
-            long seed = baseSeed + i * 7 + (homeSkill * 31 + awaySkill);
+            long seed = baseSeed + i * 7 + (homeBase * 31 + awaySkill);
             SimulationRandom.seed(seed);
             MatchState state = new MatchState();
-            addTeam(state, "HOME", homeSkill);
-            addTeam(state, "AWAY", awaySkill);
+            addTeam(state, "HOME", homeProfile, homeBase);
+            addTeam(state, "AWAY", "uniform", awaySkill);
             MatchOrchestrator o = new MatchOrchestrator(state);
             o.getRestartManager().handleKickoff(state, "HOME");
             for (Player p : state.getPlayers()) {
@@ -85,49 +88,85 @@ public class SkillVariantDiag {
         System.out.println();
         System.out.println("================================================================");
         System.out.printf("=== VARIANT %s  —  %d matches, base seed %d ===%n", label, n, baseSeed);
-        System.out.printf("=== home skill %d, away skill %d ===%n", homeSkill, awaySkill);
+        System.out.printf("=== home profile %s (base %d), away skill %d ===%n", homeProfile, homeBase, awaySkill);
         System.out.println("================================================================");
         System.out.printf("%-22s %10s %10s %12s%n", "metric", "HOME", "AWAY", "both avg");
         System.out.printf("%-22s %10s %10s %12s%n", "-".repeat(22), "-".repeat(10), "-".repeat(10), "-".repeat(12));
         String[] rows = {
-                "goals", "shots", "shotsOnTarget", "shotsMissed", "saves", "blocked",
+                "goals", "xG", "shots", "shotsOnTarget", "shotsMissed", "saves", "blocked",
                 "passes", "passesCompleted", "passAccuracy",
                 "dribbles", "clearances", "throughBalls", "centers", "crosses",
                 "duelsWon", "duelsLost", "interceptions", "deflections",
                 "corners", "goalKicks", "throwIns", "offsides", "fouls",
                 "yellowCards", "redCards", "penaltiesAwarded",
+                "penaltiesScored", "penaltiesSaved", "penaltiesMissed", "penaltyConversion",
+                "injuries",
                 "varReviews", "varConfirmed", "varOverturned",
                 "possession",
         };
         for (String key : rows) {
-            double h = home.getOrDefault(key, 0.0) / n;
-            double a = away.getOrDefault(key, 0.0) / n;
-            double b = (home.getOrDefault(key, 0.0) + away.getOrDefault(key, 0.0)) / (2.0 * n);
-            System.out.printf("%-22s %10.2f %10.2f %12.2f%n", key, h, a, b);
+            double hv, av, bv;
+            if ("penaltyConversion".equals(key)) {
+                double hp = home.getOrDefault("penaltiesAwarded", 0.0);
+                double hs = home.getOrDefault("penaltiesScored", 0.0);
+                double ap = away.getOrDefault("penaltiesAwarded", 0.0);
+                double asc = away.getOrDefault("penaltiesScored", 0.0);
+                hv = hp > 0 ? 100.0 * hs / hp : 0;
+                av = ap > 0 ? 100.0 * asc / ap : 0;
+                bv = (hp + ap) > 0 ? 100.0 * (hs + asc) / (hp + ap) : 0;
+            } else {
+                hv = home.getOrDefault(key, 0.0) / n;
+                av = away.getOrDefault(key, 0.0) / n;
+                bv = (home.getOrDefault(key, 0.0) + away.getOrDefault(key, 0.0)) / (2.0 * n);
+            }
+            System.out.printf("%-22s %10.2f %10.2f %12.2f%n", key, hv, av, bv);
         }
         System.out.printf("%nresults: HOME %d wins / AWAY %d wins / %d draws, %d scoreless (0-0), "
                         + "highest score %d goals%n",
                 homeWins, awayWins, draws, scoreless, maxGoals);
     }
 
-    public static void addTeam(MatchState state, String team, int skill) {
+    public static void addTeam(MatchState state, String team, String profile, int baseSkill) {
         double rowR = team.equals("HOME") ? 2.5 : 6.5;
         double rowM = team.equals("HOME") ? 4.0 : 5.0;
         double rowA = team.equals("HOME") ? 6.0 : 3.0;
-        PlayerSkills sk = new PlayerSkills(skill, skill, skill, skill, skill, skill, skill, skill);
         for (int i = 0; i < ROLES.length; i++) {
             String role = ROLES[i][0];
             double r = Double.parseDouble(ROLES[i][1]);
             double c = Double.parseDouble(ROLES[i][2]);
-            // mirror rows for away
             if (team.equals("AWAY")) {
                 r = 9.0 - r;
             }
+            int skill = skillFor(profile, role, baseSkill);
+            PlayerSkills sk = new PlayerSkills(skill, skill, skill, skill, skill, skill, skill, skill);
             Position pos = new Position(r, c);
             Player p = new Player(team + "-" + (i + 1), team.substring(0, 1) + (i + 1),
                     team, role, pos, pos, sk, 180);
             state.getPlayers().add(p);
         }
+    }
+
+    public static void addTeam(MatchState state, String team, int skill) {
+        addTeam(state, team, "uniform", skill);
+    }
+
+    private static int skillFor(String profile, String role, int base) {
+        boolean isGK = role.equals("GK");
+        boolean isDef = role.equals("DL") || role.equals("DR") || role.equals("DCL") || role.equals("DCR");
+        boolean isAtt = role.equals("STL") || role.equals("STR");
+        if ("attack".equals(profile)) {
+            return isAtt ? 20 : base;
+        }
+        if ("defense".equals(profile)) {
+            return isDef ? 20 : base;  // GK stays at base
+        }
+        if ("defensegk".equals(profile)) {
+            return (isGK || isDef) ? 20 : base;  // GK + defenders elite
+        }
+        if ("defensegk".equals(profile)) {
+            return (isGK || isDef) ? 20 : base;
+        }
+        return base;
     }
 
     private static Map<String, Double> newTotals() {
@@ -178,24 +217,56 @@ public class SkillVariantDiag {
                 ? 100.0 * t.passesCompleted() / t.passesAttempted() : 0);
     }
 
+    private static double xgFromMeters(double meters) {
+        if (meters < 6.0) return 0.30;
+        if (meters < 10.0) return 0.15;
+        if (meters < 14.0) return 0.11;
+        if (meters < 20.0) return 0.08;
+        if (meters < 28.0) return 0.05;
+        return 0.03;
+    }
+
     private static Map<String, Double> countEvents(MatchOrchestrator o, String team) {
         Map<String, Double> out = new LinkedHashMap<>();
-        double missed = 0, varReviews = 0, varConfirmed = 0, varOverturned = 0, pens = 0, shotsMissed = 0;
+        double varReviews = 0, varConfirmed = 0, varOverturned = 0;
+        double shotsMissed = 0, pens = 0, pensScored = 0, pensSaved = 0, pensMissed = 0, injuries = 0;
         for (MatchEvent e : o.getRecorder().getEvents()) {
             String type = e.getType();
             boolean mine = team.equals(e.getTeam());
             if (mine) {
                 if ("SHOT_MISSED".equals(type)) shotsMissed++;
                 if ("PENALTY_AWARDED".equals(type)) pens++;
+                if ("PENALTY_SCORED".equals(type)) pensScored++;
+                if ("PENALTY_SAVED".equals(type)) pensSaved++;
+                if ("PENALTY_MISS".equals(type)) pensMissed++;
+                if ("INJURY".equals(type)) injuries++;
             }
-            if (type.startsWith("VAR_")) {
-                // VAR events carry the reviewing team; count for both? Count globally then attribute to neither specifically.
+            if (type.startsWith("VAR_") && mine) {
                 if (type.endsWith("_CONFIRMED")) { varReviews++; varConfirmed++; }
                 else if (type.endsWith("_OVERTURNED")) { varReviews++; varOverturned++; }
             }
         }
         out.put("shotsMissed", shotsMissed);
         out.put("penaltiesAwarded", pens);
+        out.put("penaltiesScored", pensScored);
+        out.put("penaltiesSaved", pensSaved);
+        out.put("penaltiesMissed", pensMissed);
+        out.put("penaltyConversion", 0.0); // computed from totals in report
+        out.put("injuries", injuries);
+        // xG from shot outcome events (same table as ProposalMatchOutcomeBuilder)
+        double xg = 0.0;
+        for (MatchEvent e : o.getRecorder().getEvents()) {
+            String type = e.getType();
+            if (!("GOAL".equals(type) || "SHOT_SAVED".equals(type) || "SHOT_BLOCKED".equals(type)
+                    || "SHOT_POST".equals(type) || "SHOT_MISSED".equals(type))) continue;
+            if (!team.equals(e.getTeam())) continue;
+            if (e.getPositionRow() == null || e.getPositionColumn() == null) continue;
+            double goalRow = "HOME".equals(team) ? 8.0 : 1.0;
+            double cellDist = Math.hypot(goalRow - e.getPositionRow(), 3.5 - e.getPositionColumn());
+            double meters = cellDist * 14.0;
+            xg += xgFromMeters(meters);
+        }
+        out.put("xG", xg);
         out.put("varReviews", varReviews);
         out.put("varConfirmed", varConfirmed);
         out.put("varOverturned", varOverturned);

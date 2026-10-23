@@ -45,43 +45,6 @@ public class MatchState {
      */
     private final java.util.Map<String, Boolean> possessionRolls = new java.util.HashMap<>();
 
-    /**
-     * Whether each player was in the shooting zone at the last time the decision engine looked.
-     *
-     * <p>Exists so the shot gate can be armed by <em>arriving</em> rather than by receiving. Both this
-     * map and {@link #possessionRoll} are per-match scratch state the decision engine owns, kept here
-     * for the same reason the round positions and round pace skills are: the engine is a per-tick
-     * scorer and has nowhere else to put it.
-     */
-    private final java.util.Map<String, Boolean> zoneOccupancy = new java.util.HashMap<>();
-
-    /**
-     * Records where this player is and reports whether he has just ARRIVED in the shooting zone.
-     *
-     * <p>True on the first sighting of a player who is inside it, and again on any tick after he was
-     * outside — which is the case that matters. The shot frequency roll is about "is this touch a
-     * chance", so it belongs to an arrival, not to a ball reception: a striker who carried it forty
-     * metres into the box had the roll made before he got there, and measured over 40 matches that
-     * spent roll blocked 64% of every tick he stood in the box.
-     *
-     * @return true when this is an arrival, i.e. when a gate keyed to arriving should re-roll
-     */
-    public boolean markZoneEntry(Player player) {
-        if (player == null) {
-            return false;
-        }
-        boolean inZone = "HOME".equals(player.getTeam())
-                ? player.getPosition().getRow() >= 6.0
-                : player.getPosition().getRow() <= 3.0;
-        Boolean was = zoneOccupancy.put(player.getId(), inZone);
-        return inZone && !Boolean.TRUE.equals(was);
-    }
-
-    /** The cache key the shot frequency roll is stored under. */
-    public static final String SHOT_GATE_KEY = "SHOT_GATE";
-
-    /** True when the shot gate blocked the shot during the current decide() call. */
-    private boolean shotGateBlocked;
     private int kickoffHalfHoldTick;
     private boolean matchFinished;    // full time reached (replay overlay)
 
@@ -284,39 +247,14 @@ public class MatchState {
      * remembered until the carrier changes. {@code roller} is only invoked on the
      * first call for a key within a possession.
      *
-     * <p><b>Throwing one away mid-possession.</b> A cache that can only be cleared by losing the
-     * ball is right for "one look, one decision" and wrong for a roll whose premise has changed.
-     * The shot gate is the case that matters: the roll is about whether this touch is a shooting
-     * chance, and a striker who dribbled forty metres to get here has already spent it before he
-     * arrived. Measured over 40 matches, 64% of the ticks a carrier spent in the box were vetoed by
-     * a roll made before he got there.
-     *
-     * <p>{@link #invalidatePossessionRoll(String)} is how a caller says the premise changed. It
-     * removes only that key and leaves every other roll in the possession alone, because they are
-     * still about the same situation.
+     * <p>Kept for the rolls that answer for a whole look at a situation — the clearance
+     * gate and playmaking perception. The shot frequency gate's use of this went with
+     * the gate itself (ME-3, 2026-10-23 — the owner's rule: "SKLONI TO PRAVILO").
      */
     public boolean possessionRoll(String key, java.util.function.BooleanSupplier roller) {
         String k = (carrier != null ? carrier.getId() : "-") + "|" + key;
         return possessionRolls.computeIfAbsent(k, x -> roller.getAsBoolean());
     }
-
-    /**
-     * Discards one cached roll for the current possession, so the next ask re-rolls it.
-     *
-     * <p>Scoped to a key on purpose. Clearing the whole cache would re-roll perception and the
-     * clearance gate too, which would make a striker who crossed into the box suddenly blind to a
-     * through ball he had already seen three ticks earlier.
-     */
-    public void invalidatePossessionRoll(String key) {
-        if (carrier == null) {
-            possessionRolls.clear();
-            return;
-        }
-        possessionRolls.remove(carrier.getId() + "|" + key);
-    }
-
-    public boolean isShotGateBlocked() { return shotGateBlocked; }
-    public void setShotGateBlocked(boolean shotGateBlocked) { this.shotGateBlocked = shotGateBlocked; }
 
     public int getKickoffHalfHoldTick() { return kickoffHalfHoldTick; }
     public void setKickoffHalfHoldTick(int t) { this.kickoffHalfHoldTick = t; }

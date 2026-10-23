@@ -152,8 +152,10 @@ public class ExecutionQuality {
         // keeper's reach was corrected, turned over half of them into goals.
         // Recalibrated 2026-09-26 (S1.1b) against the fresh 50-match baseline, once the keeper
         // trajectory gate made the statistics trustworthy: 33.1 shots, 38.0% on target, 3.8 goals.
-        // Shot VOLUME is a deliberate owner decision (SHOT_FREQUENCY_GATE 0.30, "30-40 shots is
-        // fine"), so volume is left alone and conversion is tuned instead. Real football: ~33% on
+        // Shot VOLUME used to be a deliberate owner decision (SHOT_FREQUENCY_GATE 0.30, "30-40
+        // shots is fine"); that gate was removed on 2026-10-23 (ME-3, "SKLONI TO PRAVILO"), so
+        // volume is now an OUTPUT of the decision while conversion is still tuned instead. Real
+        // football: ~33% on
         // target. Lowering skillBase and the close-range lift pulls SOT toward that and drags
         // goals down with it, since goals are a function of on-target shots, not of attempts.
         // Confidence scales the striker's finishing, not the shot's distance or chance of being

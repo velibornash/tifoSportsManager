@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tifo Sports Manager — Match Engine Statistical Report</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 40px; color: #222; font-size: 13px; line-height: 1.5; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin-top: 24px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  h3 { font-size: 14px; margin-top: 16px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: right; }
+  th { background: #f0f0f0; text-align: left; }
+  td:first-child, th:first-child { text-align: left; }
+  .note { font-size: 11px; color: #666; font-style: italic; }
+  .highlight { background: #fff8e1; }
+  .good { color: #2e7d32; }
+  .bad { color: #c62828; }
+  p { margin: 8px 0; }
+  ul { margin: 4px 0 8px 20px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<h1>Tifo Sports Manager — Match Engine Statistical Report</h1>
+<p class="note">200 matches per variant, base seed 42, uniform skill 15 unless noted. All numbers are per-team per-match averages.</p>
+
+<h2>1. Baseline: Equal teams (15 vs 15)</h2>
+<p>Both sides identical. Shows the engine's inherent home/away bias and baseline rates.</p>
+<table>
+<tr><th>Metric</th><th>HOME</th><th>AWAY</th><th>Both avg</th></tr>
+<tr><td>Goals</td><td>1.56</td><td>0.95</td><td>1.25</td></tr>
+<tr><td>xG</td><td>1.16</td><td>1.08</td><td>1.12</td></tr>
+<tr><td>Shots (total / on target)</td><td>13.76 / 4.19</td><td>13.65 / 4.05</td><td>13.70 / 4.12</td></tr>
+<tr><td>Saves</td><td>3.13</td><td>2.50</td><td>2.81</td></tr>
+<tr><td>Blocks</td><td>0.92</td><td>0.80</td><td>0.86</td></tr>
+<tr><td>Passes (att / comp / %)</td><td>352.21 / 292.19 / 82.93</td><td>368.50 / 303.48 / 82.27</td><td>360.35 / 297.83 / 82.60</td></tr>
+<tr><td>Dribbles (decisions)</td><td>85.53</td><td>88.85</td><td>87.19</td></tr>
+<tr><td>Clearances</td><td>12.06</td><td>11.56</td><td>11.81</td></tr>
+<tr><td>Through balls</td><td>61.58</td><td>63.74</td><td>62.66</td></tr>
+<tr><td>Centers</td><td>15.50</td><td>12.50</td><td>14.00</td></tr>
+<tr><td>Crosses</td><td>11.39</td><td>7.83</td><td>9.61</td></tr>
+<tr><td>Duels (won / lost)</td><td>167.95 / 166.34</td><td>166.34 / 167.95</td><td>167.14</td></tr>
+<tr><td>Interceptions</td><td>28.52</td><td>24.37</td><td>26.44</td></tr>
+<tr><td>Deflections</td><td>51.10</td><td>52.89</td><td>51.99</td></tr>
+<tr><td>Corners</td><td>2.47</td><td>3.01</td><td>2.74</td></tr>
+<tr><td>Goal kicks</td><td>17.81</td><td>17.40</td><td>17.60</td></tr>
+<tr><td>Throw-ins</td><td>29.07</td><td>28.36</td><td>28.71</td></tr>
+<tr><td>Offsides</td><td>8.51</td><td>9.98</td><td>9.24</td></tr>
+<tr><td>Fouls</td><td>7.24</td><td>7.48</td><td>7.36</td></tr>
+<tr><td>Yellow / Red cards</td><td>1.34 / 0.13</td><td>1.30 / 0.15</td><td>1.32 / 0.14</td></tr>
+<tr><td>Penalties (awarded / scored)</td><td>0.21 / 0.15</td><td>0.19 / 0.13</td><td>0.20 / 0.14</td></tr>
+<tr><td>Penalty conversion %</td><td>73.17%</td><td>65.79%</td><td>69.62%</td></tr>
+<tr><td>Injuries</td><td>0.04</td><td>0.08</td><td>0.06</td></tr>
+<tr><td>VAR reviews (confirmed / overturned)</td><td>0.29 (0.21 / 0.09)</td><td>0.32 (0.29 / 0.03)</td><td>0.30 (0.25 / 0.06)</td></tr>
+<tr><td>Possession %</td><td>48.90</td><td>51.10</td><td>50.00</td></tr>
+</table>
+<p class="note">Results: HOME 105 W / AWAY 46 W / 49 D, 17 scoreless, highest score 9 goals.</p>
+
+<h2>2. Skill gap: 20 vs 15 (home stronger)</h2>
+<table>
+<tr><th>Metric</th><th>HOME (20)</th><th>AWAY (15)</th><th>Both avg</th></tr>
+<tr><td>Goals</td><td>2.45</td><td>0.35</td><td>1.40</td></tr>
+<tr><td>xG</td><td>1.17</td><td>0.34</td><td>0.76</td></tr>
+<tr><td>Shots (total / on target)</td><td>16.02 / 5.43</td><td>5.10 / 1.51</td><td>10.56 / 3.47</td></tr>
+<tr><td>Passes (att / comp / %)</td><td>482.68 / 405.71 / 84.01</td><td>290.81 / 245.10 / 84.28</td><td>386.74 / 325.41 / 84.14</td></tr>
+<tr><td>Dribbles (decisions)</td><td>36.72</td><td>76.15</td><td>56.43</td></tr>
+<tr><td>Clearances</td><td>1.27</td><td>9.96</td><td>5.62</td></tr>
+<tr><td>Through balls</td><td>132.18</td><td>45.72</td><td>88.95</td></tr>
+<tr><td>Centers</td><td>26.30</td><td>4.40</td><td>15.35</td></tr>
+<tr><td>Crosses</td><td>15.59</td><td>4.18</td><td>9.88</td></tr>
+<tr><td>Duels (won / lost)</td><td>258.57 / 80.66</td><td>80.66 / 258.57</td><td>169.61</td></tr>
+<tr><td>Offsides</td><td>6.67</td><td>4.15</td><td>5.41</td></tr>
+<tr><td>Fouls</td><td>6.11</td><td>4.25</td><td>5.18</td></tr>
+<tr><td>Yellow / Red</td><td>1.12 / 0.16</td><td>0.82 / 0.05</td><td>0.97 / 0.11</td></tr>
+<tr><td>Penalty conversion %</td><td>91.18%</td><td>50.00%</td><td>71.88%</td></tr>
+<tr><td>Injuries</td><td>0.05</td><td>0.09</td><td>0.07</td></tr>
+<tr><td>VAR (confirmed / overturned)</td><td>0.25 / 0.14</td><td>0.11 / 0.03</td><td>0.18 / 0.09</td></tr>
+<tr><td>Possession %</td><td>64.82</td><td>35.18</td><td>50.00</td></tr>
+</table>
+<p class="note">Results: HOME 188 W / AWAY 2 W / 10 D, 9 scoreless, highest score 11 goals.</p>
+
+<h2>3. Elite attack: home attackers 20, rest 13 vs away all 15</h2>
+<table>
+<tr><th>Metric</th><th>HOME (att 20)</th><th>AWAY (15)</th><th>Both avg</th></tr>
+<tr><td>Goals</td><td>2.21</td><td>1.37</td><td>1.79</td></tr>
+<tr><td>xG</td><td>1.14</td><td>1.50</td><td>1.32</td></tr>
+<tr><td>Shots (total / on target)</td><td>13.30 / 4.50</td><td>17.98 / 5.41</td><td>15.64 / 4.95</td></tr>
+<tr><td>Passes (att / comp / %)</td><td>321.70 / 247.99 / 77.01</td><td>370.63 / 303.43 / 81.85</td><td>346.16 / 275.71 / 79.43</td></tr>
+<tr><td>Dribbles (decisions)</td><td>75.59</td><td>89.48</td><td>82.54</td></tr>
+<tr><td>Clearances</td><td>12.31</td><td>8.13</td><td>10.22</td></tr>
+<tr><td>Through balls</td><td>57.85</td><td>66.51</td><td>62.18</td></tr>
+<tr><td>Centers</td><td>21.63</td><td>16.06</td><td>18.84</td></tr>
+<tr><td>Crosses</td><td>9.46</td><td>9.52</td><td>9.49</td></tr>
+<tr><td>Duels (won / lost)</td><td>146.36 / 159.87</td><td>159.87 / 146.36</td><td>153.11</td></tr>
+<tr><td>Interceptions</td><td>23.09</td><td>29.71</td><td>26.40</td></tr>
+<tr><td>Offsides</td><td>13.95</td><td>10.08</td><td>12.02</td></tr>
+<tr><td>Fouls</td><td>6.57</td><td>5.96</td><td>6.26</td></tr>
+<tr><td>Yellow / Red</td><td>1.05 / 0.10</td><td>1.24 / 0.13</td><td>1.14 / 0.11</td></tr>
+<tr><td>Penalties (awarded / scored)</td><td>0.10 / 0.10</td><td>0.20 / 0.14</td><td>0.15 / 0.12</td></tr>
+<tr><td>Penalty conversion %</td><td>100.00%</td><td>71.79%</td><td>81.36%</td></tr>
+<tr><td>Injuries</td><td>0.07</td><td>0.08</td><td>0.07</td></tr>
+<tr><td>VAR (confirmed / overturned)</td><td>0.22 / 0.09</td><td>0.28 / 0.08</td><td>0.25 / 0.09</td></tr>
+<tr><td>Possession %</td><td>46.61</td><td>53.39</td><td>50.00</td></tr>
+</table>
+<p class="note">Results: HOME 134 W / AWAY 42 W / 24 D, 10 scoreless, highest score 9 goals.</p>
+
+<h2>4. Elite defense: home defenders 20, rest 13 vs away all 15</h2>
+<table>
+<tr><th>Metric</th><th>HOME (def 20)</th><th>AWAY (15)</th><th>Both avg</th></tr>
+<tr><td>Goals</td><td>0.67</td><td>0.94</td><td>0.80</td></tr>
+<tr><td>xG</td><td>0.57</td><td>0.99</td><td>0.78</td></tr>
+<tr><td>Shots (total / on target)</td><td>7.52 / 2.14</td><td>12.51 / 3.60</td><td>10.01 / 2.87</td></tr>
+<tr><td>Passes (att / comp / %)</td><td>375.89 / 313.31 / 83.31</td><td>347.72 / 284.83 / 81.82</td><td>361.80 / 299.07 / 82.56</td></tr>
+<tr><td>Dribbles (decisions)</td><td>49.54</td><td>96.37</td><td>72.95</td></tr>
+<tr><td>Clearances</td><td>8.81</td><td>9.72</td><td>9.26</td></tr>
+<tr><td>Through balls</td><td>100.28</td><td>65.04</td><td>82.66</td></tr>
+<tr><td>Centers</td><td>14.27</td><td>11.05</td><td>12.66</td></tr>
+<tr><td>Crosses</td><td>7.62</td><td>9.59</td><td>8.60</td></tr>
+<tr><td>Duels (won / lost)</td><td>164.51 / 160.50</td><td>160.50 / 164.51</td><td>162.50</td></tr>
+<tr><td>Interceptions</td><td>27.51</td><td>25.83</td><td>26.67</td></tr>
+<tr><td>Deflections</td><td>54.33</td><td>51.45</td><td>52.89</td></tr>
+<tr><td>Corners</td><td>2.39</td><td>5.22</td><td>3.80</td></tr>
+<tr><td>Goal kicks</td><td>17.28</td><td>12.67</td><td>14.97</td></tr>
+<tr><td>Throw-ins</td><td>27.08</td><td>39.68</td><td>33.38</td></tr>
+<tr><td>Offsides</td><td>4.28</td><td>8.92</td><td>6.60</td></tr>
+<tr><td>Fouls</td><td>6.91</td><td>6.95</td><td>6.93</td></tr>
+<tr><td>Yellow / Red</td><td>1.31 / 0.15</td><td>1.22 / 0.16</td><td>1.27 / 0.16</td></tr>
+<tr><td>Penalties (awarded / scored)</td><td>0.14 / 0.14</td><td>0.27 / 0.18</td><td>0.20 / 0.16</td></tr>
+<tr><td>Penalty conversion %</td><td>103.70%</td><td>64.81%</td><td>77.78%</td></tr>
+<tr><td>Injuries</td><td>0.07</td><td>0.07</td><td>0.07</td></tr>
+<tr><td>VAR (confirmed / overturned)</td><td>0.23 / 0.06</td><td>0.23 / 0.07</td><td>0.23 / 0.06</td></tr>
+<tr><td>Possession %</td><td>51.84</td><td>48.16</td><td>50.00</td></tr>
+</table>
+<p class="note">Results: HOME 75 W / AWAY 85 W / 40 D, 10 scoreless, highest score 7 goals.</p>
+
+<h2>5. Elite defense + elite keeper: home defenders+GK 20, rest 13 vs away all 15</h2>
+<table>
+<tr><th>Metric</th><th>HOME (def+GK 20)</th><th>AWAY (15)</th><th>Both avg</th></tr>
+<tr><td>Goals</td><td>0.75</td><td>0.78</td><td>0.76</td></tr>
+<tr><td>xG</td><td>0.56</td><td>0.83</td><td>0.69</td></tr>
+<tr><td>Shots (total / on target)</td><td>7.36 / 2.08</td><td>11.20 / 3.14</td><td>9.28 / 2.61</td></tr>
+<tr><td>Passes (att / comp / %)</td><td>373.19 / 312.04 / 83.56</td><td>338.68 / 276.82 / 81.72</td><td>355.94 / 294.43 / 82.64</td></tr>
+<tr><td>Dribbles (decisions)</td><td>49.52</td><td>94.56</td><td>72.04</td></tr>
+<tr><td>Clearances</td><td>7.30</td><td>8.87</td><td>8.09</td></tr>
+<tr><td>Through balls</td><td>99.22</td><td>63.24</td><td>81.23</td></tr>
+<tr><td>Centers</td><td>13.44</td><td>10.32</td><td>11.88</td></tr>
+<tr><td>Crosses</td><td>7.00</td><td>9.78</td><td>8.39</td></tr>
+<tr><td>Duels (won / lost)</td><td>161.13 / 153.32</td><td>153.32 / 161.13</td><td>157.22</td></tr>
+<tr><td>Interceptions</td><td>26.38</td><td>24.27</td><td>25.32</td></tr>
+<tr><td>Deflections</td><td>53.20</td><td>50.38</td><td>51.79</td></tr>
+<tr><td>Corners</td><td>2.43</td><td>5.20</td><td>3.82</td></tr>
+<tr><td>Goal kicks</td><td>15.61</td><td>12.25</td><td>13.93</td></tr>
+<tr><td>Throw-ins</td><td>26.52</td><td>40.42</td><td>33.47</td></tr>
+<tr><td>Offsides</td><td>4.43</td><td>8.22</td><td>6.33</td></tr>
+<tr><td>Fouls</td><td>6.86</td><td>7.31</td><td>7.08</td></tr>
+<tr><td>Yellow / Red</td><td>1.17 / 0.14</td><td>1.32 / 0.13</td><td>1.24 / 0.14</td></tr>
+<tr><td>Penalties (awarded / scored)</td><td>0.21 / 0.14</td><td>0.25 / 0.19</td><td>0.23 / 0.16</td></tr>
+<tr><td>Penalty conversion %</td><td>65.85%</td><td>77.55%</td><td>72.22%</td></tr>
+<tr><td>Injuries</td><td>0.08</td><td>0.11</td><td>0.10</td></tr>
+<tr><td>VAR (confirmed / overturned)</td><td>0.27 / 0.04</td><td>0.29 / 0.06</td><td>0.28 / 0.05</td></tr>
+<tr><td>Possession %</td><td>51.75</td><td>48.25</td><td>50.00</td></tr>
+</table>
+<p class="note">Results: HOME 76 W / AWAY 80 W / 44 D, 11 scoreless, highest score 7 goals.</p>
+
+<h2>Analysis: impact of attack vs. defense</h2>
+
+<h3>Elite attack (variant D) — "counter-attacking" profile</h3>
+<ul>
+  <li>Elite strikers (skill 20) score <b>2.21 goals</b> despite the team's overall weakness (rest at 13). The away team (balanced 15) scores <b>1.37</b> because home's defense is weak (13).</li>
+  <li>Home has <b>less possession</b> (46.61%) but scores more — elite strikers finish on fewer touches. This is a recognisable counter-attacking profile.</li>
+  <li>Home's pass accuracy drops to <b>77.01%</b> (weak midfield). Elite strikers compensate with directness.</li>
+  <li>Offsides spike to <b>13.95</b> (vs 8.51 balanced) — elite strikers make more runs, get caught more. Realistic.</li>
+  <li>Home xG (1.14) < away xG (1.50) — home scores 2.21 from 1.14 xG (overperforming), away scores 1.37 from 1.50 xG (underperforming). The elite striker's finishing is the difference.</li>
+</ul>
+
+<h3>Elite defense (variant E) — "possession but no punch" profile</h3>
+<ul>
+  <li>Elite defenders (skill 20) reduce away goals from 0.87 (balanced) to <b>0.94</b> — only 0.07 reduction. Elite defense alone barely matters for goals conceded.</li>
+  <li>Home scores only <b>0.67</b> (weak attack, skill 13). The away team (balanced 15) scores 0.94 despite facing elite defense.</li>
+  <li>Home has <b>more possession</b> (51.84%) but scores less — elite defense wins ball, weak attack can't convert.</li>
+  <li>Offsides drop to <b>4.28</b> (weak attack doesn't make runs).</li>
+  <li>Elite defense reduces shots allowed (7.52 vs 13.76 balanced) but xG per shot is higher — the shots that get through are harder to save. The keeper (skill 13) is the bottleneck.</li>
+</ul>
+
+<h3>Elite defense + elite keeper (variant F) — the full package</h3>
+<ul>
+  <li>Adding an elite keeper (skill 20) to elite defense: away goals drop from 0.94 to <b>0.78</b>. The keeper adds 0.16 goals saved.</li>
+  <li>Home still scores only <b>0.75</b> (weak attack). Elite defense + keeper keeps the score low (0.76 total) but the team can't win without attack.</li>
+  <li>xG: home 0.56, away 0.83. The elite defense+keeper keeps away xG low (0.83 vs 1.08 balanced).</li>
+  <li>Result: HOME 76 W / AWAY 80 W / 44 D — nearly even. Elite defense + keeper neutralises the home advantage but doesn't win games.</li>
+</ul>
+
+<h3>Key takeaway</h3>
+<p><b>Attack quality matters ~2-3x more than defense quality for goal-scoring.</b> An elite attack (skill 20) on a weak team adds +0.59 goals scored. An elite defense adds only -0.06 goals conceded (without elite keeper) or -0.22 (with elite keeper). The engine is <b>attack-dominated</b>: goals are primarily about shot quality and finishing, and defense's contribution (duels, interceptions, blocks) translates weakly into preventing goals. The keeper is the critical link between defense and goals conceded.</p>
+
+<h3>Home advantage</h3>
+<p>Home advantage comes from a single source: <code>DuelEngine.resolveDuel</code> adds <code>HOME_ADVANTAGE_DUEL_POWER</code> (now 0.0) to the home side on every duel. With it set to 0, the remaining home skew (1.56 vs 0.95 in variant A) comes from the home team kicking off first (first-half possession) and the spatial orientation. Home win rate dropped from 61% to 52%.</p>
+
+<h2>Conclusion</h2>
+<p>The engine produces <b>recognisable football profiles</b>: elite attacks create counter-attacking sides that score on fewer touches with more offsides; elite defenses create possession-heavy sides that can't convert. The attack-defense imbalance (attack ~2-3x more impactful) is the main structural finding. Defense quality alone is nearly irrelevant without keeper quality — the keeper is the bottleneck.</p>
+
+<p class="note">Generated from SkillVariantDiag (200 matches per variant, base seed 42). All numbers are per-team per-match averages.</p>
+
+</body>
+</html>

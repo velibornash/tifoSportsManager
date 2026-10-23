@@ -99,7 +99,7 @@ public final class MatchEngineVersion {
         Map<String, String> r = new LinkedHashMap<>();
 
         // --- Decision gates. The five numbers that decide how often each thing happens. ---
-        r.put("decision.shotGate", num(CleanDecisionEngine.SHOT_FREQUENCY_GATE));
+        r.put("decision.shotFloor", num(CleanDecisionEngine.SHOT_CHANCE_FLOOR));
         r.put("decision.clearGate", num(CleanDecisionEngine.CLEAR_FREQUENCY_GATE));
         r.put("decision.thruGate", num(CleanDecisionEngine.THRU_FREQUENCY_GATE));
         r.put("decision.deliveryGate", num(CleanDecisionEngine.DELIVERY_FREQUENCY_GATE));
