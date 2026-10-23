@@ -67,6 +67,14 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double RECEIVE_R = 0.35;
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
+    // --- Billiard-bounce threshold (owner 2026-10-23) ---
+    // Above this speed (cells/tick) a ball that hits a player BOUNCES (reflects
+    // velocity, dampens) instead of being received/intercepted — the ball is
+    // moving too fast for a controlled touch. Below it, the normal football
+    // receive/intercept logic applies (with a boosted pickup radius).
+    public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.3;  // ~4 m/s
+    // Boosted receive radius for slow balls (receiver "boost" — larger reach).
+    public static final double RECEIVE_R_BOOSTED = 0.5;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     public static final double PICKUP_R = 0.35;
@@ -277,7 +285,17 @@ public class BallPhysicsEngine implements BallEngine {
         }
 
         // 8. Player contact — earliest along segment wins; pendingReceiver tie priority
-        BallStepResult contact = playerContact(state, prev, curr, spd);
+        //    Billiard-bounce for FAST balls (spd > BALL_BOUNCE_SPEED_THRESHOLD): a ball
+        //    moving too fast for a controlled touch reflects off the player's body
+        //    (reflect velocity, dampen, move to surface) and keeps moving — no
+        //    possession change. For SLOW balls the normal football receive/intercept/
+        //    block/save logic applies, with a boosted receive radius.
+        BallStepResult contact;
+        if (spd > BALL_BOUNCE_SPEED_THRESHOLD) {
+            contact = fastPlayerBounce(state, prev, curr, spd, ball);
+        } else {
+            contact = playerContact(state, prev, curr, spd, true); // boosted receive
+        }
         if (contact != null) return contact;
 
         // 9. Goal plane crossing (only if a team last touched)
@@ -440,6 +458,56 @@ public class BallPhysicsEngine implements BallEngine {
         return null;
     }
 
+    /**
+     * Fast ball (spd > BALL_BOUNCE_SPEED_THRESHOLD) that physically strikes a
+     * player's body bounces like a billiard ball: reflect velocity, dampen by
+     * BOUNCE_DAMP, move the ball to the surface. No possession change — the ball
+     * keeps moving. Returns null if no player body is in the path (ball sails by).
+     */
+    private BallStepResult fastPlayerBounce(MatchState state, Position prev, Position curr, double spd, Ball ball) {
+        double bestT = Double.MAX_VALUE;
+        Player hit = null;
+        for (Player p : state.getPlayers()) {
+            if (p.isUnavailable()) continue;
+            if (p == state.getLastTouchPlayer()) continue;
+            double d = SimUtils.pointSegmentDistance(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+            if (d <= DEFLECT_R) {
+                double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+                if (t < bestT) { bestT = t; hit = p; }
+            }
+        }
+        if (hit == null) return null; // no contact — ball sails by
+
+        Position playerPos = hit.getPosition();
+        // Normal from player to ball at contact point
+        double cx = prev.getRow() + (curr.getRow() - prev.getRow()) * bestT;
+        double cy = prev.getColumn() + (curr.getColumn() - prev.getColumn()) * bestT;
+        double nr = cx - playerPos.getRow();
+        double nc = cy - playerPos.getColumn();
+        double len = Math.hypot(nr, nc);
+        if (len < 1e-9) { nr = 0; nc = 1; len = 1; }
+        nr /= len; nc /= len;
+
+        // Reflect velocity (velX = col direction, velY = row direction)
+        double velX = ball.getVelX();
+        double velY = ball.getVelY();
+        double dot = velY * nr + velX * nc;
+        double newVelY = (velY - 2 * dot * nr) * BOUNCE_DAMP;
+        double newVelX = (velX - 2 * dot * nc) * BOUNCE_DAMP;
+
+        // Move ball to surface (just outside the player)
+        double surfaceRow = playerPos.getRow() + nr * (DEFLECT_R + 0.02);
+        double surfaceCol = playerPos.getColumn() + nc * (DEFLECT_R + 0.02);
+        ball.setPosition(new Position(surfaceRow, surfaceCol));
+        ball.setVelocity(newVelX, newVelY);
+        ball.setLaunchSpeed(Math.hypot(newVelX, newVelY));
+        ball.setAirborne(false);
+        ball.setHeight(0.0);
+
+        return BallStepResult.flight(); // ball keeps moving after bounce
+    }
+
+
     private double crossingCol(Position p1, Position p2, double lineRow) {
         double dr = p2.getRow() - p1.getRow();
         if (Math.abs(dr) < 1e-9) return p1.getColumn();
@@ -447,7 +515,7 @@ public class BallPhysicsEngine implements BallEngine {
         return p1.getColumn() + (p2.getColumn() - p1.getColumn()) * t;
     }
 
-    private BallStepResult playerContact(MatchState state, Position prev, Position curr, double spd) {
+    private BallStepResult playerContact(MatchState state, Position prev, Position curr, double spd, boolean boosted) {
         boolean fast = spd >= FAST_CONTACT;
         Player pending = state.getPendingReceiver();
         // ME-1: never hand the ball to a player who has left the pitch. The target pools no longer
@@ -461,7 +529,8 @@ public class BallPhysicsEngine implements BallEngine {
         // pending receiver (same team as lastTouch) — RECEIVE if within radius
         if (pending != null) {
             double d = SimUtils.pointSegmentDistance(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
-            if (d <= RECEIVE_R) {
+            double receiveR = boosted ? RECEIVE_R_BOOSTED : RECEIVE_R;
+            if (d <= receiveR) {
                 bestT = approachT(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
                 ev = "RECEIVE";
                 hit = pending;
