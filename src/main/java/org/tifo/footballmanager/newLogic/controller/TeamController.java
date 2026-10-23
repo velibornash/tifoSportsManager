@@ -5,6 +5,9 @@ import org.tifo.footballmanager.newLogic.dto.MatchDTO;
 import org.tifo.footballmanager.newLogic.dto.PlayerDTO;
 import org.tifo.footballmanager.newLogic.dto.PublicSquadMemberDTO;
 import org.tifo.footballmanager.newLogic.dto.TacticsEditorDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsSlotDTO;
+import org.tifo.footballmanager.newLogic.dto.TacticsRuleDTO;
+import org.tifo.footballmanager.newLogic.service.TeamTacticsService;
 import org.tifo.footballmanager.newLogic.dto.TacticsEditorSaveRequest;
 import org.tifo.footballmanager.newLogic.dto.TeamSummaryDTO;
 import org.tifo.footballmanager.newLogic.dto.TeamMedicalOverviewDTO;
@@ -30,7 +33,14 @@ import org.tifo.footballmanager.newLogic.service.ScheduleInsightService;
 import org.tifo.footballmanager.newLogic.service.SeasonService;
 import org.tifo.footballmanager.newLogic.service.TeamMedicalService;
 import org.tifo.footballmanager.newLogic.service.PlusFeatureService;
-import org.tifo.footballmanager.newLogic.service.TeamTacticsService;
+import org.tifo.footballmanager.newLogic.sim.engine.decision.CleanDecisionEngine;
+import org.tifo.footballmanager.newLogic.sim.model.Ball;
+import org.tifo.footballmanager.newLogic.sim.model.DecisionOption;
+import org.tifo.footballmanager.newLogic.sim.model.DecisionResult;
+import org.tifo.footballmanager.newLogic.sim.model.MatchState;
+import org.tifo.footballmanager.newLogic.sim.model.PlayerSkills;
+import org.tifo.footballmanager.newLogic.sim.model.Position;
+import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
 import org.tifo.footballmanager.newLogic.service.ClubOwnershipLinker;
 import org.tifo.footballmanager.newLogic.service.SquadRegistrationService;
 import org.springframework.data.domain.PageRequest;
@@ -735,16 +745,105 @@ public class TeamController {
         ));
     }
 
-    @GetMapping("/{teamId}/tactics-editor")
-    public ResponseEntity<TacticsEditorDTO> getTacticsEditor(
+    @GetMapping("/{teamId}/decide")
+    public ResponseEntity<?> decide(
             @PathVariable Long teamId,
+            @RequestParam("ballRow") double ballRow,
+            @RequestParam("ballCol") double ballCol,
             @RequestParam(value = "formation", required = false) String formation,
             @RequestParam(value = "tacticId", required = false) Long tacticId) {
-        // tacticId is what makes the editor read the SAME store it writes. Without it the page
-        // loads the club profile while Save writes the chosen tactic, and a moved player comes
-        // back where he was - owner, 2026-10-19: "kad izmenim POZICIJU IGRAČA ... treba da sačuva".
         TacticsEditorDTO dto = teamTacticsService.getTacticsEditor(teamId, formation, tacticId);
-        return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
+        if (dto == null) return ResponseEntity.notFound().build();
+
+        // Resolve target cell per slot, same logic as the tactic editor front-end.
+        java.util.Map<String, String> rulesMap = new java.util.HashMap<>();
+        for (TacticsRuleDTO r : dto.getMovementRules()) {
+            if (r.getSlotKey() != null && r.getBallStateKey() != null
+                    && r.getPossessionContext() != null && r.getTargetCellKey() != null) {
+                rulesMap.put(r.getSlotKey() + "|" + r.getBallStateKey() + "|" + r.getPossessionContext(),
+                        r.getTargetCellKey());
+            }
+        }
+
+        int br = (int) Math.min(7, Math.max(1, Math.floor(ballRow)));
+        int bc = (int) Math.min(6, Math.max(1, Math.floor(ballCol)));
+        String ballState = "CELL_" + (br - 1) + "_" + (bc - 1);
+
+        double awayBallRow = 9 - ballRow, awayBallCol = 8 - ballCol;
+        int abr = (int) Math.min(7, Math.max(1, Math.floor(awayBallRow)));
+        int abc = (int) Math.min(6, Math.max(1, Math.floor(awayBallCol)));
+        String awayBallState = "CELL_" + (abr - 1) + "_" + (abc - 1);
+
+        org.tifo.footballmanager.newLogic.sim.model.PlayerSkills skills = new org.tifo.footballmanager.newLogic.sim.model.PlayerSkills(14, 14, 14, 14, 14, 14, 14, 14);
+        List<org.tifo.footballmanager.newLogic.sim.model.Player> players = new ArrayList<>();
+        for (TacticsSlotDTO slot : dto.getSlotDefinitions()) {
+            org.tifo.footballmanager.newLogic.sim.model.Position homePos = slotTarget(slot, ballState, rulesMap, true);
+            players.add(new org.tifo.footballmanager.newLogic.sim.model.Player(slot.getSlotKey(), slot.getSlotKey(), "HOME", slot.getLine(),
+                    homePos, homePos, skills));
+            org.tifo.footballmanager.newLogic.sim.model.Position awayPos = slotTarget(slot, awayBallState, rulesMap, false);
+            players.add(new org.tifo.footballmanager.newLogic.sim.model.Player("A_" + slot.getSlotKey(), slot.getSlotKey(), "AWAY", slot.getLine(),
+                    awayPos, awayPos, skills));
+        }
+
+        // Carrier = home player nearest the ball; place him on the ball.
+        org.tifo.footballmanager.newLogic.sim.model.Player carrier = null;
+        double bestD = Double.MAX_VALUE;
+        for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) {
+            if (!"HOME".equals(p.getTeam())) continue;
+            double d = SimUtils.distance(p.getPosition(), new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
+            if (d < bestD) { bestD = d; carrier = p; }
+        }
+        if (carrier != null) {
+            carrier.setPosition(new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
+        }
+
+        org.tifo.footballmanager.newLogic.sim.model.MatchState state = new org.tifo.footballmanager.newLogic.sim.model.MatchState();
+        for (org.tifo.footballmanager.newLogic.sim.model.Player p : players) state.getPlayers().add(p);
+        state.setCarrier(carrier);
+        state.setLastTouchTeam("HOME");
+        org.tifo.footballmanager.newLogic.sim.model.Ball ball = state.getBall();
+        ball.setPosition(carrier != null ? carrier.getPosition() : new org.tifo.footballmanager.newLogic.sim.model.Position(ballRow, ballCol));
+        ball.stop();
+        state.clearPassContext();
+
+        CleanDecisionEngine engine = new CleanDecisionEngine();
+        DecisionResult res = engine.decideWithOptions(state);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (res.getChosen() != null) {
+            out.put("chosen", optionToMap(res.getChosen()));
+        }
+        List<Map<String, Object>> opts = new ArrayList<>();
+        for (DecisionOption o : res.getOptions()) opts.add(optionToMap(o));
+        out.put("options", opts);
+        return ResponseEntity.ok(out);
+    }
+
+    private org.tifo.footballmanager.newLogic.sim.model.Position slotTarget(TacticsSlotDTO slot, String ballState, Map<String, String> rulesMap, boolean home) {
+        String key = slot.getSlotKey() + "|" + ballState + "|WE_HAVE_BALL";
+        String cell = rulesMap.get(key);
+        if (cell == null) cell = slot.getAnchorCellKey();
+        if (cell == null) cell = "CELL_2_2";
+        int[] pw = parseCell(cell);
+        int p = pw[0], w = pw[1];
+        if (home) return new org.tifo.footballmanager.newLogic.sim.model.Position(p + 1.5, w + 1.5);
+        return new org.tifo.footballmanager.newLogic.sim.model.Position(7.5 - p, 6.5 - w);
+    }
+
+    private int[] parseCell(String cell) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("CELL_(\\\\d+)_(\\\\d+)").matcher(cell == null ? "" : cell);
+        if (m.find()) return new int[] { Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) };
+        return new int[] { 2, 2 };
+    }
+
+    private Map<String, Object> optionToMap(DecisionOption o) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("type", o.getType() == null ? null : o.getType().name());
+        m.put("target", o.getTarget() == null ? null : o.getTarget().getId());
+        m.put("targetLabel", o.getTarget() == null ? null : o.getTarget().getLabel());
+        m.put("score", o.getScore());
+        m.put("reason", o.getReason());
+        return m;
     }
 
     /**

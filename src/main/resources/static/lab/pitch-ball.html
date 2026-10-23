@@ -35,6 +35,7 @@
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
+  #decideOut { width: 100%; height: 120px; margin: 8px 0 12px; padding: 8px; border-radius: 6px; border: 1px solid #3a4a6b; background: #0b1220; color: #e8ecf4; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; white-space: pre-wrap; word-wrap: break-word; overflow: auto; }
   .checks { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #9aa7bf; }
   .checks label { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; line-height: 1.35; }
   .checks input { accent-color: #4a9eff; margin-top: 2px; }
@@ -48,7 +49,10 @@
 <div class="wrap">
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
-    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag, <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. On a duel (or a clean chase claim) the winner moves onto the ball's position, the loser and everyone else freeze in place — all movement stops. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
+    <div class="controls" style="margin-bottom:8px;">
+      <button id="decide">DECIDE</button>
+    </div>
+    <textarea id="decideOut" readonly spellcheck="false" placeholder="Click DECIDE to run the decision engine on the current ball position (carrier = HOME)."></textarea>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
         <div class="line mid"></div>
@@ -63,6 +67,7 @@
       <div id="players"></div>
       <div class="ball" id="ball"></div>
     </div>
+    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag, <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. On a duel (or a clean chase claim) the winner moves onto the ball's position, the loser and everyone else freeze in place — all movement stops. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
   </div>
   <div class="right">
     <div class="controls">
@@ -183,6 +188,9 @@ let ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
 let homeViews = [];
 let awayViews = [];
 let viewsKey = null;
+let loadedFormation = '';
+let loadedTacticId = null;
+let loadedTeamId = null;
 
 // ===== Behavior state =========================================================
 // The Carrier checkbox is the engine's getCarrier() != null flag. A specific
@@ -225,13 +233,16 @@ async function loadTactic() {
   info.textContent = 'Loading tactic…';
   try {
     const me = await apiGet('/auth/me');
-    const teamId = me.footballTeamId || me.teamId;
+    loadedTeamId = me.footballTeamId || me.teamId;
+    const teamId = loadedTeamId;
     const library = await apiGet('/teams/' + teamId + '/tactics');
     const tactic = (library && library.tactics ? library.tactics : library)[0];
     if (!tactic) throw new Error('No tactic saved for this team.');
     const params = new URLSearchParams();
     if (tactic.formation) params.set('formation', tactic.formation);
     params.set('tacticId', String(tactic.id));
+    loadedFormation = tactic.formation || '';
+    loadedTacticId = tactic.id;
     const editor = await apiGet('/teams/' + teamId + '/tactics-editor?' + params.toString());
 
     slots = Array.isArray(editor.slotDefinitions) ? editor.slotDefinitions : [];
@@ -698,7 +709,37 @@ document.getElementById('reset').addEventListener('click', () => {
   ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
   render();
 });
-document.getElementById('reload').addEventListener('click', loadTactic);
+document.getElementById('decide').addEventListener('click', async () => {
+  const out = document.getElementById('decideOut');
+  if (!loadedTeamId) { out.value = 'No tactic loaded yet.'; return; }
+  out.value = 'Running decision engine…';
+  try {
+    const rc = toRowCol(ball.x, ball.y);
+    const params = new URLSearchParams();
+    params.set('ballRow', String(rc.row));
+    params.set('ballCol', String(rc.col));
+    if (loadedFormation) params.set('formation', loadedFormation);
+    if (loadedTacticId != null) params.set('tacticId', String(loadedTacticId));
+    const data = await apiGet('/teams/' + loadedTeamId + '/decide?' + params.toString());
+    let text = '';
+    if (data.chosen) {
+      const c = data.chosen;
+      text += 'CHOSEN: ' + c.type + '  score=' + Number(c.score).toFixed(2) +
+        (c.targetLabel ? '  -> ' + c.targetLabel + ' (' + c.target + ')' : '') + '\n';
+      if (c.reason) text += '  reason: ' + c.reason + '\n';
+      text += '\n';
+    }
+    text += 'OPTIONS (' + (data.options ? data.options.length : 0) + '):\n';
+    (data.options || []).forEach(o => {
+      text += '  ' + String(o.type).padEnd(12) + ' ' + Number(o.score).toFixed(2).padStart(7) +
+        (o.targetLabel ? '  -> ' + o.targetLabel + ' (' + o.target + ')' : '') +
+        (o.reason ? '   // ' + o.reason : '') + '\n';
+    });
+    out.value = text;
+  } catch (e) {
+    out.value = 'ERROR: ' + String(e.message || e);
+  }
+});
 
 // ===== Behavior checkboxes ====================================================
 cbCarrier.addEventListener('change', () => {
