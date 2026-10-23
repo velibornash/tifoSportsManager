@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pitch &amp; Ball — drag the ball, watch the team move</title>
+<title>Pitch &amp; Ball — positions from the Tactic Editor</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e8ecf4; }
@@ -12,7 +12,6 @@
   h1 { font-size: 18px; margin: 0 0 8px; }
   p.hint { font-size: 13px; color: #9aa7bf; margin: 0 0 14px; }
   .pitch-wrap { position: relative; width: 100%; aspect-ratio: 5 / 8; border-radius: 28px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 24px 48px rgba(0,0,0,0.26); background: linear-gradient(180deg, rgba(7,63,38,0.98) 0%, rgba(17,98,55,0.98) 100%); }
-  .te-pitch-surface { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05) 0, rgba(255,255,255,0.05) 14.29%, transparent 14.29%, transparent 28.57%, rgba(255,255,255,0.04) 28.57%, rgba(255,255,255,0.04) 42.86%, transparent 42.86%, transparent 57.14%, rgba(255,255,255,0.04) 57.14%, rgba(255,255,255,0.04) 71.43%, transparent 71.43%, transparent 85.71%, rgba(255,255,255,0.04) 85.71%, rgba(255,255,255,0.04) 100%, transparent 100%), linear-gradient(90deg, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 16.67%, transparent 16.67%, transparent 33.33%, rgba(255,255,255,0.03) 33.33%, rgba(255,255,255,0.03) 50%, transparent 50%, transparent 66.67%, rgba(255,255,255,0.03) 66.67%, rgba(255,255,255,0.03) 83.33%, transparent 83.33%, transparent 100%); }
   .line { position: absolute; border-color: rgba(255,255,255,0.56); pointer-events: none; }
   .line.mid { left: 0; right: 0; top: 50%; border-top: 2px solid rgba(255,255,255,0.62); }
   .line.circle { width: 26%; height: 16.5%; left: 37%; top: 41.75%; border: 2px solid rgba(255,255,255,0.62); border-radius: 50%; }
@@ -22,28 +21,29 @@
   .line.top-six, .line.bottom-six { left: 32%; width: 36%; height: 6%; border: 2px solid rgba(255,255,255,0.62); }
   .line.top-six { top: 0; border-top: none; }
   .line.bottom-six { bottom: 0; border-bottom: none; }
+  .cell-grid { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+  .cell-grid .hline { position: absolute; left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,0.18); }
+  .cell-grid .vline { position: absolute; top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,0.18); }
   .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
-  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; letter-spacing: -0.5px; }
+  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); pointer-events: none; z-index: 2; letter-spacing: -0.5px; transition: left 0.15s linear, top 0.15s linear; }
   .player.gk { background: #f5a623; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
-  .controls label { font-size: 13px; color: #9aa7bf; display: flex; align-items: center; gap: 8px; }
-  .controls input[type=range] { width: 140px; }
-  .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; line-height: 1.6; }
+  .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; line-height: 1.6; white-space: pre-line; }
   .info b { color: #e8ecf4; }
+  .info .err { color: #ff7a7a; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="left">
-    <h1>Pitch &amp; Ball — drag the ball</h1>
-    <p class="hint">Drag the white ball anywhere. Home (blue) players react: outfield players nudge toward the ball, goalkeeper shifts in his area. Grid is the tactic editor's 7×6. Standalone.</p>
+    <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
+    <p class="hint">Drag the white ball. Player circles snap to the target cell the saved tactic rules give for that ball state — loaded live from <code>/teams/{id}/tactics-editor</code>, transformed like the app does (rows 1-7 bottom-up, cols 1-6). Open this page through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
-        <div class="te-pitch-surface" style="position:absolute;inset:0;"></div>
         <div class="line mid"></div>
         <div class="line circle"></div>
         <div class="line top-box"></div>
@@ -51,6 +51,7 @@
         <div class="line top-six"></div>
         <div class="line bottom-six"></div>
       </div>
+      <div class="cell-grid" id="grid"></div>
       <div id="cells"></div>
       <div id="players"></div>
       <div class="ball" id="ball"></div>
@@ -58,49 +59,49 @@
   </div>
   <div class="right">
     <div class="controls">
-      <button id="reset">Reset positions</button>
-      <label>Reaction <input type="range" id="react" min="0" max="1" step="0.05" value="0.35"></label>
+      <button id="reload">Reload tactic</button>
+      <button id="reset">Ball to center</button>
     </div>
-    <div class="info" id="info"></div>
+    <div class="info" id="info">Loading tactic…</div>
   </div>
 </div>
 <script>
-// Tactic editor grid: 7 rows (progress 0..6), 6 columns (width 0..5).
-// Pitch position (percent): left = (width + 0.5) * (100/6), top = (6.5 - progress) * (100/7).
-// 1-based cell label: row = progress+1 (bottom to top), col = width+1 (left to right).
-function cellPos(progress, width) {
+'use strict';
+
+// ===== App transforms (copied from tactic-editor-view.js) =====================
+// cell key: CELL_{progress}_{width}, progress 0..6 (0 = bottom/home goal), width 0..5.
+// toPitchPosition: left = (width + 0.5) * (100/6)%, top = (6.5 - progress) * (100/7)%.
+function parseCellKey(key) {
+  const m = String(key || '').match(/^CELL_([0-6])_([0-5])$/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+function cellToPct(progress, width) {
   return { x: (width + 0.5) * (100 / 6), y: (6.5 - progress) * (100 / 7) };
 }
-function cellLabel(progress, width) {
-  return (progress + 1) + '_' + (width + 1);
+// Internal 0-100% -> display coordinate: row 1.00..8.00 (1 = bottom, +0.5 = cell center),
+// col 1.00..7.00 (1 = left). Cell 7_4 center = 7.50|4.50 (row|col).
+function toRowCol(xPct, yPct) {
+  return { row: 8 - (yPct / 100) * 7, col: (xPct / 100) * 6 + 1 };
+}
+// Ball position -> the nearest cell key, i.e. the ballState the rules are read under.
+function pctToCellKey(xPct, yPct) {
+  const rc = toRowCol(xPct, yPct);
+  const row = Math.min(7, Math.max(1, Math.floor(rc.row)));
+  const col = Math.min(6, Math.max(1, Math.floor(rc.col)));
+  return 'CELL_' + (row - 1) + '_' + (col - 1);
 }
 
-// Default 4-4-2 formation — copied from the app's source of truth:
-// src/main/java/org/tifo/footballmanager/newLogic/service/FormationSlotCatalog.java
-// CELL_{progress}_{width}; row = progress+1 (bottom-up), col = width+1.
-const baseCells = [
-  {role:'GK', label:'GK',  p:0, w:2},  // CELL_0_2
-  {role:'DEF', label:'DL',  p:1, w:0},  // CELL_1_0
-  {role:'DEF', label:'DCL', p:1, w:1},  // CELL_1_1
-  {role:'DEF', label:'DCR', p:1, w:3},  // CELL_1_3
-  {role:'DEF', label:'DR',  p:1, w:4},  // CELL_1_4
-  {role:'MID', label:'ML',  p:2, w:0},  // CELL_2_0
-  {role:'MID', label:'CML', p:2, w:1},  // CELL_2_1
-  {role:'MID', label:'CMR', p:2, w:3},  // CELL_2_3
-  {role:'MID', label:'MR',  p:2, w:4},  // CELL_2_4
-  {role:'ATT', label:'STL', p:4, w:1},  // CELL_4_1
-  {role:'ATT', label:'STR', p:4, w:3},  // CELL_4_3
-];
-
-let players = baseCells.map(s => {
-  const pos = cellPos(s.p, s.w);
-  return { role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
-});
-let ball = { x: cellPos(2, 2).x, y: cellPos(2, 2).y };  // starts on CELL_2_2
+// ===== State =================================================================
+const POSSESSION_CONTEXT = 'WE_HAVE_BALL';
+let slots = [];          // slotDefinitions from the endpoint
+let rulesMap = {};       // "slot|ballState|context" -> targetCellKey
+let tacticName = '';
+let ball = cellToPct(2, 2);  // start on CELL_2_2 (center)
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
 const cellsLayer = document.getElementById('cells');
+const gridLayer = document.getElementById('grid');
 const ballEl = document.getElementById('ball');
 const info = document.getElementById('info');
 
@@ -108,122 +109,156 @@ function toPx(xPct, yPct) {
   const r = pitch.getBoundingClientRect();
   return { left: (xPct / 100) * r.width, top: (yPct / 100) * r.height };
 }
-function toPct(px, py) {
-  const r = pitch.getBoundingClientRect();
-  return { x: (px / r.width) * 100, y: (py / r.height) * 100 };
-}
-// Convert internal 0-100% coordinate to 1-based cell coordinate (1.00..7.00).
-// x: 1.00 = left edge, 7.00 = right edge (6 cells). y: 1.00 = bottom (home goal), 8.00 = top (away goal).
-function toCellCoord(xPct, yPct) {
-  return { x: (xPct / 100) * 6 + 1, y: 8 - (yPct / 100) * 7 };
+
+function apiHeaders() {
+  const token = sessionStorage.getItem('token');
+  return token ? { 'Authorization': 'Bearer ' + token, 'X-Requested-With': 'XMLHttpRequest' } : {};
 }
 
-function cellString(xPct, yPct) {
-  // Internal pct -> "row_col" (1-based, row 1 = bottom).
-  const c = toCellCoord(xPct, yPct);
-  const row = Math.min(7, Math.max(1, Math.floor(c.y)));
-  const col = Math.min(6, Math.max(1, Math.floor(c.x)));
-  return row + '_' + col;
+async function apiGet(url) {
+  const res = await fetch(url, { headers: apiHeaders() });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + url);
+  return res.json();
 }
 
-function render() {
-  // cells
+// ===== Load the real tactic ==================================================
+async function loadTactic() {
+  info.textContent = 'Loading tactic…';
+  try {
+    const me = await apiGet('/auth/me');
+    const teamId = me.footballTeamId || me.teamId;
+    const library = await apiGet('/teams/' + teamId + '/tactics');
+    const tactic = (library && library.tactics ? library.tactics : library)[0];
+    if (!tactic) throw new Error('No tactic saved for this team.');
+    const params = new URLSearchParams();
+    if (tactic.formation) params.set('formation', tactic.formation);
+    params.set('tacticId', String(tactic.id));
+    const editor = await apiGet('/teams/' + teamId + '/tactics-editor?' + params.toString());
+
+    slots = Array.isArray(editor.slotDefinitions) ? editor.slotDefinitions : [];
+    rulesMap = {};
+    (editor.movementRules || []).forEach(r => {
+      if (r && r.slotKey && r.ballStateKey && r.possessionContext && r.targetCellKey) {
+        rulesMap[r.slotKey + '|' + r.ballStateKey + '|' + r.possessionContext] = r.targetCellKey;
+      }
+    });
+    tacticName = (tactic.name || '') + ' (' + (editor.formation || tactic.formation) + ')';
+    render();
+  } catch (e) {
+    info.innerHTML = '<span class="err">Could not load the tactic: ' + String(e.message || e) +
+      '</span>\nOpen this page through the app while logged in:\nhttp://localhost:8080/lab/pitch-ball.html';
+    playersLayer.innerHTML = '';
+  }
+}
+
+// The app's getSlotTarget: rule for this ball state, else the slot's anchor cell.
+function slotTarget(slot, ballStateKey) {
+  const rule = rulesMap[slot.slotKey + '|' + ballStateKey + '|' + POSSESSION_CONTEXT];
+  const key = rule || slot.anchorCellKey || 'CELL_2_2';
+  const parsed = parseCellKey(key);
+  return parsed ? cellToPct(parsed[0], parsed[1]) : cellToPct(2, 2);
+}
+
+// ===== Render ================================================================
+function renderGrid() {
+  // dashed cell boundaries: rows 1..7 (bottom-up), cols 1..6
+  gridLayer.innerHTML = '';
+  for (let i = 1; i < 7; i++) {
+    const h = document.createElement('div');
+    h.className = 'hline';
+    h.style.top = (i * 100 / 7) + '%';
+    gridLayer.appendChild(h);
+  }
+  for (let i = 1; i < 6; i++) {
+    const v = document.createElement('div');
+    v.className = 'vline';
+    v.style.left = (i * 100 / 6) + '%';
+    gridLayer.appendChild(v);
+  }
   cellsLayer.innerHTML = '';
   for (let p = 0; p <= 6; p++) {
     for (let w = 0; w <= 5; w++) {
-      const c = cellPos(p, w);
+      const c = cellToPct(p, w);
       const el = document.createElement('div');
       el.className = 'cell-label';
-      el.textContent = (p + 1) + '_' + (w + 1);
+      el.textContent = (p + 1) + '_' + (w + 1);   // row_col, 1-based, row 1 = bottom
       const px = toPx(c.x, c.y);
       el.style.left = px.left + 'px';
       el.style.top = px.top + 'px';
       cellsLayer.appendChild(el);
     }
   }
-  // players
-  playersLayer.innerHTML = '';
-  players.forEach(p => {
-    const el = document.createElement('div');
-    el.className = 'player' + (p.role === 'GK' ? ' gk' : '');
-    el.textContent = p.label;
-    const px = toPx(p.pos.x, p.pos.y);
-    el.style.left = px.left + 'px';
-    el.style.top = px.top + 'px';
-    playersLayer.appendChild(el);
-  });
-  // ball
+}
+
+function render() {
   const bp = toPx(ball.x, ball.y);
   ballEl.style.left = bp.left + 'px';
   ballEl.style.top = bp.top + 'px';
-  const bcRow = cellString(ball.x, ball.y);
-  const stl = players.find(pp => pp.label === 'STL');
-  const str = players.find(pp => pp.label === 'STR');
-  const ballC = toCellCoord(ball.x, ball.y);
-  const stlC = stl ? toCellCoord(stl.pos.x, stl.pos.y) : null;
-  const strC = str ? toCellCoord(str.pos.x, str.pos.y) : null;
-  const stlCell = stl ? cellString(stl.pos.x, stl.pos.y) : '-';
-  const strCell = str ? cellString(str.pos.x, str.pos.y) : '-';
-  info.innerHTML = '<b>Ball cell:</b> ' + bcRow + '<br>'
-    + '<b>Ball pos:</b> ' + ballC.y.toFixed(2) + '|' + ballC.x.toFixed(2) + '<br>'
-    + '<b>STL pos:</b> ' + (stlC ? stlC.y.toFixed(2) + '|' + stlC.x.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
-    + '<b>STR pos:</b> ' + (strC ? strC.y.toFixed(2) + '|' + strC.x.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
-    + '<b>Players:</b> ' + players.length;
-}
 
-function reactToBall() {
-  const react = parseFloat(document.getElementById('react').value);
-  players.forEach(p => {
-    if (p.role === 'GK') {
-      const dx = (ball.x - p.base.x) * 0.15;
-      const dy = (ball.y - p.base.y) * 0.05;
-      p.pos.x = Math.max(30, Math.min(70, p.base.x + dx));
-      p.pos.y = Math.max(75, Math.min(95, p.base.y + dy));
-      return;
-    }
-    const dx = ball.x - p.base.x;
-    const dy = ball.y - p.base.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < 0.01) { p.pos.x = p.base.x; p.pos.y = p.base.y; return; }
-    const nudge = Math.min(dist, 25) * react;
-    p.pos.x = Math.max(5, Math.min(95, p.base.x + (dx / dist) * nudge));
-    p.pos.y = Math.max(5, Math.min(95, p.base.y + (dy / dist) * nudge));
+  const ballState = pctToCellKey(ball.x, ball.y);
+  const ballRc = toRowCol(ball.x, ball.y);
+
+  playersLayer.innerHTML = '';
+  let list = '';
+  slots.forEach(slot => {
+    const target = slotTarget(slot, ballState);
+    const el = document.createElement('div');
+    el.className = 'player' + (slot.line === 'GK' ? ' gk' : '');
+    el.textContent = slot.slotKey;
+    const px = toPx(target.x, target.y);
+    el.style.left = px.left + 'px';
+    el.style.top = px.top + 'px';
+    playersLayer.appendChild(el);
+
+    const rc = toRowCol(target.x, target.y);
+    list += slot.slotKey + ': ' + rc.row.toFixed(2) + '|' + rc.col.toFixed(2) + ' (cell ' +
+      Math.floor(rc.row) + '_' + Math.floor(rc.col) + ')\n';
   });
+
+  const [br, bc] = ballState.split('_').slice(1).map(Number);
+  info.innerHTML = '<b>Tactic:</b> ' + tacticName + '\n' +
+    '<b>Ball cell:</b> ' + (br + 1) + '_' + (bc + 1) + '  <b>ball state:</b> ' + ballState + '\n' +
+    '<b>Ball pos:</b> ' + ballRc.row.toFixed(2) + '|' + ballRc.col.toFixed(2) + '\n' +
+    '\n<b>Players (row|col):</b>\n' + list;
 }
 
+// ===== Drag ==================================================================
 let dragging = false;
+function ballFromEvent(e) {
+  const r = pitch.getBoundingClientRect();
+  ball.x = Math.max(3, Math.min(97, (e.clientX - r.left) / r.width * 100));
+  ball.y = Math.max(3, Math.min(97, (e.clientY - r.top) / r.height * 100));
+}
 pitch.addEventListener('pointerdown', (e) => {
   const r = pitch.getBoundingClientRect();
-  const c = toPct(e.clientX - r.left, e.clientY - r.top);
-  if (Math.hypot(c.x - ball.x, c.y - ball.y) < 5) {
+  const x = (e.clientX - r.left) / r.width * 100;
+  const y = (e.clientY - r.top) / r.height * 100;
+  if (Math.hypot(x - ball.x, y - ball.y) < 5) {
     dragging = true;
     ballEl.setPointerCapture(e.pointerId);
   } else {
-    ball.x = Math.max(3, Math.min(97, c.x));
-    ball.y = Math.max(3, Math.min(97, c.y));
-    reactToBall(); render();
+    ball.x = Math.max(3, Math.min(97, x));
+    ball.y = Math.max(3, Math.min(97, y));
+    render();
   }
 });
 pitch.addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  const r = pitch.getBoundingClientRect();
-  ball.x = Math.max(3, Math.min(97, (e.clientX - r.left) / r.width * 100));
-  ball.y = Math.max(3, Math.min(97, (e.clientY - r.top) / r.height * 100));
-  reactToBall(); render();
+  ballFromEvent(e);
+  render();
 });
 pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
-  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
-  ball = { x: cellPos(2, 2).x, y: cellPos(2, 2).y };
-  reactToBall(); render();
+  ball = cellToPct(2, 2);
+  render();
 });
-document.getElementById('react').addEventListener('input', () => { reactToBall(); render(); });
-
+document.getElementById('reload').addEventListener('click', loadTactic);
 window.addEventListener('resize', render);
-reactToBall();
-render();
+
+renderGrid();
+loadTactic();
 </script>
 </body>
 </html>
