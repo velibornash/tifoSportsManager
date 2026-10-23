@@ -74,30 +74,8 @@ public class CleanDecisionEngine {
      */
     private static final double UNAVAILABLE = -10_000.0;
 
-    /** Cache keys for the frequency rolls, named so a gate can be re-armed by hand. */
-    private static final String SHOT_GATE_KEY = "SHOT_GATE";
+    /** Cache key for the frequency roll, named so the gate can be re-armed by hand. */
     private static final String CLEAR_GATE_KEY = "CLEAR_GATE";
-
-    /**
-     * At or above this chance quality a shot is never gated — the striker simply takes it.
-     *
-     * <p>On a 0..1 scale that is 60% distance and 40% corner openness. A tap-in scores about 0.75, a
-     * six-yard half-chance about 0.62, a twenty-yarder about 0.51, a long-range attempt in traffic
-     * about 0.12.
-     *
-     * <p>It was 0.45 and that was wrong in the direction the owner named: at 0.45 every decent chance
-     * in the box was ungated, and because a shot outscores the average pass roughly two to one the
-     * engine took 77 a match. "When a player is in a GOOD position he must shoot" is a claim about
-     * good positions — a twenty-yarder between two defenders is not one, and a striker who took every
-     * one of them is not demonstrating judgement, he is demonstrating that the rule has no ceiling.
-     *
-     * <p>Swept at 0.55 / 0.62 / 0.70 over 20 matches each: 41.0 / 41.0 / 40.1 shots and 3.60 / —
-     * / 3.90 goals. Shot volume is flat across that whole range, which says the real calibration is
-     * the scale above and not this threshold — so this number is set by where the football turns
-     * rather than by where the volume lands. 0.62 is the point at which a six-yard half-chance is
-     * never refused and a twenty-yarder is the 0.30 coin flip.
-     */
-    public static final double CLEAR_CHANCE_QUALITY = 0.62; // public: MatchEngineVersion fingerprints it
 
     /** How far out is worth zero chance, in cells. Five cells is 70 m. */
     private static final double CHANCE_DISTANCE_RANGE = 5.0;
@@ -153,6 +131,23 @@ public class CleanDecisionEngine {
     private static final double SHOT_CHANCE_VALUE = 78.0;
 
     /**
+     * Below this chance quality the shot does not exist — the position is not a shooting position.
+     *
+     * <p>Owner's ruling, 2026-10-23, after the shot frequency gate was removed ("SKLONI TO PRAVILO,
+     * igrac treba da odluci u odnosu na to da li je pozicija za sut ili nije"): the judgement is the
+     * POSITION, and it is the position and nothing else. A 0.30 dice roll was removed as ordered;
+     * without any ceiling at all the measured flood came back — 65-81 shots per match over five
+     * seeded matches, against the owner's own "30-40 udaraca je ok" and real football's ~25. A
+     * re-added random roll barely dents it (67/match), because the flood is structural: an in-zone
+     * carrier's shot outscores every alternative on nearly every touch, so the touch becomes a shot.
+     *
+     * <p>This is not a frequency gate in any form: no roll, no cache, no state. The same position
+     * always gives the same answer — a yard from goal with the corners open is a shooting position
+     * at any moment of any match, and a thirty-yard attempt in traffic never is.
+     */
+    public static final double SHOT_CHANCE_FLOOR = 0.55; // public: MatchEngineVersion fingerprints it
+
+    /**
      * How close two options have to be before the carrier's judgement is consulted, in points on
      * the common scale.
      *
@@ -186,27 +181,6 @@ public class CleanDecisionEngine {
     private static final double THREAD_MAX = 1.35;
 
     /**
-     * Share of arrivals in the shooting zone that become a shot attempt.
-     *
-     * Real sides take ~25 shots per match, i.e. roughly one attempt every 90
-     * seconds, not on every touch.
-     *
-     * It was 0.17, tuned while the gate was re-rolled on EVERY tick of a carry:
-     * a striker who stayed in the box rolled 5+ times and effectively shot ~63%
-     * of the time, so the constant was compensating for an exploit. With the roll
-     * cached per arrival (the honest semantics) 0.17 produced only 16.5 shots and
-     * 1.8 goals per match. Re-measured with `ProposalSeasonDiag 200 42`:
-     * 0.17 -> 16.5 shots / 1.8 goals, 0.30 -> 28.7 / 3.5, 0.42 -> 39.9 / 4.7.
-     * 0.30 lands closest to the real 25 shots and 2.7 goals.
-     *
-     * Re-measured in REC 3 after all seven options were handed to the selector
-     * (the final-third landscape changed, so a delivery can now be chosen on
-     * merit): 0.14 -> 19.3 shots, 0.20 -> 26.0, 0.30 -> 39.2. Kept at 0.30 —
-     * the owner accepts 30-40 shots a match ("ma to je ok 30-40 udaraca").
-     */
-    public static final double SHOT_FREQUENCY_GATE = 0.30; // public: MatchEngineVersion fingerprints it
-
-    /**
      * Share of pressured touches in the defensive third that become a clearance.
      *
      * Without a gate, CLEAR always scores 13-28 (10 base + up to 15 under pressure
@@ -228,20 +202,6 @@ public class CleanDecisionEngine {
      * without it having to be a large share of touches.
      */
     public static final double CLEAR_FREQUENCY_GATE = 0.45; // public: MatchEngineVersion fingerprints it
-
-    /**
-     * TEMPORARY MEASUREMENT SWITCH for the "a gated shot must not become a
-     * dribble" rule. Measured ON: goals 5.5 -> 1.9, but centres 38.2 -> 3.1,
-     * crosses 24.8 -> 3.4, through balls 13.9 -> 0.9. The reason is structural:
-     * THRU / CROSS / CENTER are not given to the selector at all, so the dribble
-     * in the final two rows is the ONLY path by which a delivery is ever chosen.
-     * Vetoing the dribble therefore deletes the deliveries. The rule is correct
-     * but could not be enabled until the deliveries competed on merit (REC 3).
-     *
-     * ENABLED in REC 3: the selector is now handed all seven options, so a gated
-     * shot recycles through THRU / CROSS / CENTER instead of a byline walk.
-     */
-    private static final boolean GATE_BLOCKS_DRIBBLE = true;
 
     /**
      * Share of eligible moments that become a through ball. Real sides play
@@ -341,24 +301,6 @@ public class CleanDecisionEngine {
             carryOption = new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
                     "DRIBBLE: defender approaching or pressed with no room ahead in his own third, "
                             + "and a pass is available");
-        }
-
-        // A GATED SHOT MUST NOT BECOME A DRIBBLE.
-        //
-        // The gate made the shot UNAVAILABLE, which left the selector with "pick
-        // the least bad option" — and for a striker in the box the least-bad
-        // option was DRIBBLE (-0.6), so a blocked shot turned into a walk down the
-        // byline. Measured before this rule: of 99 gated shots in 600 situations,
-        // 93 (94%) ended in a dribble. A player who has decided not to shoot must
-        // MOVE THE BALL — pass it on or clear it. The dribble stays available when
-        // no pass exists at all, otherwise a carrier with no options would freeze.
-        if (GATE_BLOCKS_DRIBBLE && state.isShotGateBlocked() && passOption.getScore() > UNAVAILABLE) {
-            // Demote, do not forbid: a gated shot makes the dribble the least attractive
-            // option, but it must stay on the table so a carrier with no real pass
-            // (or a worse one) can still carry instead of freezing.
-            double demoted = Math.min(carryOption.getScore(), -5.0);
-            carryOption = new DecisionOption(ActionType.DRIBBLE, null, demoted,
-                    "DRIBBLE: shot gate blocked this touch - move the ball (demoted)");
         }
 
         // PLAYMAKING VISIBILITY — what the carrier can even PERCEIVE.
@@ -600,57 +542,24 @@ public class CleanDecisionEngine {
         double distToGoal = SimUtils.distance(carrier.getPosition(), goal);
 
         if (!inShootingZone) {
-            state.setShotGateBlocked(false);
             return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
                     "SHOT: not in zone");
         }
 
-        // Frequency gate — only a fraction of final-third touches are shots
-        // (real teams recycle, hold and probe instead of shooting every touch).
-        //
-        // The gate has to make the shot UNAVAILABLE, not merely "less attractive".
-        // It used to return -20, which still beat every alternative whenever the
-        // pass (-60..-90) and carry (-60) options were worse — so in the final
-        // third the engine shot almost every touch, because a shot was always the
-        // least-bad option. Measured: 83 shots per match. The gate now vetoes.
-        //
-        // Rolled ONCE per possession (cached in MatchState, invalidated when the
-        // carrier changes) instead of once per tick. The engine re-decides on
-        // every tick of a carry, so a per-tick roll meant a striker who hesitated
-        // in the box got 5+ attempts at the gate and shot ~63% of the time, while
-        // a striker who got one look shot 17%. Hesitation was being rewarded.
-        //
-        // AND re-armed when he ARRIVES. The roll answers "is this touch a shooting chance", and a
-        // striker who carried the ball forty metres into the box had it made before he got there:
-        // measured, 64% of in-zone ticks were vetoed by a roll spent upstream. So entering the zone
-        // is what arms the gate — not receiving the ball.
-        //
-        // Leaving and coming back re-arms it too, because that is a new touch in a new situation,
-        // and it is why the tracking lives here and not in the carrier-change hook.
-        //
-        // AND it no longer applies to a chance worth taking. The owner's rule, 2026-10-18: "kad je
-        // igrač u DOBROJ POZICIJI - on i treba da sutne". A flat 0.30 roll said the same thing about a
-        // tap-in and a thirty-yard attempt, so it refused seven arrivals in ten regardless of what
-        // the arrival was. It measured how often a team shoots, not whether this chance is good.
-        //
-        // So the gate is now bounded by the chance itself. Below CLEAR_CHANCE_QUALITY the roll
-        // decides, which is where recycling and probing live; at or above it, the shot is available
-        // unconditionally and competes on its score like everything else. Shot volume becomes an
-        // OUTPUT of the decision rather than a dial, which is the point.
+        // The frequency gate is GONE (ME-3, 2026-10-23 — owner: "SKLONI TO PRAVILO, igrač
+        // treba da odluci u odnosu na to da li je pozicija za sut ili nije"). The shot
+        // competes on its score like every other option; the position is the whole judgement —
+        // the zone, this chance quality, and the corner-openness veto below.
         double chance = shotChanceQuality(state, carrier, goal);
-        if (state.markZoneEntry(carrier)) {
-            state.invalidatePossessionRoll(SHOT_GATE_KEY);
+
+        // ...and the position is allowed to say NO. Below the floor this is not a shooting
+        // position, so the shot does not exist (owner's follow-up ruling 2026-10-23: the volume is
+        // governed by the position, never by a roll). Deterministic — the same position always
+        // answers the same, wherever and whenever it happens.
+        if (chance < SHOT_CHANCE_FLOOR) {
+            return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
+                    String.format("SHOT: not a shooting position (chance %.2f)", chance));
         }
-        if (chance < CLEAR_CHANCE_QUALITY) {
-            boolean gateAllowsShot = state.possessionRoll(SHOT_GATE_KEY,
-                    () -> SimulationRandom.nextDouble() <= SHOT_FREQUENCY_GATE);
-            if (!gateAllowsShot) {
-                state.setShotGateBlocked(true);
-                return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
-                        String.format("SHOT: freq gate (chance %.2f)", chance));
-            }
-        }
-        state.setShotGateBlocked(false);
 
         // Basic shot value, on the common scale.
         score += SHOT_BASE;
@@ -1119,7 +1028,7 @@ public class CleanDecisionEngine {
      * or simply not level with the line). Mirrors OffsideService's margin so the
      * decision layer and the rules layer agree on who is offside.
      */
-    private double offsideMargin(MatchState state, Player carrier, Player receiver) {
+    public static double offsideMargin(MatchState state, Player carrier, Player receiver) {
         boolean home = "HOME".equals(receiver.getTeam());
         double receiverRow = receiver.getPosition().getRow();
         boolean inOppHalf = home ? receiverRow > 4.5 : receiverRow < 4.5;

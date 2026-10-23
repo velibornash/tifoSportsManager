@@ -828,6 +828,36 @@ public class TeamController {
         List<Map<String, Object>> opts = new ArrayList<>();
         for (DecisionOption o : res.getOptions()) opts.add(optionToMap(o));
         out.put("options", opts);
+
+        // Debug info for the lab tool: positions and offside margins.
+        Map<String, Object> dbg = new LinkedHashMap<>();
+        dbg.put("carrierPos", carrier.getPosition().getRow() + "|" + carrier.getPosition().getColumn());
+        List<Map<String, Object>> inBox = new ArrayList<>();
+        String team = carrier.getTeam();
+        for (org.tifo.footballmanager.newLogic.sim.model.Player mate : state.getPlayers()) {
+            if (!mate.getTeam().equals(team) || mate.equals(carrier)) continue;
+            if (mate.isUnavailable()) continue;
+            // isInBox
+            double r = mate.getPosition().getRow();
+            boolean inRows = "HOME".equals(team) ? r >= 6.5 : r <= 2.5;
+            boolean inCols = Math.abs(mate.getPosition().getColumn() - 3.5) <= 1.5;
+            if (!inRows || !inCols) continue;
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", mate.getId());
+            m.put("pos", r + "|" + mate.getPosition().getColumn());
+            m.put("offsideMargin", CleanDecisionEngine.offsideMargin(state, carrier, mate));
+            inBox.add(m);
+        }
+        dbg.put("inBoxHome", inBox);
+        List<Double> defRows = new ArrayList<>();
+        for (org.tifo.footballmanager.newLogic.sim.model.Player opp : state.getPlayers()) {
+            if (!opp.getTeam().equals("AWAY")) continue;
+            defRows.add(opp.getPosition().getRow());
+        }
+        defRows.sort(Comparator.reverseOrder());
+        dbg.put("awayDefRowsSorted", defRows);
+        dbg.put("offsideLine2nd", defRows.size() >= 2 ? defRows.get(1) : null);
+        out.put("debug", dbg);
         return ResponseEntity.ok(out);
     }
 
