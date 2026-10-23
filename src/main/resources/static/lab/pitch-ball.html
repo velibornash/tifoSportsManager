@@ -766,6 +766,8 @@ document.getElementById('decide').addEventListener('click', async () => {
       const d = data.debug;
       text += '\nDEBUG:\n';
       text += '  carrierPos: ' + d.carrierPos + '\n';
+      text += '  ballState: ' + d.ballState + '  awayBallState: ' + d.awayBallState + '  rulesCount: ' + d.rulesCount + '\n';
+      text += '  away lookups: ' + (d.awaySampleLookups || []).join(' | ') + '\n';
       text += '  awayDefRows (sorted desc): ' + (d.awayDefRowsSorted || []).map(x => Number(x).toFixed(2)).join(', ') + '\n';
       text += '  offsideLine (2nd): ' + (d.offsideLine2nd == null ? 'n/a' : Number(d.offsideLine2nd).toFixed(2)) + '\n';
       text += '  in-box home teammates:\n';

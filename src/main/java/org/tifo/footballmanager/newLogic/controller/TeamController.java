@@ -854,8 +854,17 @@ public class TeamController {
 
         // Debug info for the lab tool: positions and offside margins.
         Map<String, Object> dbg = new LinkedHashMap<>();
-        dbg.put("carrierPos", carrier.getPosition().getRow() + "|" + carrier.getPosition().getColumn());
-        dbg.put("carrierId", carrier.getId());
+        dbg.put("carrierPos", carrier.getId() + " @ " + carrier.getPosition().getRow() + "|" + carrier.getPosition().getColumn());
+        dbg.put("ballState", ballState);
+        dbg.put("awayBallState", awayBallState);
+        dbg.put("rulesCount", rulesMap.size());
+        List<String> sample = new ArrayList<>();
+        for (TacticsSlotDTO sl : dto.getSlotDefinitions()) {
+            String k = sl.getSlotKey() + "|" + awayBallState + "|WE_HAVE_BALL";
+            sample.add(sl.getSlotKey() + " -> " + rulesMap.get(k));
+            if (sample.size() >= 4) break;
+        }
+        dbg.put("awaySampleLookups", sample);
         List<Map<String, Object>> inBox = new ArrayList<>();
         String team = carrier.getTeam();
         for (org.tifo.footballmanager.newLogic.sim.model.Player mate : state.getPlayers()) {
