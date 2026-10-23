@@ -48,7 +48,7 @@
 <div class="wrap">
   <div class="left">
     <h1>Pitch &amp; Ball — positions from the Tactic Editor</h1>
-    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag, <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
+    <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag, <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. On a duel the ball glides to the winner on the ball-movement engine (launch 0.75 cells/tick, decelerating 0.05 on grass) while both duelists hold their spot — they never relocate to their desired cells. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
     <div class="pitch-wrap" id="pitch">
       <div style="position:absolute;inset:0;">
         <div class="line mid"></div>
@@ -143,6 +143,13 @@ const CELLS_PER_TICK = (PACE / 20) * PLAYER_SPEED_BASE;
 const TICKS_PER_SEC = 1.875;
 const PLAYER_CELLS_PER_SEC = CELLS_PER_TICK * TICKS_PER_SEC;
 
+// Ball physics (mirror BallPhysicsEngine.java): a struck ball is launched at
+// MIN_LAUNCH_SPEED cells/tick and decelerates by GROUND_DECEL on grass until
+// it drops below STOP_SPEED. Used for the smooth glide onto the duel winner.
+const BALL_MIN_LAUNCH_SPEED = 0.75;   // cells/tick
+const BALL_GROUND_DECEL = 0.05;       // cells/tick^2
+const BALL_STOP_SPEED = 0.01;          // cells/tick
+
 // ===== Behavior constants (mirror the engines they copy) =====================
 // MovementEngine.looseBallChaser: the NEAREST available player of each team
 // (one per team, keepers included) goes for a loose ball, but only within
@@ -196,6 +203,7 @@ const duelLog = [];            // last results, newest first
 let chaseInfo = 'Chase: —';
 let pressAInfo = 'Threat A: —';
 let pressBInfo = 'Threat B: —';
+let ballFlight = null;         // { trow, tcol, speed } — the ball gliding onto a winner
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
@@ -299,7 +307,7 @@ function ensureViews() {
     el.className = 'player ' + side + (slot.line === 'GK' ? ' gk' : '');
     el.textContent = slot.slotKey;
     playersLayer.appendChild(el);
-    return { slot, side, el, pos: null, target: null, ruleTarget: null, override: false, duelUntil: 0 };
+    return { slot, side, el, pos: null, target: null, ruleTarget: null, override: false, duelUntil: 0, stay: null };
   });
   homeViews = build('home');
   awayViews = build('away');
@@ -313,9 +321,11 @@ function drawPlayer(v) {
 }
 
 function placeView(v, rc) {
-  v.ruleTarget = { row: rc.row, col: rc.col };          // the tactic's own cell
-  if (!v.override) v.target = v.ruleTarget;             // a chase/press override wins until it ends
-  if (!v.pos) {                                        // first placement snaps; later moves glide
+  v.stay = null;                                   // world re-tacticed: freeze ends
+  v.ruleTarget = { row: rc.row, col: rc.col };
+  v.override = false;
+  v.target = v.ruleTarget;
+  if (!v.pos) {
     v.pos = { row: rc.row, col: rc.col };
     drawPlayer(v);
   }
@@ -380,7 +390,7 @@ function distRc(a, b) { return Math.hypot(a.row - b.row, a.col - b.col); }
 function onCooldown(v, now) { return now < v.duelUntil; }
 
 function clearOverrides(all) {
-  all.forEach(v => { if (v.override) { v.override = false; v.target = v.ruleTarget; } });
+  all.forEach(v => { if (v.override) { v.override = false; v.target = v.stay || v.ruleTarget; } });
 }
 function setOverride(v, rc) {
   v.override = true;
@@ -393,12 +403,54 @@ function setCarrier(v, msg) {
   carrierView = v;
   carrier = true;
   cbCarrier.checked = true;
-  const pct = rowColToPct(v.pos.row, v.pos.col);
+  // The ball glides onto the winner on the ball-movement engine, instead of
+  // snapping — the duelists hold their spot while it rolls in.
+  flyBallTo({ row: v.pos.row, col: v.pos.col });
+  duelLog.unshift(msg);
+  if (duelLog.length > 3) duelLog.pop();
+}
+
+function flyBallTo(targetRc) {
+  const br = toRowCol(ball.x, ball.y);
+  const dist = Math.hypot(targetRc.row - br.row, targetRc.col - br.col);
+  if (dist < 0.05) {
+    const pct = rowColToPct(targetRc.row, targetRc.col);
+    ball.x = pct.x; ball.y = pct.y;
+    ballEl.style.left = ball.x + '%';
+    ballEl.style.top = ball.y + '%';
+    return;
+  }
+  ballFlight = { trow: targetRc.row, tcol: targetRc.col, speed: BALL_MIN_LAUNCH_SPEED };
+}
+function stepBallFlight(dt) {
+  if (!ballFlight) return;
+  const ticks = dt * TICKS_PER_SEC;
+  if (ticks <= 0) return;
+  const br = toRowCol(ball.x, ball.y);
+  const dr = ballFlight.trow - br.row, dc = ballFlight.tcol - br.col;
+  const dist = Math.hypot(dr, dc);
+  const pctTarget = rowColToPct(ballFlight.trow, ballFlight.tcol);
+  if (dist < 0.05) {
+    ball.x = pctTarget.x; ball.y = pctTarget.y;
+    ballEl.style.left = ball.x + '%';
+    ballEl.style.top = ball.y + '%';
+    ballFlight = null;
+    return;
+  }
+  const step = ballFlight.speed * ticks;
+  if (step >= dist) {
+    ball.x = pctTarget.x; ball.y = pctTarget.y;
+    ballEl.style.left = ball.x + '%';
+    ballEl.style.top = ball.y + '%';
+    ballFlight = null;
+    return;
+  }
+  const dirR = dr / dist, dirC = dc / dist;
+  const pct = rowColToPct(br.row + dirR * step, br.col + dirC * step);
   ball.x = pct.x; ball.y = pct.y;
   ballEl.style.left = ball.x + '%';
   ballEl.style.top = ball.y + '%';
-  duelLog.unshift(msg);
-  if (duelLog.length > 3) duelLog.pop();
+  ballFlight.speed = Math.max(BALL_STOP_SPEED, ballFlight.speed - BALL_GROUND_DECEL * ticks);
 }
 
 function duel(a, d, now, kind) {
@@ -406,6 +458,12 @@ function duel(a, d, now, kind) {
   const winner = Math.random() < 0.5 ? a : d;
   a.duelUntil = now + DUEL_COOLDOWN_MS;
   d.duelUntil = now + DUEL_COOLDOWN_MS;
+  // Duelists hold their spot: the ball rolls to the winner, they do not
+  // relocate to their desired cells.
+  a.stay = { row: a.pos.row, col: a.pos.col };
+  d.stay = { row: d.pos.row, col: d.pos.col };
+  a.target = { row: a.pos.row, col: a.pos.col };
+  d.target = { row: d.pos.row, col: d.pos.col };
   const tag = (v) => v.slot.slotKey + '(' + (v.side === 'home' ? 'H' : 'A') + ')';
   setCarrier(winner, 'Duel(' + kind + '): ' + tag(a) + ' vs ' + tag(d) +
     ' → ' + tag(winner) + ' wins');
@@ -543,6 +601,7 @@ function tick(now) {
   const step = PLAYER_CELLS_PER_SEC * dt;
   const all = homeViews.concat(awayViews);
   if (all.length) updateBehaviors(now, all);   // chase / press / duel set the targets
+  stepBallFlight(dt);
   all.forEach(v => {
     if (!v.pos || !v.target) return;
     const dr = v.target.row - v.pos.row;
@@ -623,10 +682,12 @@ pitch.addEventListener('pointerdown', (e) => {
   const y = (e.clientY - r.top) / r.height * 100;
   if (Math.hypot(x - ball.x, y - ball.y) < 5) {
     dragging = true;
+    ballFlight = null;                       // manual control cancels the glide
     ballEl.setPointerCapture(e.pointerId);
   } else {
     ball.x = Math.max(3, Math.min(97, x));
     ball.y = Math.max(3, Math.min(97, y));
+    ballFlight = null;
     render();
   }
 });
@@ -639,6 +700,7 @@ pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
+  ballFlight = null;
   ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
   render();
 });
