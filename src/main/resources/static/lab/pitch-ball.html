@@ -6,10 +6,12 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e8ecf4; }
-  .wrap { max-width: 640px; margin: 20px auto; padding: 0 16px; }
+  .wrap { max-width: 900px; margin: 20px auto; padding: 0 16px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .left { flex: 1 1 420px; min-width: 320px; }
+  .right { flex: 0 0 260px; }
   h1 { font-size: 18px; margin: 0 0 8px; }
   p.hint { font-size: 13px; color: #9aa7bf; margin: 0 0 14px; }
-  .pitch-wrap { position: relative; width: 100%; aspect-ratio: 5 / 8; margin: 0 auto; border-radius: 28px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 24px 48px rgba(0,0,0,0.26); background: linear-gradient(180deg, rgba(7,63,38,0.98) 0%, rgba(17,98,55,0.98) 100%); }
+  .pitch-wrap { position: relative; width: 100%; aspect-ratio: 5 / 8; border-radius: 28px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 24px 48px rgba(0,0,0,0.26); background: linear-gradient(180deg, rgba(7,63,38,0.98) 0%, rgba(17,98,55,0.98) 100%); }
   .te-pitch-surface { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05) 0, rgba(255,255,255,0.05) 14.29%, transparent 14.29%, transparent 28.57%, rgba(255,255,255,0.04) 28.57%, rgba(255,255,255,0.04) 42.86%, transparent 42.86%, transparent 57.14%, rgba(255,255,255,0.04) 57.14%, rgba(255,255,255,0.04) 71.43%, transparent 71.43%, transparent 85.71%, rgba(255,255,255,0.04) 85.71%, rgba(255,255,255,0.04) 100%, transparent 100%), linear-gradient(90deg, rgba(255,255,255,0.03) 0, rgba(255,255,255,0.03) 16.67%, transparent 16.67%, transparent 33.33%, rgba(255,255,255,0.03) 33.33%, rgba(255,255,255,0.03) 50%, transparent 50%, transparent 66.67%, rgba(255,255,255,0.03) 66.67%, rgba(255,255,255,0.03) 83.33%, transparent 83.33%, transparent 100%); }
   .line { position: absolute; border-color: rgba(255,255,255,0.56); pointer-events: none; }
   .line.mid { left: 0; right: 0; top: 50%; border-top: 2px solid rgba(255,255,255,0.62); }
@@ -20,46 +22,57 @@
   .line.top-six, .line.bottom-six { left: 32%; width: 36%; height: 6%; border: 2px solid rgba(255,255,255,0.62); }
   .line.top-six { top: 0; border-top: none; }
   .line.bottom-six { bottom: 0; border-bottom: none; }
-  .player { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; }
+  .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
+  .player { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; }
   .player.gk { background: #f5a623; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
-  .controls { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
-  .controls label { font-size: 13px; color: #9aa7bf; }
+  .controls label { font-size: 13px; color: #9aa7bf; display: flex; align-items: center; gap: 8px; }
   .controls input[type=range] { width: 140px; }
-  .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; }
+  .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; line-height: 1.6; }
+  .info b { color: #e8ecf4; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Pitch &amp; Ball — drag the ball</h1>
-  <p class="hint">Drag the white ball anywhere on the pitch. Home (blue) players react: outfield players nudge toward the ball, goalkeeper shifts in his area. Grid is the tactic editor's 7×6. Standalone — no app needed.</p>
-  <div class="pitch-wrap" id="pitch">
-    <div class="te-pitch-board" style="position:absolute;inset:0;">
-      <div class="te-pitch-surface"></div>
-      <div class="line mid"></div>
-      <div class="line circle"></div>
-      <div class="line top-box"></div>
-      <div class="line bottom-box"></div>
-      <div class="line top-six"></div>
-      <div class="line bottom-six"></div>
+  <div class="left">
+    <h1>Pitch &amp; Ball — drag the ball</h1>
+    <p class="hint">Drag the white ball anywhere. Home (blue) players react: outfield players nudge toward the ball, goalkeeper shifts in his area. Grid is the tactic editor's 7×6. Standalone.</p>
+    <div class="pitch-wrap" id="pitch">
+      <div style="position:absolute;inset:0;">
+        <div class="te-pitch-surface" style="position:absolute;inset:0;"></div>
+        <div class="line mid"></div>
+        <div class="line circle"></div>
+        <div class="line top-box"></div>
+        <div class="line bottom-box"></div>
+        <div class="line top-six"></div>
+        <div class="line bottom-six"></div>
+      </div>
+      <div id="cells"></div>
+      <div id="players"></div>
+      <div class="ball" id="ball"></div>
     </div>
-    <div id="players"></div>
-    <div class="ball" id="ball"></div>
   </div>
-  <div class="controls">
-    <button id="reset">Reset positions</button>
-    <label>Reaction <input type="range" id="react" min="0" max="1" step="0.05" value="0.35"></label>
+  <div class="right">
+    <div class="controls">
+      <button id="reset">Reset positions</button>
+      <label>Reaction <input type="range" id="react" min="0" max="1" step="0.05" value="0.35"></label>
+    </div>
+    <div class="info" id="info"></div>
   </div>
-  <div class="info" id="info">ball: (3, 3) · players: 11</div>
 </div>
 <script>
 // Tactic editor grid: 7 rows (progress 0..6), 6 columns (width 0..5).
-// Pitch position: left = (width + 0.5) * (100/6)%, top = (6.5 - progress) * (100/7)%.
+// Pitch position (percent): left = (width + 0.5) * (100/6), top = (6.5 - progress) * (100/7).
+// 1-based cell label: row = progress+1 (bottom to top), col = width+1 (left to right).
 function cellPos(progress, width) {
   return { x: (width + 0.5) * (100 / 6), y: (6.5 - progress) * (100 / 7) };
+}
+function cellLabel(progress, width) {
+  return (progress + 1) + '_' + (width + 1);
 }
 
 // Default 4-4-2 formation positions on the 7x6 grid.
@@ -79,12 +92,13 @@ const baseCells = [
 
 let players = baseCells.map(s => {
   const pos = cellPos(s.p, s.w);
-  return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y}, pos: {x: pos.x, y: pos.y} };
+  return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
 });
-let ball = { x: (2.5 + 0.5) * (100/6), y: (6.5 - 3) * (100/7) };
+let ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
+const cellsLayer = document.getElementById('cells');
 const ballEl = document.getElementById('ball');
 const info = document.getElementById('info');
 
@@ -97,7 +111,35 @@ function toPct(px, py) {
   return { x: (px / r.width) * 100, y: (py / r.height) * 100 };
 }
 
+function ballCell() {
+  // Find the cell whose center is closest to the ball position.
+  let best = null, bestDist = Infinity;
+  for (let p = 0; p <= 6; p++) {
+    for (let w = 0; w <= 5; w++) {
+      const c = cellPos(p, w);
+      const d = Math.hypot(c.x - ball.x, c.y - ball.y);
+      if (d < bestDist) { bestDist = d; best = { p, w }; }
+    }
+  }
+  return best;
+}
+
 function render() {
+  // cells
+  cellsLayer.innerHTML = '';
+  for (let p = 0; p <= 6; p++) {
+    for (let w = 0; w <= 5; w++) {
+      const c = cellPos(p, w);
+      const el = document.createElement('div');
+      el.className = 'cell-label';
+      el.textContent = (p + 1) + '_' + (w + 1);
+      const px = toPx(c.x, c.y);
+      el.style.left = px.left + 'px';
+      el.style.top = px.top + 'px';
+      cellsLayer.appendChild(el);
+    }
+  }
+  // players
   playersLayer.innerHTML = '';
   players.forEach(p => {
     const el = document.createElement('div');
@@ -108,10 +150,14 @@ function render() {
     el.style.top = px.top + 'px';
     playersLayer.appendChild(el);
   });
+  // ball
   const bp = toPx(ball.x, ball.y);
   ballEl.style.left = bp.left + 'px';
   ballEl.style.top = bp.top + 'px';
-  info.textContent = 'ball: (' + ball.x.toFixed(1) + '%, ' + ball.y.toFixed(1) + '%) · players: ' + players.length;
+  const bc = ballCell();
+  info.innerHTML = '<b>Ball cell:</b> ' + (bc.p + 1) + '_' + (bc.w + 1) + '<br>'
+    + '<b>Ball pos:</b> ' + ball.x.toFixed(2) + '_' + ball.y.toFixed(2) + '<br>'
+    + '<b>Players:</b> ' + players.length;
 }
 
 function reactToBall() {
@@ -158,8 +204,8 @@ pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
-  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y}, pos: {x: pos.x, y: pos.y} }; });
-  ball = { x: (2.5 + 0.5) * (100/6), y: (6.5 - 3) * (100/7) };
+  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
+  ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
   reactToBall(); render();
 });
 document.getElementById('react').addEventListener('input', () => { reactToBall(); render(); });
