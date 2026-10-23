@@ -103,6 +103,8 @@
       <label>Pickup radius (receive boost): <input type="number" id="phys-pickup" value="0.5" step="0.05" min="0.1" max="1.5"></label>
       <div class="status" id="phys-status">Ball physics: idle</div>
     </div>
+    <div class="checks">
+      <label><input type="checkbox" id="cb-carrier" checked><span><b>Carrier</b> — the ball is owned</span></label>
       <label><input type="checkbox" id="cb-chase"><span><b>CHASE_BALL</b> — loose ball: nearest of each team runs at it</span></label>
       <label><input type="checkbox" id="cb-threat-a"><span><b>THREAT A</b> — press the carrier (ends in a tackle duel)</span></label>
       <label><input type="checkbox" id="cb-threat-b"><span><b>THREAT B</b> — press a dangerous opponent (approach only)</span></label>
@@ -751,7 +753,7 @@ function stepBallPhysics(dt) {
   }
 
   const step = ballPhysics.speed * ticks;
-  const actualStep = Math.min(step, distToTarget);
+  const actualStep = Math.min(step, distToTarget, 0.1);  // cap at 0.1 cells/frame to prevent tunneling through players
   let newRow = br.row + ballPhysics.dirR * actualStep;
   let newCol = br.col + ballPhysics.dirC * actualStep;
 
