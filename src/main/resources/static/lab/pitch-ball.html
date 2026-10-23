@@ -96,7 +96,12 @@ const POSSESSION_CONTEXT = 'WE_HAVE_BALL';
 let slots = [];          // slotDefinitions from the endpoint
 let rulesMap = {};       // "slot|ballState|context" -> targetCellKey
 let tacticName = '';
-let ball = cellToPct(2, 2);  // start on CELL_2_2 (center)
+// Geometric center of the 7x6 pitch, in internal 0-100% coords.
+// In display coordinates this is row 4.50 | col 4.00: row 4 is the middle row of
+// 7, and with 6 columns the horizontal middle falls exactly on the boundary
+// between columns 3 and 4 (no cell center is the center of an even-width grid).
+const BALL_CENTER = { x: 50, y: 50 };
+let ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
@@ -251,7 +256,7 @@ pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
-  ball = cellToPct(2, 2);
+  ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
   render();
 });
 document.getElementById('reload').addEventListener('click', loadTactic);
