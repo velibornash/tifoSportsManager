@@ -150,7 +150,15 @@ public class SecurityConfig {
                                 // behind a redirect, which is disallowed". The page itself is a shell
                                 // that holds no data, like the other shells on this list.
                                 "/sw.js",
-                                "/maintenance.html"
+                                "/maintenance.html",
+                                // The lab pitch tool page (owner, 2026-10-23). A page shell like
+                                // the others above: it holds no data, and the route is two segments
+                                // deep, so the "/*.html" wildcard cannot reach it — without this
+                                // line a click from the admin button redirects to /login.html
+                                // before a line of its JavaScript runs. Everything it displays is
+                                // read from /auth/** and /teams/** with the Bearer token, which
+                                // stay authenticated.
+                                "/lab/*.html"
                         ).permitAll()
 
                         // ── Admin only ──

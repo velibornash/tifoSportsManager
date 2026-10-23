@@ -306,6 +306,11 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
 
     async function handleTool(button) {
         const action = button?.dataset?.adminAction;
+        if (action === 'open-lab-pitch') {
+            // A page, not an API call: opens through the permitAll entry for /lab/*.html.
+            window.open('/lab/pitch-ball.html', '_blank');
+            return;
+        }
         if (action === 'export-tactics') {
             await saveDefaultTactics(button);
             return;
@@ -1682,6 +1687,26 @@ async function showJobs() {
                         <span class="fm-panel-action">Approve or reject</span>
                     </div>
                     <div id="fm-registrations"><p class="fm-subtle">Reading...</p></div>
+                </section>
+
+                <section class="fm-panel">
+                    <div class="fm-panel-head">
+                        <div>
+                            <h3>Lab</h3>
+                            <p class="fm-subtle">Standalone tools for inspecting the match engine.
+                                They open in a new tab and read their data live from the app.</p>
+                        </div>
+                        <span class="fm-panel-action">Lab</span>
+                    </div>
+                    <div class="community-tool-grid">
+                        ${toolCard({
+                            title: 'Pitch &amp; Ball',
+                            body: 'Drag the ball across the pitch and watch every player snap to the target cell the saved tactic rules give for that ball state — the same rules the Tactic Editor uses. Rows 1-7 (bottom up), columns 1-6.',
+                            action: 'open-lab-pitch',
+                            label: 'Open pitch tool',
+                            variant: ''
+                        })}
+                    </div>
                 </section>
 
                 <section class="fm-panel">
