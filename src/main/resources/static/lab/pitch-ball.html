@@ -491,25 +491,33 @@ function updateThreatA(now, all, chasers) {
   pressAInfo = '';
   if (!threatA) { pressAInfo = 'Threat A: off'; return null; }
   const c = carrierView;
-  if (!c) { pressAInfo = 'Threat A: idle (no player holding the ball)'; return null; }
-  const covered = all.some(v => v !== c && sideOf(v) === sideOf(c) && distRc(v.pos, c.pos) <= CARRIER_SPACE_RADIUS);
-  if (covered) { pressAInfo = 'Threat A: idle (carrier covered by a teammate)'; return null; }
+  const ballRc = toRowCol(ball.x, ball.y);
+  // When the Carrier flag is on but no specific player holds the ball, we
+  // assume the carrier stands on the ball (owner's rule for the lab).
+  const virtual = !c && carrier;
+  const carrierPos = c ? c.pos : ballRc;
+  if (!c && !virtual) { pressAInfo = 'Threat A: idle (check Carrier)'; return null; }
+  if (c) {
+    const covered = all.some(v => v !== c && sideOf(v) === sideOf(c) && distRc(v.pos, c.pos) <= CARRIER_SPACE_RADIUS);
+    if (covered) { pressAInfo = 'Threat A: idle (carrier covered by a teammate)'; return null; }
+  }
   let best = null, bestD = Infinity;
   all.forEach(v => {
-    if (sideOf(v) === sideOf(c) || v === c) return;   // only the other team
+    if (c && (sideOf(v) === sideOf(c) || v === c)) return;   // only the other team vs a real carrier
     if (v.slot.line === 'GK' || chasers.has(v)) return;
-    const d = distRc(v.pos, c.pos);
+    const d = distRc(v.pos, carrierPos);
     if (d <= RANGE_A && d < bestD) { bestD = d; best = v; }
   });
-  if (!best) { pressAInfo = 'Threat A: idle (no opponent within ' + RANGE_A + ' cell)'; return null; }
-  setOverride(best, { row: c.pos.row, col: c.pos.col });
-  pressAInfo = 'Threat A: ' + best.slot.slotKey + ' (' + best.side.toUpperCase() + ') presses ' +
-    c.slot.slotKey + ' — ' + bestD.toFixed(2) + 'c';
-  if (distRc(best.pos, c.pos) <= PRESS_DUEL_RADIUS && !onCooldown(best, now) && !onCooldown(c, now)) {
-    duel(best, c, now, 'tackle', { row: c.pos.row, col: c.pos.col }, all);   // a parked press ends in a tackle duel
+  if (!best) { pressAInfo = 'Threat A: idle (no opponent within ' + RANGE_A + ' cell of the carrier)'; return null; }
+  setOverride(best, { row: carrierPos.row, col: carrierPos.col });
+  pressAInfo = 'Threat A: ' + best.slot.slotKey + ' (' + best.side.toUpperCase() + ') presses the carrier — ' +
+    bestD.toFixed(2) + 'c' + (virtual ? ' (carrier assumed on the ball)' : '');
+  if (c && distRc(best.pos, c.pos) <= PRESS_DUEL_RADIUS && !onCooldown(best, now) && !onCooldown(c, now)) {
+    duel(best, c, now, 'tackle', { row: c.pos.row, col: c.pos.col }, all);
   }
   return best;
 }
+
 
 function goalSideOfBall(v, ballRc) {
   // The attacker between the ball and the goal HE attacks (own goal at row 1
