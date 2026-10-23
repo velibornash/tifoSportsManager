@@ -38,6 +38,10 @@
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
+  .phys { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #9aa7bf; }
+  .phys label { display: flex; gap: 6px; align-items: center; }
+  .phys input { width: 60px; padding: 4px; border-radius: 4px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; font-size: 12px; }
+  .phys .status { font-family: monospace; font-size: 11px; color: #e8ecf4; min-height: 14px; }
   #decideOut { width: 100%; height: 260px; margin: 8px 0 12px; padding: 8px; border-radius: 6px; border: 1px solid #3a4a6b; background: #0b1220; color: #e8ecf4; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; white-space: pre-wrap; word-wrap: break-word; overflow: auto; }
   .checks { margin-top: 14px; display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #9aa7bf; }
   .checks label { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; line-height: 1.35; }
@@ -93,8 +97,12 @@
       <button id="reload">Reload tactic</button>
       <button id="reset">Ball to center</button>
     </div>
-    <div class="checks">
-      <label><input type="checkbox" id="cb-carrier" checked><span><b>Carrier</b> — the ball is owned</span></label>
+    <div class="phys">
+      <label>Launch speed: <input type="number" id="phys-speed" value="0.75" step="0.05" min="0.1" max="3"></label>
+      <label>Speed threshold (bounce↔receive): <input type="number" id="phys-threshold" value="0.3" step="0.05" min="0.05" max="1.5"></label>
+      <label>Pickup radius (receive boost): <input type="number" id="phys-pickup" value="0.5" step="0.05" min="0.1" max="1.5"></label>
+      <div class="status" id="phys-status">Ball physics: idle</div>
+    </div>
       <label><input type="checkbox" id="cb-chase"><span><b>CHASE_BALL</b> — loose ball: nearest of each team runs at it</span></label>
       <label><input type="checkbox" id="cb-threat-a"><span><b>THREAT A</b> — press the carrier (ends in a tackle duel)</span></label>
       <label><input type="checkbox" id="cb-threat-b"><span><b>THREAT B</b> — press a dangerous opponent (approach only)</span></label>
@@ -702,77 +710,178 @@ function stepBallPhysics(dt) {
   if (!ballPhysics) return;
   const ticks = dt * TICKS_PER_SEC;
   if (ticks <= 0) return;
+  const speedThreshold = parseFloat(document.getElementById('phys-threshold').value) || 0.3;
+  const pickupR = parseFloat(document.getElementById('phys-pickup').value) || 0.5;
+  const statusEl = document.getElementById('phys-status');
   const br = toRowCol(ball.x, ball.y);
   const tr = toRowCol(ballPhysics.tx, ballPhysics.ty);
   const dr = tr.row - br.row, dc = tr.col - br.col;
   const distToTarget = Math.hypot(dr, dc);
+
   if (distToTarget < 0.1) {
     ball.x = ballPhysics.tx; ball.y = ballPhysics.ty;
     ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    statusEl.textContent = 'Ball physics: arrived at target';
     ballPhysics = null;
     return;
   }
+
   if (ballPhysics.speed === null) {
-    ballPhysics.speed = BALL_PHYS_MIN_SPEED;
-    ballPhysics.dirR = dr / distToTarget;
-    ballPhysics.dirC = dc / distToTarget;
+    const launchSpeed = parseFloat(document.getElementById('phys-speed').value) || 0.75;
+    ballPhysics.speed = launchSpeed;
+    const dist = Math.hypot(dr, dc);
+    if (dist > 0.01) {
+      ballPhysics.dirR = dr / dist;
+      ballPhysics.dirC = dc / dist;
+    } else {
+      ballPhysics.speed = 0;
+    }
   }
-  // decelerate
+
+  const speed = ballPhysics.speed;
+  const mode = speed > speedThreshold ? 'FAST (bounce)' : 'SLOW (receive)';
+
   ballPhysics.speed = Math.max(BALL_PHYS_STOP, ballPhysics.speed - BALL_PHYS_DECEL * ticks);
   if (ballPhysics.speed <= BALL_PHYS_STOP) {
     ball.x = ballPhysics.tx; ball.y = ballPhysics.ty;
     ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    statusEl.textContent = 'Ball physics: stopped';
     ballPhysics = null;
     return;
   }
+
   const step = ballPhysics.speed * ticks;
   const actualStep = Math.min(step, distToTarget);
   let newRow = br.row + ballPhysics.dirR * actualStep;
   let newCol = br.col + ballPhysics.dirC * actualStep;
-  // clamp to pitch
+
+  // Goal frame: posts (point obstacles) and crossbar (horizontal walls)
+  const posts = [[8,3.5],[8,4.5],[1,3.5],[1,4.5]];
+  for (const [pr, pc] of posts) {
+    const pd = Math.hypot(newRow - pr, newCol - pc);
+    if (pd < 0.15) {
+      const nR = (newRow - pr) / (pd || 0.01);
+      const nC = (newCol - pc) / (pd || 0.01);
+      const dot = ballPhysics.dirR * nR + ballPhysics.dirC * nC;
+      ballPhysics.dirR -= 2 * dot * nR;
+      ballPhysics.dirC -= 2 * dot * nC;
+      const nd = Math.hypot(ballPhysics.dirR, ballPhysics.dirC);
+      if (nd > 0) { ballPhysics.dirR /= nd; ballPhysics.dirC /= nd; }
+      ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
+      const fromR = br.row - pr, fromC = br.col - pc;
+      const fromD = Math.hypot(fromR, fromC);
+      if (fromD > 0.01) { newRow = pr + (fromR/fromD)*0.16; newCol = pc + (fromC/fromD)*0.16; }
+      statusEl.textContent = 'Ball physics: ' + mode + ' | bounced off post';
+      break;
+    }
+  }
+  // Crossbar bounce
+  if (newRow > 8.0 && newCol >= 3.5 && newCol <= 4.5) {
+    ballPhysics.dirR = -Math.abs(ballPhysics.dirR);
+    ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
+    newRow = 7.95;
+    statusEl.textContent = 'Ball physics: ' + mode + ' | bounced off crossbar (top)';
+  } else if (newRow < 1.0 && newCol >= 3.5 && newCol <= 4.5) {
+    ballPhysics.dirR = Math.abs(ballPhysics.dirR);
+    ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
+    newRow = 1.05;
+    statusEl.textContent = 'Ball physics: ' + mode + ' | bounced off crossbar (bottom)';
+  }
+  // Goal detection
+  if (newRow > 8.0 && newCol >= 3.5 && newCol <= 4.5) {
+    const pct = rowColToPct(8.0, newCol);
+    ball.x = pct.x; ball.y = pct.y;
+    ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    statusEl.textContent = 'Ball physics: GOAL!';
+    ballPhysics = null;
+    return;
+  }
+  if (newRow < 1.0 && newCol >= 3.5 && newCol <= 4.5) {
+    const pct = rowColToPct(1.0, newCol);
+    ball.x = pct.x; ball.y = pct.y;
+    ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    statusEl.textContent = 'Ball physics: GOAL!';
+    ballPhysics = null;
+    return;
+  }
+
+  // Clamp to pitch
   const pct = rowColToPct(newRow, newCol);
   if (pct.x < 3 || pct.x > 97 || pct.y < 3 || pct.y > 97) {
     ball.x = Math.max(3, Math.min(97, pct.x));
     ball.y = Math.max(3, Math.min(97, pct.y));
     ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    statusEl.textContent = 'Ball physics: out of bounds';
     ballPhysics = null;
     return;
   }
-  // check collision with players (ball must physically touch the player before bouncing)
-  const COLLISION_R = 0.15;   // ball (0.02) + player (~0.13) ≈ touching distance
-  const all = homeViews.concat(awayViews);
-  let collided = false;
-  for (const v of all) {
-    if (!v.pos) continue;
-    const d = distRc({ row: newRow, col: newCol }, v.pos);
-    if (d < COLLISION_R) {
-      collided = true;
-      // reflect velocity (bounce)
-      const nR = (newRow - v.pos.row) / (d || 0.01);
-      const nC = (newCol - v.pos.col) / (d || 0.01);
-      const dot = ballPhysics.dirR * nR + ballPhysics.dirC * nC;
-      ballPhysics.dirR = ballPhysics.dirR - 2 * dot * nR;
-      ballPhysics.dirC = ballPhysics.dirC - 2 * dot * nC;
-      const nd = Math.hypot(ballPhysics.dirR, ballPhysics.dirC);
-      if (nd > 0) { ballPhysics.dirR /= nd; ballPhysics.dirC /= nd; }
-      ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
-      // place ball on the player's surface (touching), not at the old position
-      const fromR = br.row - v.pos.row;
-      const fromC = br.col - v.pos.col;
-      const fromD = Math.hypot(fromR, fromC);
-      if (fromD > 0.01) {
-        newRow = v.pos.row + (fromR / fromD) * COLLISION_R;
-        newCol = v.pos.col + (fromC / fromD) * COLLISION_R;
-      }
-      break;
+
+  // SLOW mode: receive/intercept if a player is within pickup radius
+  if (ballPhysics.speed <= speedThreshold) {
+    const all = homeViews.concat(awayViews);
+    let nearest = null, nearestD = Infinity;
+    for (const v of all) {
+      if (!v.pos) continue;
+      const dd = distRc({ row: newRow, col: newCol }, v.pos);
+      if (dd < pickupR && dd < nearestD) { nearestD = dd; nearest = v; }
+    }
+    if (nearest) {
+      ball.x = rowColToPct(nearest.pos.row, nearest.pos.col).x;
+      ball.y = rowColToPct(nearest.pos.row, nearest.pos.col).y;
+      ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+      statusEl.textContent = 'Ball physics: RECEIVED by ' + nearest.slot.slotKey + ' (' + nearest.side.toUpperCase() + ') at speed ' + ballPhysics.speed.toFixed(2);
+      ballPhysics = null;
+      return;
     }
   }
+
+  // FAST mode: bounce off players
+  if (ballPhysics.speed > speedThreshold) {
+    const all = homeViews.concat(awayViews);
+    let collided = false;
+    for (const v of all) {
+      if (!v.pos) continue;
+      const d = distRc({ row: newRow, col: newCol }, v.pos);
+      if (d < 0.15) {
+        collided = true;
+        const nR = (newRow - v.pos.row) / (d || 0.01);
+        const nC = (newCol - v.pos.col) / (d || 0.01);
+        const dot = ballPhysics.dirR * nR + ballPhysics.dirC * nC;
+        ballPhysics.dirR -= 2 * dot * nR;
+        ballPhysics.dirC -= 2 * dot * nC;
+        const nd = Math.hypot(ballPhysics.dirR, ballPhysics.dirC);
+        if (nd > 0) { ballPhysics.dirR /= nd; ballPhysics.dirC /= nd; }
+        ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
+        const fromR = br.row - v.pos.row;
+        const fromC = br.col - v.pos.col;
+        const fromD = Math.hypot(fromR, fromC);
+        if (fromD > 0.01) {
+          newRow = v.pos.row + (fromR / fromD) * 0.15;
+          newCol = v.pos.col + (fromC / fromD) * 0.15;
+        }
+        statusEl.textContent = 'Ball physics: ' + mode + ' | bounced off ' + v.slot.slotKey + ' (' + v.side.toUpperCase() + ')';
+        break;
+      }
+    }
+    if (collided) {
+      const pct2 = rowColToPct(newRow, newCol);
+      ball.x = Math.max(3, Math.min(97, pct2.x));
+      ball.y = Math.max(3, Math.min(97, pct2.y));
+      ballEl.style.left = ball.x + '%';
+      ballEl.style.top = ball.y + '%';
+      return;
+    }
+  }
+
+  // No collision: move ball
   const pct2 = rowColToPct(newRow, newCol);
   ball.x = Math.max(3, Math.min(97, pct2.x));
   ball.y = Math.max(3, Math.min(97, pct2.y));
   ballEl.style.left = ball.x + '%';
   ballEl.style.top = ball.y + '%';
+  statusEl.textContent = 'Ball physics: ' + mode + ' | speed ' + ballPhysics.speed.toFixed(2);
 }
+
 
 // ===== Collision: circles touch but never overlap =============================
 // The same hard limit the ball has for the pitch lines, applied player to
