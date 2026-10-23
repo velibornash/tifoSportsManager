@@ -150,6 +150,9 @@ public class CleanDecisionEngine {
      * at any moment of any match, and a thirty-yard attempt in traffic never is.
      */
     public static final double SHOT_CHANCE_FLOOR = 0.50; // public: MatchEngineVersion fingerprints it
+    // Legacy alias kept so older MatchEngineVersion snapshots (which still
+    // reference the gate name) keep compiling. Value mirrors the floor.
+    public static final double SHOT_FREQUENCY_GATE = SHOT_CHANCE_FLOOR;
 
     /**
      * How close two options have to be before the carrier's judgement is consulted, in points on
