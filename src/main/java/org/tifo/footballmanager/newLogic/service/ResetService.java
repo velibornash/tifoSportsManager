@@ -424,8 +424,20 @@ public class ResetService {
             if (dataSource instanceof com.zaxxer.hikari.HikariDataSource hds) {
                 com.zaxxer.hikari.HikariPoolMXBean mx = hds.getHikariPoolMXBean();
                 if (mx != null) {
-                    mx.hardEvictConnections();
-                    log.warn("Drained HikariCP connection pool before reset.");
+                    // Method name differs across HikariCP versions; try both.
+                    boolean done = false;
+                    for (String methodName : new String[]{"hardEvictConnections", "softEvictConnections"}) {
+                        try {
+                            mx.getClass().getMethod(methodName).invoke(mx);
+                            log.warn("Drained HikariCP connection pool before reset ({}).", methodName);
+                            done = true;
+                            break;
+                        } catch (NoSuchMethodException ignored) {
+                        }
+                    }
+                    if (!done) {
+                        log.debug("No evict method available on HikariPoolMXBean.");
+                    }
                 }
             }
         } catch (Exception e) {
@@ -436,8 +448,8 @@ public class ResetService {
     private boolean isDeadlock(Throwable e) {
         Throwable t = e;
         while (t != null) {
-            if (t instanceof org.postgresql.util.PSQLException psql) {
-                String sqlState = psql.getSQLState();
+            if (t instanceof java.sql.SQLException sqle) {
+                String sqlState = sqle.getSQLState();
                 if ("40P01".equals(sqlState) || "40001".equals(sqlState)) {
                     return true;
                 }
