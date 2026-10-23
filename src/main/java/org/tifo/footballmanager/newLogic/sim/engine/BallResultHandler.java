@@ -152,7 +152,7 @@ public class BallResultHandler {
                                 if (pp.isUnavailable() || pp.isLocked()) continue;
                                 if ("GK".equals(pp.getRole())) continue;
                                 double d = org.tifo.footballmanager.newLogic.sim.util.SimUtils.distance(pp.getPosition(), receiver.getPosition());
-                                if (d > 2.0) continue; // must be in the box / reachable during ball flight
+                                if (d > 0.5) continue; // only a defender actually next to the receiver contests
                                 double aerPower = pp.heightSkill() * 0.6 + pp.getSkills().defender() * 0.4;
                                 if (aerPower > bestPower) { bestPower = aerPower; def = pp; }
                             }
