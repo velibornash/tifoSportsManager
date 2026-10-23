@@ -292,9 +292,17 @@ public class BallPhysicsEngine implements BallEngine {
         //    block/save logic applies, with a boosted receive radius.
         BallStepResult contact;
         if (spd > BALL_BOUNCE_SPEED_THRESHOLD) {
+            // Fast ball: billiard bounce off OUTFIELD players only. Goalkeepers
+            // are handled by the normal save logic (probability-based) — a shot
+            // at the GK can be saved or conceded as a goal, not bounced.
             contact = fastPlayerBounce(state, prev, curr, spd, ball);
+            if (contact == null) {
+                // No outfield contact — check GK save / intercept (existing logic).
+                contact = playerContact(state, prev, curr, spd, false);
+            }
         } else {
-            contact = playerContact(state, prev, curr, spd, true); // boosted receive
+            // Slow ball: normal football receive/intercept/block/save (boosted receive).
+            contact = playerContact(state, prev, curr, spd, true);
         }
         if (contact != null) return contact;
 
@@ -470,6 +478,19 @@ public class BallPhysicsEngine implements BallEngine {
         for (Player p : state.getPlayers()) {
             if (p.isUnavailable()) continue;
             if (p == state.getLastTouchPlayer()) continue;
+            // GK in save mode: attempt save. If saved, bounce (parry). If not, skip (ball sails by -> goal).
+            if (p.isGoalkeeper() && isTowardOwnGoal(state, p)) {
+                double gd = goalkeeperEngine.distanceToSegment(p.getPosition(), prev, curr);
+                double gt = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+                if (gt < bestT && goalkeeperEngine.trySave(p, gd, spd, state.getBall().getHeight())
+                        && onTrajectoryForGoal(state, p, prev, curr)) {
+                    // Save succeeded -> parry: treat as a bounce target
+                    bestT = gt;
+                    hit = p;
+                    // mark as GK parry (handled after the loop)
+                }
+                continue;
+            }
             double d = SimUtils.pointSegmentDistance(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
             if (d <= DEFLECT_R) {
                 double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
@@ -478,6 +499,8 @@ public class BallPhysicsEngine implements BallEngine {
         }
         if (hit == null) return null; // no contact — ball sails by
 
+        // Determine if this is a GK parry
+        boolean isGkParry = hit.isGoalkeeper();
         Position playerPos = hit.getPosition();
         // Normal from player to ball at contact point
         double cx = prev.getRow() + (curr.getRow() - prev.getRow()) * bestT;
@@ -504,6 +527,9 @@ public class BallPhysicsEngine implements BallEngine {
         ball.setAirborne(false);
         ball.setHeight(0.0);
 
+        if (hit.isGoalkeeper()) {
+            return BallStepResult.gkParry(hit.getLabel());
+        }
         return BallStepResult.flight(); // ball keeps moving after bounce
     }
 

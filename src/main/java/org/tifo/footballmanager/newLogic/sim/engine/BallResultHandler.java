@@ -103,7 +103,7 @@ public class BallResultHandler {
      */
     private static boolean clearsPendingShot(BallStepResult.Type type) {
         return switch (type) {
-            case RECEIVE, INTERCEPT, DEFLECT, LOOSE_PICKUP, STOPPED,
+            case RECEIVE, INTERCEPT, DEFLECT, GK_PARRY, LOOSE_PICKUP, STOPPED,
                  OOB_RESTART, OOB_CANCEL -> true;
             default -> false;
         };
@@ -273,6 +273,16 @@ public class BallResultHandler {
                             recorder.appendEvent(state.getMatchTicks(), "BLOCK", eventMsg, state);
                             state.clearPassContext();
                         }
+                    }
+                    case GK_PARRY -> {
+                        state.setOffsideFlaggedReceiver(null);
+                        eventMsg = "GK_PARRY " + res.getDetail() + " parried a shot"
+                                + " | ball" + p(state.getBall().getPosition());
+                        log("ORC", eventMsg);
+                        recorder.appendEvent(state.getMatchTicks(), "GK_PARRY", eventMsg, state);
+                        state.clearPassContext();
+                        // GK gets credit for the save (parry counts as a save)
+                        stats.onSave(resolveTeamByLabel(res.getDetail()));
                     }
                     case DEFLECT -> {
                         state.setOffsideFlaggedReceiver(null);

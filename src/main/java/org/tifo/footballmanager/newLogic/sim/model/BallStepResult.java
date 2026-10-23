@@ -9,6 +9,7 @@ public class BallStepResult {
         RECEIVE,        // pending receiver got it (carrier set)
         INTERCEPT,      // opponent intercepted (carrier set)
         SAVE,           // goalkeeper saved a shot (carrier set to GK)
+        GK_PARRY,       // goalkeeper parried a shot (ball bounces, stays in play, GK gets save stat)
         BLOCK,          // fast ball hit opponent -> deflect, no carrier
         DEFLECT,        // hit any body -> deflect
         POST_HIT,       // hit post -> deflect
@@ -42,6 +43,7 @@ public class BallStepResult {
     public static BallStepResult receive(String player) { return new BallStepResult(Type.RECEIVE, player, null, null); }
     public static BallStepResult intercept(String player) { return new BallStepResult(Type.INTERCEPT, player, null, null); }
     public static BallStepResult save(String player) { return new BallStepResult(Type.SAVE, player, null, null); }
+    public static BallStepResult gkParry(String player) { return new BallStepResult(Type.GK_PARRY, player, null, null); }
     public static BallStepResult block(String player) { return new BallStepResult(Type.BLOCK, player, null, null); }
     public static BallStepResult deflect(String player) { return new BallStepResult(Type.DEFLECT, player, null, null); }
     public static BallStepResult postHit() { return new BallStepResult(Type.POST_HIT, "post", null, null); }
