@@ -75,26 +75,28 @@ function cellLabel(progress, width) {
   return (progress + 1) + '_' + (width + 1);
 }
 
-// Default 4-4-2 formation positions on the 7x6 grid.
+// Default 4-4-2 formation — copied from the app's source of truth:
+// src/main/java/org/tifo/footballmanager/newLogic/service/FormationSlotCatalog.java
+// CELL_{progress}_{width}; row = progress+1 (bottom-up), col = width+1.
 const baseCells = [
-  {id:1, role:'GK', label:'GK', p:0, w:2},
-  {id:2, role:'DEF', label:'DL', p:1, w:0},
-  {id:3, role:'DEF', label:'DCL', p:1, w:2},
-  {id:4, role:'DEF', label:'DCR', p:1, w:3},
-  {id:5, role:'DEF', label:'DR', p:1, w:5},
-  {id:6, role:'MID', label:'ML', p:3, w:0},
-  {id:7, role:'MID', label:'MCL', p:3, w:2},
-  {id:8, role:'MID', label:'MCR', p:3, w:3},
-  {id:9, role:'MID', label:'MR', p:3, w:5},
-  {id:10, role:'ATT', label:'STL', p:5, w:2},
-  {id:11, role:'ATT', label:'STR', p:5, w:3},
+  {role:'GK', label:'GK',  p:0, w:2},  // CELL_0_2
+  {role:'DEF', label:'DL',  p:1, w:0},  // CELL_1_0
+  {role:'DEF', label:'DCL', p:1, w:1},  // CELL_1_1
+  {role:'DEF', label:'DCR', p:1, w:3},  // CELL_1_3
+  {role:'DEF', label:'DR',  p:1, w:4},  // CELL_1_4
+  {role:'MID', label:'ML',  p:2, w:0},  // CELL_2_0
+  {role:'MID', label:'CML', p:2, w:1},  // CELL_2_1
+  {role:'MID', label:'CMR', p:2, w:3},  // CELL_2_3
+  {role:'MID', label:'MR',  p:2, w:4},  // CELL_2_4
+  {role:'ATT', label:'STL', p:4, w:1},  // CELL_4_1
+  {role:'ATT', label:'STR', p:4, w:3},  // CELL_4_3
 ];
 
 let players = baseCells.map(s => {
   const pos = cellPos(s.p, s.w);
-  return { id: s.id, role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
+  return { role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
 });
-let ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
+let ball = { x: cellPos(2, 2).x, y: cellPos(2, 2).y };  // starts on CELL_2_2
 
 const pitch = document.getElementById('pitch');
 const playersLayer = document.getElementById('players');
@@ -155,8 +157,8 @@ function render() {
   ballEl.style.left = bp.left + 'px';
   ballEl.style.top = bp.top + 'px';
   const bcRow = cellString(ball.x, ball.y);
-  const stl = players.find(pp => pp.id === 10);
-  const str = players.find(pp => pp.id === 11);
+  const stl = players.find(pp => pp.label === 'STL');
+  const str = players.find(pp => pp.label === 'STR');
   const ballC = toCellCoord(ball.x, ball.y);
   const stlC = stl ? toCellCoord(stl.pos.x, stl.pos.y) : null;
   const strC = str ? toCellCoord(str.pos.x, str.pos.y) : null;
@@ -213,8 +215,8 @@ pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
-  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { id: s.id, role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
-  ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
+  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
+  ball = { x: cellPos(2, 2).x, y: cellPos(2, 2).y };
   reactToBall(); render();
 });
 document.getElementById('react').addEventListener('input', () => { reactToBall(); render(); });
