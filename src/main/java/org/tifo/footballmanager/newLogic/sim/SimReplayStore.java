@@ -62,8 +62,8 @@ public class SimReplayStore {
 
     public SimReplayStore(
             @Value("${app.replay-dir:./replay-data}") String dir,
-            @Value("${app.replay.max-entries:200}") int maxEntries,
-            @Value("${app.replay.max-age-days:14}") int maxAgeDays) {
+            @Value("${app.replay.max-entries:100000}") int maxEntries,
+            @Value("${app.replay.max-age-days:3650}") int maxAgeDays) {
         this.dir = Paths.get(dir);
         this.maxEntries = Math.max(1, maxEntries);
         this.maxAge = Duration.ofDays(Math.max(1, maxAgeDays));
