@@ -211,7 +211,7 @@ public class BallResultHandler {
                         eventMsg = "RECEIVE " + receiver.getLabel() + "(" + receiver.getRole() + ")"
                                 + " at " + p(receiver.getPosition()) + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
-                        recorder.appendEvent(state.getMatchTicks(), "RECEIVE", eventMsg, state);
+                        recorder.appendEvent(state.getMatchTicks(), "RECEIVE", eventMsg, receiver, null);
                         String completedPasserId = state.completePass(receiver);
                         state.incrementPassesCompleted();
                         stats.onPassCompleted(receiver.getTeam(), receiver.getId(), completedPasserId);
