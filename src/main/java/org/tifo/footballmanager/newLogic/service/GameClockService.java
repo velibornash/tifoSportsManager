@@ -659,8 +659,14 @@ public class GameClockService {
     @Transactional
     public Map<String, Object> runDueNow() {
         GamePosition current = position();
+        // An explicit admin retry should not have to wait for a failed job's backoff or for a stale
+        // PENDING claim from a crashed run to time out. Clear those claims first, then run due.
+        int cleared = jobRunner.clearStuckJobs(current.season(), current.week(), current.day());
         Map<String, Object> result = jobRunner.runDue(current.season(), current.week(), current.day(),
                 current.hour(), gameTime().atZone(GameTimeline.GAME_ZONE).getMinute());
+        if (cleared > 0) {
+            result.put("clearedStuckJobs", cleared);
+        }
         return result;
     }
 }

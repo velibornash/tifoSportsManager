@@ -97,6 +97,21 @@ public class JobRunner {
      *         and what failed. Returning the detail rather than a count is what makes an advancing
      *         clock diagnosable instead of opaque.
      */
+    /**
+     * Clears stuck job claims (PENDING from a crashed run, or FAILED) for the given day, so an
+     * explicit admin retry ("Run due jobs now") can re-run them without waiting for the backoff.
+     * Called only from the admin endpoint, never from the scheduled sync.
+     */
+    public int clearStuckJobs(int seasonYear, int weekNumber, int dayNumber) {
+        int removed = runs.deleteStuckForDay(seasonYear, weekNumber, dayNumber,
+                java.util.List.of(JobRun.Status.PENDING, JobRun.Status.FAILED));
+        if (removed > 0) {
+            log.info("Cleared {} stuck job claim(s) for season {} week {} day {}.",
+                    removed, seasonYear, weekNumber, dayNumber);
+        }
+        return removed;
+    }
+
     public Map<String, Object> runDue(int seasonYear, int weekNumber, int dayNumber, int hour, int minute) {
         List<Map<String, Object>> outcomes = new ArrayList<>();
         String dayKey = seasonYear + "/" + weekNumber + "/" + dayNumber;
