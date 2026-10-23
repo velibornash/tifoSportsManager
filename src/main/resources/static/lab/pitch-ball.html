@@ -23,7 +23,7 @@
   .line.top-six { top: 0; border-top: none; }
   .line.bottom-six { bottom: 0; border-bottom: none; }
   .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
-  .player { position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; }
+  .player { position: absolute; width: 40px; height: 40px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; letter-spacing: -0.5px; }
   .player.gk { background: #f5a623; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
@@ -167,10 +167,11 @@ function render() {
   const strC = str ? toCellCoord(str.pos.x, str.pos.y) : null;
   const stlCell = stl ? (Math.round(6.5 - stl.pos.y/100*7)) + '_' + (Math.round(stl.pos.x/100*6 - 0.5) + 1) : '-';
   const strCell = str ? (Math.round(6.5 - str.pos.y/100*7)) + '_' + (Math.round(str.pos.x/100*6 - 0.5) + 1) : '-';
-  info.innerHTML = '<b>Ball cell:</b> ' + (bc.p + 1) + '_' + (bc.w + 1) + '<br>'
-    + '<b>Ball pos:</b> ' + ballC.x.toFixed(2) + '_' + ballC.y.toFixed(2) + '<br>'
-    + '<b>STL pos:</b> ' + (stlC ? stlC.x.toFixed(2) + '_' + stlC.y.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
-    + '<b>STR pos:</b> ' + (strC ? strC.x.toFixed(2) + '_' + strC.y.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
+  const ballCellStr = (bc.p + 1) + '_' + (bc.w + 1);
+  info.innerHTML = '<b>Ball cell:</b> ' + ballCellStr + '<br>'
+    + '<b>Ball pos:</b> ' + ballC.y.toFixed(2) + '_' + ballC.x.toFixed(2) + '<br>'
+    + '<b>STL pos:</b> ' + (stlC ? stlC.y.toFixed(2) + '_' + stlC.x.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
+    + '<b>STR pos:</b> ' + (strC ? strC.y.toFixed(2) + '_' + strC.x.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
     + '<b>Players:</b> ' + players.length;
 }
 
