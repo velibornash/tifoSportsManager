@@ -1350,17 +1350,20 @@ class MatchViewer {
     const dt = (now - this._lastFrame) / 1000;
     this._lastFrame = now;
 
-    // If a BLOCKING overlay is active, pause playback (kickoff/goal/HT/FT/offside).
-    // Non-blocking overlays (VAR) keep the match flowing.
-    if (this.overlays.isBlocking) {
+    // Auto-dismiss any active overlay whose timer has elapsed (blocking or not).
+    // Goal overlays are non-blocking (playback continues underneath) but still
+    // need to be dismissed after _resumeTime — otherwise they stay on screen
+    // until the user clicks.
+    if (this.overlays._active) {
       this.overlays.checkAutoDismiss();
-      if (this.overlays.isBlocking) {
-        // Still active — keep rendering but don't advance ticks
-        this._renderFrame();
-        this._rafId = requestAnimationFrame(() => this._loop());
-        return;
-      }
-      // Overlay just dismissed — resume
+    }
+
+    // If a BLOCKING overlay is active, pause playback (kickoff/HT/FT/offside).
+    if (this.overlays.isBlocking) {
+      // Still active — keep rendering but don't advance ticks
+      this._renderFrame();
+      this._rafId = requestAnimationFrame(() => this._loop());
+      return;
     }
 
     // 1.875 ticks/sec at 1x (half of old 0.25x rate for realistic pacing)
