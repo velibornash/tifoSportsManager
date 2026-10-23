@@ -59,6 +59,9 @@ public class AdminDatabaseAsyncService {
     private final org.tifo.footballmanager.newLogic.service.TrainingFacilityService trainingFacilities;
     private final org.tifo.footballmanager.newLogic.service.SchemaSynchronizer schemaSynchronizer;
     private final org.tifo.footballmanager.newLogic.jobs.impl.InternationalClubCupJob internationalClubCupJob;
+    private final org.tifo.footballmanager.newLogic.service.GameClockService gameClockService;
+    private final org.tifo.footballmanager.newLogic.service.MatchdayScheduler matchdayScheduler;
+    private final org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository matchFixtureRepository;
 
     /**
      * The session a job runs on. Held for the length of the job and closed after it — see
@@ -290,6 +293,7 @@ public class AdminDatabaseAsyncService {
             }
             case "seed-tactics" -> seedDefaultTacticForEveryClub();
             case "seed-facilities" -> seedTrainingFacilities();
+            case "repair-stranded" -> repairStrandedMatchdays();
             default -> throw new IllegalArgumentException("Unsupported database job action: " + action);
         }
     }
@@ -381,6 +385,33 @@ public class AdminDatabaseAsyncService {
         log.info("Training facilities seeded for {} club(s).", seeded);
     }
 
+    /**
+     * Prepares and publishes every stranded matchday from past days.
+     *
+     * <p>A matchday that crashed mid-prepare leaves fixtures with {@code preparedMatchId = null} on a day
+     * that has already gone by, so the normal schedule will never pick them up. This runs prepare then
+     * publish for each past day that still has unplayed fixtures, so the stranded ones get played.
+     */
+    private void repairStrandedMatchdays() {
+        org.tifo.footballmanager.newLogic.service.GameClockService.GamePosition pos = gameClockService.position();
+        int season = pos.season();
+        int week = pos.week();
+        int currentDay = pos.day();
+        for (int d = 1; d < currentDay; d++) {
+            java.util.List<org.tifo.footballmanager.newLogic.model.MatchFixture> unplayed =
+                    matchFixtureRepository.findUnplayedOnDay(season, week, d);
+            if (unplayed.isEmpty()) continue;
+            java.util.List<Long> ids = unplayed.stream()
+                    .map(org.tifo.footballmanager.newLogic.model.MatchFixture::getId).toList();
+            org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome prep =
+                    matchdayScheduler.prepareUnplayedOn(season, week, d, ids);
+            log.info("Repair prepare day {}: {} computed, {} failed.", d, prep.prepared(), prep.failed());
+            org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome pub =
+                    matchdayScheduler.publishUnplayedOn(season, week, d, ids);
+            log.info("Repair publish day {}: {} released, {} failed.", d, pub.prepared(), pub.failed());
+        }
+    }
+
     private void seedDefaultTacticForEveryClub() {
         // The owner-designated world default, not whichever row the database ordered first.
         //
@@ -430,6 +461,7 @@ public class AdminDatabaseAsyncService {
             case "initialize" -> 4;
             case "seed-other-nations" -> 2;
             case "seed-tactics" -> 2;
+            case "repair-stranded" -> 2;
             default -> 1;
         };
     }
@@ -443,6 +475,7 @@ public class AdminDatabaseAsyncService {
             case "initialize" -> "Database initialization in progress.";
             case "seed-other-nations" -> "Seeding the simulated nations in progress.";
             case "seed-tactics" -> "Giving every club a default tactic in progress.";
+            case "repair-stranded" -> "Preparing and publishing stranded matchdays in progress.";
             default -> "Database job in progress.";
         };
     }

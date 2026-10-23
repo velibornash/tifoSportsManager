@@ -764,6 +764,10 @@ async function seedDefaultTactics() {
     await startAdminDatabaseJob('/admin/seed-tactics', 'Giving every club a default tactic in progress...');
 }
 
+async function repairStrandedMatchdays() {
+    await startAdminDatabaseJob('/admin/repair-stranded', 'Preparing and publishing stranded matchdays in progress...');
+}
+
 async function initializeDatabase() {
     const confirmInit = confirm('Initialize database now? This may take a few seconds.');
     if (!confirmInit) return;
@@ -1033,5 +1037,6 @@ window.resetDatabase = resetDatabase;
 window.initializeDatabase = initializeDatabase;
 window.seedOtherNations = seedOtherNations;
 window.seedDefaultTactics = seedDefaultTactics;
+window.repairStrandedMatchdays = repairStrandedMatchdays;
 window.loadRecentMatches = loadRecentMatches;
 window.loadHomeTeamStats = loadHomeTeamStats;

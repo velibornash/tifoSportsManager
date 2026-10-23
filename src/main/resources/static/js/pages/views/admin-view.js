@@ -503,6 +503,19 @@ export function createAdminView({ getTeamId, getTeamName, getUsername }) {
             }
             return;
         }
+        if (action === 'repair-stranded') {
+            const confirmRepair = window.confirm(
+                'Repair stranded matchdays?\n\n' +
+                'Prepares and publishes any matchday from past days that crashed or was skipped, so stranded ' +
+                'fixtures get played. Safe to run twice.');
+            if (!confirmRepair) return;
+            if (typeof window.repairStrandedMatchdays === 'function') {
+                await window.repairStrandedMatchdays();
+            } else {
+                window.alert('This admin action is not available right now.');
+            }
+            return;
+        }
         if (action === 'run-job-offers') {
             // Not runRepair(): that ends by re-reading world integrity, which has nothing to do with job
             // offers, and the count is the whole answer here.
@@ -1535,6 +1548,13 @@ async function showJobs() {
                             body: 'Copies the club that already has tactics into every club that has none, so all of them have something to pick from. Clubs with tactics are left alone, so it is safe to run twice.',
                             action: 'seed-tactics',
                             label: 'Give every club a default tactic',
+                            variant: ''
+                        })}
+                        ${toolCard({
+                            title: 'Repair stranded matchdays',
+                            body: 'Prepares and publishes any matchday from past days that crashed or was skipped, so stranded fixtures get played. Safe to run twice.',
+                            action: 'repair-stranded',
+                            label: 'Repair stranded matchdays',
                             variant: ''
                         })}
                         ${toolCard({
