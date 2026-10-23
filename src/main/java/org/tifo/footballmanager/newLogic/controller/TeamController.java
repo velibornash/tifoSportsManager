@@ -928,7 +928,7 @@ public class TeamController {
     }
 
     private int[] parseCell(String cell) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("CELL_(\\\\d+)_(\\\\d+)").matcher(cell == null ? "" : cell);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("CELL_(\\d+)_(\\d+)").matcher(cell == null ? "" : cell);
         if (m.find()) return new int[] { Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)) };
         return new int[] { 2, 2 };
     }
