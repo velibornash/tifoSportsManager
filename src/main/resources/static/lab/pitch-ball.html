@@ -23,7 +23,7 @@
   .line.top-six { top: 0; border-top: none; }
   .line.bottom-six { bottom: 0; border-bottom: none; }
   .cell-label { position: absolute; transform: translate(-50%, -50%); font-size: 9px; color: rgba(255,255,255,0.35); font-family: monospace; pointer-events: none; z-index: 1; }
-  .player { position: absolute; width: 28px; height: 28px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; }
+  .player { position: absolute; width: 34px; height: 34px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.15s linear, top 0.15s linear; pointer-events: none; z-index: 2; }
   .player.gk { background: #f5a623; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
@@ -156,9 +156,13 @@ function render() {
   ballEl.style.top = bp.top + 'px';
   const bc = ballCell();
   const stl = players.find(pp => pp.id === 10);
+  const str = players.find(pp => pp.id === 11);
+  const stlCell = stl ? (Math.round(6.5 - stl.pos.y/100*7) + 1) + '_' + (Math.round(stl.pos.x/100*6 - 0.5) + 1) : '-';
+  const strCell = str ? (Math.round(6.5 - str.pos.y/100*7) + 1) + '_' + (Math.round(str.pos.x/100*6 - 0.5) + 1) : '-';
   info.innerHTML = '<b>Ball cell:</b> ' + (bc.p + 1) + '_' + (bc.w + 1) + '<br>'
     + '<b>Ball pos:</b> ' + ball.x.toFixed(2) + '_' + ball.y.toFixed(2) + '<br>'
-    + '<b>STL pos:</b> ' + (stl ? stl.pos.x.toFixed(2) + '_' + stl.pos.y.toFixed(2) : '-') + '<br>'
+    + '<b>STL pos:</b> ' + (stl ? stl.pos.x.toFixed(2) + '_' + stl.pos.y.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
+    + '<b>STR pos:</b> ' + (str ? str.pos.x.toFixed(2) + '_' + str.pos.y.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
     + '<b>Players:</b> ' + players.length;
 }
 
