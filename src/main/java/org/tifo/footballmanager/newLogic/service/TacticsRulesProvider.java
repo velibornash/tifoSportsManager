@@ -53,6 +53,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class TacticsRulesProvider {
 
+    /** Holds a parsed tactic together with the raw content it was parsed from, for dedup. */
+    private static final class ContentEntry {
+        final String formation;
+        final String rulesJson;
+        final TacticsRules rules;
+        ContentEntry(String formation, String rulesJson, TacticsRules rules) {
+            this.formation = formation;
+            this.rulesJson = rulesJson;
+            this.rules = rules;
+        }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(TacticsRulesProvider.class);
 
     /**
@@ -158,6 +170,20 @@ public class TacticsRulesProvider {
                 }
             });
 
+    /**
+     * Content-based dedup cache.
+     *
+     * <p>The per-tactic-id LRU above is keyed by tactic id, so 14,880 clubs that all carry the
+     * <em>same</em> exported default tactic (same rulesJson) occupy 14,880 slots and thrash the
+     * 512-entry bound — every matchday re-parses ~14k JSON blobs. This cache is keyed by the
+     * content (formation + rulesJson hash), so identical tactics parse once and are reused by
+     * every club that carries them. It is not bounded: identical content collapses to one entry,
+     * and the number of <em>distinct</em> tactics is small (one world default + a handful of
+     * custom ones).
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Integer, ContentEntry> contentCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public TacticsRulesProvider(TeamTacticsProfileRepository profiles, TeamRepository teams,
                                 org.tifo.footballmanager.newLogic.repository.TacticRepository tactics) {
         this.profiles = profiles;
@@ -260,6 +286,19 @@ public class TacticsRulesProvider {
      */
     private TacticsRules rulesFor(Long teamId, String formation, String rulesJson, String sourceLabel) {
         String formationLabel = formation == null ? null : formation.trim();
+        String normalizedRules = rulesJson == null ? "" : rulesJson;
+
+        // Content-based dedup: identical rules (formation + rulesJson) parse once and are shared by
+        // every club that carries them. This is what stops a 14,880-club matchday from re-parsing
+        // the same JSON 14,880 times.
+        int contentKey = (formationLabel == null ? 0 : formationLabel.hashCode()) * 31
+                + normalizedRules.hashCode();
+        ContentEntry cached = contentCache.get(contentKey);
+        if (cached != null && java.util.Objects.equals(cached.formation, formationLabel)
+                && cached.rulesJson.equals(normalizedRules)) {
+            return cached.rules;
+        }
+
         TacticsRules rules = TacticsRules.fromProfileJson(rulesJson, formationLabel, sourceLabel);
         if (rules == null) {
             log.warn("{} has a tactical profile for {} whose rules could not be read; the bundled "
@@ -283,6 +322,9 @@ public class TacticsRulesProvider {
                     teamName(teamId, formationLabel), formationLabel, unknown);
             return fallback;
         }
+
+        // Cache the successfully parsed rules for every club that shares this content.
+        contentCache.put(contentKey, new ContentEntry(formationLabel, normalizedRules, rules));
 
         log.info("{} plays its own {} tactics: {} rules from the tactical editor.",
                 teamName(teamId, formationLabel), formationLabel, rules.getRuleCount());
@@ -348,6 +390,7 @@ public class TacticsRulesProvider {
         legacyCache.clear();
         defaultTacticByTeam.clear();
         tacticOwner.clear();
+        contentCache.clear();
     }
 
     /**
