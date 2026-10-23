@@ -34,16 +34,9 @@ public class MovementEngine {
     public static final double MAX_FATIGUE_SPEED_LOSS = 0.30; // max 30% speed loss from fatigue
 
     /**
-     * Lateral speed multiplier for goalkeepers. A keeper is not a slow
-     * outfield player with a high pace value — his job is short, fast,
-     * side-to-side movement in a set position, which the generic pace cap
-     * (pace 11 -> 0.41 cells/tick) could not express.
-     */
-    /**
      * Speed burst for a player actively chasing a loose ball, applied on top of the pace cap.
      *
-     * <p>Never applied to a goalkeeper: his GOALKEEPER_MOVEMENT_FACTOR is already 1.9 and stacking
-     * the two produced a 2.24x keeper who vacuumed up loose balls and broke the sides apart.
+     * <p>Never applied to a goalkeeper.
      *
      * <p>Held to 1.18 deliberately. Fast enough that a defender can close on a carrier of similar
      * pace, small enough that pace still decides most footraces, and scaled by fatigue so a tiring
@@ -51,7 +44,13 @@ public class MovementEngine {
      */
     public static final double CHASE_SPRINT_MULTIPLIER = 1.18;
 
-    public static final double GOALKEEPER_MOVEMENT_FACTOR = 1.9;
+    /**
+     * Goalkeeper speed multiplier. Owner decision 2026-10-23: set to 1.0 — a
+     * keeper moves pace-capped exactly like everyone else. The old 1.9 lateral
+     * boost is gone; the constant stays so the knob remains visible (and
+     * greppable) rather than the multiplication being deleted outright.
+     */
+    public static final double GOALKEEPER_MOVEMENT_FACTOR = 1.0;
 
     // NOTE: no chase/sprint/press multiplier. User rule (2026-09-14): players
     // move pace-capped at ALL times — the ONLY exceptions are the carrier
@@ -117,10 +116,7 @@ public class MovementEngine {
             double pace = state.getRoundPaceSkill(p);
             double playerSpeed = playerSpeedFor(pace) * FatigueSystem.speedFactor(p);
 
-            // Goalkeepers shuffle far quicker than outfield players. A keeper is
-            // paced by his ability to move laterally in a set position, not by
-            // his outfield pace, so the generic pace cap left him unable to
-            // track a ball served into the far corner — he was always late.
+            // Goalkeeper speed knob — currently 1.0, i.e. no boost (owner 2026-10-23).
             if (p.isGoalkeeper()) {
                 playerSpeed *= GOALKEEPER_MOVEMENT_FACTOR;
             }
