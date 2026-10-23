@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pitch &amp; Ball — drag the ball, watch the team move</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, sans-serif; background: #0b1220; color: #e8ecf4; }
+  .wrap { max-width: 900px; margin: 20px auto; padding: 0 16px; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  p.hint { font-size: 13px; color: #9aa7bf; margin: 0 0 14px; }
+  .pitch-wrap { position: relative; width: 100%; aspect-ratio: 8 / 5; background: #1f6b3a; border: 2px solid #fff; border-radius: 8px; overflow: hidden; cursor: crosshair; }
+  .pitch { position: absolute; inset: 0; }
+  .line { position: absolute; background: rgba(255,255,255,0.6); }
+  .half { left: 50%; top: 0; width: 1px; height: 100%; }
+  .circle { left: 50%; top: 50%; width: 12%; height: 19.2%; border: 1px solid rgba(255,255,255,0.6); border-radius: 50%; transform: translate(-50%,-50%); background: transparent; }
+  .box-top, .box-bottom { position: absolute; left: 50%; width: 16%; height: 32%; border: 1px solid rgba(255,255,255,0.6); transform: translateX(-50%); background: transparent; }
+  .box-top { top: 0; border-top: none; }
+  .box-bottom { bottom: 0; border-bottom: none; }
+  .player { position: absolute; width: 26px; height: 26px; border-radius: 50%; background: #4a9eff; border: 2px solid #fff; transform: translate(-50%,-50%); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); transition: left 0.12s linear, top 0.12s linear; pointer-events: none; z-index: 2; }
+  .player.gk { background: #f5a623; }
+  .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  .ball:active { cursor: grabbing; }
+  .controls { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
+  .controls button:hover { background: #2a3550; }
+  .controls label { font-size: 13px; color: #9aa7bf; }
+  .controls input[type=range] { width: 140px; }
+  .info { margin-top: 10px; font-size: 12px; color: #9aa7bf; font-family: monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Pitch &amp; Ball — drag the ball</h1>
+  <p class="hint">Drag the white ball anywhere on the pitch. Home (blue) players react: the carrier's nearest team-mates shift toward the ball, everyone else holds their tactical spot. Goalkeeper stays in his area.</p>
+  <div class="pitch-wrap" id="pitch">
+    <div class="pitch">
+      <div class="line half"></div>
+      <div class="line circle"></div>
+      <div class="box-top"></div>
+      <div class="box-bottom"></div>
+    </div>
+    <div id="players"></div>
+    <div class="ball" id="ball"></div>
+  </div>
+  <div class="controls">
+    <button id="reset">Reset positions</button>
+    <label>Reaction <input type="range" id="react" min="0" max="1" step="0.05" value="0.35"></label>
+    <label><input type="checkbox" id="showTarget" checked> show target arrows</label>
+  </div>
+  <div class="info" id="info">ball: (4.0, 4.0) · players: 11</div>
+</div>
+<script>
+// Pitch coordinate system: 8 wide x 5 tall (cells). 0..8 x, 0..5 y. HOME attacks upward (toward y=0).
+const W = 8, H = 5;
+
+// Home team base positions (4-4-2-ish). Each player: {id, role, base:{x,y}, pos:{x,y}}
+const baseSpots = [
+  {id:1, role:'GK', x:4, y:4.6},
+  {id:2, role:'DEF', x:1.5, y:3.6},
+  {id:3, role:'DEF', x:3, y:3.8},
+  {id:4, role:'DEF', x:5, y:3.8},
+  {id:5, role:'DEF', x:6.5, y:3.6},
+  {id:6, role:'MID', x:2, y:2.4},
+  {id:7, role:'MID', x:3.5, y:2.6},
+  {id:8, role:'MID', x:4.5, y:2.6},
+  {id:9, role:'MID', x:6, y:2.4},
+  {id:10, role:'ATT', x:3, y:1.2},
+  {id:11, role:'ATT', x:5, y:1.2},
+];
+
+let players = baseSpots.map(s => ({ id: s.id, role: s.role, base: {x:s.x, y:s.y}, pos: {x:s.x, y:s.y} }));
+let ball = { x: 4, y: 2.5 };
+
+const pitch = document.getElementById('pitch');
+const playersLayer = document.getElementById('players');
+const ballEl = document.getElementById('ball');
+const info = document.getElementById('info');
+
+function toPx(x, y) {
+  const r = pitch.getBoundingClientRect();
+  return { left: (x / W) * r.width, top: (y / H) * r.height };
+}
+function toCoord(px, py) {
+  const r = pitch.getBoundingClientRect();
+  return { x: (px / r.width) * W, y: (py / r.height) * H };
+}
+
+function render() {
+  // update players
+  playersLayer.innerHTML = '';
+  players.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'player' + (p.role === 'GK' ? ' gk' : '');
+    el.textContent = p.id;
+    const px = toPx(p.pos.x, p.pos.y);
+    el.style.left = px.left + 'px';
+    el.style.top = px.top + 'px';
+    playersLayer.appendChild(el);
+  });
+  // ball
+  const bp = toPx(ball.x, ball.y);
+  ballEl.style.left = bp.left + 'px';
+  ballEl.style.top = bp.top + 'px';
+  info.textContent = `ball: (${ball.x.toFixed(2)}, ${ball.y.toFixed(2)}) · players: ${players.length}`;
+}
+
+function reactToBall() {
+  const react = parseFloat(document.getElementById('react').value);
+  players.forEach(p => {
+    if (p.role === 'GK') {
+      // goalkeeper stays in his area (bottom), slight shift
+      const dx = (ball.x - p.base.x) * 0.15;
+      const dy = (ball.y - p.base.y) * 0.05;
+      p.pos.x = clamp(p.base.x + dx, 2.5, 5.5);
+      p.pos.y = clamp(p.base.y + dy, 4.0, 4.9);
+      return;
+    }
+    // outfield: nudge toward ball, but keep within ~1.5 cells of base (tactical anchor)
+    const dx = ball.x - p.base.x;
+    const dy = ball.y - p.base.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.01) { p.pos.x = p.base.x; p.pos.y = p.base.y; return; }
+    const nudge = Math.min(dist, 2.0) * react;
+    p.pos.x = clamp(p.base.x + (dx / dist) * nudge, 0.5, W - 0.5);
+    p.pos.y = clamp(p.base.y + (dy / dist) * nudge, 0.5, H - 0.5);
+  });
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// Drag handling
+let dragging = false;
+pitch.addEventListener('pointerdown', (e) => {
+  const r = pitch.getBoundingClientRect();
+  const c = toCoord(e.clientX - r.left, e.clientY - r.top);
+  // grab if near ball
+  if (Math.hypot(c.x - ball.x, c.y - ball.y) < 0.6) {
+    dragging = true;
+    ballEl.setPointerCapture(e.pointerId);
+  } else {
+    // click to place ball
+    ball.x = clamp(c.x, 0.3, W - 0.3);
+    ball.y = clamp(c.y, 0.3, H - 0.3);
+    reactToBall();
+    render();
+  }
+});
+pitch.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const r = pitch.getBoundingClientRect();
+  ball.x = clamp((e.clientX - r.left) / r.width * W, 0.3, W - 0.3);
+  ball.y = clamp((e.clientY - r.top) / r.height * H, 0.3, H - 0.3);
+  reactToBall();
+  render();
+});
+pitch.addEventListener('pointerup', () => { dragging = false; });
+pitch.addEventListener('pointercancel', () => { dragging = false; });
+
+document.getElementById('reset').addEventListener('click', () => {
+  players = baseSpots.map(s => ({ id: s.id, role: s.role, base: {x:s.x, y:s.y}, pos: {x:s.x, y:s.y} }));
+  ball = { x: 4, y: 2.5 };
+  reactToBall();
+  render();
+});
+document.getElementById('react').addEventListener('input', () => { reactToBall(); render(); });
+
+window.addEventListener('resize', render);
+reactToBall();
+render();
+</script>
+</body>
+</html>
