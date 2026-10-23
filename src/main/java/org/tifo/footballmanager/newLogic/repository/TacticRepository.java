@@ -28,6 +28,10 @@ public interface TacticRepository extends JpaRepository<Tactic, Long> {
     @Query("select t from Tactic t where t.team.id = :teamId and t.defaultTactic = true")
     List<Tactic> findDefaultsForTeam(@Param("teamId") Long teamId);
 
+    /** Lightweight projection (teamId, name) for all tactics — avoids loading rulesJson in bulk checks. */
+    @Query("select t.team.id, t.name from Tactic t where t.team is not null")
+    List<Object[]> findAllTeamIdAndName();
+
     /** How many clubs already hold at least one tactic — the seeder's "what is left to do" number. */
     /**
      * The clubs that already hold a tactic.

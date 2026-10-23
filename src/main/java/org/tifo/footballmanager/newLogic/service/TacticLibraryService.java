@@ -466,6 +466,15 @@ public class TacticLibraryService {
                 defaultsByTeam.put(t.getTeam().getId(), t);
             }
         }
+        // Bulk, lightweight check of which clubs already carry a tactic with this name (idempotency),
+        // so we never ask the database fourteen thousand questions.
+        java.util.Set<Long> clubsAlreadyHavingThisName = new java.util.HashSet<>();
+        for (Object[] row : tactics.findAllTeamIdAndName()) {
+            if (row[0] != null && templateName.equals(row[1])) {
+                clubsAlreadyHavingThisName.add((Long) row[0]);
+            }
+        }
+
         List<Tactic> pending = new ArrayList<>();
         List<Tactic> toUpdate = new ArrayList<>();
 
@@ -474,10 +483,7 @@ public class TacticLibraryService {
                 skipped++;
                 continue;
             }
-            List<Tactic> existing = tactics.findByTeamIdOrderByIdAsc(club.getId());
-            boolean alreadyHasThisName = existing.stream()
-                    .anyMatch(t -> templateName.equals(t.getName()));
-            if (alreadyHasThisName) {
+            if (clubsAlreadyHavingThisName.contains(club.getId())) {
                 skipped++;
                 continue;
             }
