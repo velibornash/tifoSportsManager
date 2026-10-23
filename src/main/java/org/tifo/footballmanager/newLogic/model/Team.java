@@ -212,16 +212,20 @@ public class Team {
      * lookup. {@code kitPattern} is one of {@link KitPattern}; the viewer renders it.
      *
      * <p>Defaults are baked into {@code columnDefinition} so {@code ddl-auto=update} succeeds on a
-     * populated table (the AGENTS.md rule for NOT NULL columns).
+     * populated table (the AGENTS.md rule for NOT NULL columns), and {@code length} is declared to
+     * match the definition: update compares the JPA default 255 against the column's real length
+     * and, on a mismatch, re-emits the whole columnDefinition as {@code set data type varchar(7)
+     * not null default '...'} — which PostgreSQL rejects, warned on every startup until the lengths
+     * were declared (2026-10-23). Guard: {@code ColumnLengthMatchesItsDefinitionTest}.
      */
-    @Column(name = "home_kit_color", columnDefinition = "varchar(7) not null default '#539bf5'")
+    @Column(name = "home_kit_color", length = 7, columnDefinition = "varchar(7) not null default '#539bf5'")
     private String homeKitColor = "#539bf5";
 
-    @Column(name = "away_kit_color", columnDefinition = "varchar(7) not null default '#f97583'")
+    @Column(name = "away_kit_color", length = 7, columnDefinition = "varchar(7) not null default '#f97583'")
     private String awayKitColor = "#f97583";
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "kit_pattern", columnDefinition = "varchar(16) not null default 'SOLID'")
+    @Column(name = "kit_pattern", length = 16, columnDefinition = "varchar(16) not null default 'SOLID'")
     private KitPattern kitPattern = KitPattern.SOLID;
 
     public enum KitPattern { SOLID, STRIPES, HOOPS, HALVES }

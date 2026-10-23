@@ -245,12 +245,18 @@ public class Stadium {
      */
     public enum FloodlightStyle { STANDARD, MODERN, CLASSIC }
 
+    // length MUST equal the columnDefinition's varchar(N): ddl-auto=update compares the JPA default
+    // 255 against the column's real length and, on a mismatch, re-emits the whole columnDefinition
+    // as "set data type varchar(16) not null default '...'" — which PostgreSQL rejects, so the
+    // warning repeated on every startup until length was declared (2026-10-23). The guard is
+    // ColumnLengthMatchesItsDefinitionTest; Country.country_state was the column that already
+    // did this right.
     @Enumerated(EnumType.STRING)
-    @Column(name = "pitch_pattern", columnDefinition = "varchar(16) not null default 'PLAIN'")
+    @Column(name = "pitch_pattern", length = 16, columnDefinition = "varchar(16) not null default 'PLAIN'")
     private PitchPattern pitchPattern = PitchPattern.PLAIN;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "floodlight_style", columnDefinition = "varchar(16) not null default 'STANDARD'")
+    @Column(name = "floodlight_style", length = 16, columnDefinition = "varchar(16) not null default 'STANDARD'")
     private FloodlightStyle floodlightStyle = FloodlightStyle.STANDARD;
 
     @OneToOne(mappedBy = "stadium")
