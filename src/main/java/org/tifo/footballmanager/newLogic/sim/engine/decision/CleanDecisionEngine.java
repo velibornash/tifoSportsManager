@@ -433,8 +433,8 @@ public class CleanDecisionEngine {
             reason.append("marker gets there first -26 ");
         }
         if (laneBlockPenalty(state, carrier, receiver) > 0) {
-            score -= 34.0;
-            reason.append("lane blocked -34 ");
+            return new DecisionOption(ActionType.PASS, receiver, UNAVAILABLE,
+                    "PASS: lane blocked by defender");
         }
 
         // Distance. Modest now, and deliberately so — where the ball goes matters more than how far.
@@ -468,6 +468,7 @@ public class CleanDecisionEngine {
             if (offsideMargin > OFFSIDE_HARD_LIMIT) continue;
             boolean marginalOffside = offsideMargin > 0;
             if (marginalOffside && !carrierWillRiskOffside(carrier)) continue;
+            if (laneBlockPenalty(state, carrier, teammate) > 0) continue;   // blocked pass — not an option
             result.add(scorePassOptions(state, carrier, teammate));
         }
         return result;
@@ -775,6 +776,13 @@ public class CleanDecisionEngine {
         if (!inFinalThird) {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": not in final third");
         }
+        // CENTER is not for players already in the box (owner: "center NEBULOZAN" from in-box).
+        if (!fromFlank && home && row >= 6.5) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
+        }
+        if (!fromFlank && !home && row <= 2.5) {
+            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
+        }
         double wide = Math.abs(carrier.getPosition().getColumn() - 4.0);
         // CENTER has no "crossing position" restriction (owner: "center koji moze da se
         // izvede gde god nije protivnicki igrac u bloku"). It is allowed from any width.
@@ -983,7 +991,9 @@ public class CleanDecisionEngine {
             score += spaceAround(state, teammate) * 15.0;
 
             if (nearestOpponentBeatsHimToIt(state, teammate)) score -= 26.0;
-            if (laneBlockPenalty(state, carrier, teammate) > 0) score -= 34.0;
+            if (laneBlockPenalty(state, carrier, teammate) > 0) {
+                continue;   // blocked pass — not an option (owner: "jasno u bloku")
+            }
 
             double dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
             if (dist > 2.5) score -= 12.0;
