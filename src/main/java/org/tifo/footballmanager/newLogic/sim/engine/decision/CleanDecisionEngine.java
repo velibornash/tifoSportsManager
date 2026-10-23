@@ -442,6 +442,14 @@ public class CleanDecisionEngine {
             return new DecisionOption(ActionType.PASS, null, -20.0, reason.toString());
         }
 
+        // ME-2 backstop: the receiver pools already refuse an own-half target from a shooting
+        // position. This makes the rule true at scoring time as well, so no future caller can
+        // hand an own-half receiver in and have it scored like normal football.
+        if (inShootingZone(carrier) && inOwnHalf(receiver)) {
+            return new DecisionOption(ActionType.PASS, null, UNAVAILABLE,
+                    "PASS: ME-2 — from a shooting position no pass back into his own half");
+        }
+
         double score = PASS_BASE;
         reason.append("base ").append((int) PASS_BASE).append(' ');
 
@@ -585,8 +593,9 @@ public class CleanDecisionEngine {
         // made the zone half as deep for AWAY and is why AWAY's chances were all
         // point-blank (the keeper's reach swallowed the whole goal mouth).
         String team = carrier.getTeam();
-        double carrierRow = carrier.getPosition().getRow();
-        boolean inShootingZone = "HOME".equals(team) ? carrierRow >= 6.0 : carrierRow <= 3.0;
+        // One line judges both rules — may he shoot, and may he play backward — so the two can
+        // never drift apart (ME-2).
+        boolean inShootingZone = inShootingZone(carrier);
         Position goal = ActionEngine.goalPositionFor(team);
         double distToGoal = SimUtils.distance(carrier.getPosition(), goal);
 
@@ -739,6 +748,9 @@ public class CleanDecisionEngine {
         for (Player mate : state.getPlayers()) {
             if (!mate.getTeam().equals(team) || mate.equals(carrier)) continue;
             if (mate.isUnavailable()) continue;
+            // ME-2: a through ball is a delivery too — from a shooting position it may never end
+            // in the passer's own half.
+            if (inShootingZone(carrier) && inOwnHalf(mate)) continue;
             // Must be ON the line or behind it — a pass beyond it is offside.
             if (offsideMargin(state, carrier, mate) > 0) continue;
             // Prefer a forward.
@@ -992,6 +1004,12 @@ public class CleanDecisionEngine {
             // most open man on the pitch, so he kept receiving the ball.
             if (teammate.isUnavailable()) continue;
 
+            // ME-2 (owner 2026-10-23): from a shooting position a pass back into his own half is
+            // not an option at all — removed, not penalised. ("iz pozicije za sut odigrava PAS NA
+            // SVOJU POLOVINU, ovo smo bili zabranili!") From farther out nothing changes: the old
+            // football stands, backward costs -20 and that is all.
+            if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
+
             // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
             // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
             // da krene pass... veci skill ce retko gadati offside".
@@ -1210,6 +1228,26 @@ public class CleanDecisionEngine {
     // =========================================================================
     // THE SHARED VOCABULARY — every option is scored in these terms
     // =========================================================================
+
+    /**
+     * ME-2 (owner 2026-10-23) — "a shooting position" is the SHOT's own zone, so that one line
+     * judges both rules: whether he may shoot, and whether a pass back into his own half is a
+     * legal option at all. In or just in front of the box: HOME rows 6.0–8.0, mirrored for AWAY.
+     */
+    private static boolean inShootingZone(Player p) {
+        double row = p.getPosition().getRow();
+        return "HOME".equals(p.getTeam()) ? row >= 6.0 : row <= 3.0;
+    }
+
+    /**
+     * ME-2: a receiver standing BEHIND the halfway line is in the passer's own half — the line
+     * itself (4.5) is neutral, so exactly on it is still allowed. The owner's rule: from a
+     * shooting position, "PAS NA SVOJU POLOVINU" must not exist.
+     */
+    private static boolean inOwnHalf(Player p) {
+        double row = p.getPosition().getRow();
+        return "HOME".equals(p.getTeam()) ? row < 4.5 : row > 4.5;
+    }
 
     /** 0..1, how close a player is to the goal his side attacks. */
     private static double progressOf(Player p) {
