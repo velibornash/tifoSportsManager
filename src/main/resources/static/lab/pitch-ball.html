@@ -456,8 +456,8 @@ function duel(a, d, now, kind, ballRc, all) {
 
 function updateChase(now, all) {
   const chasers = new Set();
-  if (!chaseArmed) { chaseInfo = 'Chase: off'; return chasers; }
-  if (carrier) { chaseInfo = 'Chase: idle (ball owned)'; return chasers; }
+  if (!chaseArmed) { chaseInfo = 'Chase: OFF (checkbox unchecked)'; return chasers; }
+  if (carrier) { chaseInfo = 'Chase: IDLE — ball is owned (uncheck Carrier to release)'; return chasers; }
   const ballRc = toRowCol(ball.x, ball.y);
   const picked = { home: null, away: null };
   ['home', 'away'].forEach(side => {
@@ -474,10 +474,16 @@ function updateChase(now, all) {
     }
   });
   const h = picked.home, a = picked.away;
-  chaseInfo = (h || a)
-    ? 'Chase: ' + (h ? h.slot.slotKey + '(H) ' + distRc(h.pos, ballRc).toFixed(2) + 'c' : '—') +
-      ' vs ' + (a ? a.slot.slotKey + '(A) ' + distRc(a.pos, ballRc).toFixed(2) + 'c' : '—')
-    : 'Chase: nobody within ' + CHASE_RANGE_STOPPED + ' cells';
+  if (h && a) {
+    chaseInfo = 'Chase: ' + h.slot.slotKey + '(H) ' + distRc(h.pos, ballRc).toFixed(2) + 'c  ↔  ' +
+      a.slot.slotKey + '(A) ' + distRc(a.pos, ballRc).toFixed(2) + 'c  (both running to the ball)';
+  } else if (h) {
+    chaseInfo = 'Chase: only HOME ' + h.slot.slotKey + ' chasing (' + distRc(h.pos, ballRc).toFixed(2) + 'c) — AWAY nearest beyond ' + CHASE_RANGE_STOPPED + ' cells';
+  } else if (a) {
+    chaseInfo = 'Chase: only AWAY ' + a.slot.slotKey + ' chasing (' + distRc(a.pos, ballRc).toFixed(2) + 'c) — HOME nearest beyond ' + CHASE_RANGE_STOPPED + ' cells';
+  } else {
+    chaseInfo = 'Chase: nobody within ' + CHASE_RANGE_STOPPED + ' cells of the ball';
+  }
   if (!h && !a) return chasers;
   const dh = h ? distRc(h.pos, ballRc) : Infinity;
   const da = a ? distRc(a.pos, ballRc) : Infinity;
