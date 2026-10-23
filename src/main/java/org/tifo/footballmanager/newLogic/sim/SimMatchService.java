@@ -764,6 +764,7 @@ public class SimMatchService {
         Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
                 outcome.players().stream().map(ProposalMatchOutcome.PlayerOutcome::playerId).toList());
 
+        List<MatchPlayerStats> pendingStats = new ArrayList<>();
         for (ProposalMatchOutcome.PlayerOutcome po : outcome.players()) {
             Long dbId = parsePlayerId(po.playerId());
             if (dbId == null) continue;
@@ -795,7 +796,10 @@ public class SimMatchService {
             st.setShots(po.shots());
             st.setPassesAttempted(po.passesAttempted());
             st.setPassesCompleted(po.passesCompleted());
-            matchPlayerStatsRepository.save(st);
+            pendingStats.add(st);
+        }
+        if (!pendingStats.isEmpty()) {
+            matchPlayerStatsRepository.saveAll(pendingStats);
         }
     }
 
@@ -837,8 +841,11 @@ public class SimMatchService {
                     mine == theirs);
 
             if (updated.add(dbPlayer)) {
-                playerRepository.save(dbPlayer);
+                // collected; saved in batch below
             }
+        }
+        if (!updated.isEmpty()) {
+            playerRepository.saveAll(new ArrayList<>(updated));
         }
     }
 
@@ -861,6 +868,7 @@ public class SimMatchService {
 
         Map<Long, org.tifo.footballmanager.newLogic.model.Player> dbPlayers = loadPlayers(
                 state.getPlayers().stream().map(Player::getId).toList());
+        List<org.tifo.footballmanager.newLogic.model.Player> toSave = new ArrayList<>();
         for (Player p : state.getPlayers()) {
             Long dbId = parsePlayerId(p.getId());
             if (dbId == null) continue;
@@ -881,7 +889,10 @@ public class SimMatchService {
                 // leaving the manager to guess.
                 dbPlayer.setInjuryCause(p.getInjuryCause());
             }
-            playerRepository.save(dbPlayer);
+            toSave.add(dbPlayer);
+        }
+        if (!toSave.isEmpty()) {
+            playerRepository.saveAll(toSave);
         }
     }
 
