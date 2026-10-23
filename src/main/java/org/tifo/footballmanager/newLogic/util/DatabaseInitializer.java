@@ -245,6 +245,7 @@ public class DatabaseInitializer {
     private final YouthAcademyService youthAcademyService;
     private final SquadNumberAssigner squadNumberAssigner;
     private final TacticsProfileBackupService tacticsProfileBackupService;
+    private final org.tifo.footballmanager.newLogic.service.TacticLibraryService tactics;
     private final org.tifo.footballtextmanager.repository.CSTeamRepository csTeamRepository;
     private final org.tifo.footballtextmanager.repository.CSCountryRepository csCountryRepository;
     private final StadiumRepository stadiumRepository;
@@ -662,6 +663,15 @@ public class DatabaseInitializer {
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
         restoreTacticLibrary(librarySnapshots, tacticRepository, teamRepository);
+        // **Every club gets the world's default tactic** (owner: "SVI klubovi treba da imaju tu jednu
+        // taktiku"). The restore puts the profile back; this writes the actual tactic rows so the
+        // match engine has something to read. Without this the clubs come back with no tactic at all.
+        try {
+            int given = tactics.giveClubsTheDesignatedWorldDefault(teamRepository.findClubTeamsForOperations());
+            log.info("Gave {} club(s) the world's default tactic after clear.", given);
+        } catch (Exception e) {
+            log.warn("Could not apply world default tactic after clear: {}", e.getMessage());
+        }
         log.info("Database cleared. Use Initialize to rebuild the football structure.");
         progressListener.accept("Clear completed.");
     }
@@ -692,6 +702,13 @@ public class DatabaseInitializer {
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
         restoreTacticLibrary(librarySnapshots, tacticRepository, teamRepository);
+        progressListener.accept("Applying world default tactic...");
+        try {
+            int given = tactics.giveClubsTheDesignatedWorldDefault(teamRepository.findClubTeamsForOperations());
+            log.info("Gave {} club(s) the world's default tactic after init.", given);
+        } catch (Exception e) {
+            log.warn("Could not apply world default tactic after init: {}", e.getMessage());
+        }
         progressListener.accept("Assigning squad numbers and juniors...");
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         seedStandInTransferActivity();
