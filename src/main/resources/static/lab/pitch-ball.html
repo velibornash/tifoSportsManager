@@ -32,6 +32,8 @@
   .player.away.gk { background: #ff9db0; }
   .ball { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #222; transform: translate(-50%,-50%); cursor: grab; z-index: 5; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
   .ball:active { cursor: grabbing; }
+  .blackdot { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #111; border: 2px solid #fff; transform: translate(-50%,-50%); cursor: grab; z-index: 4; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  .blackdot:active { cursor: grabbing; }
   .controls { display: flex; flex-direction: column; gap: 10px; }
   .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #3a4a6b; background: #1a2338; color: #e8ecf4; cursor: pointer; }
   .controls button:hover { background: #2a3550; }
@@ -52,6 +54,7 @@
     <div class="controls" style="margin-bottom:8px;">
       <label style="font-size:12px;color:#9aa7bf;">Carrier: <select id="carrierSlot" style="margin-left:6px;padding:4px;border-radius:4px;background:#1a2338;color:#e8ecf4;border:1px solid #3a4a6b;"></select></label>
       <button id="decide">DECIDE</button>
+      <button id="ballphys">Ball physics check</button>
     </div>
     <textarea id="decideOut" readonly spellcheck="false" placeholder="Click DECIDE to run the decision engine on the current ball position (carrier = HOME)."></textarea>
     <div class="pitch-wrap" id="pitch">
@@ -67,6 +70,7 @@
       <div id="cells"></div>
       <div id="players"></div>
       <div class="ball" id="ball"></div>
+      <div class="blackdot" id="blackdot"></div>
     </div>
     <p class="hint">Drag the white ball. Both teams play the SAME saved tactic: the blue HOME side reads it directly, the red AWAY side reads it mirrored exactly like the app transforms it for the away perspective (<code>TacticalPerspectiveTransformer</code>: row' = 9 − row, col' = 8 − col). Circles glide at the match engine's pace-capped speed (pace 20 = 0.75 cells/tick) and touch without ever overlapping. The checkboxes run the engine's match behaviors: <b>Carrier</b> is the owned-ball flag (uncheck it to release the ball), <b>CHASE_BALL</b> sends the nearest of each team at a loose ball (first there takes it, arriving together = duel), <b>THREAT A</b> presses the carrier — the press ends in a tackle duel, <b>THREAT B</b> presses a dangerous opponent without the ball. Duels use the engine's own odds: equal players = 50/50, winner takes the ball, both wait 3.7 s (7 ticks) before dueling again. On a duel (or a clean chase claim) the winner moves onto the ball's position, the loser and everyone else freeze in place — all movement stops. Positions loaded live from <code>/teams/{id}/tactics-editor</code>, rows 1-7 bottom-up, cols 1-6. Open through the app (<code>http://localhost:8080/lab/pitch-ball.html</code>) while logged in.</p>
   </div>
@@ -80,6 +84,7 @@
       <label><input type="checkbox" id="cb-chase"><span><b>CHASE_BALL</b> — loose ball: nearest of each team runs at it</span></label>
       <label><input type="checkbox" id="cb-threat-a"><span><b>THREAT A</b> — press the carrier (ends in a tackle duel)</span></label>
       <label><input type="checkbox" id="cb-threat-b"><span><b>THREAT B</b> — press a dangerous opponent (approach only)</span></label>
+      <label><input type="checkbox" id="cb-nomove"><span><b>NoMovement</b> — players do not move (stationary obstacles)</span></label>
     </div>
     <div class="info" id="info">Loading tactic…</div>
   </div>
@@ -192,6 +197,9 @@ let viewsKey = null;
 let loadedFormation = '';
 let loadedTacticId = null;
 let loadedTeamId = null;
+let noMovement = false;
+let blackDot = { x: 50, y: 30 };
+let ballPhysics = null;   // { tx, ty, dirR, dirC, speed }
 
 // ===== Behavior state =========================================================
 // The Carrier checkbox is the engine's getCarrier() != null flag. A specific
@@ -217,6 +225,9 @@ const cbCarrier = document.getElementById('cb-carrier');
 const cbChase = document.getElementById('cb-chase');
 const cbA = document.getElementById('cb-threat-a');
 const cbB = document.getElementById('cb-threat-b');
+const cbNoMove = document.getElementById('cb-nomove');
+const blackDotEl = document.getElementById('blackdot');
+const ballPhysBtn = document.getElementById('ballphys');
 
 function apiHeaders() {
   const token = sessionStorage.getItem('token');
@@ -353,9 +364,15 @@ function placeView(v, rc) {
   }
 }
 
+function renderBlackDot() {
+  blackDotEl.style.left = blackDot.x + '%';
+  blackDotEl.style.top = blackDot.y + '%';
+}
+
 function render() {
   ballEl.style.left = ball.x + '%';
   ballEl.style.top = ball.y + '%';
+  renderBlackDot();
 
   const ballRc = toRowCol(ball.x, ball.y);
   const ballState = pctToCellKey(ball.x, ball.y);
@@ -370,7 +387,8 @@ function render() {
 }
 
 function fmtView(v) {
-  const t = v.ruleTarget || v.target;
+  if (!v.pos) return '?';
+  const t = v.ruleTarget || v.target || v.pos;
   return v.pos.row.toFixed(2) + '|' + v.pos.col.toFixed(2) +
     ' (cell ' + Math.floor(t.row) + '_' + Math.floor(t.col) + ')';
 }
@@ -626,32 +644,110 @@ function tick(now) {
   let moving = false;
   const step = PLAYER_CELLS_PER_SEC * dt;
   const all = homeViews.concat(awayViews);
-  if (all.length) updateBehaviors(now, all);   // chase / press / duel set the targets
-  all.forEach(v => {
-    if (!v.pos || !v.target) return;
-    const dr = v.target.row - v.pos.row;
-    const dc = v.target.col - v.pos.col;
-    const dist = Math.hypot(dr, dc);
-    if (dist < 1e-6) return;
-    moving = true;
-    if (step >= dist - 1e-12) {
-      v.pos = { row: v.target.row, col: v.target.col };   // land exactly, no FP wiggle
-    } else {
-      v.pos = { row: v.pos.row + (dr / dist) * step, col: v.pos.col + (dc / dist) * step };
-    }
-    drawPlayer(v);
-  });
-  if (separateOverlaps(all)) moving = true;
-  // Frozen players (duel stay) hold their exact spot — collision nudges are undone.
-  all.forEach(v => {
-    if (v.stay) {
-      v.pos = { row: v.stay.row, col: v.stay.col };
+  if (all.length && !noMovement) updateBehaviors(now, all);   // chase / press / duel set the targets
+  // Ball physics check: ball moves to the black dot, bouncing off players.
+  stepBallPhysics(dt);
+  if (!noMovement) {
+    all.forEach(v => {
+      if (!v.pos || !v.target) return;
+      const dr = v.target.row - v.pos.row;
+      const dc = v.target.col - v.pos.col;
+      const dist = Math.hypot(dr, dc);
+      if (dist < 1e-6) return;
+      moving = true;
+      if (step >= dist - 1e-12) {
+        v.pos = { row: v.target.row, col: v.target.col };   // land exactly, no FP wiggle
+      } else {
+        v.pos = { row: v.pos.row + (dr / dist) * step, col: v.pos.col + (dc / dist) * step };
+      }
       drawPlayer(v);
-    }
-  });
+    });
+    if (separateOverlaps(all)) moving = true;
+    // Frozen players (duel stay) hold their exact spot — collision nudges are undone.
+    all.forEach(v => {
+      if (v.stay) {
+        v.pos = { row: v.stay.row, col: v.stay.col };
+        drawPlayer(v);
+      }
+    });
+  }
   if (all.length) drawInfo(pctToCellKey(ball.x, ball.y), toRowCol(ball.x, ball.y));
 
   requestAnimationFrame(tick);
+}
+
+// ===== Ball physics check (mirror BallPhysicsEngine) ==========================
+// Ball launched at MIN_LAUNCH_SPEED cells/tick, decelerated by GROUND_DECEL on
+// grass, stopping below STOP_SPEED. Bounces off players (reflect velocity,
+// damp by BOUNCE_DAMP).
+const BALL_PHYS_MIN_SPEED = 0.75;   // cells/tick (MIN_LAUNCH_SPEED)
+const BALL_PHYS_DECEL = 0.05;       // cells/tick^2 (GROUND_DECEL)
+const BALL_PHYS_STOP = 0.01;        // cells/tick (STOP_SPEED)
+const BALL_PHYS_BOUNCE_DAMP = 0.5;  // BOUNCE_DAMP
+function stepBallPhysics(dt) {
+  if (!ballPhysics) return;
+  const ticks = dt * TICKS_PER_SEC;
+  if (ticks <= 0) return;
+  const br = toRowCol(ball.x, ball.y);
+  const tr = toRowCol(ballPhysics.tx, ballPhysics.ty);
+  const dr = tr.row - br.row, dc = tr.col - br.col;
+  const distToTarget = Math.hypot(dr, dc);
+  if (distToTarget < 0.1) {
+    ball.x = ballPhysics.tx; ball.y = ballPhysics.ty;
+    ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    ballPhysics = null;
+    return;
+  }
+  if (ballPhysics.speed === null) {
+    ballPhysics.speed = BALL_PHYS_MIN_SPEED;
+    ballPhysics.dirR = dr / distToTarget;
+    ballPhysics.dirC = dc / distToTarget;
+  }
+  // decelerate
+  ballPhysics.speed = Math.max(BALL_PHYS_STOP, ballPhysics.speed - BALL_PHYS_DECEL * ticks);
+  if (ballPhysics.speed <= BALL_PHYS_STOP) {
+    ball.x = ballPhysics.tx; ball.y = ballPhysics.ty;
+    ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    ballPhysics = null;
+    return;
+  }
+  const step = ballPhysics.speed * ticks;
+  const actualStep = Math.min(step, distToTarget);
+  let newRow = br.row + ballPhysics.dirR * actualStep;
+  let newCol = br.col + ballPhysics.dirC * actualStep;
+  // clamp to pitch
+  const pct = rowColToPct(newRow, newCol);
+  if (pct.x < 3 || pct.x > 97 || pct.y < 3 || pct.y > 97) {
+    ball.x = Math.max(3, Math.min(97, pct.x));
+    ball.y = Math.max(3, Math.min(97, pct.y));
+    ballEl.style.left = ball.x + '%'; ballEl.style.top = ball.y + '%';
+    ballPhysics = null;
+    return;
+  }
+  // check collision with players
+  const all = homeViews.concat(awayViews);
+  let collided = false;
+  for (const v of all) {
+    if (!v.pos) continue;
+    const d = distRc({ row: newRow, col: newCol }, v.pos);
+    if (d < 0.35) {
+      collided = true;
+      const nR = (newRow - v.pos.row) / (d || 0.01);
+      const nC = (newCol - v.pos.col) / (d || 0.01);
+      const dot = ballPhysics.dirR * nR + ballPhysics.dirC * nC;
+      ballPhysics.dirR = ballPhysics.dirR - 2 * dot * nR;
+      ballPhysics.dirC = ballPhysics.dirC - 2 * dot * nC;
+      const nd = Math.hypot(ballPhysics.dirR, ballPhysics.dirC);
+      if (nd > 0) { ballPhysics.dirR /= nd; ballPhysics.dirC /= nd; }
+      ballPhysics.speed *= BALL_PHYS_BOUNCE_DAMP;
+      break;
+    }
+  }
+  if (!collided) {
+    ball.x = pct.x; ball.y = pct.y;
+    ballEl.style.left = ball.x + '%';
+    ballEl.style.top = ball.y + '%';
+  }
 }
 
 // ===== Collision: circles touch but never overlap =============================
@@ -729,6 +825,31 @@ pitch.addEventListener('pointermove', (e) => {
 pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
+// Black dot drag (destination for ball physics check)
+let dotDragging = false;
+blackDotEl.addEventListener('pointerdown', (e) => {
+  const r = pitch.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 100;
+  const y = (e.clientY - r.top) / r.height * 100;
+  if (Math.hypot(x - blackDot.x, y - blackDot.y) < 5) {
+    dotDragging = true;
+    blackDotEl.setPointerCapture(e.pointerId);
+  } else {
+    blackDot.x = Math.max(3, Math.min(97, x));
+    blackDot.y = Math.max(3, Math.min(97, y));
+    renderBlackDot();
+  }
+});
+pitch.addEventListener('pointermove', (e) => {
+  if (!dotDragging) return;
+  const r = pitch.getBoundingClientRect();
+  blackDot.x = Math.max(3, Math.min(97, (e.clientX - r.left) / r.width * 100));
+  blackDot.y = Math.max(3, Math.min(97, (e.clientY - r.top) / r.height * 100));
+  renderBlackDot();
+});
+pitch.addEventListener('pointerup', () => { dotDragging = false; });
+pitch.addEventListener('pointercancel', () => { dotDragging = false; });
+
 document.getElementById('reset').addEventListener('click', () => {
   ball = { x: BALL_CENTER.x, y: BALL_CENTER.y };
   render();
@@ -802,7 +923,24 @@ cbCarrier.addEventListener('change', () => {
 cbChase.addEventListener('change', () => { chaseArmed = cbChase.checked; });
 cbA.addEventListener('change', () => { threatA = cbA.checked; });
 cbB.addEventListener('change', () => { threatB = cbB.checked; });
+cbNoMove.addEventListener('change', () => { noMovement = cbNoMove.checked; });
 // No resize handler needed: everything is positioned in % of the pitch box.
+
+document.getElementById('reload').addEventListener('click', loadTactic);
+
+ballPhysBtn.addEventListener('click', () => {
+  const rc = toRowCol(blackDot.x, blackDot.y);
+  ballPhysics = { tx: blackDot.x, ty: blackDot.y, trow: rc.row, tcol: rc.col, dirR: 0, dirC: 0, speed: BALL_PHYS_MIN_SPEED };
+  const br = toRowCol(ball.x, ball.y);
+  const dr = rc.row - br.row, dc = rc.col - br.col;
+  const dist = Math.hypot(dr, dc);
+  if (dist > 0.01) {
+    ballPhysics.dirR = dr / dist;
+    ballPhysics.dirC = dc / dist;
+  } else {
+    ballPhysics.speed = 0;
+  }
+});
 
 renderGrid();
 requestAnimationFrame(tick);
