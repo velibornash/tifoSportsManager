@@ -865,6 +865,13 @@ public class TeamController {
             if (sample.size() >= 4) break;
         }
         dbg.put("awaySampleLookups", sample);
+        List<String> homeSample = new ArrayList<>();
+        for (TacticsSlotDTO sl : dto.getSlotDefinitions()) {
+            String k = sl.getSlotKey() + "|" + ballState + "|WE_HAVE_BALL";
+            homeSample.add(sl.getSlotKey() + " -> " + rulesMap.get(k));
+            if (homeSample.size() >= 6) break;
+        }
+        dbg.put("homeSampleLookups", homeSample);
         List<Map<String, Object>> inBox = new ArrayList<>();
         String team = carrier.getTeam();
         for (org.tifo.footballmanager.newLogic.sim.model.Player mate : state.getPlayers()) {
