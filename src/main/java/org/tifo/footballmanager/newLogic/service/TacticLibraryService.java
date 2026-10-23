@@ -493,38 +493,75 @@ public class TacticLibraryService {
     public record SeedReport(int created, int skipped, long totalClubs) { }
 
     /**
-     * Designates one club's tactical profile as the world's starting tactic.
+     * Designates one club's <em>current tactic</em> as the world's starting tactic.
      *
      * <p>Owner, 2026-10-18: <i>"da ova opcija snimi taktiku koju ću napraviti za Omladinac i da ta
      * taktika tj ti tactical rules preživi Reset db i da se stalno učitavaju nazad"</i>.
+     * Owner, 2026-10-23: <i>"prebacio sam taktiku u Omladinac i nazvao je Osnovna, exportovao sam je
+     * kao default iz admin panela, ta mora biti zasebno negde snimljena i DEFAULT za SVAKI tim"</i>.
      *
-     * <p><b>What the button did instead.</b> {@code saveDefaultTactics} in {@code admin-view.js} read the
-     * club's saved editor profile and PUT it straight back, field for field. It was a no-op that reported
-     * success, it stored nothing new, and there was no concept of a world default for it to store — so
-     * "give every club a default tactic" was left to guess, and it guessed with
-     * {@code findAll().stream().findFirst()}, which is whichever row the database ordered first.
+     * <p><b>The source is the club's default tactic in the {@code tactic} library, not the editor
+     * profile.</b> The button's own confirm text promises "your club's current tactic", and the club's
+     * current tactic is its default library row — "Osnovna", named by the owner. The editor profile is
+     * only what the Tactic Editor last happened to save, and it goes stale the moment a tactic arrives
+     * any other way: an import from Oracle, a paste, a library save. That staleness is this task's
+     * defect — the designator used to copy the profile, so the world default stayed the old 4-3-3 while
+     * the owner's own club played his 4-4-2. The profile row is now <em>written from</em> the current
+     * tactic at designation time: it becomes the "zasebno negde snimljena" copy, on the table and in the
+     * file, and every seeder that reads the designated profile hands out his rules unchanged. A club
+     * with no library tactic still designates its profile as before — for that club the profile is its
+     * current tactic.
+     *
+     * <p><b>What the button did instead (before all of this).</b> {@code saveDefaultTactics} in
+     * {@code admin-view.js} read the club's saved editor profile and PUT it straight back, field for
+     * field. It was a no-op that reported success, it stored nothing new, and there was no concept of a
+     * world default for it to store — so "give every club a default tactic" was left to guess, and it
+     * guessed with {@code findAll().stream().findFirst()}, which is whichever row the database ordered
+     * first.
      *
      * <p><b>Exactly one row carries the flag.</b> Setting it clears it everywhere else first, inside the
      * same transaction, so there is never a moment with two world defaults or none. A world-wide setting
      * that can be ambiguous is not a setting.
      *
-     * <p><b>Why the content survives a reset on its own.</b> The profile's rules were already written to
+     * <p><b>Why the content survives a reset on its own.</b> The designated rules are written to
      * {@code var/tactics-editor-profiles.json} by {@link TacticsProfileBackupService} and restored by
      * {@code DatabaseInitializer}; the flag says which of those profiles is <em>the</em> one, and lives
      * on a table the football-data reset does not clear.
      *
-     * @param teamId the club whose editor profile becomes the world default
+     * @param teamId the club whose current tactic becomes the world default
      * @return the club's name and formation, so the caller can report what it actually designated
      *         rather than what it hoped for
-     * @throws IllegalStateException if that club has no profile — the honest answer, because silently
-     *                               doing nothing here is what produced this bug
+     * @throws IllegalStateException if that club has neither a profile nor a library tactic — the honest
+     *                               answer, because silently doing nothing here is what produced this bug
      */
     @Transactional
     public Map<String, Object> markProfileAsWorldDefault(Long teamId) {
-        TeamTacticsProfile profile = profiles.findByTeamId(teamId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "That club has no tactical editor profile yet. Build one in the Tactic Editor "
-                                + "and save it, then press this again."));
+        Tactic current = defaultFor(teamId).orElse(null);
+        TeamTacticsProfile profile = profiles.findByTeamId(teamId).orElse(null);
+        if (profile == null && current == null) {
+            throw new IllegalStateException(
+                    "That club has no tactical editor profile yet. Build one in the Tactic Editor "
+                            + "and save it, then press this again.");
+        }
+
+        if (current != null) {
+            if (profile == null) {
+                // The club has a tactic but was never opened in the editor: the library row is its
+                // current tactic, so the profile comes into existence as its mirror.
+                profile = new TeamTacticsProfile();
+                profile.setTeam(current.getTeam());
+                profile.setVersion(1L);
+            }
+            // **The mirror.** The designated row carries the club's CURRENT tactic, replacing whatever
+            // the editor last saved. This is the whole fix of 2026-10-23: without it the row kept the
+            // stale profile, and every club the world seeded got that profile instead of the tactic the
+            // owner exported under the name "Osnovna".
+            profile.setFormation(current.getFormation());
+            profile.setStyle(current.getStyle());
+            profile.setRulesJson(current.getRulesJson());
+            profile.setSetPiecesJson(current.getSetPiecesJson());
+            profile.setUpdatedAt(LocalDateTime.now());
+        }
 
         // Clear first, then set: one transaction, so there is no window with two or zero.
         for (TeamTacticsProfile other : profiles.findAll()) {
@@ -624,10 +661,20 @@ public class TacticLibraryService {
         String name = formation == null || formation.isBlank() ? "Default" : formation;
         List<Tactic> pending = new ArrayList<>(clubs.size());
         for (Team club : clubs) {
+            // Skip clubs that already carry a default tactic (e.g. restored from a snapshot) —
+            // otherwise the unique (team, name) constraint fires and the whole batch fails.
+            List<Tactic> existing = tactics.findByTeamIdOrderByIdAsc(club.getId());
+            boolean alreadyHasDefault = existing.stream().anyMatch(Tactic::isDefaultTactic);
+            if (alreadyHasDefault) continue;
+            // Also skip if a tactic with the same name already exists (restored from snapshot).
+            boolean nameTaken = existing.stream().anyMatch(t -> name.equals(t.getName()));
+            if (nameTaken) continue;
             pending.add(defaultTacticFor(club, name, formation, profile.getStyle(),
                     profile.getRulesJson(), profile.getSetPiecesJson()));
         }
-        tactics.saveAll(pending);
+        if (!pending.isEmpty()) {
+            tactics.saveAll(pending);
+        }
         // No cache eviction here: nothing read the resolved tactics while the world was being built,
         // so there is nothing stale to clear. The button's path does evict, because it runs against a
         // world that has been read.
@@ -655,10 +702,34 @@ public class TacticLibraryService {
      *
      * <p>The file is the copy that survives a reset, so anything that changes a club's tactics writes it:
      * the editor's save, and the world default's designation.
+     *
+     * <p><b>The library goes in under its own names.</b> When the club has library tactics, all of them
+     * are written, with the club's default named as the default — "Osnovna", not "4-4-2" — so the
+     * designated entry a reset restores is the owner's actual tactic, under the name he gave it
+     * (owner, 2026-10-23: "ta mora biti zasebno negde snimljena"). A club that has only an editor
+     * profile keeps the old single-entry shape: for that club the profile is all there is.
      */
     private void writeClubToBackup(TeamTacticsProfile profile) {
         Team team = profile.getTeam();
         if (team == null || team.getName() == null || team.getName().isBlank()) {
+            return;
+        }
+        List<Tactic> library = team.getId() == null ? List.of()
+                : tactics.findByTeamIdOrderByIdAsc(team.getId());
+        if (!library.isEmpty()) {
+            List<TacticsProfileBackupService.TacticBackup> backups = new ArrayList<>(library.size());
+            String defaultName = null;
+            for (Tactic tactic : library) {
+                backups.add(toBackup(tactic));
+                if (defaultName == null && tactic.isDefaultTactic()) {
+                    defaultName = tactic.getName();
+                }
+            }
+            if (defaultName == null) {
+                defaultName = backups.get(0).getName();
+            }
+            tacticsProfileBackupService.saveClub(team.getName(), backups, defaultName,
+                    profile.isWorldDefault());
             return;
         }
         TacticsProfileBackupService.TacticBackup tactic = new TacticsProfileBackupService.TacticBackup();
@@ -671,6 +742,19 @@ public class TacticLibraryService {
         tactic.setUpdatedAt(profile.getUpdatedAt());
         tacticsProfileBackupService.saveClub(team.getName(), List.of(tactic), profile.getFormation(),
                 profile.isWorldDefault());
+    }
+
+    /** One library row in the file's shape. */
+    private static TacticsProfileBackupService.TacticBackup toBackup(Tactic tactic) {
+        TacticsProfileBackupService.TacticBackup backup = new TacticsProfileBackupService.TacticBackup();
+        backup.setName(tactic.getName());
+        backup.setFormation(tactic.getFormation());
+        backup.setStyle(tactic.getStyle());
+        backup.setRulesJson(tactic.getRulesJson());
+        backup.setSetPiecesJson(tactic.getSetPiecesJson());
+        backup.setVersion(tactic.getVersion());
+        backup.setUpdatedAt(tactic.getUpdatedAt());
+        return backup;
     }
 
     /**
