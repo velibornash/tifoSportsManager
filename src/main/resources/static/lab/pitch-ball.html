@@ -77,17 +77,17 @@ function cellLabel(progress, width) {
 
 // Default 4-4-2 formation positions on the 7x6 grid.
 const baseCells = [
-  {id:1, role:'GK', p:0, w:2},
-  {id:2, role:'DEF', p:1, w:0},
-  {id:3, role:'DEF', p:1, w:2},
-  {id:4, role:'DEF', p:1, w:3},
-  {id:5, role:'DEF', p:1, w:5},
-  {id:6, role:'MID', p:3, w:0},
-  {id:7, role:'MID', p:3, w:2},
-  {id:8, role:'MID', p:3, w:3},
-  {id:9, role:'MID', p:3, w:5},
-  {id:10, role:'ATT', p:5, w:2},
-  {id:11, role:'ATT', p:5, w:3},
+  {id:1, role:'GK', label:'GK', p:0, w:2},
+  {id:2, role:'DEF', label:'DL', p:1, w:0},
+  {id:3, role:'DEF', label:'DCL', p:1, w:2},
+  {id:4, role:'DEF', label:'DCR', p:1, w:3},
+  {id:5, role:'DEF', label:'DR', p:1, w:5},
+  {id:6, role:'MID', label:'ML', p:3, w:0},
+  {id:7, role:'MID', label:'MCL', p:3, w:2},
+  {id:8, role:'MID', label:'MCR', p:3, w:3},
+  {id:9, role:'MID', label:'MR', p:3, w:5},
+  {id:10, role:'ATT', label:'STL', p:5, w:2},
+  {id:11, role:'ATT', label:'STR', p:5, w:3},
 ];
 
 let players = baseCells.map(s => {
@@ -144,7 +144,7 @@ function render() {
   players.forEach(p => {
     const el = document.createElement('div');
     el.className = 'player' + (p.role === 'GK' ? ' gk' : '');
-    el.textContent = p.id;
+    el.textContent = p.label;
     const px = toPx(p.pos.x, p.pos.y);
     el.style.left = px.left + 'px';
     el.style.top = px.top + 'px';
@@ -155,8 +155,10 @@ function render() {
   ballEl.style.left = bp.left + 'px';
   ballEl.style.top = bp.top + 'px';
   const bc = ballCell();
+  const stl = players.find(pp => pp.id === 10);
   info.innerHTML = '<b>Ball cell:</b> ' + (bc.p + 1) + '_' + (bc.w + 1) + '<br>'
     + '<b>Ball pos:</b> ' + ball.x.toFixed(2) + '_' + ball.y.toFixed(2) + '<br>'
+    + '<b>STL pos:</b> ' + (stl ? stl.pos.x.toFixed(2) + '_' + stl.pos.y.toFixed(2) : '-') + '<br>'
     + '<b>Players:</b> ' + players.length;
 }
 
@@ -204,7 +206,7 @@ pitch.addEventListener('pointerup', () => { dragging = false; });
 pitch.addEventListener('pointercancel', () => { dragging = false; });
 
 document.getElementById('reset').addEventListener('click', () => {
-  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
+  players = baseCells.map(s => { const pos = cellPos(s.p, s.w); return { id: s.id, role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} }; });
   ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
   reactToBall(); render();
 });
