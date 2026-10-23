@@ -369,6 +369,9 @@ public class ResetService {
     public void resetDatabase() {
         log.warn("RESET DATABASE STARTED - keeping {} and the tactical editor data",
                 PRESERVED_ACCOUNTS);
+        // Kill any other active sessions/transactions on this database first, so a reset
+        // never blocks on a lock held by a long-running job (e.g. matchday simulation).
+        terminateActiveDatabaseSessions();
         entityManager.flush();
         entityManager.clear();
         sanitizeLegacyLineupOrderSchema();
@@ -378,6 +381,24 @@ public class ResetService {
 
         log.warn("RESET DATABASE FINISHED - all world data cleared, {} and tactics kept",
                 PRESERVED_ACCOUNTS);
+    }
+
+    /**
+     * Terminates every other backend connected to this database, so a reset cannot block on a
+     * lock held by a long-running job (matchday simulation, etc.). PostgreSQL-only; silently
+     * skipped on other databases (e.g. H2 in tests).
+     */
+    private void terminateActiveDatabaseSessions() {
+        try {
+            List<?> result = entityManager.createNativeQuery(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity " +
+                            "WHERE datname = current_database() AND pid <> pg_backend_pid()")
+                    .getResultList();
+            log.warn("Terminated {} active session(s) before reset.", result == null ? 0 : result.size());
+        } catch (Exception e) {
+            log.debug("Could not terminate active database sessions (not PostgreSQL?): {}",
+                    e.getMessage());
+        }
     }
 
     /**
