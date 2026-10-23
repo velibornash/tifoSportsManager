@@ -393,7 +393,7 @@ public class AdminDatabaseAsyncService {
      * publish for each past day that still has unplayed fixtures, so the stranded ones get played.
      */
     private void repairStrandedMatchdays() {
-        org.tifo.footballmanager.newLogic.service.GameClockService.GamePosition pos = gameClockService.position();
+        org.tifo.footballmanager.newLogic.model.GamePosition pos = gameClockService.position();
         int season = pos.season();
         int week = pos.week();
         int currentDay = pos.day();
