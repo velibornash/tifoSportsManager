@@ -507,6 +507,13 @@ public class CleanDecisionEngine {
      * which is correct: carrying into three men is how possession is lost.
      */
     private DecisionOption scoreCarryOptions(MatchState state, Player carrier) {
+        // **Goalkeepers never dribble.** A keeper who carries the ball into the middle of the
+        // pitch is not a football decision, it is a bug: he is the last man, and his job is to
+        // distribute or clear. The dribble stays on the menu only for outfield players.
+        if (carrier != null && carrier.isGoalkeeper()) {
+            return new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
+                    "DRIBBLE: goalkeeper - only pass or clear");
+        }
         StringBuilder reason = new StringBuilder("CARRY: ");
         boolean home = "HOME".equals(carrier.getTeam());
         double row = carrier.getPosition().getRow();

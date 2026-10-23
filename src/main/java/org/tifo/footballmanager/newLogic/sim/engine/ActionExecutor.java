@@ -145,9 +145,11 @@ public class ActionExecutor {
             state.setKickoffPending(false);
         }
 
-        // Carrier stops running; receiver holds position during flight
+        // Carrier stops running. The receiver, on a direct pass (not a through ball), moves
+        // slightly toward the ball so he shows for it instead of freezing on his tactical spot.
+        // A through ball runs onto the space behind the line and is handled by launchDelivery.
         carrier.setTarget(null);
-        receiver.setTarget(null);
+        receiver.setTarget(result.getActualTarget());
         // RIGID RULE (user 2026-09-23): the striker must NOT move from his
         // position in the tick he struck the ball — the ball leaves his feet
         // next tick. Rooted for the strike tick (movement resumes on the
