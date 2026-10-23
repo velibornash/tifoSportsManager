@@ -745,6 +745,18 @@ public class TeamController {
         ));
     }
 
+    @GetMapping("/{teamId}/tactics-editor")
+    public ResponseEntity<TacticsEditorDTO> getTacticsEditor(
+            @PathVariable Long teamId,
+            @RequestParam(value = "formation", required = false) String formation,
+            @RequestParam(value = "tacticId", required = false) Long tacticId) {
+        // tacticId is what makes the editor read the SAME store it writes. Without it the page
+        // loads the club profile while Save writes the chosen tactic, and a moved player comes
+        // back where he was - owner, 2026-10-19: "kad izmenim POZICIJU IGRAČA ... treba da sačuva".
+        TacticsEditorDTO dto = teamTacticsService.getTacticsEditor(teamId, formation, tacticId);
+        return dto == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(dto);
+    }
+
     @GetMapping("/{teamId}/decide")
     public ResponseEntity<?> decide(
             @PathVariable Long teamId,
