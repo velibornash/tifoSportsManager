@@ -882,6 +882,11 @@ public class TeamController {
             inBox.add(m);
         }
         dbg.put("inBoxHome", inBox);
+        List<String> allPos = new ArrayList<>();
+        for (org.tifo.footballmanager.newLogic.sim.model.Player pp : state.getPlayers()) {
+            allPos.add(pp.getId() + "=" + pp.getPosition().getRow() + "|" + pp.getPosition().getColumn());
+        }
+        dbg.put("allPositions", allPos);
         List<Double> defRows = new ArrayList<>();
         for (org.tifo.footballmanager.newLogic.sim.model.Player opp : state.getPlayers()) {
             if (!opp.getTeam().equals("AWAY")) continue;
