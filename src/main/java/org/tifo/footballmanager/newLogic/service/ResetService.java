@@ -5,7 +5,10 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import javax.sql.DataSource;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -17,6 +20,9 @@ public class ResetService {
 
     @PersistenceContext
     private final EntityManager entityManager;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Transactional
     public void sanitizeLegacyLineupOrderSchema() {
@@ -365,13 +371,42 @@ public class ResetService {
      * purpose: they are world data like any other, and leaving four orphan tournament rows behind a
      * reset is how "the qualifying groups are still there after I reset" happens.
      */
-    @Transactional
+    /**
+     * Robust reset entry point.
+     *
+     * <p>The reset must not run concurrently with other database users (matchday jobs, web
+     * requests): they hold locks that deadlock with the deletes below. So before each attempt we
+     * (1) drain this app's own connection pool and (2) terminate every other backend on the
+     * database. If a deadlock still happens (a new connection slipped in), we retry up to
+     * {@code MAX_RESET_ATTEMPTS} times.
+     */
     public void resetDatabase() {
+        final int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                drainConnectionPool();
+                terminateActiveDatabaseSessions();
+                resetDatabaseOnce();
+                return;
+            } catch (RuntimeException e) {
+                if (attempt == maxAttempts || !isDeadlock(e)) {
+                    throw e;
+                }
+                log.warn("Reset DB attempt {} hit a deadlock; retrying in 2s...", attempt);
+                try {
+                    Thread.sleep(2000L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
+    @Transactional
+    public void resetDatabaseOnce() {
         log.warn("RESET DATABASE STARTED - keeping {} and the tactical editor data",
                 PRESERVED_ACCOUNTS);
-        // Kill any other active sessions/transactions on this database first, so a reset
-        // never blocks on a lock held by a long-running job (e.g. matchday simulation).
-        terminateActiveDatabaseSessions();
         entityManager.flush();
         entityManager.clear();
         sanitizeLegacyLineupOrderSchema();
@@ -381,6 +416,39 @@ public class ResetService {
 
         log.warn("RESET DATABASE FINISHED - all world data cleared, {} and tactics kept",
                 PRESERVED_ACCOUNTS);
+    }
+
+    /** Closes every connection in this app's HikariCP pool so no in-app thread holds a DB lock. */
+    private void drainConnectionPool() {
+        try {
+            if (dataSource instanceof com.zaxxer.hikari.HikariDataSource hds) {
+                com.zaxxer.hikari.HikariPoolMXBean mx = hds.getHikariPoolMXBean();
+                if (mx != null) {
+                    mx.hardEvictConnections();
+                    log.warn("Drained HikariCP connection pool before reset.");
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not drain connection pool: {}", e.getMessage());
+        }
+    }
+
+    private boolean isDeadlock(Throwable e) {
+        Throwable t = e;
+        while (t != null) {
+            if (t instanceof org.postgresql.util.PSQLException psql) {
+                String sqlState = psql.getSQLState();
+                if ("40P01".equals(sqlState) || "40001".equals(sqlState)) {
+                    return true;
+                }
+            }
+            String msg = t.getMessage();
+            if (msg != null && msg.toLowerCase(java.util.Locale.ROOT).contains("deadlock")) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
     }
 
     /**
