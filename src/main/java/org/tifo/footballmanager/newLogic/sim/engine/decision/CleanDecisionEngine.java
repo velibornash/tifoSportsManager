@@ -149,7 +149,7 @@ public class CleanDecisionEngine {
      * always gives the same answer — a yard from goal with the corners open is a shooting position
      * at any moment of any match, and a thirty-yard attempt in traffic never is.
      */
-    public static final double SHOT_CHANCE_FLOOR = 0.55; // public: MatchEngineVersion fingerprints it
+    public static final double SHOT_CHANCE_FLOOR = 0.50; // public: MatchEngineVersion fingerprints it
 
     /**
      * How close two options have to be before the carrier's judgement is consulted, in points on
@@ -762,6 +762,11 @@ public class CleanDecisionEngine {
      */
     private DecisionOption scoreBoxDelivery(MatchState state, Player carrier, boolean fromFlank) {
         ActionType type = fromFlank ? ActionType.CROSS : ActionType.CENTER;
+        // CROSS is removed per owner: "mozemo i ukinuti cross ostaviti center koji moze da se
+        // izvede gde god nije protivnicki igrac u bloku". CENTER alone handles deliveries.
+        if (fromFlank) {
+            return new DecisionOption(ActionType.CROSS, null, UNAVAILABLE, "CROSS: removed — use CENTER");
+        }
         StringBuilder reason = new StringBuilder(type + ": ");
         String team = carrier.getTeam();
         double row = carrier.getPosition().getRow();
@@ -771,11 +776,10 @@ public class CleanDecisionEngine {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": not in final third");
         }
         double wide = Math.abs(carrier.getPosition().getColumn() - 4.0);
+        // CENTER has no "crossing position" restriction (owner: "center koji moze da se
+        // izvede gde god nije protivnicki igrac u bloku"). It is allowed from any width.
         if (fromFlank && wide < 1.5) {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": not wide enough");
-        }
-        if (!fromFlank && (wide < 0.5 || wide > 2.5)) {
-            return new DecisionOption(type, null, UNAVAILABLE, type + ": not in a crossing position");
         }
 
         // Best attacker inside the box, and how many team-mates are in there.
@@ -814,8 +818,9 @@ public class CleanDecisionEngine {
             }
         }
         if (target == null) {
-            return new DecisionOption(type, null, UNAVAILABLE,
-                    type + ": everybody in the box is offside");
+            String msg = (inBox == 0) ? (type + ": nobody in the box")
+                    : (type + ": all in the box are offside");
+            return new DecisionOption(type, null, UNAVAILABLE, msg);
         }
         if (inBox < 2) {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": nobody in the box");
@@ -1166,7 +1171,16 @@ public class CleanDecisionEngine {
      */
     private static boolean inShootingZone(Player p) {
         double row = p.getPosition().getRow();
-        return "HOME".equals(p.getTeam()) ? row >= 6.0 : row <= 3.0;
+        double col = p.getPosition().getColumn();
+        boolean home = "HOME".equals(p.getTeam());
+        boolean inBand = home ? row >= 6.0 : row <= 3.0;
+        // Corner ban: a shot from the byline and wide (right/left corner area)
+        // is geometrically impossible — the angle to the goal mouth is too
+        // narrow. The owner: "sut iz de facto kornera NE SME biti opcija".
+        boolean inCorner = home
+                ? (row > 7.0 && (col < 2.0 || col > 6.0))
+                : (row < 2.0 && (col < 2.0 || col > 6.0));
+        return inBand && !inCorner;
     }
 
     /**
