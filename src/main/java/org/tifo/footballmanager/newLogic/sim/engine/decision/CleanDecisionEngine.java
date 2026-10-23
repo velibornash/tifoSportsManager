@@ -410,8 +410,26 @@ public class CleanDecisionEngine {
             score += gain;
             reason.append(String.format("forward %+.0f ", gain));
         } else if (advance < -0.2) {
-            score -= 20.0;
-            reason.append("backward -20 ");
+            // Short, safe backward pass: no penalty (owner's rule — "kratki pasovi
+            // do 15 m do receivera koji je sam ... nema penal sto je unazad,
+            // pogotovo na svojoj polovini"). 1 cell = 14 m, so 1.5 cells ≈ 21 m
+            // covers the 15 m the owner names in both directions.
+            double _dist = SimUtils.distance(carrier.getPosition(), receiver.getPosition());
+            boolean _short = _dist <= 1.5;
+            boolean _ownHalf = "HOME".equals(carrier.getTeam())
+                    ? carrier.getPosition().getRow() < 4.5
+                    : carrier.getPosition().getRow() > 4.5;
+            if (_short) {
+                if (_ownHalf) {
+                    reason.append("short safe backward (own half) ");
+                } else {
+                    score -= 5.0;
+                    reason.append("short safe backward -5 ");
+                }
+            } else {
+                score -= 20.0;
+                reason.append("backward -20 ");
+            }
         } else {
             score -= 3.0;
             reason.append("lateral -3 ");
@@ -980,7 +998,17 @@ public class CleanDecisionEngine {
             if (advance > 0) {
                 score += Math.min(16.0, advance * 7.0);
             } else if (advance < -0.2) {
-                score -= 20.0;
+                double _dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
+                boolean _short = _dist <= 1.5;
+                boolean _ownHalf = "HOME".equals(carrier.getTeam())
+                        ? carrier.getPosition().getRow() < 4.5
+                        : carrier.getPosition().getRow() > 4.5;
+                if (_short) {
+                    if (!_ownHalf) score -= 5.0;   // reduced penalty outside own half
+                    // in own half: no penalty (owner's rule)
+                } else {
+                    score -= 20.0;
+                }
             } else {
                 score -= 3.0;
             }
@@ -1001,6 +1029,10 @@ public class CleanDecisionEngine {
 
             // Marginal offside: still an option, but only if he plays the risk.
             if (marginalOffside && !carrierWillRiskOffside(carrier)) {
+                continue;
+            }
+            // Blocked pass (defender on the lane) is not an option at all.
+            if (laneBlockPenalty(state, carrier, teammate) > 0) {
                 continue;
             }
             if (score > bestScore) {
