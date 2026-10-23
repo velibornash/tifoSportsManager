@@ -797,13 +797,6 @@ public class CleanDecisionEngine {
         if (!inFinalThird) {
             return new DecisionOption(type, null, UNAVAILABLE, type + ": not in final third");
         }
-        // CENTER is not for players already in the box (owner: "center NEBULOZAN" from in-box).
-        if (!fromFlank && home && row >= 6.5) {
-            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
-        }
-        if (!fromFlank && !home && row <= 2.5) {
-            return new DecisionOption(type, null, UNAVAILABLE, type + ": already in the box");
-        }
         double wide = Math.abs(carrier.getPosition().getColumn() - 4.0);
         // CENTER has no "crossing position" restriction (owner: "center koji moze da se
         // izvede gde god nije protivnicki igrac u bloku"). It is allowed from any width.
