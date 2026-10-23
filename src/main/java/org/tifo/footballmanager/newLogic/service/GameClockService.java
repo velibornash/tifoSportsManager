@@ -59,6 +59,7 @@ public class GameClockService {
     private final SeasonService seasons;
     private final JobRunner jobRunner;
     private final StrandedFixtureService strandedFixtures;
+    private final MatchdayScheduler matchdayScheduler;
     private final Clock time;
     private final Executor walkExecutor;
     private volatile boolean syncing;
@@ -69,8 +70,9 @@ public class GameClockService {
      */
     @org.springframework.beans.factory.annotation.Autowired
     public GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
-                             StrandedFixtureService strandedFixtures) {
-        this(clocks, seasons, jobRunner, strandedFixtures, Clock.systemUTC());
+                             StrandedFixtureService strandedFixtures,
+                             MatchdayScheduler matchdayScheduler) {
+        this(clocks, seasons, jobRunner, strandedFixtures, matchdayScheduler, Clock.systemUTC());
     }
 
     /**
@@ -98,16 +100,23 @@ public class GameClockService {
      * message would explain.
      */
     GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
-                 StrandedFixtureService strandedFixtures, Clock time) {
-        this(clocks, seasons, jobRunner, strandedFixtures, time, newWalkExecutor());
+                 StrandedFixtureService strandedFixtures, MatchdayScheduler matchdayScheduler, Clock time) {
+        this(clocks, seasons, jobRunner, strandedFixtures, matchdayScheduler, time, newWalkExecutor());
     }
 
     GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
                      StrandedFixtureService strandedFixtures, Clock time, Executor walkExecutor) {
+        this(clocks, seasons, jobRunner, strandedFixtures, null, time, walkExecutor);
+    }
+
+    GameClockService(GameClockRepository clocks, SeasonService seasons, JobRunner jobRunner,
+                     StrandedFixtureService strandedFixtures, MatchdayScheduler matchdayScheduler,
+                     Clock time, Executor walkExecutor) {
         this.clocks = clocks;
         this.seasons = seasons;
         this.jobRunner = jobRunner;
         this.strandedFixtures = strandedFixtures;
+        this.matchdayScheduler = matchdayScheduler;
         this.time = time;
         this.walkExecutor = walkExecutor;
     }
@@ -507,7 +516,12 @@ public class GameClockService {
             stranded = result.get("stranded") instanceof Number number ? number.intValue() : 0;
             if (stranded > 0) {
                 List<Map<String, Object>> named = new ArrayList<>();
-                for (StrandedFixtureService.Stranded row : strandedFixtures.stranded(where)) {
+                // Group stranded fixtures by (season, week, day) so each matchday is replayed once.
+                List<StrandedFixtureService.Stranded> rows = strandedFixtures.stranded(where, 1000);
+                java.util.Map<String, List<Long>> bySlot = new java.util.LinkedHashMap<>();
+                for (StrandedFixtureService.Stranded row : rows) {
+                    String key = row.season() + ":" + row.week() + ":" + row.day();
+                    bySlot.computeIfAbsent(key, k -> new ArrayList<>()).add(row.fixtureId());
                     Map<String, Object> detail = new LinkedHashMap<>();
                     detail.put("fixtureId", row.fixtureId());
                     detail.put("competition", row.competition());
@@ -521,6 +535,31 @@ public class GameClockService {
                 }
                 strandedDetail = named;
                 log.warn("{} fixture(s) are in the past and have not been played.", stranded);
+
+                // **Replay them.** The walk offered their hours, but the matchday job that was meant to
+                // play them either failed (OOM, lazy proxy) or was recorded DONE while missing
+                // fixtures, so the walk did not replay them. Play them now, directly, so the stranded
+                // count does not sit at 100 forever. Idempotent: prepare skips already-prepared
+                // fixtures, publish skips already-played ones.
+                if (matchdayScheduler != null) {
+                    for (java.util.Map.Entry<String, List<Long>> slot : bySlot.entrySet()) {
+                        String[] parts = slot.getKey().split(":");
+                        int season = Integer.parseInt(parts[0]);
+                        int week = Integer.parseInt(parts[1]);
+                        int day = Integer.parseInt(parts[2]);
+                        try {
+                            var prep = matchdayScheduler.prepareUnplayedOn(season, week, day, slot.getValue());
+                            var pub = matchdayScheduler.publishUnplayedOn(season, week, day, slot.getValue());
+                            log.info("Stranded replay day {} week {} season {}: prepared {} ({} failed), "
+                                    + "published {} ({} failed).",
+                                    day, week, season, prep.prepared(), prep.failed(),
+                                    pub.prepared(), pub.failed());
+                        } catch (RuntimeException e) {
+                            log.warn("Stranded replay failed for day {} week {} season {}: {}",
+                                    day, week, season, e.getMessage());
+                        }
+                    }
+                }
             }
         }
         jobs.put("stranded", stranded);
