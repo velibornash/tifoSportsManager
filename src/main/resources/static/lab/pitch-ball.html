@@ -92,7 +92,7 @@ const baseCells = [
 
 let players = baseCells.map(s => {
   const pos = cellPos(s.p, s.w);
-  return { id: s.id, role: s.role, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
+  return { id: s.id, role: s.role, label: s.label, base: {x: pos.x, y: pos.y, p: s.p, w: s.w}, pos: {x: pos.x, y: pos.y} };
 });
 let ball = { x: cellPos(3, 2).x, y: cellPos(3, 2).y };
 
@@ -116,17 +116,12 @@ function toCellCoord(xPct, yPct) {
   return { x: (xPct / 100) * 6 + 1, y: 8 - (yPct / 100) * 7 };
 }
 
-function ballCell() {
-  // Find the cell whose center is closest to the ball position.
-  let best = null, bestDist = Infinity;
-  for (let p = 0; p <= 6; p++) {
-    for (let w = 0; w <= 5; w++) {
-      const c = cellPos(p, w);
-      const d = Math.hypot(c.x - ball.x, c.y - ball.y);
-      if (d < bestDist) { bestDist = d; best = { p, w }; }
-    }
-  }
-  return best;
+function cellString(xPct, yPct) {
+  // Internal pct -> "row_col" (1-based, row 1 = bottom).
+  const c = toCellCoord(xPct, yPct);
+  const row = Math.min(7, Math.max(1, Math.floor(c.y)));
+  const col = Math.min(6, Math.max(1, Math.floor(c.x)));
+  return row + '_' + col;
 }
 
 function render() {
@@ -159,19 +154,18 @@ function render() {
   const bp = toPx(ball.x, ball.y);
   ballEl.style.left = bp.left + 'px';
   ballEl.style.top = bp.top + 'px';
-  const bc = ballCell();
+  const bcRow = cellString(ball.x, ball.y);
   const stl = players.find(pp => pp.id === 10);
   const str = players.find(pp => pp.id === 11);
   const ballC = toCellCoord(ball.x, ball.y);
   const stlC = stl ? toCellCoord(stl.pos.x, stl.pos.y) : null;
   const strC = str ? toCellCoord(str.pos.x, str.pos.y) : null;
-  const stlCell = stl ? (Math.round(6.5 - stl.pos.y/100*7)) + '_' + (Math.round(stl.pos.x/100*6 - 0.5) + 1) : '-';
-  const strCell = str ? (Math.round(6.5 - str.pos.y/100*7)) + '_' + (Math.round(str.pos.x/100*6 - 0.5) + 1) : '-';
-  const ballCellStr = (bc.p + 1) + '_' + (bc.w + 1);
-  info.innerHTML = '<b>Ball cell:</b> ' + ballCellStr + '<br>'
-    + '<b>Ball pos:</b> ' + ballC.y.toFixed(2) + '_' + ballC.x.toFixed(2) + '<br>'
-    + '<b>STL pos:</b> ' + (stlC ? stlC.y.toFixed(2) + '_' + stlC.x.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
-    + '<b>STR pos:</b> ' + (strC ? strC.y.toFixed(2) + '_' + strC.x.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
+  const stlCell = stl ? cellString(stl.pos.x, stl.pos.y) : '-';
+  const strCell = str ? cellString(str.pos.x, str.pos.y) : '-';
+  info.innerHTML = '<b>Ball cell:</b> ' + bcRow + '<br>'
+    + '<b>Ball pos:</b> ' + ballC.y.toFixed(2) + '|' + ballC.x.toFixed(2) + '<br>'
+    + '<b>STL pos:</b> ' + (stlC ? stlC.y.toFixed(2) + '|' + stlC.x.toFixed(2) : '-') + ' (cell ' + stlCell + ')<br>'
+    + '<b>STR pos:</b> ' + (strC ? strC.y.toFixed(2) + '|' + strC.x.toFixed(2) : '-') + ' (cell ' + strCell + ')<br>'
     + '<b>Players:</b> ' + players.length;
 }
 
