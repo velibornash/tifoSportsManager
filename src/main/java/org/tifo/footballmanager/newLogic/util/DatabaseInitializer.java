@@ -1533,6 +1533,16 @@ public class DatabaseInitializer {
         backfillStadiumCeilings();
         Team ownerTeam = createOwnerUserIfNotExists();
         createSecondUserIfNotExists();
+        // **Every club gets the world's default tactic.** The profile is restored from the backup
+        // file first (restoreTacticsProfiles ran in clearDatabaseOnly); here we write the actual
+        // tactic rows so the match engine has something to read. Without this the clubs come back
+        // with no tactic at all, and the owner's world default is a designation with no clubs under it.
+        try {
+            int given = tactics.giveClubsTheDesignatedWorldDefault(teamRepository.findClubTeamsForOperations());
+            log.info("Gave {} club(s) the world's default tactic during buildSerbianStructure.", given);
+        } catch (Exception e) {
+            log.warn("Could not apply world default tactic during buildSerbianStructure: {}", e.getMessage());
+        }
         // The manager stands in as selector until the elections run.
         //
         // This was in the boot path, and the boot path no longer seeds anything. So after
