@@ -5,6 +5,7 @@ import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.tifo.footballmanager.newLogic.repository.MatchRepository;
 import org.tifo.footballmanager.newLogic.sim.SimMatchService;
+import org.tifo.footballmanager.newLogic.service.TacticsRulesProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -48,6 +49,7 @@ public class MatchdayScheduler {
     private final MatchFixtureRepository fixtures;
     private final MatchRepository matches;
     private final SimMatchService sim;
+    private final TacticsRulesProvider tacticsRules;
 
     /**
      * A small pool for parallel match simulation. Each fixture is simulated independently — the
@@ -100,15 +102,16 @@ public class MatchdayScheduler {
     }
 
     public MatchdayScheduler(MatchFixtureRepository fixtures, MatchRepository matches, SimMatchService sim,
-                             PlatformTransactionManager transactionManager) {
+                             PlatformTransactionManager transactionManager, TacticsRulesProvider tacticsRules) {
         this.fixtures = fixtures;
         this.matches = matches;
         this.sim = sim;
+        this.tacticsRules = tacticsRules;
         this.perFixture = new TransactionTemplate(transactionManager);
         this.perFixture.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         // A small pool: the bottleneck is CPU, and a pool larger than the core count just adds
         // context switching. 4 is a safe default for a matchday's 155 matches.
-        this.executor = Executors.newFixedThreadPool(4);
+        this.executor = Executors.newFixedThreadPool(2);
     }
 
     @jakarta.annotation.PreDestroy
@@ -174,6 +177,13 @@ public class MatchdayScheduler {
         if (failed.get() > 0) {
             log.warn("Matchday prepare day {}: {} fixture(s) computed, {} failed.",
                     day, prepared.get(), failed.get());
+        }
+        // **Free the parsed-tactics cache between matchdays.** The bounded LRU (P0-54) keeps the
+        // hot tactics, but clearing here drops everything the prepare just touched so the next
+        // matchday starts from an empty cache and the heap stays flat. Functionality is preserved:
+        // the cache is rebuilt on demand, it only costs a re-parse.
+        if (tacticsRules != null) {
+            tacticsRules.evictAll();
         }
         return new MatchdayOutcome(prepared.get(), failed.get());
     }
