@@ -38,6 +38,9 @@ public interface TacticRepository extends JpaRepository<Tactic, Long> {
     @Query("select distinct t.team.id from Tactic t where t.team is not null")
     List<Long> findTeamIdsWithTactics();
 
+    /** Every club's current default tactic, in one query — for the bulk seed. */
+    List<Tactic> findByDefaultTacticTrue();
+
     @Query("select count(distinct t.team.id) from Tactic t")
     long countClubsWithTactics();
 

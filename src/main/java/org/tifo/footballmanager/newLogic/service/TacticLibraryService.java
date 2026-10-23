@@ -456,18 +456,48 @@ public class TacticLibraryService {
         List<Team> clubs = teams.findAll();
         int created = 0;
         int skipped = 0;
-        // One query for the clubs that already have a tactic, rather than one per club: the world has
-        // fourteen thousand of them and the button used to ask fourteen thousand questions.
-        java.util.Set<Long> clubsWithTactics = new java.util.HashSet<>(tactics.findTeamIdsWithTactics());
+        // One query for every club's current default, so a club that already has one gets it
+        // overwritten in place instead of receiving a second default tactic (which would leave the
+        // club with two rows marked default). Clubs with no default get a new one. A club that
+        // already carries a tactic with this exact name is left alone — that is the idempotency.
+        java.util.Map<Long, Tactic> defaultsByTeam = new java.util.HashMap<>();
+        for (Tactic t : tactics.findByDefaultTacticTrue()) {
+            if (t.getTeam() != null && t.getTeam().getId() != null) {
+                defaultsByTeam.put(t.getTeam().getId(), t);
+            }
+        }
         List<Tactic> pending = new ArrayList<>();
+        List<Tactic> toUpdate = new ArrayList<>();
 
         for (Team club : clubs) {
-            if (club.getId() != null && clubsWithTactics.contains(club.getId())) {
+            if (club.getId() == null) {
                 skipped++;
                 continue;
             }
-            pending.add(defaultTacticFor(club, templateName, templateFormation, templateStyle,
-                    templateRulesJson, templateSetPiecesJson));
+            List<Tactic> existing = tactics.findByTeamIdOrderByIdAsc(club.getId());
+            boolean alreadyHasThisName = existing.stream()
+                    .anyMatch(t -> templateName.equals(t.getName()));
+            if (alreadyHasThisName) {
+                skipped++;
+                continue;
+            }
+            Tactic currentDefault = defaultsByTeam.get(club.getId());
+            if (currentDefault != null) {
+                // Overwrite the existing default in place, so the club keeps one default tactic
+                // and it becomes the exported one.
+                currentDefault.setName(templateName);
+                currentDefault.setFormation(templateFormation);
+                currentDefault.setStyle(templateStyle);
+                currentDefault.setRulesJson(templateRulesJson);
+                currentDefault.setSetPiecesJson(templateSetPiecesJson);
+                currentDefault.setVersion(currentDefault.getVersion() == null ? 1L
+                        : currentDefault.getVersion() + 1);
+                currentDefault.setUpdatedAt(LocalDateTime.now());
+                toUpdate.add(currentDefault);
+            } else {
+                pending.add(defaultTacticFor(club, templateName, templateFormation, templateStyle,
+                        templateRulesJson, templateSetPiecesJson));
+            }
             created++;
         }
         if (!pending.isEmpty()) {
@@ -475,11 +505,14 @@ public class TacticLibraryService {
             // that writes them one at a time is a rebuild that times out.
             tactics.saveAll(pending);
         }
+        if (!toUpdate.isEmpty()) {
+            tactics.saveAll(toUpdate);
+        }
 
-        // Every club's default just came into existence; none of them were cached before, and leaving a
-        // stale resolution would mean the next match per club reads the fallback anyway.
+        // Every club's default just changed; none of the cached resolutions are valid any more.
         rulesProvider.evictAll();
-        log.info("Default tactic created for {} club(s); {} already had tactics.", created, skipped);
+        log.info("Default tactic applied to {} club(s); {} already had '{}'.",
+                created, skipped, templateName);
         return new SeedReport(created, skipped, clubs.size());
     }
 
