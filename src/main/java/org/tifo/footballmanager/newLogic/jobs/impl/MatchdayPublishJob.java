@@ -152,6 +152,12 @@ public class MatchdayPublishJob implements DayJob {
         return 60;
     }
 
+    @Override
+    public String dependsOn() {
+        // A publish job must never run before its prepare job has finished computing the fixtures.
+        return "matchday-prepare-" + day;
+    }
+
     /**
      * Runs outside the framework's transaction, committing a fixture at a time.
      *

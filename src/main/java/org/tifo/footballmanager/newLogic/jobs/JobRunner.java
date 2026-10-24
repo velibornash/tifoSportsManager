@@ -282,6 +282,20 @@ public class JobRunner {
             outcome.put("status", "ALREADY_DONE");
             return outcome;
         }
+        // Job dependency: a publish job must not run before its prepare job is DONE for this day.
+        // Otherwise it fires against unprepared fixtures and fails the whole matchday.
+        String dep = job.dependsOn();
+        if (dep != null) {
+            var depRun = runs.findBySeasonYearAndWeekNumberAndDayNumberAndJobKey(
+                    seasonYear, weekNumber, dayNumber, dep);
+            if (depRun.isEmpty() || depRun.get().getStatus() != JobRun.Status.DONE) {
+                log.info("Leaving {} for season {} week {} day {} alone: dependency {} is not DONE yet.",
+                        job.key(), seasonYear, weekNumber, dayNumber, dep);
+                outcome.put("status", "WAITING_FOR_DEPENDENCY");
+                return outcome;
+            }
+        }
+
         // Not DONE means not done: this row is a previous attempt that did not complete, so the job runs
         // again now. The message from the last attempt is kept for diagnosis and overwritten on success.
         if (existing.isPresent()) {

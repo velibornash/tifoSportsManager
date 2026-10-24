@@ -35,6 +35,15 @@ public interface DayJob {
     /** Week this fires in, or {@link #ANY_WEEK}. */
     int week();
 
+    /**
+     * Key of another job that must be {@code DONE} for this (season, week, day) before this one runs.
+     * Default: no dependency. Used to keep a publish job from firing before its prepare job has
+     * finished computing the fixtures.
+     */
+    default String dependsOn() {
+        return null;
+    }
+
     /** Game day 1..7 this fires on, or {@link #ANY_DAY}. */
     int day();
 
