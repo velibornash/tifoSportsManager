@@ -239,6 +239,9 @@ public class MovementEngine {
             List<Player> active = new ArrayList<>();
             for (Player pl : state.getPlayers()) {
                 if (pl.isUnavailable() || pl.isLocked() || pl.isSentOff()) continue;
+                // The carrier walking onto the ball claims the spot (CLAIM_REACH_RADIUS) and
+                // must not be pushed away from it by the global separation pass.
+                if (pl == state.getCarrier()) continue;
                 active.add(pl);
             }
             for (int i = 0; i < active.size(); i++) {
