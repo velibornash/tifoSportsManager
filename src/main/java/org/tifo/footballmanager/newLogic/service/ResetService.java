@@ -24,6 +24,10 @@ public class ResetService {
     @Autowired
     private DataSource dataSource;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private ResetService self;
+
     @Transactional
     public void sanitizeLegacyLineupOrderSchema() {
         log.info("Checking lineup schema compatibility for legacy order columns...");
@@ -386,7 +390,7 @@ public class ResetService {
             try {
                 drainConnectionPool();
                 terminateActiveDatabaseSessions();
-                resetDatabaseOnce();
+                self.resetDatabaseOnce();
                 return;
             } catch (RuntimeException e) {
                 if (attempt == maxAttempts || !isDeadlock(e)) {
