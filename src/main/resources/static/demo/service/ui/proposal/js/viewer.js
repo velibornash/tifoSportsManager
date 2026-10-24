@@ -1590,19 +1590,26 @@ class MatchViewer {
       if (ev.tick > currentTick) break;
       if (ev.tick <= this._duelState.currentTick) continue; // already processed
 
-      if (ev.type === 'DUEL_START') {
-        // Parse "TYPE AttackerLabel vs DefenderLabel" from description
-        // Example: "RECEIVE_PASS Home FC 11 vs Away United 7"
-        // Player labels are like "Home FC 11" or "Away United 7" (team name + number)
+      if (ev.type === 'DUEL' || ev.type === 'DUEL_START') {
+        // Engine format: "DUEL DRIBBLE won by H11 (H11(5.3,4.4) v A8(5.5,4.7)) ball(5.3,4.4)"
+        // or viewer format: "TYPE AttackerLabel vs DefenderLabel"
         const desc = ev.description || '';
-        const parts = desc.split(' vs ');
-        if (parts.length === 2) {
-          // Strip the action type prefix from the first part (e.g. "RECEIVE_PASS ")
-          const attackerPart = parts[0].replace(/^.*?\s+/, '').trim();
-          const defenderPart = parts[1].trim();
-          const pairKey = attackerPart + '|' + defenderPart;
+        let a = null, b = null;
+        const m = desc.match(/\(([^)]+)\s+v\s+([^)]+)\)/);
+        if (m) {
+          a = m[1].replace(/\(.*$/, '').trim();
+          b = m[2].replace(/\(.*$/, '').trim();
+        } else {
+          const parts = desc.split(' vs ');
+          if (parts.length === 2) {
+            a = parts[0].replace(/^.*?\s+/, '').trim();
+            b = parts[1].trim();
+          }
+        }
+        if (a && b) {
+          const pairKey = a + '|' + b;
           this._duelState.resolved.delete(pairKey);
-          this._duelState.pairs.push({ tick: ev.tick, a: attackerPart, b: defenderPart });
+          this._duelState.pairs.push({ tick: ev.tick, a, b });
         }
 } else if (ev.type === 'DUEL_RESOLVED') {
         // Track which player lost the duel (loser is in cooldown for ~6 ticks
