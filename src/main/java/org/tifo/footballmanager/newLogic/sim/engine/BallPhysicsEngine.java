@@ -468,16 +468,20 @@ public class BallPhysicsEngine implements BallEngine {
     private String goalCrossing(MatchState state, Position prev, Position curr) {
         PitchEnvironment env = state.getEnvironment();
         // HOME attacks AWAY goal (row 8.0): prev < 8.0 && curr >= 8.0
+        // (tolerance 0.05 so a ball that stops just short of the line still counts as a goal
+        //  rather than silently bouncing with no log entry)
         if (prev.getRow() < env.getAwayGoal().getGoalLineRow()
-                && curr.getRow() >= env.getAwayGoal().getGoalLineRow()) {
+                && curr.getRow() >= env.getAwayGoal().getGoalLineRow() - 0.05) {
             double col = crossingCol(prev, curr, env.getAwayGoal().getGoalLineRow());
             if (env.getAwayGoal().isInsideMouth(col)) {
                 return "HOME";
             }
         }
         // AWAY attacks HOME goal (row 1.0): prev > 1.0 && curr <= 1.0
+        // (tolerance 0.05 so a ball that stops just short of the line still counts as a goal
+        //  rather than silently bouncing with no log entry)
         if (prev.getRow() > env.getHomeGoal().getGoalLineRow()
-                && curr.getRow() <= env.getHomeGoal().getGoalLineRow()) {
+                && curr.getRow() <= env.getHomeGoal().getGoalLineRow() + 0.05) {
             double col = crossingCol(prev, curr, env.getHomeGoal().getGoalLineRow());
             if (env.getHomeGoal().isInsideMouth(col)) {
                 return "AWAY";
