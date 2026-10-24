@@ -47,10 +47,10 @@ public class BallPhysicsEngine implements BallEngine {
      * players ran past it. Physically a ball can never be out-run by a player it
      * was struck to.
      */
-    public static final double GROUND_DECEL = 0.05;      // ~0.32 m/s^2 - gradual (matches pitch tool)
+    public static final double GROUND_DECEL = 0.0;       // no deceleration during a pass (owner: receiver gets boost, ball doesn't slow)
 
     /** Air drag on a struck ball, in cells/tick^2 (real: ~0.1 m/s^2). */
-    public static final double AIR_DECEL = 0.03;         // ~0.19 m/s^2 (matches pitch tool)
+    public static final double AIR_DECEL = 0.0;          // no deceleration during a pass (owner: receiver gets boost, ball doesn't slow)
     public static final double STOP_SPEED = 0.01;
     public static final double LANDING_SPEED = 0.30;      // air -> ground transition
     public static final double FAST_CONTACT = 1.0;        // >= this: BLOCK (parry), <: INTERCEPT
