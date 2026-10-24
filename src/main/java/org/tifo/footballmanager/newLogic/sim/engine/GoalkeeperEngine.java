@@ -35,13 +35,13 @@ public class GoalkeeperEngine {
     // ── Positioning ──────────────────────────────────────────────────────────
 
     /** Distance off his own goal line when the ball is far away (just off the line). */
-    private static final double ADVANCE_FAR = 0.35;
+    private static final double ADVANCE_FAR = 0.15;
     /** Ball distance (cells) at which he starts advancing meaningfully. */
     private static final double ADVANCE_FROM = 4.0;
     /** How far he comes for a one-on-one inside the box. */
-    private static final double RUSH_ADVANCE = 2.6;
+    private static final double RUSH_ADVANCE = 1.6;
     /** He never leaves his own penalty area by more than this. */
-    private static final double MAX_ADVANCE = 2.8;
+    private static final double MAX_ADVANCE = 1.4;
     /** Extra margin outside the posts he is allowed to cover. */
     private static final double POST_MARGIN = 0.9;
 
@@ -74,7 +74,7 @@ public class GoalkeeperEngine {
         if (ballDistance < ADVANCE_FROM) {
             // 4 cells -> ADVANCE_FAR, 0 cells -> ~1.5 cells. Linear ramp.
             double t = 1.0 - ballDistance / ADVANCE_FROM;
-            advance = ADVANCE_FAR + t * 1.15;
+            advance = ADVANCE_FAR + t * 0.5;
         }
         if (ballDistance < 2.0 && isOneOnOne(state, gk)) {
             advance = RUSH_ADVANCE;
