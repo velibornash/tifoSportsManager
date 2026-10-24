@@ -127,7 +127,7 @@ public class AsyncSimulationRunner {
      * can run side by side; the pool keeps memory bounded (snapshots are already off for bot matches).
      * Four threads keeps the DB connection pool from being exhausted while still giving ~4x throughput.
      */
-    private static final int SIM_POOL_SIZE = 4;
+    private static final int SIM_POOL_SIZE = 2;
 
     private void simulateBatch(List<Long> fixtureIds) {
         java.util.concurrent.ExecutorService pool =
