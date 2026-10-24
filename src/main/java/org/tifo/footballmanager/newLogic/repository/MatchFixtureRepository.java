@@ -48,7 +48,14 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
      * hand a day-3 job the day-7 round as well and it would play football that is two days early.
      */
     @Query("select f from MatchFixture f where f.seasonYear = :seasonYear and f.weekNumber = :weekNumber "
-            + "and f.dayNumber = :dayNumber and f.played = false")
+            + "and f.dayNumber = :dayNumber and f.played = false "
+            + "order by case when f.competition is null then 1 else 0 end asc, "
+            + "f.competition.tier asc nulls last, "
+            + "case when f.competition.name like '%Champions%' then 1 "
+            + "     when f.competition.name like '%Masters%' then 2 "
+            + "     when f.competition.name like '%Challenge%' then 3 "
+            + "     else 4 end asc, "
+            + "f.competition.name asc, f.id asc")
     List<MatchFixture> findUnplayedOnDay(@Param("seasonYear") Integer seasonYear,
                                          @Param("weekNumber") Integer weekNumber,
                                          @Param("dayNumber") Integer dayNumber);
@@ -112,7 +119,14 @@ public interface MatchFixtureRepository extends JpaRepository<MatchFixture, Long
      * the publish job must take everything.
      */
     @Query("select f from MatchFixture f where f.seasonYear = :seasonYear and f.weekNumber = :weekNumber "
-            + "and f.dayNumber = :dayNumber and f.played = false")
+            + "and f.dayNumber = :dayNumber and f.played = false "
+            + "order by case when f.competition is null then 1 else 0 end asc, "
+            + "f.competition.tier asc nulls last, "
+            + "case when f.competition.name like '%Champions%' then 1 "
+            + "     when f.competition.name like '%Masters%' then 2 "
+            + "     when f.competition.name like '%Challenge%' then 3 "
+            + "     else 4 end asc, "
+            + "f.competition.name asc, f.id asc")
     List<MatchFixture> findUnpublishedOnDay(@Param("seasonYear") Integer seasonYear,
                                             @Param("weekNumber") Integer weekNumber,
                                             @Param("dayNumber") Integer dayNumber);
