@@ -228,7 +228,8 @@ public class OffsideService implements EngineInterfaces.OffsideService {
     public boolean isOffsideCheckedDelivery(ActionType type) {
         return type == ActionType.PASS
                 || type == ActionType.CROSS
-                || type == ActionType.CENTER;
+                || type == ActionType.CENTER
+                || type == ActionType.THRU;
     }
 
     /**
