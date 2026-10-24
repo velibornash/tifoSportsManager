@@ -39,14 +39,14 @@ public class DuelEngine {
     // The separation wall exists to stop two players occupying one square; it was not written to
     // make tackling impossible, and these radii are now above it so that a duel is a question about
     // where players are, never about which component decided to look.
-    public static final double DRIBBLE_DUEL_RADIUS = 0.6; // touching distance (~7 m) — duel only when circles touch
+    public static final double DRIBBLE_DUEL_RADIUS = 0.45; // ~6 m, matches lab pitch tool
     /**
      * A presser engages from slightly further out than a standing challenge, because he is arriving
      * with momentum. The gap to {@link #DRIBBLE_DUEL_RADIUS} is now small on purpose: the old pair
      * were 0.15 and 0.38, a 2.5x difference that was really the size of the wall, not the difference
      * between arriving and standing.
      */
-    public static final double PRESS_DRIB_DUEL_RADIUS = 0.6; // touching distance (~7 m)
+    public static final double PRESS_DRIB_DUEL_RADIUS = 0.55; // matches lab pitch tool
     public static final double RECEIVE_PASS_RADIUS = 0.50;
     /**
      * A defender level with or behind the carrier has to get closer to win the ball, so only this
