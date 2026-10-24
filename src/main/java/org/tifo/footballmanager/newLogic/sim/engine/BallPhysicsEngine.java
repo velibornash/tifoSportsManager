@@ -290,6 +290,21 @@ public class BallPhysicsEngine implements BallEngine {
         //    (reflect velocity, dampen, move to surface) and keeps moving — no
         //    possession change. For SLOW balls the normal football receive/intercept/
         //    block/save logic applies, with a boosted receive radius.
+        // Pass reception takes priority over billiard bounce: a pass aimed at a
+        // pending receiver must be received when it reaches him, even if it is
+        // fast — otherwise a normal (fast) pass bounces off the receiver's body
+        // and never registers as a RECEIVE, and the wrong (nearest) player or a
+        // bounce is recorded instead. Shots have no pending receiver, so they keep
+        // the fast-bounce path. The GK keeps his own save/parry logic.
+        Player pending = state.getPendingReceiver();
+        if (pending != null && !pending.isUnavailable() && !pending.isGoalkeeper()) {
+            double d = SimUtils.pointSegmentDistance(
+                    pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
+            if (d <= RECEIVE_R_BOOSTED) {
+                return BallStepResult.receive(pending.getLabel());
+            }
+        }
+
         BallStepResult contact;
         if (spd > BALL_BOUNCE_SPEED_THRESHOLD) {
             // Fast ball: billiard bounce off OUTFIELD players only. Goalkeepers
