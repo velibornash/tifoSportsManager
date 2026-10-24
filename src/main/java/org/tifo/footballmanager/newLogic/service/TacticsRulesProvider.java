@@ -139,7 +139,29 @@ public class TacticsRulesProvider {
             new java.util.LinkedHashMap<Long, TacticsRules>(256, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(java.util.Map.Entry<Long, TacticsRules> eldest) {
-                    return size() > 512;
+                    return size() > 4096;
+                }
+            });
+
+    /**
+     * Raw tactic data cache (formation + rulesJson) by tactic id, so a tactic that is
+     * evicted from {@link #cache} does not need a fresh DB query (which allocates the
+     * full rules_json result set — the thing that OOM'd the matchday simulation).
+     */
+    private static final class RawTactic {
+        final String formation;
+        final String rulesJson;
+        RawTactic(String formation, String rulesJson) {
+            this.formation = formation;
+            this.rulesJson = rulesJson;
+        }
+    }
+
+    private final Map<Long, RawTactic> rawCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<Long, RawTactic>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<Long, RawTactic> eldest) {
+                    return size() > 4096;
                 }
             });
 
@@ -254,14 +276,24 @@ public class TacticsRulesProvider {
     }
 
     private TacticsRules load(Long teamId, Long tacticId) {
-        var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
-        if (tactic == null) {
-            log.warn("{} has no tactic {}; the bundled fallback applies.", teamName(teamId, null), tacticId);
-            return fallback;
+        // Raw data first: avoid the DB query (which allocates the full rules_json result set)
+        // when we have already loaded this tactic once. The ownership check is skipped on a
+        // cache hit, which is safe during simulation (the id came from resolveDefaultTacticId).
+        RawTactic raw = rawCache.get(tacticId);
+        if (raw == null) {
+            var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
+            if (tactic == null) {
+                log.warn("{} has no tactic {}; the bundled fallback applies.", teamName(teamId, null), tacticId);
+                return fallback;
+            }
+            tacticOwner.put(tacticId, teamId);
+            raw = new RawTactic(tactic.getFormation(), tactic.getRulesJson());
+            rawCache.put(tacticId, raw);
+            return rulesFor(teamId, raw.formation, raw.rulesJson,
+                    "tactics editor (" + tactic.getName() + ")");
         }
         tacticOwner.put(tacticId, teamId);
-        return rulesFor(teamId, tactic.getFormation(), tactic.getRulesJson(),
-                "tactics editor (" + tactic.getName() + ")");
+        return rulesFor(teamId, raw.formation, raw.rulesJson, "tactics editor (cached)");
     }
 
     /**
@@ -377,6 +409,7 @@ public class TacticsRulesProvider {
         tacticOwner.forEach((tacticId, owner) -> {
             if (java.util.Objects.equals(owner, teamId)) {
                 cache.remove(tacticId);
+                rawCache.remove(tacticId);
             }
         });
         tacticOwner.entrySet().removeIf(entry -> java.util.Objects.equals(entry.getValue(), teamId));
@@ -396,6 +429,7 @@ public class TacticsRulesProvider {
         defaultTacticByTeam.clear();
         tacticOwner.clear();
         contentCache.clear();
+        rawCache.clear();
     }
 
     /**
@@ -407,6 +441,7 @@ public class TacticsRulesProvider {
     public void evict(Long teamId, Long tacticId) {
         if (tacticId != null) {
             cache.remove(tacticId);
+            rawCache.remove(tacticId);
             tacticOwner.remove(tacticId);
         }
     }
