@@ -46,5 +46,5 @@ else
 fi
 
 exec mvn spring-boot:run -Dspring-boot.run.arguments="--app.open-browser=${OPEN_BROWSER}" \
-    -Dspring-boot.run.jvmArguments="-Xmx4g -Xms1g" \
+    -Dspring-boot.run.jvmArguments="-Xmx8g -Xms2g" \
     ${MAVEN_ARGS[@]+"${MAVEN_ARGS[@]}"}
