@@ -181,8 +181,13 @@ public class TacticsRulesProvider {
      * and the number of <em>distinct</em> tactics is small (one world default + a handful of
      * custom ones).
      */
-    private final java.util.concurrent.ConcurrentHashMap<Integer, ContentEntry> contentCache =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Integer, ContentEntry> contentCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<Integer, ContentEntry>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<Integer, ContentEntry> eldest) {
+                    return size() > 1024;
+                }
+            });
 
     public TacticsRulesProvider(TeamTacticsProfileRepository profiles, TeamRepository teams,
                                 org.tifo.footballmanager.newLogic.repository.TacticRepository tactics) {
