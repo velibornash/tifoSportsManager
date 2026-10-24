@@ -169,11 +169,12 @@ export function createMatchView(deps) {
                 results: 'results',
                 leagueMatches: 'leagueMatches',
                 leagueTable: 'leagueTable',
-                leagueSchedule: 'leagueSchedule'
+                leagueSchedule: 'leagueSchedule',
+                dashboard: 'dashboard'
             };
-            let backTarget = KNOWN_BACK_TARGETS[caller] ?? null;
-            if (backTarget === null) {
-                console.info(`Unknown caller "${caller}" - Back will return to the previous screen.`);
+            let backTarget = KNOWN_BACK_TARGETS[caller] ?? 'dashboard';
+            if (backTarget === 'dashboard' && !(caller in KNOWN_BACK_TARGETS)) {
+                console.info(`Unknown caller "${caller}" - Back will return to the dashboard.`);
             }
 
             /**
@@ -207,7 +208,7 @@ export function createMatchView(deps) {
             mainContent.innerHTML = `
             <div class="team-card fm-match-page">
                 <div style="display:flex; justify-content:flex-start; margin-bottom:10px;">
-                    <button type="button" id="back-button-top" class="back-to-dashboard" onclick="goBackSmart('${backTarget || ''}')">&#8592; Back</button>
+                    <button type="button" id="back-button-top" class="back-to-dashboard" onclick="${backTarget === 'dashboard' ? 'window.loadDashboard && window.loadDashboard()' : `goBackSmart('${backTarget}')`}">&#8592; Back</button>
                 </div>
                 <!--
                     **The tabs are a tab bar, and they sit under the Back button** (owner, 2026-10-20:
