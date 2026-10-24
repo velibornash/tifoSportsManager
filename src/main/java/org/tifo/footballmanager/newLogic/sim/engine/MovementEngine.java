@@ -240,8 +240,10 @@ public class MovementEngine {
             for (Player pl : state.getPlayers()) {
                 if (pl.isUnavailable() || pl.isLocked() || pl.isSentOff()) continue;
                 // The carrier walking onto the ball claims the spot (CLAIM_REACH_RADIUS) and
-                // must not be pushed away from it by the global separation pass.
-                if (pl == state.getCarrier()) continue;
+                // must not be pushed away from it by the global separation pass. The restart
+                // taker (goal kick / corner / throw-in / free kick) is in the same situation:
+                // he is walking onto the ball spot and must be allowed to reach it.
+                if (pl == state.getCarrier() || pl == state.getRestartTaker()) continue;
                 active.add(pl);
             }
             for (int i = 0; i < active.size(); i++) {
