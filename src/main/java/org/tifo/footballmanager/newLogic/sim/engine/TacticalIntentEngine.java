@@ -91,8 +91,22 @@ import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
             if (p == carrier || p == taker) continue;
             if (p.isUnavailable() || p.isLocked()) continue;
             if (p == receiver && state.getReceivePoint() != null) {
-                // Run onto the pass — arrive at where the ball will land.
-                p.setTarget(state.getReceivePoint());
+                // Run onto the ball so he is in position to receive it — toward the
+                // ball's current position, not his tactical target cell (owner: "ka lopti,
+                // ne ka target cell, da bi primio pass"). Capped to a short chase so he
+                // does not abandon his shape; the Movement Engine also caps the step.
+                Position ball = state.getBall().getPosition();
+                Position cur = p.getPosition();
+                double dr = ball.getRow() - cur.getRow();
+                double dc = ball.getColumn() - cur.getColumn();
+                double dist = Math.hypot(dr, dc);
+                if (dist > 1e-6) {
+                    double cap = Math.min(dist, 0.5);
+                    p.setTarget(new Position(cur.getRow() + dr / dist * cap,
+                            cur.getColumn() + dc / dist * cap));
+                } else {
+                    p.setTarget(ball);
+                }
                 continue;
             }
             // The keeper is NOT a static anchor: he stands on the bisector
