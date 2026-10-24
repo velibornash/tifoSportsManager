@@ -244,7 +244,7 @@ public class JobRunner {
      * <p><b>The number is a decision, not a measurement</b>, which is why it is a constant here and
      * not buried in the retry loop.
      */
-    public static final int FAILED_BACKOFF_HOURS = 2;
+    public static final int FAILED_BACKOFF_HOURS = 0;
 
     /** Is this PENDING row a claim a live scan still holds, or one a dead scan left behind? */
     private static boolean claimIsLive(JobRun claim) {
