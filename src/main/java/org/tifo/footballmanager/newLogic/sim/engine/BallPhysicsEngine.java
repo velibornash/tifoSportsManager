@@ -301,6 +301,11 @@ public class BallPhysicsEngine implements BallEngine {
             double d = SimUtils.pointSegmentDistance(
                     pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
             if (d <= RECEIVE_R_BOOSTED) {
+                state.setCarrier(pending);
+                state.setLastTouchTeam(pending.getTeam());
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
+                ball.stop();
                 return BallStepResult.receive(pending.getLabel());
             }
         }
