@@ -51,9 +51,10 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
     public static final double RANGE_B = 1.0;
 
     /** How much clear air around a carrier counts as "nobody near him" — the condition for
-     *  TYPE A at all, in cells. 1.0 = 14 m. A carrier inside a metre of his own team-mate is
-     *  already being dealt with and does not summon a fourth man. */
-    public static final double CARRIER_SPACE_RADIUS = 1.0;
+     *  TYPE A at all, in cells. Lowered from 1.0 to 0.5 so a carrier whose nearest team-mate
+     *  sits at the tactical separation distance (0.6) is still considered free and pressable.
+     *  A carrier inside half a cell of his own team-mate is already being dealt with. */
+    public static final double CARRIER_SPACE_RADIUS = 0.5;
 
     /** The danger zone measured from our own goal line, in cells. 2.0 = 28 m, which is the
      *  owner's 20-30 m. HOME goal is row 1, AWAY goal is row 8. */
@@ -96,6 +97,11 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
             Position typeC = null;
             if (typeA != null) {
                 newTarget = typeA;
+                if (state.getActionLogger() != null) {
+                    state.getActionLogger().log("THR", "TYPE_A " + player.getLabel() + "(" + player.getRole() + ")"
+                            + " presses carrier " + (state.getCarrier() == null ? "none" : state.getCarrier().getLabel())
+                            + " at " + state.getActionLogger().p(newTarget));
+                }
             } else {
                 // b. Try TYPE B: press isolated opponent in own defensive third
                 typeB = pressIsolatedOpponent(player, state);
