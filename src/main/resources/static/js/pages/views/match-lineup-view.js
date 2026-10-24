@@ -114,8 +114,9 @@ export function createMatchLineupView(deps) {
         const roles = formationToSlots(formation).map(slot => slot.role);
         const board = createLineupBoard({
             players,
-            formation,
+            formation: formation || '4-4-2',
             isMobile,
+            poolFirst: true,
             onChange: selection => scheduleSave(host, fixtureId, selection, roles, formation)
         });
         board.setSelection(

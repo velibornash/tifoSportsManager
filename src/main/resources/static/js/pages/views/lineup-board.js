@@ -30,11 +30,11 @@ export const BENCH_SLOTS = 7;
  */
 export function canPlayRole(player, role) {
     const position = String(player?.position || '').toUpperCase();
+    // GK is the only position-locked slot: a non-keeper cannot play in goal.
+    // Every other slot accepts any outfield player regardless of natural position
+    // (owner: "bilo koji igrac bez obzira sta mu je prirodna pozicija na bilo koju poziciju").
     if (role === 'GK') return position === 'GK';
-    if (role === 'DEF') return position === 'DEF';
-    if (role === 'MID') return position === 'MID' || position === 'WNG';
-    if (role === 'ATT') return position === 'ATT' || position === 'WNG' || position === 'MID';
-    return false;
+    return position !== 'GK';
 }
 
 /**
