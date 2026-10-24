@@ -47,10 +47,10 @@ public class BallPhysicsEngine implements BallEngine {
      * players ran past it. Physically a ball can never be out-run by a player it
      * was struck to.
      */
-    public static final double GROUND_DECEL = 0.0;       // no gradual deceleration during a pass (owner: "UKINI usporavanje lopte")
+    public static final double GROUND_DECEL = 0.05;      // ~0.32 m/s^2 - gradual (matches pitch tool)
 
     /** Air drag on a struck ball, in cells/tick^2 (real: ~0.1 m/s^2). */
-    public static final double AIR_DECEL = 0.0;          // no gradual deceleration during a pass (owner: "UKINI usporavanje lopte")
+    public static final double AIR_DECEL = 0.03;         // ~0.19 m/s^2 (matches pitch tool)
     public static final double STOP_SPEED = 0.01;
     public static final double LANDING_SPEED = 0.30;      // air -> ground transition
     public static final double FAST_CONTACT = 1.0;        // >= this: BLOCK (parry), <: INTERCEPT
@@ -72,7 +72,7 @@ public class BallPhysicsEngine implements BallEngine {
     // velocity, dampens) instead of being received/intercepted — the ball is
     // moving too fast for a controlled touch. Below it, the normal football
     // receive/intercept logic applies (with a boosted pickup radius).
-    public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.3;  // ~4 m/s
+    public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // ~4.5 m/s (pitch tool: 0.35 received)
     // Boosted receive radius for slow balls (receiver "boost" — larger reach).
     public static final double RECEIVE_R_BOOSTED = 0.5;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
