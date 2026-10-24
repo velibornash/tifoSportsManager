@@ -100,7 +100,9 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
         // Most challenges in the area are survived by the attacker or are
         // ordinary contact, so the box only makes a penalty CANDIDATE.
         boolean inBox = isInsidePenaltyArea(attacker, defender);
-        boolean penaltyAwarded = inBox && SimulationRandom.nextDouble() < PENALTY_FROM_BOX_FOUL;
+        // An awarded foul inside the box IS a penalty (football rules). The probability
+        // lives in whether a foul occurs at all (foulProb above), not in the conversion.
+        boolean penaltyAwarded = inBox;
         boolean freeKickAwarded = !penaltyAwarded;
         String varDecision = "NONE";
 

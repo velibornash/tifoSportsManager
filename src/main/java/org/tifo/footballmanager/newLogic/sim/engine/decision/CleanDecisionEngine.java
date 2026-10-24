@@ -642,10 +642,21 @@ public class CleanDecisionEngine {
                     "SHOT: both corners blocked (open " + String.format("%.2f", cornerOpen) + ")");
         }
 
-        // Pressure hurts shooting, on the same scale as everything else.
+        // Pressure hurts shooting, on the same scale as everything else — EXCEPT in the
+        // central columns of the box, where an open goal must dominate (owner: "prazan gol,
+        // covek nije sutirao... kad ce da sutne ako ne tad?"). There the shot gets a bonus
+        // instead of a penalty, so it beats pass/through-ball.
         double pressure = calculatePressure(state, carrier);
-        score -= pressure * 20.0;
-        reason.append(String.format("press -%.0f ", pressure * 20.0));
+        boolean inBox = inAttackingBox(carrier);
+        double col = carrier.getPosition().getColumn();
+        boolean central = col >= 2.5 && col <= 5.5;
+        if (inBox && central) {
+            score += 30.0;
+            reason.append("central-box +30 ");
+        } else {
+            score -= pressure * 20.0;
+            reason.append(String.format("press -%.0f ", pressure * 20.0));
+        }
 
         reason.append(String.format("-> %.1f dist", distToGoal));
         return new DecisionOption(ActionType.SHOT, null, score, "SHOT: " + reason);
