@@ -6,6 +6,9 @@ import org.tifo.footballmanager.newLogic.sim.model.Player;
 import org.tifo.footballmanager.newLogic.sim.model.Position;
 import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Movement engine — handles player movement toward targets with collision avoidance.
  * Moves players from A to B each tick, respects pace limits.
@@ -20,7 +23,11 @@ public class MovementEngine {
     public static final double CARRIER_FACTOR_TYPE_A = 0.78; // active TYPE A press override
     public static final double CARRIER_FREE_RADIUS = 1.0; // cells — no defender beyond = free
     public static final double CARRIER_TYPE_A_PRESS_RADIUS = 0.5; // cells — TYPE A presser range
-    public static final double MIN_PLAYER_DISTANCE = 0.35; // minimum distance before wall block
+    public static final double MIN_PLAYER_DISTANCE = 0.6; // minimum distance before wall block (raised to match lab pitch tool's touching circles)
+    // Touching distance in METERS (pitch = 98m x 60m, grid = 7 rows x 6 cols => 1 row = 14m, 1 col = 10m).
+    // The lab pitch tool keeps 40px circles from overlapping in pixel space; expressed in metres that is
+    // ~7 m (the circle diameter). Two players are "overlapping" when their centre distance (metres) < this.
+    public static final double TOUCHING_DISTANCE_M = 7.0;
     /**
      * Claiming-reach radius: a restart taker or loose-ball chaser (the player
      * "claiming" a stopped ball) is exempt from opponent separation once within
@@ -222,6 +229,46 @@ public class MovementEngine {
                 if (!isChaser) p.setTarget(null);
             }
         }
+
+        // Global separation pass (matches the lab pitch tool's separateOverlaps): push any two
+        // overlapping players apart along their center-to-center axis and clamp to the pitch, so
+        // circles touch but never overlap. Stationary players are included, so a mover cannot
+        // end up on top of a holder. Four iterations settle chains of three or more.
+        for (int iter = 0; iter < 4; iter++) {
+            boolean any = false;
+            List<Player> active = new ArrayList<>();
+            for (Player pl : state.getPlayers()) {
+                if (pl.isUnavailable() || pl.isLocked() || pl.isSentOff()) continue;
+                active.add(pl);
+            }
+            for (int i = 0; i < active.size(); i++) {
+                for (int j = i + 1; j < active.size(); j++) {
+                    Player a = active.get(i);
+                    Player b = active.get(j);
+                    // Anisotropic (metres): 1 col = 10 m, 1 row = 14 m.
+                    double ax = a.getPosition().getColumn() * 10.0, ay = a.getPosition().getRow() * 14.0;
+                    double bx = b.getPosition().getColumn() * 10.0, by = b.getPosition().getRow() * 14.0;
+                    double dx = bx - ax, dy = by - ay;
+                    double d = Math.hypot(dx, dy);
+                    if (d >= TOUCHING_DISTANCE_M) continue;
+                    if (d <= 1e-9) { dx = 10.0; dy = 0; d = 10.0; } // coincident: split sideways
+                    double push = (TOUCHING_DISTANCE_M - d) / 2.0;
+                    double ux = dx / d, uy = dy / d;
+                    double nax = ax - ux * push, nay = ay - uy * push;
+                    double nbx = bx + ux * push, nby = by + uy * push;
+                    Position na = new Position(
+                            SimUtils.clamp(nay / 14.0, PitchEnvironment.HOME_GOAL_LINE, PitchEnvironment.AWAY_GOAL_LINE),
+                            SimUtils.clamp(nax / 10.0, PitchEnvironment.LEFT_TOUCHLINE, PitchEnvironment.RIGHT_TOUCHLINE));
+                    Position nb = new Position(
+                            SimUtils.clamp(nby / 14.0, PitchEnvironment.HOME_GOAL_LINE, PitchEnvironment.AWAY_GOAL_LINE),
+                            SimUtils.clamp(nbx / 10.0, PitchEnvironment.LEFT_TOUCHLINE, PitchEnvironment.RIGHT_TOUCHLINE));
+                    a.setPosition(na);
+                    b.setPosition(nb);
+                    any = true;
+                }
+            }
+            if (!any) break;
+        }
     }
 
     /**
@@ -238,6 +285,13 @@ public class MovementEngine {
      * small iteration cap is reached, so a cluster of three or more players
      * converges instead of leaving the last one overlapping.
      */
+    /** Anisotropic distance in metres: 1 col cell = 10 m, 1 row cell = 14 m. */
+    private static double distMeters(Position a, Position b) {
+        double dc = (a.getColumn() - b.getColumn()) * 10.0;
+        double dr = (a.getRow() - b.getRow()) * 14.0;
+        return Math.hypot(dc, dr);
+    }
+
     private Position iterativeSeparate(Player p, Position proposed, MatchState state) {
         Position current = proposed;
         for (int iter = 0; iter < 5; iter++) {
