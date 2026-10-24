@@ -628,12 +628,17 @@ class PitchRenderer {
     // the user sees (including duel-converged positions).
     this._drawnPlayers = players;
 
-    // Build a set of labels involved in an active duel for quick lookup
+    // Build a set of labels involved in an active duel for quick lookup.
+    // The carrier keeps its own (orange) highlight, so it is excluded from the
+    // yellow duel ring to avoid a permanent yellow circle on the ball holder.
+    const carrierLabel = carrierId ? (players.find(p => p.id === carrierId)?.label || null) : null;
     const duelLabels = new Set();
     if (duelPairs) {
       for (const pair of duelPairs) {
-        if (pair[0]?.label) duelLabels.add(pair[0].label);
-        if (pair[1]?.label) duelLabels.add(pair[1].label);
+        // The carrier keeps its own (orange) highlight; the yellow duel ring is
+        // for the OTHER duelist, so the carrier is never double-highlighted.
+        if (pair[0]?.label && pair[0].label !== carrierLabel) duelLabels.add(pair[0].label);
+        if (pair[1]?.label && pair[1].label !== carrierLabel) duelLabels.add(pair[1].label);
       }
     }
 
