@@ -50,9 +50,23 @@ public class AsyncSimulationRunner {
      * <p>Counted rather than swallowed, so {@code /simulation/current-round/status} can report it.
      */
     /** What one fixture turned out to be. Only {@link #SIMULATED} is a match that was played. */
-    private enum Outcome { SIMULATED, ALREADY_GONE, UNPLAYABLE }
+    private enum Outcome { SIMULATED, ALREADY_GONE, ALREADY_PREPARED, UNPLAYABLE }
 
     private final AtomicInteger failedCount = new AtomicInteger(0);
+
+    /**
+     * Fixtures skipped because the matchday had already computed them.
+     *
+     * <p><b>This is the second path that played the same match twice.</b> The prepare job computes the
+     * whole day an hour before kickoff and stores the result on the fixture as {@code preparedMatchId};
+     * the fixture stays {@code played = false} until the publish job releases it. A play job arriving at
+     * kickoff asked only "is it played?", answered no, and simulated the fixture again — a second match
+     * for the same tie, with a different score, written over the first.
+     *
+     * <p>So "not played yet" is not the question. A fixture with a prepared match is someone else's, and
+     * the answer here is no.
+     */
+    private final AtomicInteger preparedCount = new AtomicInteger(0);
 
     /** Ids of the fixtures that failed, so the report can name them rather than only count them. */
     private final java.util.List<Long> failedIds =
@@ -62,6 +76,9 @@ public class AsyncSimulationRunner {
     public int getSimulatedCount() { return simulatedCount.get(); }
     public int getTotalCount() { return totalCount.get(); }
     public int getFailedCount() { return failedCount.get(); }
+
+    /** Fixtures this pass left alone because the matchday had already prepared them. */
+    public int getPreparedCount() { return preparedCount.get(); }
 
     /** The fixtures this pass failed on, oldest first. A copy, so a caller cannot mutate the list. */
     public java.util.List<Long> getFailedIds() { return java.util.List.copyOf(failedIds); }
@@ -82,6 +99,7 @@ public class AsyncSimulationRunner {
         totalCount.set(0);
         simulatedCount.set(0);
         failedCount.set(0);
+        preparedCount.set(0);
         failedIds.clear();
 
         transactionTemplate.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -141,6 +159,7 @@ public class AsyncSimulationRunner {
                             MatchFixture fixture = matchFixtureRepository.findById(fixtureId).orElse(null);
                             if (fixture == null) return Outcome.ALREADY_GONE;
                             if (fixture.isPlayed()) return Outcome.ALREADY_GONE;
+                            if (fixture.getPreparedMatchId() != null) return Outcome.ALREADY_PREPARED;
                             if (fixture.getHomeTeam() == null || fixture.getAwayTeam() == null) {
                                 return Outcome.UNPLAYABLE;
                             }
@@ -157,6 +176,11 @@ public class AsyncSimulationRunner {
                         return;
                     }
                     if (outcome == Outcome.ALREADY_GONE) {
+                        return;
+                    }
+                    if (outcome == Outcome.ALREADY_PREPARED) {
+                        // The matchday already computed this one; the publish job releases it at kickoff.
+                        preparedCount.incrementAndGet();
                         return;
                     }
                     simulatedCount.incrementAndGet();
@@ -179,6 +203,10 @@ public class AsyncSimulationRunner {
             }
         }
         pool.shutdown();
+        if (preparedCount.get() > 0) {
+            log.info("{} fixtures were already prepared by the matchday job and were left for it to publish.",
+                    preparedCount.get());
+        }
     }
 
     /**

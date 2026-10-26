@@ -1,6 +1,7 @@
 package org.tifo.footballmanager.newLogic.jobs.config;
 
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.jobs.impl.MatchdayPrepareJob;
 import org.tifo.footballmanager.newLogic.jobs.impl.MatchdayPublishJob;
 import org.tifo.footballmanager.newLogic.model.GameDay;
@@ -105,13 +106,13 @@ public class MatchdayPrepareJobsConfig {
      */
     private DayJob nationalPrepare(int day, int week) {
         return new MatchdayPrepareJob(day, NationalTournamentSchedule.kickoffHour(day), week,
-                week == NationalTournamentSchedule.QUALIFYING_WEEK ? "qualifier" : "tournament",
+                JobKeys.phaseFor(day, week),
                 fixtures, scheduler);
     }
 
     private DayJob nationalPublish(int day, int week) {
         return new MatchdayPublishJob(day, NationalTournamentSchedule.kickoffHour(day), week,
-                week == NationalTournamentSchedule.QUALIFYING_WEEK ? "qualifier" : "tournament",
+                JobKeys.phaseFor(day, week),
                 fixtures, scheduler);
     }
 

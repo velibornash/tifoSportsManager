@@ -45,6 +45,18 @@ public class LeagueTableReconcileJob implements DayJob {
 
     private final String key;
     private final int day;
+
+    /**
+     * The publish job of the matchday this reconciliation repairs, and the day it ran on.
+     *
+     * <p>A rebuilt table must not run while the matchday it is rebuilding is still being released.
+     * The two instances sit after the match they repair by construction — one the next morning, one
+     * the same evening — but "by construction" is the clock's promise, not the runner's. This is the
+     * runner's: the table is not touched until the matchday is {@code DONE}.
+     */
+    private final String dependsOnKey;
+    private final int dependsOnDay;
+
     private final LeagueTableReconciliationService tables;
     private final ClubRatingService clubRatings;
     private final NationalRatingService nationalRatings;
@@ -58,14 +70,19 @@ public class LeagueTableReconcileJob implements DayJob {
      */
     private final RankingPointsRebuildService rankingPoints;
 
-    public LeagueTableReconcileJob(String key, int day, LeagueTableReconciliationService tables,
-                                   @org.springframework.context.annotation.Lazy ClubRatingService clubRatings,
-                                   @org.springframework.context.annotation.Lazy NationalRatingService nationalRatings,
-                                   @org.springframework.context.annotation.Lazy RankingPointsRebuildService rankingPoints) {
-        this(key, day, null, tables, clubRatings, nationalRatings, rankingPoints);
-    }
-
+    /**
+     * The full form, and the only one: which matchday this repairs, and on which day that matchday ran.
+     *
+     * <p>The day is separate from this job's own because the day-4 instance repairs the <b>day-3</b>
+     * matchday. A same-day dependency cannot express that, and the runner would look for a row that
+     * never exists — which is exactly how the national publishes ended up waiting for ever.
+     *
+     * <p>There is no shorter constructor on purpose: one that left the dependency out would build a
+     * reconciliation that can run against a matchday still being released, and it would look exactly
+     * like the guarded one.
+     */
     public LeagueTableReconcileJob(String key, int day, Integer hourOverride,
+                                   String dependsOnKey, int dependsOnDay,
                                    LeagueTableReconciliationService tables,
                                    ClubRatingService clubRatings,
                                    NationalRatingService nationalRatings,
@@ -73,6 +90,8 @@ public class LeagueTableReconcileJob implements DayJob {
         this.key = key;
         this.day = day;
         this.hourOverride = hourOverride;
+        this.dependsOnKey = dependsOnKey;
+        this.dependsOnDay = dependsOnDay;
         this.tables = tables;
         this.clubRatings = clubRatings;
         this.nationalRatings = nationalRatings;
@@ -107,6 +126,16 @@ public class LeagueTableReconcileJob implements DayJob {
         // and reconciled before they were released. The two currently sit on different days, which is
         // the only reason this never showed up.
         return 90;
+    }
+
+    @Override
+    public String dependsOn() {
+        return dependsOnKey;
+    }
+
+    @Override
+    public int dependsOnDay() {
+        return dependsOnDay;
     }
 
     @Override

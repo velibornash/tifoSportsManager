@@ -199,18 +199,13 @@ class JobRunnerTest {
      * <p><b>The accepted cost, stated rather than hidden:</b> a job that half-applied before throwing will be
      * re-run and half of it applied twice. A permanently missed matchday is worse, and a job that can
      * half-apply should be written to be idempotent.
-     */
-    /**
-     * A FAILED job is <b>not</b> terminal - the owner's ruling, and the reason a matchday that
-     * throws is played rather than lost. But it is not terminal means <b>retried</b>, not <b>retried on
-     * every scan for ever</b>: the scan is the game clock's and comes round every half hour, so a
-     * deterministic failure was attempted forty-eight times a day, and a matchday job's attempt is the
-     * whole matchday.
      *
-     * <p>So a failure waits a cool-down, and the retry happens when the clock has moved on.
+     * <p>"Retried next time" means <b>the next scan</b>: the cool-down is 0
+     * ({@code JobRunner.FAILED_BACKOFF_HOURS}), because a cool-down is the very terminal state the ruling
+     * forbids. Each of the three hours below is one scan, and each one finds the slot not DONE.
      */
     @Test
-    @DisplayName("a FAILED job is retried once its cool-down is over - only DONE is terminal")
+    @DisplayName("a FAILED job is retried by the next scan - only DONE is terminal")
     void aFailedJobIsRetried() {
         AtomicInteger attempts = new AtomicInteger();
         DayJob broken = new DayJob() {
@@ -246,20 +241,25 @@ class JobRunnerTest {
         runner.runDue(2025, 1, 1, 10);
         runner.runDue(2025, 1, 1, 11);
 
-        assertEquals(2, attempts.get(),
-                "a job that failed must be picked up again - a terminal FAILED means a matchday is never "
-                        + "played and never retried");
+        assertEquals(3, attempts.get(),
+                "a job that failed must be picked up again by the next scan - a terminal FAILED means a "
+                        + "matchday is never played and never retried, and a cool-down is that terminal "
+                        + "state for as long as it lasts");
     }
 
     /**
-     * The cool-down itself.
+     * The 2026-10-23 decision on retries, pinned so it cannot drift back.
      *
-     * <p>It is measured in <b>clock hours</b>, because the clock is what the jobs are scoped to: the
-     * same hour that decides whether a job is due decides how long it waits. A job that failed at
-     * 20:45 is tried again at 21:45, not at 21:15.
+     * <p>The cool-down used to be two hours: a job that failed at 20:45 was tried again at 22:45, not
+     * at 21:15. The owner's ruling is that a failure is never terminal and the job is picked up next
+     * time, so it is 0 — and "next time" is the next tick of the clock, which is half an hour away.
+     *
+     * <p>The accepted cost, stated rather than hidden: a deterministic failure is attempted forty-eight
+     * times a day, and a matchday job's attempt is the whole matchday. The accepted cost of the other
+     * direction is worse — a matchday that is not played at all.
      */
     @Test
-    @DisplayName("a FAILED job is left alone until the clock has moved on")
+    @DisplayName("a FAILED job is retried on the next tick, not after a cool-down")
     void aFailedJobBacksOff() {
         AtomicInteger attempts = new AtomicInteger();
         DayJob broken = new DayJob() {
@@ -294,17 +294,17 @@ class JobRunnerTest {
         runner.runDue(2025, 1, 1, 9);
         assertEquals(1, attempts.get(), "precondition: the job failed once");
 
-        runner.runDue(2025, 1, 1, 10);
-        assertEquals(1, attempts.get(),
-                "the job was retried inside its cool-down. The scan comes round every half hour, so a "
-                        + "deterministic failure was attempted forty-eight times a day - and a matchday "
-                        + "job's attempt is the whole matchday");
+        runner.runDue(2025, 1, 1, 9);
+        assertEquals(2, attempts.get(),
+                "the second scan of the same hour found the slot not DONE and did not try again. A "
+                        + "cool-down is a terminal state for as long as it lasts, and the owner's ruling "
+                        + "is that a failure is never terminal");
 
         runner.runDue(2025, 1, 1, 11);
-        assertEquals(2, attempts.get(),
-                "the job was not retried once the cool-down was over. A failure is never terminal - the "
-                        + "owner, 2026-10-02: a job fires and must execute immediately, and if it does "
-                        + "not complete the status is not DONE and the scheduler picks it up next time");
+        assertEquals(3, attempts.get(),
+                "the job was not retried. A failure is never terminal - the owner, 2026-10-02: a job "
+                        + "fires and must execute immediately, and if it does not complete the status is "
+                        + "not DONE and the scheduler picks it up next time");
     }
 
     /**

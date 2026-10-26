@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.jobs.impl;
 
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.NationalTournamentSchedule;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.tifo.footballmanager.newLogic.service.AsyncSimulationRunner;
@@ -73,10 +74,24 @@ public class FriendlyMatchdayJob implements DayJob {
         return 40;
     }
 
+    /**
+     * The day's matchday has to be released first — see {@link MatchdayJob#dependsOn()}.
+     *
+     * <p>The prepare/publish pair prepares the whole day, friendlies included, so this job used to
+     * simulate the same friendly a second time at kickoff. It is the fallback now, not a second path.
+     */
+    @Override
+    public String dependsOn() {
+        // Friendlies are registered only on the four club match days, so the club pair owns them.
+        return JobKeys.publish(day, null);
+    }
+
     @Override
     public void run(JobContext context) {
         List<Long> ids = fixtures.findUnplayedFriendliesOnDay(
                         context.seasonYear(), context.weekNumber(), day).stream()
+                // A friendly the matchday already computed belongs to the publish job, not to this one.
+                .filter(f -> f.getPreparedMatchId() == null)
                 .map(f -> f.getId())
                 .filter(Objects::nonNull)
                 .distinct()

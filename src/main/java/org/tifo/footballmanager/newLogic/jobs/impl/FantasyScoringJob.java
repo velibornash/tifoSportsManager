@@ -3,6 +3,7 @@ package org.tifo.footballmanager.newLogic.jobs.impl;
 import org.tifo.footballmanager.newLogic.fantasy.FantasyScoringService;
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.GameDay;
 import org.tifo.footballmanager.newLogic.repository.FantasyTeamRepository;
 import org.slf4j.Logger;
@@ -69,6 +70,13 @@ public class FantasyScoringJob implements DayJob {
     public int order() {
         // After the day-7 publish job, which is 60. The football has to be in the books first.
         return 70;
+    }
+
+    @Override
+    public String dependsOn() {
+        // The order above only holds within one scan; this holds across scans. A gameweek cannot be
+        // scored from a matchday that has not been released.
+        return JobKeys.publish(GameDay.LEAGUE_SECOND_DAY, null);
     }
 
     @Override

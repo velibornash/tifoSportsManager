@@ -25,10 +25,12 @@ import org.springframework.context.annotation.Configuration;
 public class LeagueTableJobsConfig {
 
     /** The day after the day-3 league matchday. */
-    public static final String KEY_AFTER_FIRST_LEAGUE_DAY = "league-table-reconcile-a";
+    public static final String KEY_AFTER_FIRST_LEAGUE_DAY =
+            org.tifo.footballmanager.newLogic.jobs.JobKeys.RECONCILE_AFTER_FIRST_LEAGUE_DAY;
 
     /** The day after the day-7 league matchday. */
-    public static final String KEY_AFTER_SECOND_LEAGUE_DAY = "league-table-reconcile-b";
+    public static final String KEY_AFTER_SECOND_LEAGUE_DAY =
+            org.tifo.footballmanager.newLogic.jobs.JobKeys.RECONCILE_AFTER_SECOND_LEAGUE_DAY;
 
     /** Day 3 is the first league day, so this repairs the night after it. */
     private static final int DAY_AFTER_FIRST_LEAGUE_MATCHDAY = 4;
@@ -63,7 +65,10 @@ public class LeagueTableJobsConfig {
             NationalRatingService nationalRatings,
             RankingPointsRebuildService rankingPoints) {
         return new LeagueTableReconcileJob(KEY_AFTER_FIRST_LEAGUE_DAY,
-                DAY_AFTER_FIRST_LEAGUE_MATCHDAY, tables, clubRatings, nationalRatings, rankingPoints);
+                DAY_AFTER_FIRST_LEAGUE_MATCHDAY, null,
+                // It repairs the day-3 matchday, so it waits for the day-3 publish - on day 3.
+                org.tifo.footballmanager.newLogic.jobs.JobKeys.publish(3, null), 3,
+                tables, clubRatings, nationalRatings, rankingPoints);
     }
 
     @Bean
@@ -73,7 +78,10 @@ public class LeagueTableJobsConfig {
             NationalRatingService nationalRatings,
             RankingPointsRebuildService rankingPoints) {
         return new LeagueTableReconcileJob(KEY_AFTER_SECOND_LEAGUE_DAY,
-                DAY_AFTER_SECOND_LEAGUE_MATCHDAY, HOUR_AFTER_SECOND_LEAGUE_MATCHDAY, tables,
-                clubRatings, nationalRatings, rankingPoints);
+                DAY_AFTER_SECOND_LEAGUE_MATCHDAY, HOUR_AFTER_SECOND_LEAGUE_MATCHDAY,
+                // It repairs the day-7 matchday, which is the day it runs on.
+                org.tifo.footballmanager.newLogic.jobs.JobKeys.publish(7, null),
+                org.tifo.footballmanager.newLogic.jobs.DayJob.ANY_DAY,
+                tables, clubRatings, nationalRatings, rankingPoints);
     }
 }

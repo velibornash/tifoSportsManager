@@ -78,6 +78,13 @@ public class WeekRolloverJob implements DayJob {
     }
 
     @Override
+    public String dependsOn() {
+        // The week is closed only once the second league matchday has been reconciled. Order 90 puts
+        // this after it in the same scan; this is what holds when the scan was interrupted.
+        return org.tifo.footballmanager.newLogic.jobs.JobKeys.RECONCILE_AFTER_SECOND_LEAGUE_DAY;
+    }
+
+    @Override
     public void run(JobContext context) {
         int seasonYear = context.seasonYear();
         int week = context.weekNumber();

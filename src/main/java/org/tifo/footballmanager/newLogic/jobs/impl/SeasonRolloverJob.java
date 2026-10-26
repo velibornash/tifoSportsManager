@@ -63,6 +63,13 @@ public class SeasonRolloverJob implements DayJob {
     }
 
     @Override
+    public String dependsOn() {
+        // A season is judged only once its last week is closed. Order 95 says that within one scan;
+        // this says it across scans, which is what a killed or restarted process needs.
+        return WeekRolloverJob.KEY;
+    }
+
+    @Override
     public void run(JobContext context) {
         // The guard used to be "did we find Superliga Srbije" — a Serbia-shaped question asked before a
         // country-agnostic job. A world with no Serbia would have skipped the rollover for every country

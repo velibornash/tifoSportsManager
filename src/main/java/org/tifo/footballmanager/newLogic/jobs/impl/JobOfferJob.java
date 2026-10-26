@@ -68,6 +68,13 @@ public class JobOfferJob implements DayJob {
     }
 
     @Override
+    public String dependsOn() {
+        // The order above is the same scan's promise; this is the runner's. An offer must not be
+        // written from a squad whose recovery has not been recorded yet.
+        return RecoveryJob.KEY;
+    }
+
+    @Override
     public void run(JobContext context) {
         int made = jobOffers.runOffers(JobOfferService.OFFERS_PER_PASS);
         log.info("Job offers: {} made in season {} week {}.", made, context.seasonYear(), context.weekNumber());

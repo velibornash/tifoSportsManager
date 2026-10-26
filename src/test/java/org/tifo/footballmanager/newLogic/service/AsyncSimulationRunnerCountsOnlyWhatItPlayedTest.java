@@ -114,10 +114,14 @@ class AsyncSimulationRunnerCountsOnlyWhatItPlayedTest {
         }
         assertTrue(incrementLine > 0, "the simulated counter is gone from the runner entirely");
 
+        // Every outcome that is not a match has to leave the task before the counter. The guard used to
+        // be `continue;`, because the fixtures were played in a plain loop; the runner plays them in a
+        // submitted task now, one per fixture, so the statement that leaves it is `return;`. The claim
+        // is the same and so is the defect: a branch that falls through counts a fixture nobody played.
         List<String> problems = new ArrayList<>();
         int guarded = 0;
 
-        for (String outcome : List.of("UNPLAYABLE", "ALREADY_GONE")) {
+        for (String outcome : List.of("UNPLAYABLE", "ALREADY_GONE", "ALREADY_PREPARED")) {
             int branch = -1;
             for (int i = 0; i < incrementLine; i++) {
                 if (isCode(lines.get(i))
@@ -130,25 +134,30 @@ class AsyncSimulationRunnerCountsOnlyWhatItPlayedTest {
                 problems.add("there is no branch for Outcome." + outcome + " before the counter");
                 continue;
             }
-            // Walk forward from the branch to the counter. A `continue` in that range is the guard: it
-            // means the loop skips the increment for this outcome.
-            boolean continues = false;
-            for (int i = branch; i < incrementLine; i++) {
-                if (lines.get(i).trim().equals("continue;")) {
-                    continues = true;
+            // Walk forward from the branch to the counter, stopping at the next branch so a guard
+            // belonging to the branch below cannot be mistaken for this one's.
+            boolean leaves = false;
+            for (int i = branch + 1; i < incrementLine; i++) {
+                String text = lines.get(i).trim();
+                if (isCode(lines.get(i)) && text.startsWith("if (outcome ==")) {
+                    break;
+                }
+                if (text.equals("continue;") || text.equals("return;")) {
+                    leaves = true;
                     break;
                 }
             }
-            if (continues) {
+            if (leaves) {
                 guarded++;
             } else {
                 problems.add("Outcome." + outcome + " is handled at line " + (branch + 1)
-                        + " but does not `continue`, so the loop reaches the simulated counter at line "
+                        + " but does not leave the task, so it reaches the simulated counter at line "
                         + (incrementLine + 1) + " anyway. That is the defect.");
             }
         }
 
-        assertEquals(2, guarded, "both non-SIMULATED outcomes must be guarded by a `continue`: " + problems);
+        assertEquals(3, guarded, "every non-SIMULATED outcome must be guarded by a `return` (or "
+                + "`continue`, in a loop): " + problems);
         assertTrue(problems.isEmpty(), String.join("; ", problems));
     }
 }

@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.jobs.impl;
 
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.Competition;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
@@ -40,6 +41,7 @@ public class MatchdayJob implements DayJob {
     private final int day;
     private final int hour;
     private final int order;
+    private final String phase;
     private final CompetitionRepository competitions;
     private final MatchFixtureRepository fixtures;
     private final AsyncSimulationRunner runner;
@@ -47,11 +49,18 @@ public class MatchdayJob implements DayJob {
     public MatchdayJob(String key, CompetitionType competitionType, int day, int hour, int order,
                        CompetitionRepository competitions, MatchFixtureRepository fixtures,
                        AsyncSimulationRunner runner) {
+        this(key, competitionType, day, hour, order, null, competitions, fixtures, runner);
+    }
+
+    public MatchdayJob(String key, CompetitionType competitionType, int day, int hour, int order,
+                       String phase, CompetitionRepository competitions,
+                       MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
         this.key = key;
         this.competitionType = competitionType;
         this.day = day;
         this.hour = hour;
         this.order = order;
+        this.phase = phase;
         this.competitions = competitions;
         this.fixtures = fixtures;
         this.runner = runner;
@@ -82,6 +91,20 @@ public class MatchdayJob implements DayJob {
         return order;
     }
 
+    /**
+     * The day's matchday must have been released before this job runs.
+     *
+     * <p>This job and the prepare/publish pair were two paths that played the same fixture: the pair
+     * computes the whole day an hour before kickoff, and this job then simulated the same fixtures
+     * again at kickoff because a prepared fixture is still {@code played = false}. The pair is the
+     * owner of a matchday now — this is the fallback for anything the pair could not do — so it runs
+     * afterwards, never beside it, and never before it.
+     */
+    @Override
+    public String dependsOn() {
+        return JobKeys.publish(day, phase);
+    }
+
     @Override
     public void run(JobContext context) {
         List<Competition> targets = competitions.findAll().stream()
@@ -108,6 +131,8 @@ public class MatchdayJob implements DayJob {
         List<Long> ids = fixtures.findUnplayedOnDay(context.seasonYear(), context.weekNumber(), day).stream()
                 .filter(fixture -> fixture.getCompetition() != null
                         && targetIds.contains(fixture.getCompetition().getId()))
+                // A fixture the matchday already computed belongs to the publish job, not to this one.
+                .filter(fixture -> fixture.getPreparedMatchId() == null)
                 .map(MatchFixture::getId)
                 .filter(Objects::nonNull)
                 .distinct()

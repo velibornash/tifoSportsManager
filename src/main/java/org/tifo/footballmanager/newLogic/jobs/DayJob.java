@@ -36,12 +36,31 @@ public interface DayJob {
     int week();
 
     /**
-     * Key of another job that must be {@code DONE} for this (season, week, day) before this one runs.
-     * Default: no dependency. Used to keep a publish job from firing before its prepare job has
-     * finished computing the fixtures.
+     * Key of another job that must be {@code DONE} before this one runs.
+     * Default: no dependency.
+     *
+     * <p>This is what makes a chain a chain rather than a hope: the runner checks the dependency
+     * before it claims the slot, so the next job of a day <b>cannot start while the previous one has
+     * not finished</b>. A missing row and a {@code FAILED} row both mean "not finished", and the job
+     * is retried on the next scan instead of running against half a matchday.
+     *
+     * <p>The dependency is read for the day given by {@link #dependsOnDay()}, which is the day this
+     * job is running on unless it says otherwise — the table reconciliation of day 4 belongs after the
+     * <b>day-3</b> matchday, and that is the one dependency that is not same-day.
      */
     default String dependsOn() {
         return null;
+    }
+
+    /**
+     * The day {@link #dependsOn()} is read for: {@link #ANY_DAY} means "the day this job is running
+     * on", a number pins it to that day of the same week.
+     *
+     * <p>A forward day would never be satisfiable — the row it waits for is in the future — so a
+     * pinned day must be the job's own day or earlier.
+     */
+    default int dependsOnDay() {
+        return ANY_DAY;
     }
 
     /** Game day 1..7 this fires on, or {@link #ANY_DAY}. */

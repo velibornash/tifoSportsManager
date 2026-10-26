@@ -163,8 +163,9 @@ public class JobRunner {
      * Whether a failed job is still inside its cool-down.
      *
      * <p>Measured in <b>clock hours</b>, because the clock is what the jobs are scoped to: the same
-     * hour that decides whether a job is due decides how long it waits. A job that failed at 20:45
-     * is tried again at 21:45, not at 21:15.
+     * hour that decides whether a job is due decides how long it waits. With the cool-down at
+     * {@link #FAILED_BACKOFF_HOURS} = 0 nothing ever waits — the next scan retries it — and the
+     * mechanism stays here because the number is the policy.
      *
      * <p><b>A stale PENDING row is not a failure and is not backed off.</b> It is a scan that died,
      * and it must be picked up at once — otherwise a killed job is a missed matchday.
@@ -234,15 +235,15 @@ public class JobRunner {
     /**
      * How long a failed job waits, in clock hours, before the next scan tries it again.
      *
-     * <p>The scan is the game clock's and it comes round every half hour, so a FAILED job was
-     * retried on <b>every one of them</b> — forty-eight times a day for a failure that will fail
-     * again, each attempt burning the work. A matchday job's attempt is the whole matchday.
-     *
-     * <p>Two hours is four scans. A transient failure is still picked up long before the next
-     * matchday, and a deterministic one is not hammered.
+     * <p><b>Zero, so the next scan picks it up.</b> The owner's ruling is that a failure is never
+     * terminal — "a job fires and must execute immediately, and if it does not complete the status is
+     * not DONE and the scheduler picks it up next time" — and a cool-down is a terminal state for as
+     * long as it lasts. A job that failed at 20:45 is tried again at 21:15, not at 21:45.
      *
      * <p><b>The number is a decision, not a measurement</b>, which is why it is a constant here and
-     * not buried in the retry loop.
+     * not buried in the retry loop: the scan comes round every half hour, so a deterministic failure
+     * is attempted forty-eight times a day, and a matchday job's attempt is the whole matchday. One or
+     * two is the other side of that trade, and {@code JobRunnerTest} is where it is pinned.
      */
     public static final int FAILED_BACKOFF_HOURS = 0;
 
@@ -282,15 +283,17 @@ public class JobRunner {
             outcome.put("status", "ALREADY_DONE");
             return outcome;
         }
-        // Job dependency: a publish job must not run before its prepare job is DONE for this day.
-        // Otherwise it fires against unprepared fixtures and fails the whole matchday.
+        // Job dependency: nothing down the chain may start before the job it follows has finished.
+        // Otherwise a publish fires against unprepared fixtures, or a reconciliation rates a matchday
+        // that is still being played.
         String dep = job.dependsOn();
         if (dep != null) {
+            int depDay = job.dependsOnDay() == DayJob.ANY_DAY ? dayNumber : job.dependsOnDay();
             var depRun = runs.findBySeasonYearAndWeekNumberAndDayNumberAndJobKey(
-                    seasonYear, weekNumber, dayNumber, dep);
+                    seasonYear, weekNumber, depDay, dep);
             if (depRun.isEmpty() || depRun.get().getStatus() != JobRun.Status.DONE) {
-                log.info("Leaving {} for season {} week {} day {} alone: dependency {} is not DONE yet.",
-                        job.key(), seasonYear, weekNumber, dayNumber, dep);
+                log.info("Leaving {} for season {} week {} day {} alone: dependency {} on day {} is not DONE yet.",
+                        job.key(), seasonYear, weekNumber, dayNumber, dep, depDay);
                 outcome.put("status", "WAITING_FOR_DEPENDENCY");
                 return outcome;
             }

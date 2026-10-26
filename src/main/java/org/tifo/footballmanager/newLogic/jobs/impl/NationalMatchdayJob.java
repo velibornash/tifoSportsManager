@@ -1,5 +1,6 @@
 package org.tifo.footballmanager.newLogic.jobs.impl;
 
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.CompetitionType;
 import org.tifo.footballmanager.newLogic.model.NationalTournamentSchedule;
 import org.tifo.footballmanager.newLogic.repository.CompetitionRepository;
@@ -27,7 +28,8 @@ public class NationalMatchdayJob extends MatchdayJob {
     public NationalMatchdayJob(String key, int week, int day, CompetitionRepository competitions,
                                MatchFixtureRepository fixtures, AsyncSimulationRunner runner) {
         super(key, CompetitionType.TOURNAMENT, day,
-                NationalTournamentSchedule.kickoffHour(day), 30, competitions, fixtures, runner);
+                NationalTournamentSchedule.kickoffHour(day), 30,
+                JobKeys.phaseFor(day, week), competitions, fixtures, runner);
         this.week = week;
     }
 

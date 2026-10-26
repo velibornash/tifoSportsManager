@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.jobs.impl;
 
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.tifo.footballmanager.newLogic.service.MatchdayScheduler;
@@ -123,8 +124,7 @@ public class MatchdayPrepareJob implements DayJob {
      */
     @Override
     public String key() {
-        return phase == null ? "matchday-prepare-" + day
-                : "matchday-prepare-" + phase + "-" + day;
+        return JobKeys.prepare(day, phase);
     }
 
     @Override

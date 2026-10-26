@@ -66,6 +66,12 @@ public class StaffRecruitingJob implements DayJob {
     }
 
     @Override
+    public String dependsOn() {
+        // The market reacts to the week's offers, so it waits for them to have been written.
+        return JobOfferJob.KEY;
+    }
+
+    @Override
     public void run(JobContext context) {
         int listed = recruiting.weeklyBatch();
         int signed = recruiting.aiRecruit();

@@ -2,6 +2,7 @@ package org.tifo.footballmanager.newLogic.jobs.impl;
 
 import org.tifo.footballmanager.newLogic.jobs.DayJob;
 import org.tifo.footballmanager.newLogic.jobs.JobContext;
+import org.tifo.footballmanager.newLogic.jobs.JobKeys;
 import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.repository.MatchFixtureRepository;
 import org.tifo.footballmanager.newLogic.service.MatchdayScheduler;
@@ -110,8 +111,7 @@ public class MatchdayPublishJob implements DayJob {
      */
     @Override
     public String key() {
-        return phase == null ? "matchday-publish-" + day
-                : "matchday-publish-" + phase + "-" + day;
+        return JobKeys.publish(day, phase);
     }
 
     @Override
@@ -154,8 +154,10 @@ public class MatchdayPublishJob implements DayJob {
 
     @Override
     public String dependsOn() {
-        // A publish job must never run before its prepare job has finished computing the fixtures.
-        return "matchday-prepare-" + day;
+        // A publish job must never run before its prepare job has finished computing the fixtures -
+        // and "its" prepare job is the one with the same phase, not merely the same day. The key is
+        // built by the same helper that builds the prepare job's own key, so the two cannot drift.
+        return JobKeys.prepare(day, phase);
     }
 
     /**
