@@ -6,6 +6,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.concurrent.locks.ReentrantLock;
+
 /**
  * The one thing that writes the ranking points and the medals after a matchday (owner, 2026-10-08).
  *
@@ -36,6 +38,29 @@ public class RankingPointsRebuildService {
                           int clubBonusRows, int nationalBonusRows, int medals) {
     }
 
+    /**
+     * One rebuild at a time, and the reason is a duplicate key.
+     *
+     * <p><b>Each pass deletes the ledger and writes it back</b>, so two of them running together are
+     * two transactions that both delete before either has inserted, both insert, and the second dies
+     * on {@code uk_club_season_points}. Observed 2026-10-26:
+     * {@code Key (team_id, season_year)=(1008, 1) already exists} from the scheduled game-clock tick
+     * while a clock-move walk was rebuilding the same season on the other thread.
+     *
+     * <p>There are two ways into a rebuild — {@code LeagueTableReconcileJob} on a clock walk, and
+     * {@code AsyncSimulationRunner} when a matchday batch finishes — so the collision does not need a
+     * second walk at all. Every writer of both ledgers is called from {@link #rebuild(int)}, so one
+     * lock here covers them all.
+     *
+     * <p><b>Why a lock and not an upsert.</b> {@code INSERT ... ON CONFLICT} is PostgreSQL syntax and
+     * the test profile runs H2, so the statement would be untestable here; the unique constraints are
+     * the database's guard for two application instances, which this deployment does not have.
+     *
+     * <p>Waiting, not skipping: a skipped rebuild would leave the ladder showing the previous batch
+     * until the next one, and every caller of this class is already a background job.
+     */
+    private final ReentrantLock rebuildLock = new ReentrantLock();
+
     private final ClubRankingPointsService clubRankingPoints;
     private final NationalRankingPointsService nationalRankingPoints;
     private final AchievementBonusService achievementBonuses;
@@ -63,15 +88,20 @@ public class RankingPointsRebuildService {
      * @return what was written
      */
     public Summary rebuild(int season) {
-        return rebuildTemplate.execute(status -> {
-            ClubRankingPointsService.Result clubs = clubRankingPoints.recompute();
-            NationalRankingPointsService.Result nations = nationalRankingPoints.recompute();
-            AchievementBonusService.Result bonuses = achievementBonuses.apply(season);
-            int medals = honours.derive(season);
-            return new Summary(season,
-                    clubs.rowsWritten(), nations.rowsWritten(),
-                    bonuses.clubRows(), bonuses.nationalRows(), medals);
-        });
+        rebuildLock.lock();
+        try {
+            return rebuildTemplate.execute(status -> {
+                ClubRankingPointsService.Result clubs = clubRankingPoints.recompute();
+                NationalRankingPointsService.Result nations = nationalRankingPoints.recompute();
+                AchievementBonusService.Result bonuses = achievementBonuses.apply(season);
+                int medals = honours.derive(season);
+                return new Summary(season,
+                        clubs.rowsWritten(), nations.rowsWritten(),
+                        bonuses.clubRows(), bonuses.nationalRows(), medals);
+            });
+        } finally {
+            rebuildLock.unlock();
+        }
     }
 
     /** The same thing, timed and swallowed — for a caller that must not fail a matchday. */
