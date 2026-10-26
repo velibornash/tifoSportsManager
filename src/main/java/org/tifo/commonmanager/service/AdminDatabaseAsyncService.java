@@ -395,20 +395,25 @@ public class AdminDatabaseAsyncService {
     private void repairStrandedMatchdays() {
         org.tifo.footballmanager.newLogic.model.GamePosition pos = gameClockService.position();
         int season = pos.season();
-        int week = pos.week();
+        int currentWeek = pos.week();
         int currentDay = pos.day();
-        for (int d = 1; d < currentDay; d++) {
-            java.util.List<org.tifo.footballmanager.newLogic.model.MatchFixture> unplayed =
-                    matchFixtureRepository.findUnplayedOnDay(season, week, d);
-            if (unplayed.isEmpty()) continue;
-            java.util.List<Long> ids = unplayed.stream()
-                    .map(org.tifo.footballmanager.newLogic.model.MatchFixture::getId).toList();
-            org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome prep =
-                    matchdayScheduler.prepareUnplayedOn(season, week, d, ids);
-            log.info("Repair prepare day {}: {} computed, {} failed.", d, prep.prepared(), prep.failed());
-            org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome pub =
-                    matchdayScheduler.publishUnplayedOn(season, week, d, ids);
-            log.info("Repair publish day {}: {} released, {} failed.", d, pub.prepared(), pub.failed());
+        // Process every past day in every past week, not just the current week — a week that was
+        // skipped entirely (e.g. the clock advanced a whole week) still has unplayed fixtures.
+        for (int w = 1; w <= currentWeek; w++) {
+            int lastDay = (w < currentWeek) ? 7 : (currentDay - 1);
+            for (int d = 1; d <= lastDay; d++) {
+                java.util.List<org.tifo.footballmanager.newLogic.model.MatchFixture> unplayed =
+                        matchFixtureRepository.findUnplayedOnDay(season, w, d);
+                if (unplayed.isEmpty()) continue;
+                java.util.List<Long> ids = unplayed.stream()
+                        .map(org.tifo.footballmanager.newLogic.model.MatchFixture::getId).toList();
+                org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome prep =
+                        matchdayScheduler.prepareUnplayedOn(season, w, d, ids);
+                log.info("Repair prepare week {} day {}: {} computed, {} failed.", w, d, prep.prepared(), prep.failed());
+                org.tifo.footballmanager.newLogic.service.MatchdayScheduler.MatchdayOutcome pub =
+                        matchdayScheduler.publishUnplayedOn(season, w, d, ids);
+                log.info("Repair publish week {} day {}: {} released, {} failed.", w, d, pub.prepared(), pub.failed());
+            }
         }
     }
 

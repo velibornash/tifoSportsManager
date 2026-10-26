@@ -283,14 +283,26 @@ async function refreshAfterClockMove(data) {
     if (dispatched) {
         setSeasonFlowStatus('Clock moved. Running the jobs it made due...', 'info');
     }
+    let settled = true;
     try {
         if (dispatched) {
-            const settled = await waitForSync();
+            settled = await waitForSync();
             if (!settled) {
                 setSeasonFlowStatus(
-                    'Clock moved and the jobs are still running. They will finish on their own; '
-                    + 'reload to see the result.',
-                    'warning', { persist: true });
+                    'Clock moved. Jobs are still running in the background — dashboard will '
+                    + 'refresh automatically when they finish.',
+                    'info', { persist: true });
+                // Keep polling in the background and refresh the dashboard when the walk settles.
+                (async () => {
+                    await waitForSync(30 * 60 * 1000);
+                    // Switch to the dashboard view, then full reload so every view re-reads
+                    // fresh data from the server.
+                    if (typeof window.loadDashboard === 'function') {
+                        try { await window.loadDashboard(); } catch (e) { /* ignore */ }
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    window.location.reload();
+                })();
             }
         }
         await refreshGameClock();
@@ -303,6 +315,15 @@ async function refreshAfterClockMove(data) {
         } catch (err) {
             console.warn('Dashboard refresh after advance failed:', err);
         }
+    }
+    // Full reload after jobs settle so all views re-read fresh data, landing on dashboard.
+    // Only when they actually settled within the wait; otherwise the background poll above handles it.
+    if (dispatched && settled) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (typeof window.loadDashboard === 'function') {
+            try { await window.loadDashboard(); } catch (e) { /* ignore */ }
+        }
+        window.location.reload();
     }
 }
 

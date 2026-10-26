@@ -79,6 +79,25 @@ class MatchEngineDetailedAnalysisTest {
                             desired == null ? "NULL" : String.format("(%.2f,%.2f)", desired.getColumn(), desired.getRow())));
                 }
             }
+            // Threat override diagnostics: carrier isolation and nearest opponent.
+            Player carrier = state.getCarrier();
+            if (carrier != null) {
+                double nearestTeammate = Double.MAX_VALUE;
+                double nearestOpponent = Double.MAX_VALUE;
+                for (Player p : state.getPlayers()) {
+                    if (p == carrier || p.isUnavailable()) continue;
+                    double d = Math.hypot(p.getPosition().getColumn() - carrier.getPosition().getColumn(),
+                            p.getPosition().getRow() - carrier.getPosition().getRow());
+                    if (p.getTeam().equals(carrier.getTeam())) nearestTeammate = Math.min(nearestTeammate, d);
+                    else nearestOpponent = Math.min(nearestOpponent, d);
+                }
+                if (tick <= 10 || tick % 5 == 0) {
+                    sb.append(String.format("  [THR-DIAG] carrier=%s pos=(%.2f,%.2f) nearestTeammate=%.2f nearestOpponent=%.2f carrierFree=%s%n",
+                            carrier.getLabel(), carrier.getPosition().getColumn(), carrier.getPosition().getRow(),
+                            nearestTeammate, nearestOpponent,
+                            nearestTeammate > 0.5 ? "YES" : "NO"));
+                }
+            }
             // events this tick
             // (recorder events are appended during the tick; capture after by tick filter at end)
         });
