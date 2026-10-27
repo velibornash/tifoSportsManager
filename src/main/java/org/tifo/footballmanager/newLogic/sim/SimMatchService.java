@@ -120,6 +120,30 @@ public class SimMatchService {
         return simulate(fixture, storeReplay, applySideEffects, SimMatchRunner.FULL_MATCH_TICKS); }
 
     public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects, int ticks) {
+        return simulate(fixture, storeReplay, applySideEffects, ticks, null, null);
+    }
+
+    /**
+     * As above, with the away side's eleven chosen by the caller.
+     *
+     * <p><b>Why the seam exists (owner, 2026-10-27).</b> The training match plays against an opponent
+     * that is not in the database at all: the manager picks a strength and every one of the opponent's
+     * men arrives with every football skill at that number. {@link #loadRealSquad} can only read a
+     * squad that a club in the {@code team} table has, so without this the synthetic side would be
+     * handed straight to {@code SimTeamFactory.addTeam} — twenty-two unnamed stand-ins of no standard
+     * he chose, and a tactic test that proves nothing.
+     *
+     * <p>Both parameters are optional and {@code null} means "read the squad the normal way", which is
+     * what every existing caller passes. Nothing else about the run changes: the same tactics, the same
+     * bench, the same recorder, the same outcome, the same absence of side effects when
+     * {@code applySideEffects} is false.
+     *
+     * @param awaySquadOverride the away side's starting eleven, or {@code null} to read it from the club
+     * @param awayBenchOverride the away side's reserves, or {@code null} to read them from the club
+     */
+    public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects,
+                                    int ticks, List<Player> awaySquadOverride,
+                                    List<Player> awayBenchOverride) {
         // Deterministic run: seed the engine RNG from the fixture id so
         // re-simulating the same fixture always reproduces the same match.
         SimulationRandom.seed(fixture != null && fixture.getId() != null
@@ -153,7 +177,18 @@ public class SimMatchService {
 
         // The fixture is threaded through so a club's pick for THIS match wins over its template.
         List<Player> homeSquad = loadRealSquad(homeTeam, "HOME", homeBench, fixture);
-        List<Player> awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench, fixture);
+        List<Player> awaySquad;
+        if (awaySquadOverride != null) {
+            // A side the caller built rather than one the world holds — the training match's opponent.
+            // The bench is supplied with it, because a side that cannot substitute is not the side a
+            // manager is testing his own tactics against.
+            awaySquad = awaySquadOverride;
+            if (awayBenchOverride != null) {
+                awayBench.addAll(awayBenchOverride);
+            }
+        } else {
+            awaySquad = loadRealSquad(awayTeam, "AWAY", awayBench, fixture);
+        }
 
         // **The home club's own tactical editor shape, for the first time.**
         //

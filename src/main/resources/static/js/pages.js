@@ -1,7 +1,7 @@
 ﻿// pages.js
 import { escapeHtml } from './ui/escape.js';
 import { authFetch, handleAuthFailure } from './auth.js';
-import { renderPlayersView, renderAwaySquadView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml } from './pages-renderers.js';
+import { renderPlayersView, renderAwaySquadView, renderMatchesView, renderTableView, renderFixturesView, renderLeagueMatchesView, renderLeagueScheduleView, buildSquadTableHtml, bindSquadRowClicks, buildClubActionsHtml, buildTrainingActionsHtml, buildLeagueActionsHtml, buildCommunityActionsHtml, buildScheduleFixtureCardHtml } from './pages-renderers.js';
 import { albumHtml, bindAlbum } from './pages/views/album-view.js';
 import { createAcademyFeature } from './pages/features/academy.js';
 import { createLoansFeature } from './pages/features/loans.js';
@@ -443,6 +443,7 @@ function buildPageNavState(page, options = {}) {
     });
     const trainingView = createTrainingView({
         authFetch, getTeamId: () => currentUserTeamId, buildTrainingActionsHtml,
+        buildScheduleFixtureCardHtml,
         buildPlayerProfileHeroHtml: (...args) => playerView.buildPlayerProfileHeroHtml(...args)
     });
     const medicalView = createMedicalView({
@@ -638,6 +639,9 @@ function buildPageNavState(page, options = {}) {
                     break;
                 case "trainingReports":
                     await loadTrainingReportsPage();
+                    break;
+                case "trainingMatch":
+                    await loadTrainingMatch();
                     break;
 
                 case "profile":
@@ -862,6 +866,7 @@ function buildPageNavState(page, options = {}) {
         training: 'training',
         trainingSetup: 'the training setup',
         trainingReports: 'the training reports',
+        trainingMatch: 'the training match',
         profile: 'the club profile',
         results: 'the results',
         schedule: 'the schedule',
@@ -925,6 +930,11 @@ function buildPageNavState(page, options = {}) {
     async function loadTrainingReportsPage() {
         await settleTeamId();
         return trainingView.loadTrainingReportsPage();
+    }
+
+    async function loadTrainingMatch() {
+        await settleTeamId();
+        return trainingView.loadTrainingMatch();
     }
 
     async function loadMedicalCenter() {
@@ -1875,7 +1885,7 @@ async function loadUserProfile() {
         if (page === 'dashboard') return 'main';
         if (['firstTeam', 'juniors', 'album'].includes(page)) return 'club:squad';
         if (['formations', 'tactics', 'tacticEditor'].includes(page)) return 'club:tactics';
-        if (['training', 'trainingSetup', 'trainingReports'].includes(page)) return 'club:training';
+        if (['training', 'trainingSetup', 'trainingReports', 'trainingMatch'].includes(page)) return 'club:training';
         if (['office', 'profile', 'stadium', 'finances', 'staff', 'transfers'].includes(page)) return 'club:office';
         if (['firstTeam', 'juniors', 'loans', 'medicalCenter', 'album'].includes(page)) return 'club:squad';
         if (['schedule', 'results', 'fixtures', 'clubProfile'].includes(page)) return 'club';
@@ -1916,6 +1926,7 @@ async function loadUserProfile() {
             return [
                 { navBack: true, label: 'Back', icon: '◀' },
                 { label: 'Training Setup', page: 'trainingSetup' },
+                { label: 'Training match', page: 'trainingMatch' },
                 { label: 'Training Reports', page: 'trainingReports' },
             ];
         }

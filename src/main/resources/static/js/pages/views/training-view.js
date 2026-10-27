@@ -1,10 +1,10 @@
 // pages/views/training-view.js
-import { htmlEscape } from './utils.js';
+import { htmlEscape, readJsonOrThrow } from './utils.js';
 import { authFetchQuiet, apiErrorMessage } from '../../auth.js';
 import { positionRank } from '../../ui/position-order.js';
 
 export function createTrainingView(deps) {
-    const { authFetch, getTeamId, buildTrainingActionsHtml, buildPlayerProfileHeroHtml } = deps;
+    const { authFetch, getTeamId, buildTrainingActionsHtml, buildScheduleFixtureCardHtml, buildPlayerProfileHeroHtml } = deps;
 
     // Shared by the setup screen and the reports screen. Declared at factory scope on purpose:
     // when each screen carried its own copy they drifted, and a screen that reaches for a helper
@@ -73,7 +73,7 @@ export function createTrainingView(deps) {
             </div>`;
 
         const playersRes = await authFetch(`/teams/${teamId}/players`);
-        const players = await playersRes.json();
+        const players = await readJsonOrThrow(playersRes, 'The squad');
 
         const setupRes = await authFetch(`/training/setup/team/${teamId}`).catch(() => null);
         const setup = setupRes && setupRes.ok ? await setupRes.json() : null;
@@ -433,7 +433,7 @@ export function createTrainingView(deps) {
         const mainContent = document.getElementById("main-content");
         const teamId = getTeamId();
         const playersRes = await authFetch(`/teams/${teamId}/players`);
-        const players = await playersRes.json();
+        const players = await readJsonOrThrow(playersRes, 'The squad');
         const playerById = new Map(players.map(p => [p.id, p]));
 
         let selectedReport = null;
@@ -880,5 +880,252 @@ export function createTrainingView(deps) {
         await render();
     }
 
-    return { loadTrainingReports, loadTrainingReportsPage, loadTrainingSetup };
+    /**
+     * The training match screen (owner, 2026-10-27).
+     *
+     * <p>What it is for: pick the opponent's strength from 8 to 20, every one of the opponent's men
+     * arrives with every skill at that number, watch ninety minutes, read the full statistics.
+     *
+     * <p><b>The result lives only here.</b> The backend remembers the daily limit and nothing else
+     * (owner's own answer when asked: "Only the limit, exactly as written"), so this state object is
+     * the whole of the result's life: reload the page and the score, the recording and both buttons
+     * are gone, exactly as specified. It is deliberately never written to storage of any kind.
+     */
+    async function loadTrainingMatch() {
+        const mainContent = document.getElementById("main-content");
+
+        const state = {
+            status: null,
+            strength: 14,
+            result: null,
+            showResults: false,
+            busy: false,
+            message: '',
+            messageIsError: false
+        };
+
+        const fetchStatus = async () => {
+            const res = await authFetch('/api/training-match');
+            state.status = await readJsonOrThrow(res, 'The training match');
+            state.strength = clampStrength(state.strength, state.status);
+        };
+
+        const clampStrength = (value, status) => {
+            const min = Number(status && status.minStrength != null ? status.minStrength : 8);
+            const max = Number(status && status.maxStrength != null ? status.maxStrength : 20);
+            return Math.max(min, Math.min(max, Number(value) || 12));
+        };
+
+        const render = () => {
+            const status = state.status || {};
+            const min = Number(status.minStrength != null ? status.minStrength : 8);
+            const max = Number(status.maxStrength != null ? status.maxStrength : 20);
+            const canPlay = status.unlimited || status.canPlay !== false;
+            const notice = status.notice || 'This match is not saved to the database. It exists only to test tactics.';
+            const strength = clampStrength(state.strength, status);
+
+            const options = [];
+            for (let n = min; n <= max; n++) {
+                const label = n === min ? `${n} — weakest` : (n === max ? `${n} — strongest` : `${n}`);
+                options.push(`<option value="${n}" ${n === strength ? 'selected' : ''}>${label}</option>`);
+            }
+
+            const noticeHtml = `
+                <div class="fm-panel" style="border:1px solid #f5a623; background:rgba(245,166,35,0.08);">
+                    <div class="fm-panel-head"><h3>Not saved to the database</h3></div>
+                    <p class="fm-subtle" style="margin:0;">${htmlEscape(notice)}</p>
+                </div>`;
+
+            const limitHtml = !canPlay
+                ? `<p class="fm-subtle" style="color:#f44336;">You have already played your training match today.</p>`
+                : '';
+
+            const strengthPickerHtml = `
+                <section class="fm-panel">
+                    <div class="fm-panel-head"><h3>Opponent strength</h3></div>
+                    <p class="fm-subtle">Every opponent player has every football skill at the number you pick.</p>
+                    <div class="training-group-row" style="margin-top:10px;">
+                        <select id="training-match-strength" ${state.busy || !canPlay ? 'disabled' : ''}
+                                style="max-width:180px;" aria-label="Opponent strength">
+                            ${options.join('')}
+                        </select>
+                        <button type="button" class="fm-action-btn" id="play-training-match"
+                                ${state.busy || !canPlay ? 'disabled' : ''}>
+                            ${state.busy ? 'Playing…' : 'Play training match'}
+                        </button>
+                    </div>
+                    ${limitHtml}
+                    ${state.message ? `<p class="fm-subtle" style="color:${state.messageIsError ? '#f44336' : '#4caf50'}; margin-top:8px;">${htmlEscape(state.message)}</p>` : ''}
+                </section>`;
+
+            let resultHtml = '';
+            if (state.result) {
+                const r = state.result;
+                const matchLike = {
+                    played: true,
+                    homeTeam: r.homeTeam,
+                    awayTeam: r.awayTeam,
+                    homeGoals: r.homeGoals,
+                    awayGoals: r.awayGoals,
+                    matchDate: new Date().toISOString(),
+                    stadium: 'Training ground'
+                };
+                const card = buildScheduleFixtureCardHtml(matchLike, {
+                    matchCaller: 'match',
+                    pendingLabel: 'VS',
+                    allowFixtureClick: false,
+                    safe: htmlEscape
+                });
+
+                resultHtml = `
+                    <section class="fm-panel">
+                        <div class="fm-panel-head"><h3>Result</h3></div>
+                        <div class="fm-fixtures">${card}</div>
+                        <div class="training-actions" style="margin-top:12px;">
+                            <button type="button" class="fm-action-btn" id="watch-training-match">Watch your match</button>
+                            <button type="button" class="fm-action-btn secondary" id="toggle-training-results">
+                                ${state.showResults ? 'Hide results' : 'Show results'}
+                            </button>
+                        </div>
+                        ${state.showResults ? renderResults(r) : ''}
+                    </section>`;
+            }
+
+            mainContent.innerHTML = `
+                <div class="fm-page fm-page--club">
+                    <section class="fm-panel fm-club-hero">
+                        <button class="back-to-dashboard" data-nav-back="dashboard">Back</button>
+                        <div class="fm-club-hero-main">
+                            <div>
+                                <div class="fm-eyebrow">Training ground</div>
+                                <h2>Training match</h2>
+                                <p class="fm-subtle">Test a tactic against an opponent of a strength you choose.</p>
+                            </div>
+                            ${buildTrainingActionsHtml('trainingMatch')}
+                        </div>
+                    </section>
+                    ${noticeHtml}
+                    ${strengthPickerHtml}
+                    ${resultHtml}
+                </div>`;
+
+            // wire events
+            const select = mainContent.querySelector('#training-match-strength');
+            if (select) {
+                select.addEventListener('change', (e) => {
+                    state.strength = Number(e.target.value);
+                });
+            }
+            const playBtn = mainContent.querySelector('#play-training-match');
+            if (playBtn) {
+                playBtn.addEventListener('click', async () => {
+                    if (state.busy) return;
+                    const chosen = select ? Number(select.value) : state.strength;
+                    state.busy = true;
+                    state.message = '';
+                    state.messageIsError = false;
+                    render();
+                    try {
+                        const res = await authFetch(`/api/training-match/play?strength=${encodeURIComponent(chosen)}`, { method: 'POST' });
+                        const payload = await readJsonOrThrow(res, 'The training match');
+                        state.result = payload;
+                        state.showResults = false;
+                        state.message = '';
+                        state.status = { ...(state.status || {}), canPlay: payload.unlimited || false, unlimited: payload.unlimited };
+                        await fetchStatus();
+                    } catch (err) {
+                        state.message = apiErrorMessage(err, 'Could not play the training match.');
+                        state.messageIsError = true;
+                    } finally {
+                        state.busy = false;
+                        render();
+                    }
+                });
+            }
+            const watchBtn = mainContent.querySelector('#watch-training-match');
+            if (watchBtn && state.result) {
+                watchBtn.addEventListener('click', () => {
+                    if (state.result.viewerUrl) window.location.href = state.result.viewerUrl;
+                });
+            }
+            const toggleBtn = mainContent.querySelector('#toggle-training-results');
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', () => {
+                    state.showResults = !state.showResults;
+                    render();
+                });
+            }
+        };
+
+        const renderResults = (r) => {
+            const o = r.outcome || {};
+            const home = o.homeStats || {};
+            const away = o.awayStats || {};
+            const pct = (n, d) => (d ? Math.round(100 * n / d) : 0);
+            const teamRow = (label, h, a) => `
+                <tr><td>${htmlEscape(label)}</td><td>${h}</td><td>${a}</td></tr>`;
+            const rows = [
+                teamRow('Goals', home.goals ?? 0, away.goals ?? 0),
+                teamRow('Shots', home.shots ?? 0, away.shots ?? 0),
+                teamRow('On target', home.shotsOnTarget ?? 0, away.shotsOnTarget ?? 0),
+                teamRow('Passes', `${home.passesCompleted ?? 0}/${home.passesAttempted ?? 0}`, `${away.passesCompleted ?? 0}/${away.passesAttempted ?? 0}`),
+                teamRow('Pass acc.', `${pct(home.passesCompleted, home.passesAttempted)}%`, `${pct(away.passesCompleted, away.passesAttempted)}%`),
+                teamRow('Fouls', home.fouls ?? 0, away.fouls ?? 0),
+                teamRow('Yellow', home.yellowCards ?? 0, away.yellowCards ?? 0),
+                teamRow('Red', home.redCards ?? 0, away.redCards ?? 0),
+                teamRow('Avg rating', (home.avgRating ?? 0).toFixed(2), (away.avgRating ?? 0).toFixed(2))
+            ].join('');
+            const players = (o.players || []).slice().sort((a, b) => (b.rating || 0) - (a.rating || 0));
+            const playerRows = players.map(p => `
+                <tr>
+                    <td>${htmlEscape(p.playerName || p.playerId || '')}</td>
+                    <td>${htmlEscape(p.teamName || '')}</td>
+                    <td>${htmlEscape(p.role || '')}</td>
+                    <td>${p.goals ?? 0}</td>
+                    <td>${p.assists ?? 0}</td>
+                    <td>${p.shots ?? 0}</td>
+                    <td>${pct(p.passesCompleted, p.passesAttempted)}%</td>
+                    <td>${(p.rating ?? 0).toFixed(2)}</td>
+                </tr>`).join('');
+            const events = (o.events || []).slice(0, 40).map(e => `
+                <li>${e.minute ?? Math.floor((e.tick || 0) / 60)}' ${htmlEscape(e.description || e.type || '')}</li>`).join('');
+            const potm = o.playerOfTheMatchName
+                ? `<p class="fm-subtle" style="margin:8px 0 0;"><strong>Player of the match:</strong> ${htmlEscape(o.playerOfTheMatchName)} (${htmlEscape(o.playerOfTheMatchTeam || '')})</p>`
+                : '';
+            return `
+                <div style="margin-top:14px;">
+                    <div class="fm-medical-stat-grid" style="margin-bottom:10px;">
+                        <div><strong>${o.homeGoals ?? 0} – ${o.awayGoals ?? 0}</strong><span>Score</span></div>
+                        <div><strong>${o.possessionHome ?? 0}%</strong><span>Home possession</span></div>
+                        <div><strong>${o.possessionAway ?? 0}%</strong><span>Away possession</span></div>
+                        <div><strong>${(o.expectedGoalsHome ?? 0).toFixed(2)} / ${(o.expectedGoalsAway ?? 0).toFixed(2)}</strong><span>xG</span></div>
+                    </div>
+                    <div class="fm-squad-wrap">
+                        <table class="fm-squad">
+                            <thead><tr><th>Stat</th><th>${htmlEscape(r.homeTeam || 'Home')}</th><th>${htmlEscape(r.awayTeam || 'Away')}</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                    ${potm}
+                    <div class="fm-panel-head" style="margin-top:12px;"><h4>Player ratings</h4></div>
+                    <div class="fm-squad-wrap">
+                        <table class="fm-squad">
+                            <thead><tr><th>Player</th><th>Team</th><th>Role</th><th>G</th><th>A</th><th>Sh</th><th>Pass</th><th>Rtg</th></tr></thead>
+                            <tbody>${playerRows}</tbody>
+                        </table>
+                    </div>
+                    ${events ? `<div class="fm-panel-head" style="margin-top:12px;"><h4>Events</h4></div><ul class="fm-subtle" style="margin:0; padding-left:18px;">${events}</ul>` : ''}
+                </div>`;
+        };
+
+        try {
+            await fetchStatus();
+        } catch (err) {
+            state.message = apiErrorMessage(err, 'Could not load the training match.');
+            state.messageIsError = true;
+        }
+        render();
+    }
+
+    return { loadTrainingReports, loadTrainingReportsPage, loadTrainingSetup, loadTrainingMatch };
 }

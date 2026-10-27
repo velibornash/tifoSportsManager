@@ -112,7 +112,14 @@ public class LazySquadGenerator {
 
     /** A club with nobody in it, and the match is one where that will be visible. */
     private boolean needsSquad(Team team) {
+        // A team that is not a row in the `team` table cannot be given a squad: there is no row to
+        // attach the players to, so `createRandomTeamPlayers` would either cascade a phantom club into
+        // existence or insert players against a null foreign key. The training match (owner, 2026-10-27)
+        // plays against an opponent built entirely in memory, and it is the first caller to bring a
+        // team with no id this far — without the guard its "no database writes" promise would be
+        // broken here rather than by anything the match itself does.
         return team != null
+                && team.getId() != null
                 && !isHuman(team)
                 && players.findByTeamId(team.getId()).isEmpty();
     }

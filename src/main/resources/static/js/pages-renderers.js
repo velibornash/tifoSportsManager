@@ -824,6 +824,7 @@ export function buildClubActionsHtml(currentPage = '') {
 export function buildTrainingActionsHtml(currentPage = '') {
     return buildActionRowHtml([
         { label: 'Training Setup', page: 'trainingSetup', variant: 'primary', currentPages: ['training', 'trainingSetup'] },
+        { label: 'Training match', page: 'trainingMatch', currentPages: ['trainingMatch'] },
         { label: 'Training Reports', page: 'trainingReports' },
     ], currentPage);
 }

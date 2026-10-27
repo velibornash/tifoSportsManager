@@ -95,11 +95,33 @@ class ProposalEngineIsTheOnlyFixtureProducerTest extends BaseTest {
      * test did what it is for: it reported a path into the engine that nobody had audited. It has now
      * been audited.
      *
+     * <p><b>{@code PracticeMatchService} is the fifth, added deliberately on 2026-10-27 — audited
+     * rather than assumed.</b> It has been in {@code main} since commit {@code d09ebf82} (P2-32,
+     * 2026-10-22) and the list had not caught up, so this test has been red since then: the guard
+     * reported exactly what it exists to report, a path into the engine nobody had written down.
+     * Its audit: half the normal length (1800 ticks), {@code applySideEffects = false} so no fatigue,
+     * no injury risk, no suspension is spent, and its own daily limit per club. It <em>does</em>
+     * persist — that is P2-32's point, a practice match that appears in the books — so it writes its
+     * own {@code Match} row through {@code SimMatchService.persist} rather than letting the matchday
+     * job find a fixture, and its fixture is never a row in the {@code match_fixture} table.
+     *
+     * <p><b>{@code TrainingMatchService} is the sixth, added deliberately on 2026-10-27.</b> The
+     * owner asked for a training match under Club – Training: ninety minutes against an opponent
+     * built in memory at a strength he picks, which writes <b>nothing</b> to the database — no
+     * fixture, no match, no player stats — so he can test a tactic. It enters the engine the same
+     * way every other entry point does, through {@code SimMatchService.simulate}, with
+     * {@code applySideEffects = false} and the away eleven supplied by
+     * {@link TrainingOpponentFactory}; it never calls {@code SimMatchService.persist}, so it cannot
+     * create a {@code Match}, cannot play a fixture and cannot reach a table. The only thing it
+     * leaves behind is a recording file for "Watch your match", and
+     * {@code TrainingMatchWritesNothingTest} counts the rows before and after to hold that.
+     *
      * <p>This is still an allow-list, not a lower bound. The next caller fails here.
      */
     private static final Set<String> SIMULATE_ENTRY_POINTS =
             Set.of("SimulationController.java", "AsyncSimulationRunner.java",
-                    "ExhibitionMatchService.java", "SimReplayController.java");
+                    "ExhibitionMatchService.java", "SimReplayController.java",
+                    "PracticeMatchService.java", "TrainingMatchService.java");
 
     // ---------- structural: nothing grows beside the engine ----------
 

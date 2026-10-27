@@ -109,6 +109,37 @@ class LazySquadGeneratorTest {
         assertTrue(municipal > 6 && municipal < 11, "tier 5 should sit near 8, was " + municipal);
     }
 
+    /**
+     * The training match's opponent is not a row in the {@code team} table, and it must not be given one.
+     *
+     * <p><b>Owner, 2026-10-27: the training match writes nothing to the database.</b> Its opponent is
+     * built entirely in memory, so its {@code Team} has no id — and this is the one place on the match
+     * path where a team without an id arrives at the generator. Without the null guard, {@code needsSquad}
+     * reads "a bot club with no players" and {@code generate} hands a detached, id-less team to
+     * {@code createRandomTeamPlayers} — which either cascades a phantom club into the {@code team} table
+     * or inserts players against a null foreign key. Either way the feature's single promise is broken
+     * here rather than by anything the match itself does, which is the reason the failure is invisible
+     * unless something counts rows.
+     */
+    @Test
+    @DisplayName("a team with no id cannot be given a squad, because there is no row to attach it to")
+    void aTeamWithNoIdCannotBeGivenASquad() {
+        Team human = humanClub("ZZL Human NoId");
+
+        Team opponent = new Team();
+        opponent.setName("Training XI (14)");
+        opponent.setHumanControlled(false);
+        assertTrue(opponent.getId() == null, "the fixture must start with no id, or nothing is tested");
+
+        int made = generator.ensureSquadsForMatch(human, opponent);
+
+        assertEquals(0, made,
+                "the in-memory opponent was given a squad: that is a database write on the path the "
+                        + "owner promised would write nothing");
+        assertTrue(players.findByTeamId(human.getId()).isEmpty(),
+                "the human side has no squad either — this path must generate nothing at all");
+    }
+
     @Test
     @DisplayName("a club that already has players is left alone")
     void anExistingSquadIsUntouched() {
