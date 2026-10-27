@@ -1001,7 +1001,6 @@ export function createTrainingView(deps) {
                                 <h2>Training match</h2>
                                 <p class="fm-subtle">Test a tactic against an opponent of a strength you choose.</p>
                             </div>
-                            ${buildTrainingActionsHtml('trainingMatch')}
                         </div>
                     </section>
                     ${noticeHtml}
