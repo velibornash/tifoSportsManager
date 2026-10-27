@@ -975,7 +975,7 @@ export function createTrainingView(deps) {
                     <p class="fm-subtle">The tactic your club plays with in this match. Pick one of your saved tactics, or leave the default.</p>
                     <div class="training-group-row" style="margin-top:10px;">
                         <select id="training-match-tactic" ${state.busy || !canPlay ? 'disabled' : ''}
-                                style="max-width:320px;" aria-label="Tactic used">
+                                style="min-width:260px; max-width:100%; width:100%;" aria-label="Tactic used">
                             ${tacticOptions.join('')}
                         </select>
                     </div>
