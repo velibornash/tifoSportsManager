@@ -92,7 +92,7 @@ class TrainingMatchWritesNothingTest extends BaseTest {
 
         Counts start = new Counts(club);
 
-        Map<String, Object> result = service.play(manager, 14);
+        Map<String, Object> result = service.play(manager, 14, null);
 
         // What the page is promised: a full match, a score, a recording, and the words.
         assertEquals("ok", result.get("status"));
@@ -116,7 +116,7 @@ class TrainingMatchWritesNothingTest extends BaseTest {
         assertEquals(Boolean.FALSE, after.get("canPlay"),
                 "a normal manager must get exactly one training match per game day");
 
-        ApiException refusal = assertThrows(ApiException.class, () -> service.play(manager, 14),
+        ApiException refusal = assertThrows(ApiException.class, () -> service.play(manager, 14, null),
                 "the second match of the day must be refused, and refused before the engine runs");
         assertEquals("TRAINING_LIMIT", refusal.getCode());
 
@@ -136,7 +136,7 @@ class TrainingMatchWritesNothingTest extends BaseTest {
                 "the owner's own account is exempt from the daily limit (owner, 2026-10-27)");
 
         Counts start = new Counts(club);
-        service.play(owner, 8);
+        service.play(owner, 8, null);
         start.assertUnchanged();
 
         assertEquals(Boolean.TRUE, service.status(owner).get("canPlay"),
@@ -155,7 +155,7 @@ class TrainingMatchWritesNothingTest extends BaseTest {
         assertEquals(TrainingOpponentFactory.MIN_STRENGTH, status.get("minStrength"));
         assertEquals(TrainingOpponentFactory.MAX_STRENGTH, status.get("maxStrength"));
 
-        Map<String, Object> played = service.play(manager, 999);
+        Map<String, Object> played = service.play(manager, 999, null);
         assertEquals(TrainingOpponentFactory.MAX_STRENGTH, played.get("strength"),
                 "a strength past the band must play against the ceiling of the band");
     }

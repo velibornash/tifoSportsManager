@@ -10,8 +10,11 @@ import org.tifo.footballmanager.newLogic.model.MatchFixture;
 import org.tifo.footballmanager.newLogic.model.MatchType;
 import org.tifo.footballmanager.newLogic.model.Team;
 import org.tifo.footballmanager.newLogic.sim.SimMatchRunner;
+import org.tifo.footballmanager.newLogic.service.TacticLibraryService;
+import org.tifo.footballmanager.newLogic.service.TacticsRulesProvider;
 import org.tifo.footballmanager.newLogic.sim.SimMatchService;
 import org.tifo.footballmanager.newLogic.sim.TrainingOpponentFactory;
+import org.tifo.footballmanager.newLogic.sim.tactics.TacticsRules;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.tifo.footballmanager.newLogic.repository.TeamRepository;
@@ -54,15 +57,20 @@ public class TrainingMatchService {
     private final SimMatchService simMatchService;
     private final TrainingMatchLimitCache limits;
     private final TeamRepository teams;
+    private final TacticsRulesProvider tacticsRules;
+    private final TacticLibraryService tacticLibrary;
 
     public TrainingMatchService(ClubOwnershipLinker ownership, GameClockService gameClock,
                                 SimMatchService simMatchService, TrainingMatchLimitCache limits,
-                                TeamRepository teams) {
+                                TeamRepository teams, TacticsRulesProvider tacticsRules,
+                                TacticLibraryService tacticLibrary) {
         this.ownership = ownership;
         this.gameClock = gameClock;
         this.simMatchService = simMatchService;
         this.limits = limits;
         this.teams = teams;
+        this.tacticsRules = tacticsRules;
+        this.tacticLibrary = tacticLibrary;
     }
 
     /**
@@ -96,7 +104,7 @@ public class TrainingMatchService {
      * @param strength the opponent's standard, 8..20; anything outside the band is brought inside it
      */
     @Transactional
-    public Map<String, Object> play(User user, int strength) {
+    public Map<String, Object> play(User user, int strength, Long tacticId) {
         String account = accountOf(user);
         Long clubId = ownership.clubIdOf(user);
         Team club = (clubId == null) ? null : teams.findById(clubId).orElse(null);
@@ -113,6 +121,19 @@ public class TrainingMatchService {
 
         int skill = TrainingOpponentFactory.clampStrength(strength);
 
+        // The tactic the manager picked for this match, if any. Validated against the club so one
+        // manager cannot run another club's shape, and null falls back to the club's own default.
+        org.tifo.footballmanager.newLogic.sim.tactics.TacticsRules homeTactics = null;
+        if (tacticId != null) {
+            org.tifo.footballmanager.newLogic.model.tactics.Tactic chosen =
+                    tacticLibrary.find(clubId, tacticId);
+            if (chosen == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "TACTIC_NOT_FOUND",
+                        "That tactic does not belong to your club.");
+            }
+            homeTactics = tacticsRules.forTactic(clubId, tacticId);
+        }
+
         Team opponent = new Team();
         opponent.setName("Training XI (" + skill + ")");
         opponent.setHumanControlled(false);
@@ -127,7 +148,7 @@ public class TrainingMatchService {
         TrainingOpponentFactory.Squad squad = TrainingOpponentFactory.build(skill, null);
         SimMatchService.SimMatchOutcome sim = simMatchService.simulate(
                 fixture, true, false, SimMatchRunner.FULL_MATCH_TICKS,
-                squad.starters(), squad.bench());
+                squad.starters(), squad.bench(), homeTactics);
 
         // Recorded only now: a match that threw must not have spent the day's one match.
         limits.record(account, day);
@@ -135,6 +156,7 @@ public class TrainingMatchService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("status", "ok");
         payload.put("strength", skill);
+        payload.put("tacticId", tacticId);
         payload.put("unlimited", TrainingMatchLimitCache.isUnlimited(account));
         payload.put("gameDay", day);
         payload.put("homeTeam", club.getName());

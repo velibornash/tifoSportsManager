@@ -1,5 +1,5 @@
 // pages/views/training-view.js
-import { htmlEscape, readJsonOrThrow } from './utils.js';
+import { htmlEscape, readJsonOrThrow, readJsonOr } from './utils.js';
 import { authFetchQuiet, apiErrorMessage } from '../../auth.js';
 import { positionRank } from '../../ui/position-order.js';
 
@@ -897,6 +897,8 @@ export function createTrainingView(deps) {
         const state = {
             status: null,
             strength: 14,
+            tacticId: null,
+            tactics: [],
             result: null,
             showResults: false,
             busy: false,
@@ -908,6 +910,12 @@ export function createTrainingView(deps) {
             const res = await authFetch('/api/training-match');
             state.status = await readJsonOrThrow(res, 'The training match');
             state.strength = clampStrength(state.strength, state.status);
+            try {
+                const tRes = await authFetch(`/teams/${getTeamId()}/tactics`);
+                state.tactics = await readJsonOr(tRes, [], 'Tactics');
+            } catch (e) {
+                state.tactics = [];
+            }
         };
 
         const clampStrength = (value, status) => {
@@ -958,6 +966,21 @@ export function createTrainingView(deps) {
                     ${state.message ? `<p class="fm-subtle" style="color:${state.messageIsError ? '#f44336' : '#4caf50'}; margin-top:8px;">${htmlEscape(state.message)}</p>` : ''}
                 </section>`;
 
+            const tacticOptions = [`<option value="" ${state.tacticId == null ? 'selected' : ''}>Default tactic (club profile)</option>`]
+                .concat((state.tactics || []).map(t =>
+                    `<option value="${t.id}" ${Number(state.tacticId) === Number(t.id) ? 'selected' : ''}>${htmlEscape(t.name || 'Tactic')} — ${htmlEscape(t.formation || '')}${t.isDefault ? ' (default)' : ''}</option>`));
+            const tacticPickerHtml = `
+                <section class="fm-panel">
+                    <div class="fm-panel-head"><h3>Tactic used</h3></div>
+                    <p class="fm-subtle">The tactic your club plays with in this match. Pick one of your saved tactics, or leave the default.</p>
+                    <div class="training-group-row" style="margin-top:10px;">
+                        <select id="training-match-tactic" ${state.busy || !canPlay ? 'disabled' : ''}
+                                style="max-width:320px;" aria-label="Tactic used">
+                            ${tacticOptions.join('')}
+                        </select>
+                    </div>
+                </section>`;
+
             let resultHtml = '';
             if (state.result) {
                 const r = state.result;
@@ -1005,6 +1028,7 @@ export function createTrainingView(deps) {
                     </section>
                     ${noticeHtml}
                     ${strengthPickerHtml}
+                    ${tacticPickerHtml}
                     ${resultHtml}
                 </div>`;
 
@@ -1015,17 +1039,27 @@ export function createTrainingView(deps) {
                     state.strength = Number(e.target.value);
                 });
             }
+            const tacticSelect = mainContent.querySelector('#training-match-tactic');
+            if (tacticSelect) {
+                tacticSelect.addEventListener('change', (e) => {
+                    const v = e.target.value;
+                    state.tacticId = v === '' ? null : Number(v);
+                });
+            }
             const playBtn = mainContent.querySelector('#play-training-match');
             if (playBtn) {
                 playBtn.addEventListener('click', async () => {
                     if (state.busy) return;
                     const chosen = select ? Number(select.value) : state.strength;
+                    const chosenTactic = tacticSelect ? tacticSelect.value : '';
                     state.busy = true;
                     state.message = '';
                     state.messageIsError = false;
                     render();
                     try {
-                        const res = await authFetch(`/api/training-match/play?strength=${encodeURIComponent(chosen)}`, { method: 'POST' });
+                        const url = `/api/training-match/play?strength=${encodeURIComponent(chosen)}`
+                            + (chosenTactic ? `&tacticId=${encodeURIComponent(chosenTactic)}` : '');
+                        const res = await authFetch(url, { method: 'POST' });
                         const payload = await readJsonOrThrow(res, 'The training match');
                         state.result = payload;
                         state.showResults = false;

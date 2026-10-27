@@ -120,7 +120,7 @@ public class SimMatchService {
         return simulate(fixture, storeReplay, applySideEffects, SimMatchRunner.FULL_MATCH_TICKS); }
 
     public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects, int ticks) {
-        return simulate(fixture, storeReplay, applySideEffects, ticks, null, null);
+        return simulate(fixture, storeReplay, applySideEffects, ticks, null, null, null);
     }
 
     /**
@@ -140,10 +140,12 @@ public class SimMatchService {
      *
      * @param awaySquadOverride the away side's starting eleven, or {@code null} to read it from the club
      * @param awayBenchOverride the away side's reserves, or {@code null} to read them from the club
+     * @param homeTacticsOverride the home side's tactics, or {@code null} to read the club's own
      */
     public SimMatchOutcome simulate(MatchFixture fixture, boolean storeReplay, boolean applySideEffects,
                                     int ticks, List<Player> awaySquadOverride,
-                                    List<Player> awayBenchOverride) {
+                                    List<Player> awayBenchOverride,
+                                    org.tifo.footballmanager.newLogic.sim.tactics.TacticsRules homeTacticsOverride) {
         // Deterministic run: seed the engine RNG from the fixture id so
         // re-simulating the same fixture always reproduces the same match.
         SimulationRandom.seed(fixture != null && fixture.getId() != null
@@ -231,7 +233,7 @@ public class SimMatchService {
         var orchestrator = SimMatchRunner.build(homeName, awayName,
                 homeSquad, awaySquad, homeBench, awayBench,
                 new org.tifo.footballmanager.newLogic.sim.tactics.SideTactics(
-                        tacticsRules.forTeam(homeTeam.getId()),
+                        homeTacticsOverride != null ? homeTacticsOverride : tacticsRules.forTeam(homeTeam.getId()),
                         tacticsRules.forTeam(awayTeam.getId())),
                 liveTactics);
 

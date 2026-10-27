@@ -43,7 +43,8 @@ public class TrainingMatchController {
     @PostMapping("/play")
     public ResponseEntity<Map<String, Object>> play(
             @AuthenticationPrincipal User user,
-            @RequestParam(defaultValue = "12") int strength) {
-        return ResponseEntity.ok(trainingMatches.play(user, strength));
+            @RequestParam(defaultValue = "12") int strength,
+            @RequestParam(required = false) Long tacticId) {
+        return ResponseEntity.ok(trainingMatches.play(user, strength, tacticId));
     }
 }
