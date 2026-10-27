@@ -14,6 +14,7 @@ import org.tifo.footballmanager.newLogic.sim.SimMatchService;
 import org.tifo.footballmanager.newLogic.sim.TrainingOpponentFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.tifo.footballmanager.newLogic.repository.TeamRepository;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -52,13 +53,16 @@ public class TrainingMatchService {
     private final GameClockService gameClock;
     private final SimMatchService simMatchService;
     private final TrainingMatchLimitCache limits;
+    private final TeamRepository teams;
 
     public TrainingMatchService(ClubOwnershipLinker ownership, GameClockService gameClock,
-                                SimMatchService simMatchService, TrainingMatchLimitCache limits) {
+                                SimMatchService simMatchService, TrainingMatchLimitCache limits,
+                                TeamRepository teams) {
         this.ownership = ownership;
         this.gameClock = gameClock;
         this.simMatchService = simMatchService;
         this.limits = limits;
+        this.teams = teams;
     }
 
     /**
@@ -94,7 +98,8 @@ public class TrainingMatchService {
     @Transactional
     public Map<String, Object> play(User user, int strength) {
         String account = accountOf(user);
-        Team club = ownership.clubOf(user);
+        Long clubId = ownership.clubIdOf(user);
+        Team club = (clubId == null) ? null : teams.findById(clubId).orElse(null);
         if (club == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "NO_TEAM",
                     "Your account does not manage a club.");
