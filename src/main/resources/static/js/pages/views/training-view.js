@@ -898,6 +898,7 @@ export function createTrainingView(deps) {
             status: null,
             strength: 14,
             tacticId: null,
+            awayTacticId: null,
             tactics: [],
             result: null,
             showResults: false,
@@ -981,6 +982,21 @@ export function createTrainingView(deps) {
                     </div>
                 </section>`;
 
+            const aiTacticOptions = [`<option value="" ${state.awayTacticId == null ? 'selected' : ''}>Default (bundled 4-4-2)</option>`]
+                .concat((state.tactics || []).map(t =>
+                    `<option value="${t.id}" ${Number(state.awayTacticId) === Number(t.id) ? 'selected' : ''}>${htmlEscape(t.name || 'Tactic')} — ${htmlEscape(t.formation || '')}${t.isDefault ? ' (default)' : ''}</option>`));
+            const aiTacticPickerHtml = `
+                <section class="fm-panel">
+                    <div class="fm-panel-head"><h3>AI opponent tactic</h3></div>
+                    <p class="fm-subtle">The tactic the AI opponent plays with. Pick one of your saved tactics, or leave the bundled default.</p>
+                    <div class="training-group-row" style="margin-top:10px;">
+                        <select id="training-match-ai-tactic" ${state.busy || !canPlay ? 'disabled' : ''}
+                                style="min-width:260px; max-width:100%; width:100%;" aria-label="AI opponent tactic">
+                            ${aiTacticOptions.join('')}
+                        </select>
+                    </div>
+                </section>`;
+
             let resultHtml = '';
             if (state.result) {
                 const r = state.result;
@@ -1029,6 +1045,7 @@ export function createTrainingView(deps) {
                     ${noticeHtml}
                     ${strengthPickerHtml}
                     ${tacticPickerHtml}
+                    ${aiTacticPickerHtml}
                     ${resultHtml}
                 </div>`;
 
@@ -1046,20 +1063,30 @@ export function createTrainingView(deps) {
                     state.tacticId = v === '' ? null : Number(v);
                 });
             }
+            const aiTacticSelect = mainContent.querySelector('#training-match-ai-tactic');
+            if (aiTacticSelect) {
+                aiTacticSelect.addEventListener('change', (e) => {
+                    const v = e.target.value;
+                    state.awayTacticId = v === '' ? null : Number(v);
+                });
+            }
             const playBtn = mainContent.querySelector('#play-training-match');
             if (playBtn) {
                 playBtn.addEventListener('click', async () => {
                     if (state.busy) return;
                     const chosen = select ? Number(select.value) : state.strength;
                     const chosenTactic = tacticSelect ? tacticSelect.value : '';
+                    const chosenAiTactic = aiTacticSelect ? aiTacticSelect.value : '';
                     state.busy = true;
                     state.message = '';
                     state.messageIsError = false;
                     render();
                     try {
-                        const url = `/api/training-match/play?strength=${encodeURIComponent(chosen)}`
-                            + (chosenTactic ? `&tacticId=${encodeURIComponent(chosenTactic)}` : '');
-                        const res = await authFetch(url, { method: 'POST' });
+                        const params = new URLSearchParams();
+                        params.set('strength', String(chosen));
+                        if (chosenTactic) params.set('tacticId', chosenTactic);
+                        if (chosenAiTactic) params.set('awayTacticId', chosenAiTactic);
+                        const res = await authFetch(`/api/training-match/play?${params.toString()}`, { method: 'POST' });
                         const payload = await readJsonOrThrow(res, 'The training match');
                         state.result = payload;
                         state.showResults = false;

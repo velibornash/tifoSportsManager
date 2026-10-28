@@ -44,7 +44,8 @@ public class TrainingMatchController {
     public ResponseEntity<Map<String, Object>> play(
             @AuthenticationPrincipal User user,
             @RequestParam(defaultValue = "12") int strength,
-            @RequestParam(required = false) Long tacticId) {
-        return ResponseEntity.ok(trainingMatches.play(user, strength, tacticId));
+            @RequestParam(required = false) Long tacticId,
+            @RequestParam(required = false) Long awayTacticId) {
+        return ResponseEntity.ok(trainingMatches.play(user, strength, tacticId, awayTacticId));
     }
 }

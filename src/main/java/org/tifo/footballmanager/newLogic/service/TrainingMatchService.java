@@ -104,7 +104,7 @@ public class TrainingMatchService {
      * @param strength the opponent's standard, 8..20; anything outside the band is brought inside it
      */
     @Transactional
-    public Map<String, Object> play(User user, int strength, Long tacticId) {
+    public Map<String, Object> play(User user, int strength, Long tacticId, Long awayTacticId) {
         String account = accountOf(user);
         Long clubId = ownership.clubIdOf(user);
         Team club = (clubId == null) ? null : teams.findById(clubId).orElse(null);
@@ -133,6 +133,16 @@ public class TrainingMatchService {
             }
             homeTactics = tacticsRules.forTactic(clubId, tacticId);
         }
+        org.tifo.footballmanager.newLogic.sim.tactics.TacticsRules awayTactics = null;
+        if (awayTacticId != null) {
+            org.tifo.footballmanager.newLogic.model.tactics.Tactic chosenAway =
+                    tacticLibrary.find(clubId, awayTacticId);
+            if (chosenAway == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "TACTIC_NOT_FOUND",
+                        "That tactic does not belong to your club.");
+            }
+            awayTactics = tacticsRules.forTactic(clubId, awayTacticId);
+        }
 
         Team opponent = new Team();
         opponent.setName("Training XI (" + skill + ")");
@@ -148,7 +158,7 @@ public class TrainingMatchService {
         TrainingOpponentFactory.Squad squad = TrainingOpponentFactory.build(skill, null);
         SimMatchService.SimMatchOutcome sim = simMatchService.simulate(
                 fixture, true, false, SimMatchRunner.FULL_MATCH_TICKS,
-                squad.starters(), squad.bench(), homeTactics);
+                squad.starters(), squad.bench(), homeTactics, awayTactics);
 
         // Recorded only now: a match that threw must not have spent the day's one match.
         limits.record(account, day);
