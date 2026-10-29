@@ -335,6 +335,25 @@ public class CleanDecisionEngine {
                 passOption, carryOption, shotOption, clearOption,
                 thruOption, crossOption, centerOption);
 
+        // EMERGENCY CLEAR (F7) — a carrier always has a legal action.
+        //
+        // Every option can be UNAVAILABLE at once: no receiver (PASS), a goalkeeper or the
+        // byline (DRIBBLE), outside the zone (SHOT), the frequency gate or the wrong third
+        // (CLEAR), nobody behind the line / not in the final third (THRU/CENTER). The
+        // selector then returns the least bad of a menu of impossibilities, ActionExecutor
+        // receives a null-target PASS and does nothing — and the carrier stands on the ball
+        // for ever, re-deciding the same impossible situation every tick. Replay 5633:
+        // 23 consecutive "PASS score=-20 [no receiver]" ticks from one frozen player.
+        //
+        // So when nothing at all is available the ball is hoofed upfield. It deliberately
+        // bypasses both CLEAR gates (the defensive-third test and the frequency roll): this
+        // is not "a defender under pressure chooses to clear", it is the last resort that
+        // keeps the match moving. It costs a lost possession and gains a live ball.
+        if (chosen == null || chosen.getScore() <= UNAVAILABLE) {
+            chosen = new DecisionOption(ActionType.CLEAR, null, 0.0,
+                    "CLEAR: emergency — no option was available at all");
+        }
+
         // FINAL-2-ROW HARD RULE — REMOVED.
         //
         // "A carrier in the last two rows of the attacking third must not keep dribbling; shoot or
@@ -387,8 +406,16 @@ public class CleanDecisionEngine {
         StringBuilder reason = new StringBuilder("PASS: ");
 
         if (receiver == null) {
+            // F7 (replay 5633, 2026-10-26): a pass to nobody is NOT an option, and at -20 it
+            // used to be a LEGAL one. That score sat above UNAVAILABLE, so it passed the
+            // "a pass is available" test that vetoes the dribble in the carrier's own third —
+            // and the carrier then chose it every tick while ActionExecutor, receiving a
+            // null target, did nothing at all. Measured in the replay: Kačar stood at
+            // (2.2,2.9) from 0:21 to 0:55 — 23 ticks of "PASS score=-20 [no receiver]" and a
+            // frozen player. An impossible pass must score exactly like every other impossible
+            // option, so that the escape hatches (dribble, clearance) can fire.
             reason.append("no receiver");
-            return new DecisionOption(ActionType.PASS, null, -20.0, reason.toString());
+            return new DecisionOption(ActionType.PASS, null, UNAVAILABLE, reason.toString());
         }
 
         // ME-2 backstop: the receiver pools already refuse an own-half target from a shooting
