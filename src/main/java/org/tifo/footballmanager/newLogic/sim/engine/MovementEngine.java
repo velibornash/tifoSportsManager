@@ -23,7 +23,7 @@ public class MovementEngine {
     public static final double CARRIER_FACTOR_TYPE_A = 0.78; // active TYPE A press override
     public static final double CARRIER_FREE_RADIUS = 1.0; // cells — no defender beyond = free
     public static final double CARRIER_TYPE_A_PRESS_RADIUS = 0.5; // cells — TYPE A presser range
-    public static final double MIN_PLAYER_DISTANCE = 0.6; // minimum distance before wall block (raised to match lab pitch tool's touching circles)
+    public static final double MIN_PLAYER_DISTANCE = 0.5; // minimum distance before wall block (raised to match lab pitch tool's touching circles)
     // Touching distance in METERS (pitch = 98m x 60m, grid = 7 rows x 6 cols => 1 row = 14m, 1 col = 10m).
     // The lab pitch tool keeps 40px circles from overlapping in pixel space; expressed in metres that is
     // ~7 m (the circle diameter). Two players are "overlapping" when their centre distance (metres) < this.
