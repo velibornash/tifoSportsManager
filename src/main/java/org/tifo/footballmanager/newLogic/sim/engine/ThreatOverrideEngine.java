@@ -188,8 +188,8 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
         if (!isClosestEligiblePresser(carrier, defender, state)) return null;
 
         // Return the carrier's position — MovementEngine's wall collision
-        // (MIN_PLAYER_DISTANCE = 0.5) parks the presser ~0.45-0.5 cells apart,
-        // which is inside the presser duel radius (0.5) so the tackle fires.
+        // (MIN_PLAYER_DISTANCE = 0.2) parks the presser ~0.15-0.2 cells apart,
+        // which is inside the presser duel radius (0.2) so the tackle fires.
         return new Position(carrier.getPosition().getRow(), carrier.getPosition().getColumn());
     }
 

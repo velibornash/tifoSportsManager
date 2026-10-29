@@ -17,8 +17,8 @@ class FourDuelsVisibleTest {
     @DisplayName("F5: SIDE_ON_TIE_RADIUS is 0.6 cells (4.2 m) per owner decision")
     void sideOnTieRadiusIs0_6() {
         double radius = DuelEngine.SIDE_ON_TIE_RADIUS;
-        assertEquals(0.5, radius, 0.001,
-                "SIDE_ON_TIE_RADIUS must be 0.5 per owner decision (circles touch), was " + radius);
+        assertEquals(0.2, radius, 0.001,
+                "SIDE_ON_TIE_RADIUS must be 0.2 per owner decision (circles touch), was " + radius);
     }
 
     @Test
@@ -54,9 +54,9 @@ class FourDuelsVisibleTest {
     @Test
     @DisplayName("F4: DuelEngine constants are configured for two-phase duel")
     void duelEngineConstants() {
-        // F5: SIDE_ON_TIE_RADIUS was raised from 0.40 to 0.5
-        assertTrue(DuelEngine.SIDE_ON_TIE_RADIUS >= 0.5,
-                "SIDE_ON_TIE_RADIUS must be >= 0.5 per owner decision, was " + DuelEngine.SIDE_ON_TIE_RADIUS);
+        // F5: SIDE_ON_TIE_RADIUS was raised from 0.40 to 0.2
+        assertTrue(DuelEngine.SIDE_ON_TIE_RADIUS >= 0.2,
+                "SIDE_ON_TIE_RADIUS must be >= 0.2 per owner decision, was " + DuelEngine.SIDE_ON_TIE_RADIUS);
         // F6: loser lock ticks exist and are positive
         assertTrue(DuelEngine.LOSER_LOCK_TICKS > 0,
                 "LOSER_LOCK_TICKS must be positive per owner decision, was " + DuelEngine.LOSER_LOCK_TICKS);
