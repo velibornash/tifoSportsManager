@@ -165,6 +165,10 @@ public class MatchState {
     // Statistics
     private int passAttempts;
     private int passesCompleted;
+    // F10: tick when the carrier last made forward progress (advance > 0).
+    // Used by the backward-pass penalty: if ticks since last progress > threshold,
+    // backward passes are penalised.
+    private int lastProgressTick;
     private int shots;
     private int shotsOnTarget;
     private int fouls;
@@ -612,6 +616,8 @@ public class MatchState {
     public int getPassAttempts() { return passAttempts; }
     public void incrementPassAttempts() { this.passAttempts++; }
     public int getPassesCompleted() { return passesCompleted; }
+    public int getLastProgressTick() { return lastProgressTick; }
+    public void setLastProgressTick(int lastProgressTick) { this.lastProgressTick = lastProgressTick; }
     public void incrementPassesCompleted() { this.passesCompleted++; }
     public int getShots() { return shots; }
     public void incrementShots() { this.shots++; }

@@ -153,6 +153,8 @@ public class CleanDecisionEngine {
     // Legacy alias kept so older MatchEngineVersion snapshots (which still
     // reference the gate name) keep compiling. Value mirrors the floor.
     public static final double SHOT_FREQUENCY_GATE = SHOT_CHANCE_FLOOR;
+    // F10: after this many ticks without forward progress, backward passes are penalised.
+    private static final int F10_BACKWARD_PENALTY_TICKS = 100;
 
     /**
      * How close two options have to be before the carrier's judgement is consulted, in points on
@@ -539,6 +541,16 @@ public class CleanDecisionEngine {
         double row = carrier.getPosition().getRow();
         double score = DRIBBLE_BASE;
         reason.append("base ").append((int) DRIBBLE_BASE).append(' ');
+
+        // NO-DRIBBLE IN OWN 16M (F10, replay 5633, 2026-10-26).
+        // The carrier must not dribble in the penalty area and the space around it.
+        // HOME: rows 1.0–2.5 (bottom 2 cells, ≈28 m). AWAY: rows 5.5–8.0 (top 2 cells).
+        // Dribble is always forbidden in these zones; only pass or clear is legal.
+        boolean inOwn16m = home ? row <= 2.5 : row >= 5.5;
+        if (inOwn16m) {
+            return new DecisionOption(ActionType.DRIBBLE, null, UNAVAILABLE,
+                    "DRIBBLE: in own 16 m — pass or clear only");
+        }
 
         // Ground won. Three cells is the whole carry, so this is capped at what it can deliver.
         double gain = Math.min(32.0, 3.0 * 10.0);
@@ -1032,6 +1044,13 @@ public class CleanDecisionEngine {
             }
             boolean marginalOffside = offsideMargin > 0;
 
+            // F10 (backward-pass penalty after no progression).
+            // If we've had no forward progress for > F10_BACKWARD_PENALTY_TICKS, then
+            // backward passes (advance < -0.2) are penalised an extra -20 so the engine
+            // varies its targets rather than repeatedly playing the ball backward.
+            int ticksSinceLastProgress = state.getMatchTicks() - state.getLastProgressTick();
+            boolean noProgressMode = ticksSinceLastProgress > F10_BACKWARD_PENALTY_TICKS;
+
             // F9 (pass-repetition penalty): if the same passer→receiver pair was used on the
             // immediately preceding pass, penalise this candidate so the engine varies its
             // targets over time rather than aiming at the same two men repeatedly.
@@ -1043,18 +1062,31 @@ public class CleanDecisionEngine {
                 score -= 20.0;   // repetition penalty — same passer and same receiver
             }
             if (advance > 0) {
+                // record the tick when we last made forward progress
+                state.setLastProgressTick(state.getMatchTicks());
                 score += Math.min(16.0, advance * 7.0);
             } else if (advance < -0.2) {
+                // backward pass — determine base penalty per original rules
                 double _dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
                 boolean _short = _dist <= 1.5;
                 boolean _ownHalf = "HOME".equals(carrier.getTeam())
                         ? carrier.getPosition().getRow() < 4.5
                         : carrier.getPosition().getRow() > 4.5;
+                double basePenalty;
                 if (_short) {
-                    if (!_ownHalf) score -= 5.0;   // reduced penalty outside own half
-                    // in own half: no penalty (owner's rule)
+                    if (!_ownHalf) basePenalty = 5.0;   // reduced penalty outside own half
+                    else basePenalty = 0.0;            // in own half: no penalty (owner's rule)
                 } else {
-                    score -= 20.0;
+                    basePenalty = 20.0;
+                }
+                if (noProgressMode) {
+                    basePenalty += 20.0;   // extra penalty for backward pass after no progress
+                }
+                if (_short) {
+                    if (!_ownHalf) score -= basePenalty;   // reduced penalty outside own half
+                    else score -= basePenalty;              // in own half: no penalty but with F10 extra
+                } else {
+                    score -= basePenalty;
                 }
             } else {
                 score -= 3.0;
