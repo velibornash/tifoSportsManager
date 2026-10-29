@@ -578,6 +578,7 @@ html[data-theme="daylight"] {
     border: 1px dashed rgba(132, 168, 201, 0.28);
     border-radius: 14px;
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 8px;
     background: rgba(var(--wash-rgb), 0.03);
 }
