@@ -140,6 +140,11 @@ public class MatchState {
     private String setPieceType;      // CORNER, GOAL_KICK, THROW_IN, PENALTY, FREE_KICK
     private String restartTeam;
     private Player restartTaker;      // walks to the ball during a restart
+    // F-RS-1 (replay 5633, 2026-10-26): true when the restart taker has just claimed the ball.
+    // Used to enforce the owner's rule: a throw-in taker must NEVER pass to themselves or into
+    // empty space. They may only pass to a free player within 2-2.5 cells, or throw into the
+    // box/center for a duel.
+    private boolean justTookRestart;
     private boolean kickoffPending;   // true right after kickoff (match start / after goal)
 
     /**
@@ -591,6 +596,8 @@ public class MatchState {
 
     public Player getRestartTaker() { return restartTaker; }
     public void setRestartTaker(Player restartTaker) { this.restartTaker = restartTaker; }
+    public boolean isJustTookRestart() { return justTookRestart; }
+    public void setJustTookRestart(boolean justTookRestart) { this.justTookRestart = justTookRestart; }
 
     public boolean isKickoffPending() { return kickoffPending; }
     public void setKickoffPending(boolean kickoffPending) { this.kickoffPending = kickoffPending; }

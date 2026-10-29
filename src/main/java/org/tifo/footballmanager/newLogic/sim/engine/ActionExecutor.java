@@ -24,6 +24,17 @@ public class ActionExecutor {
             return;
         }
 
+        // F-RS-2 (replay 5633, 2026-10-26): the ball can NEVER change direction or start a
+        // pass/center/shot unless there is a player at the same point as the ball. The ball
+        // is the primary objective — no action starts without a carrier on the ball.
+        // CLEAR is the exception: it can be executed from anywhere.
+        if (carrier != null && decision.getType() != ActionType.CLEAR) {
+            double dist = SimUtils.distance(carrier.getPosition(), state.getBall().getPosition());
+            if (dist > BallPhysicsEngine.ON_BALL_EPS) {
+                return; // carrier not on the ball — action cannot start
+            }
+        }
+
         ActionType type = decision.getType();
 
         switch (type) {

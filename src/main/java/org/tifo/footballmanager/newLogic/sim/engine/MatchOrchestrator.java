@@ -627,6 +627,13 @@ public class MatchOrchestrator {
 
             actionExecutor.execute(state, decision);
 
+            // Clear the "just took restart" flag after the restart action is executed.
+            // This ensures the throw-in rules (no pass to self, pass within 2-2.5 cells
+            // or into the box) only apply to the restart taker's first decision.
+            if (state.isJustTookRestart()) {
+                state.setJustTookRestart(false);
+            }
+
             boolean changed = decision.getType() != lastLoggedType
                     || !carrier.getLabel().equals(lastLoggedCarrier);
             if (changed) {
@@ -748,6 +755,7 @@ public class MatchOrchestrator {
                 state.getBall().stop();
                 state.setRestartTaker(null);
                 restartTakerAge = 0;
+                state.setJustTookRestart(true);
                 // Read the type BEFORE it is cleared - this is the only moment it is still
                 // available, and it is what tells the decision hook to run a penalty rather
                 // than letting the final-rows hard-SHOT rule handle it.

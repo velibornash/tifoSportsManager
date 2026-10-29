@@ -1044,6 +1044,22 @@ public class CleanDecisionEngine {
             }
             boolean marginalOffside = offsideMargin > 0;
 
+            // F-RS-1 (replay 5633, 2026-10-26): throw-in taker must NEVER pass to themselves or into empty space.
+        // They may only pass to a free player within 2-2.5 cells, or throw into the box/center for a duel.
+        if (state.isJustTookRestart()) {
+            double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
+            if (distToTeammate <= 0.5) continue; // too close — essentially self or empty space
+            if (distToTeammate > 2.5) {
+                // only allow passes into the box/center area for a duel
+                double teammateRow = teammate.getPosition().getRow();
+                double teammateCol = teammate.getPosition().getColumn();
+                boolean inBox = (carrier.getTeam().equals("HOME")
+                        ? teammateRow >= 5.0 && teammateRow <= 8.0 && teammateCol >= 2.0 && teammateCol <= 6.0
+                        : teammateRow >= 1.0 && teammateRow <= 4.0 && teammateCol >= 2.0 && teammateCol <= 6.0);
+                if (!inBox) continue; // not in box/center — don't allow long throw to nowhere
+            }
+        }
+
             // F10 (backward-pass penalty after no progression).
             // If we've had no forward progress for > F10_BACKWARD_PENALTY_TICKS, then
             // backward passes (advance < -0.2) are penalised an extra -20 so the engine
