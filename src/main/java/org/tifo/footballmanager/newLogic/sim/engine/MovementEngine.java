@@ -224,8 +224,23 @@ public class MovementEngine {
             p.setVelX(newPosition.getColumn() - current.getColumn());
             p.setVelY(newPosition.getRow() - current.getRow());
 
-            // If reached target, clear it
+            // If reached target, clear it and apply idle drift (F8, replay 5633, 2026-10-26).
+            // A player who has reached their assigned cell moves ±0.15 cells (≈2–3 m) within it
+            // until the next decision. Prevents players from standing perfectly still — the
+            // owner's "nobody stands still" rule. The drift is a random offset in row and column
+            // within ±0.15 of the target position; it is not a speed boost and does not carry
+            // to the next tick — it is purely a within-cell wander.
             if (SimUtils.distance(newPosition, target) < 1e-6) {
+                boolean isNonChaserNonCarrier = !isChaser && !(p == state.getCarrier());
+                if (isNonChaserNonCarrier) {
+                    // Random offset ±0.15 cells within the cell the player just landed on.
+                    double driftRow = Math.random() * 0.3 - 0.15; // -0.15..+0.15
+                    double driftCol = Math.random() * 0.3 - 0.15;
+                    newPosition = new Position(
+                            newPosition.getRow() + driftRow,
+                            newPosition.getColumn() + driftCol
+                    );
+                }
                 if (!isChaser) p.setTarget(null);
             }
         }
