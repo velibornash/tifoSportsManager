@@ -135,7 +135,6 @@ public final class MatchEngineVersion {
 
         // --- Movement. Who can get where first. ---
         r.put("move.playerSpeedBase", num(MovementEngine.PLAYER_SPEED_BASE));
-        r.put("move.chaseSprint", num(MovementEngine.CHASE_SPRINT_MULTIPLIER));
         r.put("move.carrierFree", num(MovementEngine.CARRIER_FACTOR_FREE));
         r.put("move.carrierPressure", num(MovementEngine.CARRIER_FACTOR_PRESSURE));
         r.put("move.minDistance", num(MovementEngine.MIN_PLAYER_DISTANCE));

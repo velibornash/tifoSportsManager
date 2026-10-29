@@ -49,8 +49,6 @@ public class MovementEngine {
      * pace, small enough that pace still decides most footraces, and scaled by fatigue so a tiring
      * presser stops being able to close - which is the trade-off the missing multiplier had removed.
      */
-    public static final double CHASE_SPRINT_MULTIPLIER = 1.18;
-
     /**
      * Goalkeeper speed multiplier. Owner decision 2026-10-23: set to 1.0 — a
      * keeper moves pace-capped exactly like everyone else. The old 1.9 lateral
@@ -152,7 +150,6 @@ public class MovementEngine {
                 //
                 // The intent, per the comment above, was a bounded burst that closing a carrier is a
                 // footrace. A burst that a tired player cannot summon is not a bounded burst.
-                playerSpeed *= CHASE_SPRINT_MULTIPLIER;
             }
 
             // Calculate movement vector toward target
