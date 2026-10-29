@@ -396,6 +396,14 @@ public class MatchState {
     private String lastCompletedPasserName;
     private String lastCompletedPasserTeam;
     private String lastCompletedPasserRole;
+    // F9 (pass-repetition penalty): track the last passer→receiver pair so the decision
+    // engine can penalise the same combination recurring.
+    private String lastPassPasserId;
+    private String lastPassReceiverId;
+
+    // F9 accessors */
+    public String getLastPassPasserId() { return lastPassPasserId; }
+    public String getLastPassReceiverId() { return lastPassReceiverId; }
 
     public void beginPass(Player passer, Player receiver) {
         pendingPasserId = passer != null ? passer.getId() : null;
@@ -406,6 +414,9 @@ public class MatchState {
         lastCompletedPasserName = null;
         lastCompletedPasserTeam = null;
         lastCompletedPasserRole = null;
+        // F9: record this passer→receiver pair so the decision engine can penalise repetitions.
+        lastPassPasserId = passer != null ? passer.getId() : null;
+        lastPassReceiverId = receiver != null ? receiver.getId() : null;
     }
 
     public String completePass(Player receiver) {

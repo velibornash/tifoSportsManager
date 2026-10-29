@@ -1032,12 +1032,16 @@ public class CleanDecisionEngine {
             }
             boolean marginalOffside = offsideMargin > 0;
 
-            // Scored on the SAME vocabulary as the options, because picking the receiver is the
-            // first half of choosing a pass. The old version ranked candidates on direction and
-            // openness alone and gave a striker and a full-back on the same row an identical score,
-            // which is how the free man in the box went untouched.
+            // F9 (pass-repetition penalty): if the same passer→receiver pair was used on the
+            // immediately preceding pass, penalise this candidate so the engine varies its
+            // targets over time rather than aiming at the same two men repeatedly.
             double score = 0.0;
             double advance = progressOf(teammate) - progressOf(carrier);
+            boolean samePair = carrier.getId().equals(state.getLastPassPasserId())
+                    && teammate.getId().equals(state.getLastPassReceiverId());
+            if (samePair) {
+                score -= 20.0;   // repetition penalty — same passer and same receiver
+            }
             if (advance > 0) {
                 score += Math.min(16.0, advance * 7.0);
             } else if (advance < -0.2) {
