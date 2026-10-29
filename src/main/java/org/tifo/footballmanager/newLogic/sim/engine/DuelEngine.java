@@ -45,15 +45,15 @@ public class DuelEngine {
      * between arriving and standing.
      */
     public static final double PRESS_DRIB_DUEL_RADIUS = 0.2; // touching distance (~2.8 m) — duel fires when circles touch
-    public static final double RECEIVE_PASS_RADIUS = 0.50;
+    public static final double RECEIVE_PASS_RADIUS = 0.2;
     /**
      * A defender level with or behind the carrier has to get closer to win the ball, so only this
      * radius counts as a contest from that side. Was 0.08, which is inside the separation wall and
      * therefore unreachable — meaning a side-on challenge could never happen at all.
      */
     public static final double SIDE_ON_TIE_RADIUS = 0.2;
-    public static final double AERIAL_DUEL_RADIUS = 0.5;
-    public static final double SHOT_BLOCK_RADIUS = 0.45;
+    public static final double AERIAL_DUEL_RADIUS = 0.2;
+    public static final double SHOT_BLOCK_RADIUS = 0.2;
     public static final int DUEL_COOLDOWN_TICKS = 10;
     public static final int DRIBBLE_COOLDOWN_TICKS = 7;
     /**
