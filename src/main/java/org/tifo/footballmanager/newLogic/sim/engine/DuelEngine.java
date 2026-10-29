@@ -19,12 +19,10 @@ public class DuelEngine {
 
     // Duel radii (1 cell = 14m x 10m)
     //
-    // EVERY RADIUS HERE MUST BE ABOVE MovementEngine.MIN_PLAYER_DISTANCE (0.35).
+    // EVERY RADIUS HERE MUST BE ABOVE MovementEngine.MIN_PLAYER_DISTANCE (0.6).
     //
     // That is not a style note, it is the reason duels used to be decided by tactics. The Movement
-    // Engine's separation wall holds every opponent at least 0.35 cells from the carrier, so four of
-    // these five radii could NEVER fire — they were unreachable by construction. The only live path
-    // to a dribble duel was
+    // Engine's separation wall holds every opponent at
     //
     //     a single radius (DRIBBLE_DUEL_RADIUS = 0.45) for every defender (F-DU-1, owner
     //     decision 2026-10-22): the press radius is geometry, not a tactical flag.
@@ -53,7 +51,7 @@ public class DuelEngine {
      * radius counts as a contest from that side. Was 0.08, which is inside the separation wall and
      * therefore unreachable — meaning a side-on challenge could never happen at all.
      */
-    public static final double SIDE_ON_TIE_RADIUS = 0.40;
+    public static final double SIDE_ON_TIE_RADIUS = 0.6;
     public static final double AERIAL_DUEL_RADIUS = 0.5;
     public static final double SHOT_BLOCK_RADIUS = 0.45;
     public static final int DUEL_COOLDOWN_TICKS = 10;

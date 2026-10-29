@@ -83,6 +83,12 @@ public class DuelService {
             DuelEngine.DuelType duelType = chosenType;
             Player winner = duelEngine.resolveDuel(carrier, opponent, duelType, state);
 
+            // Emit DUEL_START when a duel is first triggered, so the viewer can render
+            // the converging circles and the yellow ring that appears when opponents touch.
+            recorder.appendEvent(state.getMatchTicks(), "DUEL_START",
+                    "DUEL START " + carrier.getLabel() + " vs " + opponent.getLabel(),
+                    carrier, opponent);
+
             // Discipline — only on a genuine defensive contest where the DEFENDER
             // won (tackle/dribble/receive). Evaluated BEFORE applyDuelResult so
             // state.getCarrier() still points at the fouled attacker for the foul
@@ -107,6 +113,12 @@ public class DuelService {
                         + " ball" + p(state.getBall().getPosition());
                 log("DUL", duelMsg);
                 recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
+                // Emit DUEL_RESOLVED so the viewer can render the yellow→orange ring,
+                // the winner's movement onto the ball, and the loser's cooldown.
+                recorder.appendEvent(state.getMatchTicks(), "DUEL_RESOLVED",
+                        "DUEL RESOLVED " + winner.getLabel() + " won, " + opponent.getLabel() + " locked for "
+                                + DuelEngine.LOSER_LOCK_TICKS + " ticks",
+                        winner, opponent);
                 stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
             }
         }
