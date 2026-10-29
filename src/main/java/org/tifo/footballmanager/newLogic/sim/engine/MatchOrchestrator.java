@@ -796,6 +796,21 @@ public class MatchOrchestrator {
         // === 12. DECREMENT VAR TIMER ===
         state.decrementVAR();
 
+        // === DETAILED PER-TICK POSITION LOG (diagnostic) ===
+        // Log positions of ALL players and the ball at every tick so we can
+        // verify the engine-viewer synchronization. This is a diagnostic tool
+        // for the owner's "carrier uvek mora da ima orange circle" rule.
+        if (state.getActionLogger() != null) {
+            StringBuilder posLog = new StringBuilder("TICK " + state.getMatchTicks() + " | ball=" + p(state.getBall().getPosition())
+                    + " carrier=" + (state.getCarrier() == null ? "none" : state.getCarrier().getLabel())
+                    + " pendingReceiver=" + (state.getPendingReceiver() == null ? "none" : state.getPendingReceiver().getLabel())
+                    + " lastTouch=" + (state.getLastTouchPlayer() == null ? "none" : state.getLastTouchPlayer().getLabel()));
+            for (Player pl : state.getPlayers()) {
+                posLog.append(" | ").append(pl.getLabel()).append("=").append(p(pl.getPosition()));
+            }
+            state.getActionLogger().log("POS", posLog.toString());
+        }
+
         // Capture snapshot for replay
         recorder.captureSnapshot(state);
 
