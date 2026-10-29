@@ -86,6 +86,8 @@ public class MovementEngine {
             p.setVelY(0.0);
             if (p.isLocked() || p.isSentOff() || p.isInjured()) continue;
 
+            Position current = p.getPosition();
+
             // RIGID RULE (user 2026-09-23): a player who just struck the ball
             // (PASS/SHOT/CLEAR) stays rooted for the strike tick — the ball must
             // be visibly leaving his feet before he moves. Without this the
@@ -93,12 +95,15 @@ public class MovementEngine {
             // ball left, so the ball looked frozen while the player glided away.
             if (p.getStrikeHoldTicks() > 0) {
                 p.setStrikeHoldTicks(p.getStrikeHoldTicks() - 1);
+                if (p == state.getCarrier()) {
+                    state.getBall().setPosition(current);
+                    state.getBall().stop();
+                }
                 continue;
             }
 
             boolean isChaser = p == homeChaser || p == awayChaser;
             boolean isCarrier = p == state.getCarrier();
-            Position current = p.getPosition();
 
             // RIGID RULE (user 2026-09-17): an off-ball carrier walks onto the ball
             // BEFORE any action starts — his target is the ball itself, and he runs
@@ -159,6 +164,10 @@ public class MovementEngine {
 
             // Don't move if already at target
             if (dist < 1e-6) {
+                if (p == state.getCarrier()) {
+                    state.getBall().setPosition(current);
+                    state.getBall().stop();
+                }
                 if (!isChaser) p.setTarget(null);
                 continue;
             }
@@ -220,6 +229,17 @@ public class MovementEngine {
             p.setPosition(newPosition);
             p.setVelX(newPosition.getColumn() - current.getColumn());
             p.setVelY(newPosition.getRow() - current.getRow());
+
+            // F-RS-4 (replay 5633, 2026-10-26): the ball ALWAYS FOLLOWS the carrier.
+            // The ball must ALWAYS be at the carrier's position when the carrier is in
+            // possession. This is the fundamental invariant: carrier and ball are on
+            // the same coordinate. Without this, the MovementEngine moves the carrier
+            // to a new cell but leaves the ball at the old one, so the viewer shows
+            // the ball staying while the player runs away.
+            if (p == state.getCarrier()) {
+                state.getBall().setPosition(newPosition);
+                state.getBall().stop();
+            }
 
             // If reached target, clear it and apply idle drift (F8, replay 5633, 2026-10-26).
             // A player who has reached their assigned cell moves ±0.15 cells (≈2–3 m) within it
