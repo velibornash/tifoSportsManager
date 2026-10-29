@@ -178,7 +178,7 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
             return `
                 <div class="lineup-slot-drop club-lineup-pitch-slot" data-zone="starter" data-index="${idx}" data-role="${slot.role}" style="--club-slot-left:${left}%; --club-slot-top:${top}%;">
                     <div class="club-lineup-slot-label">${slot.label}</div>
-                    ${player ? chip(player, 'starter', idx) : `<div class="club-lineup-slot-placeholder">Drop ${slot.role}</div>`}
+                    ${player ? chip(player, 'starter', idx, slot.label) : `<div class="club-lineup-slot-placeholder">Drop ${slot.role}</div>`}
                 </div>`;
         }).join('');
 
@@ -228,7 +228,7 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
             return `
                 <div class="lineup-slot-drop club-lineup-bench-slot" data-zone="bench" data-index="${idx}">
                     <div class="club-lineup-slot-label">Bench ${idx + 1}</div>
-                    ${player ? chip(player, 'bench', idx) : `<div class="club-lineup-slot-placeholder">Drop player</div>`}
+                    ${player ? chip(player, 'bench', idx, 'Bench ' + (idx + 1)) : `<div class="club-lineup-slot-placeholder">Drop player</div>`}
                 </div>`;
         }).join('');
         return `
@@ -292,10 +292,12 @@ export function createLineupBoard({ players = [], formation = '4-4-2', isMobile 
         return squad.filter(p => !isUnavailable(p) && !used.has(Number(p.id)));
     }
 
-    function chip(player, zone, index) {
+    function chip(player, zone, index, slotLabel) {
         const variant = zone === 'bench' ? ' club-lineup-player-chip--bench' : (zone === 'pool' ? ' club-lineup-player-chip--pool' : '');
+        const labelHtml = slotLabel ? `<span class="club-lineup-player-slot">${htmlEscape(slotLabel)}</span>` : '';
         return `<div class="lineup-draggable club-lineup-player-chip${variant}" draggable="true"
                      data-player-id="${player.id}" data-from-zone="${zone}" data-from-index="${index}">
+            ${labelHtml}
             <span class="club-lineup-player-name">${htmlEscape(player.name)}</span>
             <span class="club-lineup-player-meta">${htmlEscape(player.position)}, OVR ${player.overall ?? '-'}</span>
         </div>`;
