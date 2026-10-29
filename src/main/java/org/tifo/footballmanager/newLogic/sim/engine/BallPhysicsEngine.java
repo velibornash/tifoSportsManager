@@ -73,8 +73,18 @@ public class BallPhysicsEngine implements BallEngine {
     // moving too fast for a controlled touch. Below it, the normal football
     // receive/intercept logic applies (with a boosted pickup radius).
     public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // ~4.5 m/s (pitch tool: 0.35 received)
-    // Boosted receive radius for slow balls (receiver "boost" — larger reach).
-    public static final double RECEIVE_R_BOOSTED = 0.5;
+    // The SELECTED receiver's reach — the "boost" the owner ruled for the man the pass
+    // was played to ("izabrani receiver treba da ima boost da pokupi loptu"). It is the
+    // one radius a pass is caught at, on both contact paths.
+    //
+    // F2 (replay 5633, 2026-10-26): 0.5 cells = 7 m, which meant a ball could be
+    // "received" while still seven metres from the receiver's body — the pass visibly
+    // arrived at nobody, and the ball then jumped to his feet on the next decision.
+    // With the ball now stopping ON the receiver (see stepBall), the radius only has to
+    // be an honest reach: 0.25 cells = 3.5 m, still double the intercept lane and five
+    // times the deflection radius, so the selected receiver keeps a real advantage over
+    // a contesting player on the path (who gets a deflection, per the owner's F3 ruling).
+    public static final double RECEIVE_R_BOOSTED = 0.25;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     public static final double PICKUP_R = 0.35;
@@ -305,6 +315,17 @@ public class BallPhysicsEngine implements BallEngine {
                 state.setLastTouchTeam(pending.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
+                // F2 (replay 5633, 2026-10-26): the received ball ENDS ON THE RECEIVER.
+                //
+                // The ball stopped wherever its own step left it — up to the boosted radius
+                // away from the man receiving it — and only the next decision snapped it to
+                // his feet. So the frame the viewer showed at reception had the ball sitting
+                // several metres from the player who had just taken it, and the pass read as
+                // arriving nowhere near him. The owner's rule stands: the received pass must
+                // be unambiguously visible — player and ball on the same coordinate. The
+                // receiver keeps his boost (he may take the ball at this reach); the ball,
+                // once taken, is his.
+                ball.setPosition(pending.getPosition());
                 ball.stop();
                 return BallStepResult.receive(pending.getLabel());
             }
@@ -318,11 +339,11 @@ public class BallPhysicsEngine implements BallEngine {
             contact = fastPlayerBounce(state, prev, curr, spd, ball);
             if (contact == null) {
                 // No outfield contact — check GK save / intercept (existing logic).
-                contact = playerContact(state, prev, curr, spd, false);
+                contact = playerContact(state, prev, curr, spd);
             }
         } else {
             // Slow ball: normal football receive/intercept/block/save (boosted receive).
-            contact = playerContact(state, prev, curr, spd, true);
+            contact = playerContact(state, prev, curr, spd);
         }
         if (contact != null) return contact;
 
@@ -565,7 +586,7 @@ public class BallPhysicsEngine implements BallEngine {
         return p1.getColumn() + (p2.getColumn() - p1.getColumn()) * t;
     }
 
-    private BallStepResult playerContact(MatchState state, Position prev, Position curr, double spd, boolean boosted) {
+    private BallStepResult playerContact(MatchState state, Position prev, Position curr, double spd) {
         boolean fast = spd >= FAST_CONTACT;
         Player pending = state.getPendingReceiver();
         // ME-1: never hand the ball to a player who has left the pitch. The target pools no longer
@@ -579,7 +600,12 @@ public class BallPhysicsEngine implements BallEngine {
         // pending receiver (same team as lastTouch) — RECEIVE if within radius
         if (pending != null) {
             double d = SimUtils.pointSegmentDistance(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
-            double receiveR = boosted ? RECEIVE_R_BOOSTED : RECEIVE_R;
+            // The selected receiver's boost is ONE radius at every door. It used to be
+            // RECEIVE_R_BOOSTED (0.5) for a slow ball and the larger RECEIVE_R (0.35)
+            // for a fast one through here — so the stepBall fast path could tighten the
+            // reach and this second door would still hand the ball over at 0.35.
+            // RECEIVER boost, one number: RECEIVE_R_BOOSTED.
+            double receiveR = RECEIVE_R_BOOSTED;
             if (d <= receiveR) {
                 bestT = approachT(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
                 ev = "RECEIVE";
@@ -664,10 +690,18 @@ public class BallPhysicsEngine implements BallEngine {
                 state.setLastTouchTeam(hit.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
-                // RIGID RULE (user 2026-09-17): the ball stays where it physically
-                // stopped — no teleport onto the receiver. The receiver becomes the
-                // carrier and the Movement Engine walks him onto the ball before any
-                // action starts.
+                // F2 (replay 5633, 2026-10-26): the received ball ENDS ON THE RECEIVER — the
+                // same rule as the fast-path receive in stepBall, so both doors behave alike.
+                //
+                // The 2026-09-17 rule this replaces ("the ball stays where it physically
+                // stopped — no teleport onto the receiver") was written against a pass that
+                // could stop SEVEN metres short of the man receiving it, and the receiver
+                // then walked onto it. With the receive radius at an honest reach (0.25
+                // cells) the correction is small, and the owner's later rule stands over the
+                // old one: the received pass must be unambiguously visible — the player and
+                // the ball on the same coordinate. The receiver becomes the carrier and he
+                // is already on the ball, so his next action needs no walk first.
+                state.getBall().setPosition(hit.getPosition());
                 state.getBall().stop();
                 return BallStepResult.receive(hit.getLabel());
             }

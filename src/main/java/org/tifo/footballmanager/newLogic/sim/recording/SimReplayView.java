@@ -44,7 +44,8 @@ public final class SimReplayView {
     }
 
     /**
-     * Downsample, but NEVER drop a tick while the ball is in flight.
+     * Downsample, but NEVER drop a tick while the ball is in flight — and never drop a
+     * POSSESSION CHANGE.
      *
      * The ball only moves fast when nobody owns it: a lofted kickoff pass covers
      * ~8 cells in ten ticks, and the pitch is 7 cells long. With a flat 1:10
@@ -53,22 +54,36 @@ public final class SimReplayView {
      * as a pass to whoever happened to sit on that line, and the UI disagreed
      * with the log. Idle ticks (the ball at someone's feet, which is most of
      * them) are still strided, so the payload stays small.
+     *
+     * F1 (replay 5633, 2026-10-26): the RECEIVE tick — the moment the ball goes from
+     * nobody's feet to the receiver's — was the one tick this method threw away. The
+     * in-flight filter only kept carrier == null, and at reception the carrier is no
+     * longer null, so the arrival landed on a stride tick at best and on no kept frame
+     * at worst: the viewer showed the ball still travelling and then JUMPING to
+     * wherever the receiver had walked to. A pass visibly has to arrive. So the tick
+     * where the carrier changes — whoever it changes to, including a goalkeeper's save
+     * and a defender's interception — is always kept.
      */
     private static List<Map<String, Object>> downsample(List<MatchSnapshot> snapshots) {
         if (snapshots.isEmpty()) return List.of();
         int last = snapshots.size() - 1;
         List<Map<String, Object>> out = new ArrayList<>();
+        String previousCarrier = null;
         for (int i = 0; i < snapshots.size(); i++) {
             MatchSnapshot snap = snapshots.get(i);
             long tick = snap.getTick();
+            String carrier = snap.getBallCarrierId();
             boolean inFlight = isBallInFlight(snap);
+            boolean possessionChanged = carrier != null && !carrier.equals(previousCarrier);
             boolean keep = inFlight
+                    || possessionChanged
                     || i == 0
                     || i == last
                     || snap.isHalfTime()
                     || snap.isMatchFinished()
                     || tick % SNAPSHOT_STRIDE == 0;
             if (keep) out.add(toMap(snap));
+            previousCarrier = carrier;
         }
         return out;
     }
