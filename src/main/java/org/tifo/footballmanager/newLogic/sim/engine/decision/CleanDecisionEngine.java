@@ -479,8 +479,8 @@ public class CleanDecisionEngine {
 
         // Risk: the two ways this pass does not arrive.
         if (nearestOpponentBeatsHimToIt(state, receiver)) {
-            score -= 26.0;
-            reason.append("marker gets there first -26 ");
+            score -= 40.0;
+            reason.append("marker gets there first -40 ");
         }
         if (laneBlockPenalty(state, carrier, receiver) > 0) {
             return new DecisionOption(ActionType.PASS, receiver, UNAVAILABLE,
@@ -494,6 +494,31 @@ public class CleanDecisionEngine {
         } else if (dist > 2.5) {
             score -= 12.0;
             reason.append("-12 long ");
+        }
+
+        // OOB RISK (F-RS-3, replay 5633, 2026-10-26): if the pass target is near the touchline
+        // (col < 1.5 or col > 6.5), the pass risks going out of bounds. Penalise heavily.
+        double targetCol = receiver.getPosition().getColumn();
+        if (targetCol < 1.5 || targetCol > 6.5) {
+            score -= 20.0;
+            reason.append("OOB risk -20 ");
+        }
+
+        // SAFE SHORT PASS BONUS (F-RS-3): a short, safe pass to a nearby teammate
+        // (within 1.5 cells, no opponent within 1.0 cell) is the "safe pass to yourself"
+        // — the ball stays in play and possession is maintained.
+        if (dist <= 1.5 && dist >= 0.5) {
+            double nearestOppD = Double.MAX_VALUE;
+            for (Player opp : state.getPlayers()) {
+                if (opp.getTeam().equals(carrier.getTeam())) continue;
+                if (opp.isUnavailable()) continue;
+                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
+                if (d < nearestOppD) nearestOppD = d;
+            }
+            if (nearestOppD > 1.0) {
+                score += 10.0;
+                reason.append("safe short +10 ");
+            }
         }
 
         // Execution: whether he can hit it, not whether he should.
@@ -1113,7 +1138,7 @@ public class CleanDecisionEngine {
 
             score += spaceAround(state, teammate) * 15.0;
 
-            if (nearestOpponentBeatsHimToIt(state, teammate)) score -= 26.0;
+            if (nearestOpponentBeatsHimToIt(state, teammate)) score -= 40.0;
             if (laneBlockPenalty(state, carrier, teammate) > 0) {
                 continue;   // blocked pass — not an option (owner: "jasno u bloku")
             }
