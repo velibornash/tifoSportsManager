@@ -107,6 +107,12 @@ public class ActionExecutor {
     private void executePass(MatchState state, DecisionOption decision) {
         Player carrier = state.getCarrier();
         Player receiver = decision.getTarget();
+        System.out.println("EXEC-PASS: carrier=" + (carrier == null ? "null" : carrier.getLabel())
+                + " receiver=" + (receiver == null ? "null" : receiver.getLabel())
+                + " carrierPos=" + (carrier == null ? "null" : carrier.getPosition())
+                + " receiverPos=" + (receiver == null ? "null" : receiver.getPosition())
+                + " dist=" + (carrier == null || receiver == null ? "n/a"
+                        : String.format("%.2f", SimUtils.distance(carrier.getPosition(), receiver.getPosition()))));
         if (carrier == null || receiver == null) return;
         // Defensive guard (F-RS-7): a set-piece taker must never pass to
         // himself. The decision layer already excludes the carrier, but a
@@ -162,6 +168,11 @@ public class ActionExecutor {
         // Launch the ball toward the deviated aim
         state.setPendingDeliveryAirborne(airborne);
         state.setPendingDeliveryHeight(airborne ? 1.0 : 0.0);
+        System.out.println("EXEC-PASS-LAUNCH: from=" + carrier.getPosition()
+                + " to=" + result.getActualTarget()
+                + " speed=" + String.format("%.2f", result.getSpeed())
+                + " airborne=" + airborne
+                + " spin=" + String.format("%.2f", result.getSpin()));
         state.getBallEngine().launch(ball, carrier.getPosition(),
                 result.getActualTarget(), result.getSpeed(), airborne, result.getSpin());
 
