@@ -1277,6 +1277,28 @@ public class CleanDecisionEngine {
             if (dist > 2.5) score -= 12.0;
             else if (dist < 0.7) score -= 6.0;   // too close to be progressive
 
+            // DANGEROUS-ZONE SAFE PASS (owner 2026-10-30): in the own defensive third, a
+            // safe pass to the nearest free teammate (within 2.5 cells, no opponent within
+            // 1.5 cells) gets a progressive distance bonus so the nearest free player wins.
+            // This is applied in findBestReceiver so the receiver selection prefers safe
+            // nearby passes over risky distant ones.
+            boolean _home = "HOME".equals(carrier.getTeam());
+            boolean _inDangerousZone = _home ? carrier.getPosition().getRow() <= 3.5
+                    : carrier.getPosition().getRow() >= 5.5;
+            if (_inDangerousZone && dist <= 2.5) {
+                double _nearestOppD = Double.MAX_VALUE;
+                for (Player opp : state.getPlayers()) {
+                    if (opp.getTeam().equals(carrier.getTeam())) continue;
+                    if (opp.isUnavailable()) continue;
+                    double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
+                    if (d < _nearestOppD) _nearestOppD = d;
+                }
+                if (_nearestOppD > 1.5) {
+                    double zoneBonus = (2.5 - dist) * 30.0;
+                    score += zoneBonus;
+                }
+            }
+
             // Marginal offside: still an option, but only if he plays the risk.
             if (marginalOffside && !carrierWillRiskOffside(carrier)) {
                 continue;
