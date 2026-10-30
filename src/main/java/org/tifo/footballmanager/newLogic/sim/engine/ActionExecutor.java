@@ -218,7 +218,7 @@ public class ActionExecutor {
         double dc = pos.getColumn() - nearest.getPosition().getColumn();
         double len = Math.hypot(dr, dc);
         if (len < 1e-9) return pos;
-        double nudge = Math.min(0.2, bestD / 2.0);
+        double nudge = Math.min(0.1, bestD / 2.0);
         return new Position(
                 pos.getRow() + dr / len * nudge,
                 pos.getColumn() + dc / len * nudge

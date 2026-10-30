@@ -88,8 +88,9 @@ public class ExecutionQuality {
         Position actualTarget = new Position(actualRow, actualCol);
         // speed clamped to launch limits
         double speed = Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, Math.min(BallPhysicsEngine.MAX_BALL_SPEED, desiredSpeed));
-        // small spin for ground passes (0..0.2)
-        double spin = SimulationRandom.nextDouble() * 0.2;
+        // Owner (2026-10-30): no spin — spin causes lateral bend that pushes
+        // short passes off target. All passes are straight.
+        double spin = 0.0;
 
         return new PassResult(actualTarget, speed, spin, skill, maxDeviation);
     }
