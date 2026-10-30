@@ -1316,8 +1316,12 @@ class MatchViewer {
 
   _getCarrierId(interp) {
     if (!interp) return null;
-    if (interp.frac >= 1.0 && interp.next) return interp.next.ballCarrierId;
-    return interp.snap.ballCarrierId;
+    // During pass flight, ballCarrierId is null but targetPlayerId is the pending
+    // receiver — treat him as the carrier for display (orange circle + ball snap).
+    if (interp.frac >= 1.0 && interp.next) {
+      return interp.next.ballCarrierId || interp.next.targetPlayerId;
+    }
+    return interp.snap.ballCarrierId || interp.snap.targetPlayerId;
   }
 
   /* ─── Playback ─── */
@@ -1693,25 +1697,30 @@ class MatchViewer {
     const carrierId = this._getCarrierId(interp);
     // FE/BE sync: when a carrier is on the ball, the ball MUST be drawn at the
     // carrier's interpolated position — never at the interpolated (flight) ball
-    // position, which can lag behind by up to one snapshot. This is the rule
-    // "the ball circle is inside the player circle whenever a pass can start".
+    // position, which can lag behind by up to one snapshot. During pass flight,
+    // carrierId is the pending receiver (targetPlayerId) but the ball is still in
+    // the air — do NOT snap it to him yet. Only snap when the ball is physically
+    // at the carrier's feet.
     let ball = this._getInterpolatedBall(interp);
-    // If the current snapshot has a carrier, snap ball to carrier's position.
-    if (carrierId && players) {
-      const carrier = players.find(p => p.id === carrierId);
+    const actualCarrier = interp && interp.snap ? interp.snap.ballCarrierId : null;
+    if (actualCarrier && players) {
+      const carrier = players.find(p => p.id === actualCarrier);
       if (carrier) {
         ball = { row: carrier.row, col: carrier.col, height: ball ? ball.height : 0 };
       }
     } else if (interp && interp.next && interp.next.ballCarrierId && interp.frac > 0.3) {
-      // Receive happened in the next snapshot: snap the ball to the (future) carrier's
-      // interpolated position early so the ball does not appear to crawl the last
-      // few cells toward the receiver.
-      const nextCarrierId = interp.next.ballCarrierId;
-      const nextPlayers = this._getInterpolatedPlayers(interp);
-      const nc = nextPlayers ? nextPlayers.find(p => p.id === nextCarrierId) : null;
+      // Reception happened in the next snapshot: snap the ball to the new carrier's
+      // position early so it never crawls or disappears on receive.
+      const nc = players ? players.find(p => p.id === interp.next.ballCarrierId) : null;
       if (nc) {
         ball = { row: nc.row, col: nc.col, height: ball ? ball.height : 0 };
       }
+    }
+    // Never draw a null/undefined ball — fall back to last known snapshot position.
+    if (!ball || ball.row == null || ball.column == null) {
+      const fallback = interp && interp.snap ? interp.snap.ballPosition : null;
+      if (fallback) ball = { row: fallback.row, column: fallback.column, height: fallback.ballHeight || 0 };
+      else ball = null;
     }
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
