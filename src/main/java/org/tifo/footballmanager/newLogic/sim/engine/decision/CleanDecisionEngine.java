@@ -1086,6 +1086,7 @@ public class CleanDecisionEngine {
     }
 
     private Player findBestReceiver(MatchState state, Player carrier) {
+        System.out.println("FIND-BEST-RECEIVER v2: carrier=" + carrier.getLabel() + " firstPass=" + state.isFirstPassAfterKickoff());
         // Best teammate = most open + clear lane + forward progress. A blocked
         // lane is the deciding negative: threading a ball through the block is
         // how passes get intercepted (demo/service lane weight ±80).
