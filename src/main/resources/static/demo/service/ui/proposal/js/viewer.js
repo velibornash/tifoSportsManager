@@ -1704,8 +1704,8 @@ class MatchViewer {
     // hitting the player, not passing through.
     const deflectEv = this.events.find(e => e.type === 'DEFLECT'
         && Math.abs(e.tick - this.currentTick) <= 0.5);
-    if (deflectEv && deflectEv.posRow != null && deflectEv.posCol != null) {
-      ball = { row: deflectEv.posRow, column: deflectEv.posCol, height: ball ? (ball.height || 0) : 0 };
+    if (deflectEv && deflectEv.positionRow != null && deflectEv.positionColumn != null) {
+      ball = { row: deflectEv.positionRow, column: deflectEv.positionColumn, height: ball ? (ball.height || 0) : 0 };
     }
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
