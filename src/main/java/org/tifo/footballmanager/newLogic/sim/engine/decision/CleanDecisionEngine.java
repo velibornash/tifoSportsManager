@@ -547,8 +547,19 @@ public class CleanDecisionEngine {
                 if (d < nearestOppD) nearestOppD = d;
             }
             if (nearestOppD > 1.5) {
-                score += 25.0;
-                reason.append("safe zone +25 ");
+                score += 40.0;
+                reason.append("safe zone +40 ");
+            }
+        }
+
+        // DANGEROUS-ZONE TOUCHLINE PENALTY: in the own defensive third, passes toward
+        // the touchline (col < 2.0 or col > 6.0) are riskier (OOB risk) and should be
+        // penalized. Central passes are safer.
+        if (inDangerousZone) {
+            double targetCol = receiver.getPosition().getColumn();
+            if (targetCol < 2.0 || targetCol > 6.0) {
+                score -= 15.0;
+                reason.append("touchline -15 ");
             }
         }
 
