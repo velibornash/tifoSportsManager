@@ -556,8 +556,8 @@ public class CleanDecisionEngine {
         // the touchline (col < 2.0 or col > 6.0) are riskier (OOB risk) and should be
         // penalized. Central passes are safer.
         if (inDangerousZone) {
-            double targetCol = receiver.getPosition().getColumn();
-            if (targetCol < 2.0 || targetCol > 6.0) {
+            double _targetCol = receiver.getPosition().getColumn();
+            if (_targetCol < 2.0 || _targetCol > 6.0) {
                 score -= 15.0;
                 reason.append("touchline -15 ");
             }
