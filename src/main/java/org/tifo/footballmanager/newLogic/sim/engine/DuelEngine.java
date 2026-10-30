@@ -37,23 +37,23 @@ public class DuelEngine {
     // The separation wall exists to stop two players occupying one square; it was not written to
     // make tackling impossible, and these radii are now above it so that a duel is a question about
     // where players are, never about which component decided to look.
-    public static final double DRIBBLE_DUEL_RADIUS = 0.35; // touching distance (~2.8 m) — duel fires when circles touch
+    public static final double DRIBBLE_DUEL_RADIUS = 0.2; // touching distance (~2.8 m) — duel fires when circles touch
     /**
      * A presser engages from slightly further out than a standing challenge, because he is arriving
      * with momentum. The gap to {@link #DRIBBLE_DUEL_RADIUS} is now small on purpose: the old pair
      * were 0.15 and 0.38, a 2.5x difference that was really the size of the wall, not the difference
      * between arriving and standing.
      */
-    public static final double PRESS_DRIB_DUEL_RADIUS = 0.35; // touching distance (~2.8 m) — duel fires when circles touch
-    public static final double RECEIVE_PASS_RADIUS = 0.35;
+    public static final double PRESS_DRIB_DUEL_RADIUS = 0.2; // touching distance (~2.8 m) — duel fires when circles touch
+    public static final double RECEIVE_PASS_RADIUS = 0.2;
     /**
      * A defender level with or behind the carrier has to get closer to win the ball, so only this
      * radius counts as a contest from that side. Was 0.08, which is inside the separation wall and
      * therefore unreachable — meaning a side-on challenge could never happen at all.
      */
-    public static final double SIDE_ON_TIE_RADIUS = 0.35;
-    public static final double AERIAL_DUEL_RADIUS = 0.35;
-    public static final double SHOT_BLOCK_RADIUS = 0.35;
+    public static final double SIDE_ON_TIE_RADIUS = 0.2;
+    public static final double AERIAL_DUEL_RADIUS = 0.2;
+    public static final double SHOT_BLOCK_RADIUS = 0.2;
     public static final int DUEL_COOLDOWN_TICKS = 3;
     public static final int DRIBBLE_COOLDOWN_TICKS = 7;
     /**
