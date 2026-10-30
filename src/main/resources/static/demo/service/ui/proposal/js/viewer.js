@@ -1698,12 +1698,15 @@ class MatchViewer {
     const players = this._getInterpolatedPlayers(interp);
     let ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
-    // FE sync: when a carrier is on the ball, snap ball to carrier position
-    // so the ball is always on the player's feet (never ahead or behind).
-    if (carrierId && players) {
-      const carrier = players.find(p => p.id === carrierId);
+    // FE sync: snap ball to carrier ONLY when the carrier physically has the ball
+    // (ballCarrierId set in snapshot). During pass flight, carrierId is the
+    // pending receiver (targetPlayerId) — do NOT snap the ball to him, the
+    // ball is still in the air and must show at its flight position.
+    const actualCarrierId = interp && interp.snap ? interp.snap.ballCarrierId : null;
+    if (actualCarrierId && players) {
+      const carrier = players.find(p => p.id === actualCarrierId);
       if (carrier && Number.isFinite(carrier.row) && Number.isFinite(carrier.col)) {
-        ball = { row: carrier.row, column: carrier.col, height: ball ? (ball.height || 0) : 0 };
+        ball = { row: carrier.row, column: carrier.col, height: 0 };
       }
     }
     // DEFLECT snap: when a DEFLECT event is near the current tick, snap the
