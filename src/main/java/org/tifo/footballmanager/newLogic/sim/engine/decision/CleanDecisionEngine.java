@@ -530,6 +530,28 @@ public class CleanDecisionEngine {
             }
         }
 
+        // DANGEROUS-ZONE SAFE PASS (owner 2026-10-30): in the own defensive third, a
+        // safe pass to the nearest free teammate (within 2.0 cells, no opponent within
+        // 1.5 cells) MUST win over a risky forward pass. This is the "siguran pas najblizem
+        // slobodnom igrac" rule — defenders don't play risky passes when a safe option
+        // exists right next to them.
+        boolean home = "HOME".equals(carrier.getTeam());
+        boolean inDangerousZone = home ? carrier.getPosition().getRow() <= 3.5
+                : carrier.getPosition().getRow() >= 5.5;
+        if (inDangerousZone && dist <= 2.0) {
+            double nearestOppD = Double.MAX_VALUE;
+            for (Player opp : state.getPlayers()) {
+                if (opp.getTeam().equals(carrier.getTeam())) continue;
+                if (opp.isUnavailable()) continue;
+                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
+                if (d < nearestOppD) nearestOppD = d;
+            }
+            if (nearestOppD > 1.5) {
+                score += 25.0;
+                reason.append("safe zone +25 ");
+            }
+        }
+
         // Execution: whether he can hit it, not whether he should.
         score += (carrier.getSkills().passing() - 10.0) * 0.8;
         score += (carrier.getSkills().playmaking() - 10.0) * 0.4;
