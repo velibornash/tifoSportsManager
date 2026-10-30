@@ -769,7 +769,7 @@ class PitchRenderer {
       ctx.font = `bold ${isGK ? 14 : 12}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const num = p.role ? p.role.substring(0, 3) : p.label.replace(/.*\s/, '');
+      const num = (p.team === 'HOME') ? p.label.replace(/.*\s/, '') : (p.role ? p.role.substring(0, 3) : p.label.replace(/.*\s/, ''));
       ctx.fillText(num, x, y + 0.5);
     }
   }
