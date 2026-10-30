@@ -422,6 +422,11 @@ public class MovementEngine {
                 || state.getPendingReceiver() != null
                 || state.getRestartTaker() != null
                 || state.getOobPending() != null) {
+            System.out.println("CHASE-SKIP: team=" + team
+                    + " carrier=" + (state.getCarrier() == null ? "null" : state.getCarrier().getLabel())
+                    + " pending=" + (state.getPendingReceiver() == null ? "null" : state.getPendingReceiver().getLabel())
+                    + " restartTaker=" + (state.getRestartTaker() == null ? "null" : state.getRestartTaker().getLabel())
+                    + " oobPending=" + state.getOobPending());
             return null;
         }
 
@@ -436,7 +441,11 @@ public class MovementEngine {
         // A moving ball is chased from further away than a stationary one —
         // it is going somewhere, and everyone converges on where it lands.
         double range = state.getBall().getSpeed() > BallPhysicsEngine.STOP_SPEED ? 6.0 : 4.0;
-        return bestD <= range ? best : null;
+        Player result = bestD <= range ? best : null;
+        System.out.println("CHASE-RESULT: team=" + team + " best=" + (best == null ? "null" : best.getLabel())
+                + " bestD=" + String.format("%.2f", bestD) + " range=" + range
+                + " result=" + (result == null ? "null" : result.getLabel()));
+        return result;
     }
 
     /** Calculate player speed based on pace (1..20). */
