@@ -144,7 +144,11 @@ public class ActionExecutor {
         // Owner (2026-10-30): disable airborne passes for now — they make simple passes
         // look broken. All passes stay on the ground.
         boolean airborne = false;
-        double desiredSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
+        // Owner (2026-10-30): short passes don't need full speed — reduce pass speed
+        // for close-range passes so the ball doesn't overshoot or go out of bounds.
+        // Full speed only for passes over 2.5 cells.
+        double skillSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
+        double desiredSpeed = dist < 2.5 ? Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, skillSpeed * (dist / 2.5)) : skillSpeed;
 
         // ExecutionQuality gives deviated aim + launch speed + spin. The kickoff
         // pass bypasses it entirely: exact receiver position, max speed, no spin.
@@ -170,11 +174,12 @@ public class ActionExecutor {
             state.setFirstPassAfterKickoff(true);
         }
 
-        // Carrier stops running. The receiver, on a direct pass (not a through ball), moves
-        // slightly toward the ball so he shows for it instead of freezing on his tactical spot.
-        // A through ball runs onto the space behind the line and is handled by launchDelivery.
+        // Carrier stops running. The receiver stays exactly on his tactical spot — he
+        // does NOT run toward the pass target during flight (owner rule: a player may
+        // not abandon his position just because a pass is in the air). The ball is
+        // snapped to him at reception.
         carrier.setTarget(null);
-        receiver.setTarget(result.getActualTarget());
+        receiver.setTarget(receiver.getPosition());
         // RIGID RULE (user 2026-09-23): the striker must NOT move from his
         // position in the tick he struck the ball — the ball leaves his feet
         // next tick. Rooted for the strike tick (movement resumes on the
@@ -213,7 +218,7 @@ public class ActionExecutor {
         double dc = pos.getColumn() - nearest.getPosition().getColumn();
         double len = Math.hypot(dr, dc);
         if (len < 1e-9) return pos;
-        double nudge = Math.min(0.5, bestD / 2.0);
+        double nudge = Math.min(0.2, bestD / 2.0);
         return new Position(
                 pos.getRow() + dr / len * nudge,
                 pos.getColumn() + dc / len * nudge
