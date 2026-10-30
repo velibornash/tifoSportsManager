@@ -149,7 +149,7 @@ public class CleanDecisionEngine {
      * always gives the same answer — a yard from goal with the corners open is a shooting position
      * at any moment of any match, and a thirty-yard attempt in traffic never is.
      */
-    public static final double SHOT_CHANCE_FLOOR = 0.25; // public: MatchEngineVersion fingerprints it
+    public static final double SHOT_CHANCE_FLOOR = 0.20; // public: MatchEngineVersion fingerprints it
     // Legacy alias kept so older MatchEngineVersion snapshots (which still
     // reference the gate name) keep compiling. Value mirrors the floor.
     public static final double SHOT_FREQUENCY_GATE = SHOT_CHANCE_FLOOR;

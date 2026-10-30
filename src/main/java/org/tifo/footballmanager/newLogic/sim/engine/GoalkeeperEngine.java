@@ -133,7 +133,7 @@ public class GoalkeeperEngine {
      * ~0.4-0.5 to cover it; below that every shot into the far corner beats him
      * (the first pass of this model gave 85% conversion for that reason).
      */
-    private static final double REACH_BASE = 0.34;
+    private static final double REACH_BASE = 0.30;
     /** Extra reach at keeper skill 20 (vs skill 1). */
     private static final double REACH_SKILL = 0.32;
     /** A maximum-speed shot removes this share of his reach (no time to react). */

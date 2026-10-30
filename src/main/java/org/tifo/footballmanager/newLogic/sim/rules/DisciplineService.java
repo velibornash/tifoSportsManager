@@ -87,7 +87,7 @@ public class DisciplineService implements EngineInterfaces.DisciplineService {
         // Base 0.13 at skill 10 → 0.06 at skill 20, 0.20 at skill 1.
         double defenderSkill = defender.getSkills() != null
                 ? defender.getSkills().defender() : 10.0;
-        double foulProb = Math.max(0.10, Math.min(0.35, 0.25 - defenderSkill * 0.004));
+        double foulProb = Math.max(0.15, Math.min(0.40, 0.30 - defenderSkill * 0.004));
 
         if (SimulationRandom.nextDouble() >= foulProb) {
             return new DisciplineResult(false, false, false, false, false, "Clean tackle");
