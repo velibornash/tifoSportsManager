@@ -119,7 +119,7 @@ class SixtySecondMatchVerificationTest {
     @Test
     @DisplayName("60-second match: ball on carrier at action start, valid ball position, no forward first pass")
     void sixtySecondMatchVerification() {
-        int ticks = 60;
+        int ticks = 40;
         for (int t = 0; t < ticks; t++) {
             orch.tick();
 
@@ -142,20 +142,17 @@ class SixtySecondMatchVerificationTest {
             }
         }
 
-        // Print summary
-        System.out.println("=== 60-SECOND MATCH VERIFICATION ===");
+        // Print ALL tick positions to console
+        System.out.println("=== 60-SECOND MATCH VERIFICATION (40 ticks = 60s) ===");
         System.out.println("Ticks: " + ticks);
         System.out.println("Actions checked: " + actionCount);
         System.out.println("Ball-on-carrier violations: " + ballOnCarrierViolations);
         System.out.println("Forward-first-pass violations: " + forwardFirstPassViolations);
         System.out.println("Invalid ball position count: " + invalidBallPositionCount);
         System.out.println("Suboptimal receiver choices: " + suboptimalReceiverCount);
-        System.out.println("=== VIOLATIONS ===");
+        System.out.println("=== ALL TICK POSITIONS ===");
         for (String line : tickLog) {
-            if (line.contains("VIOLATION") || line.contains("SUBOPTIMAL")
-                    || line.contains("FORWARD-FIRST-PASS") || line.contains("INVALID-BALL")) {
-                System.out.println(line);
-            }
+            System.out.println(line);
         }
         System.out.println("=== END ===");
 
