@@ -149,7 +149,7 @@ public class CleanDecisionEngine {
      * always gives the same answer — a yard from goal with the corners open is a shooting position
      * at any moment of any match, and a thirty-yard attempt in traffic never is.
      */
-    public static final double SHOT_CHANCE_FLOOR = 0.50; // public: MatchEngineVersion fingerprints it
+    public static final double SHOT_CHANCE_FLOOR = 0.35; // public: MatchEngineVersion fingerprints it
     // Legacy alias kept so older MatchEngineVersion snapshots (which still
     // reference the gate name) keep compiling. Value mirrors the floor.
     public static final double SHOT_FREQUENCY_GATE = SHOT_CHANCE_FLOOR;
@@ -164,7 +164,7 @@ public class CleanDecisionEngine {
      * decision was settled by a 48-point margin. On a 0..100 scale a 5-point gap is a hair, so this
      * is 12 — the width of a real "he could see it either way".
      */
-    public static final double CHOICE_BAND = 12.0; // public: MatchEngineVersion fingerprints it
+    public static final double CHOICE_BAND = 2.0; // public: MatchEngineVersion fingerprints it
 
     /**
      * How reliably a carrier picks the best option, at playmaking 1 and at playmaking 20.
@@ -175,8 +175,8 @@ public class CleanDecisionEngine {
      * through the first of them it fired once every hundred decisions. These are the two ends of
      * that door, and the whole spread between them is the skill.
      */
-    private static final double ACCURACY_AT_SKILL_1 = 0.55;
-    private static final double ACCURACY_AT_SKILL_20 = 0.92;
+    private static final double ACCURACY_AT_SKILL_1 = 0.90;
+    private static final double ACCURACY_AT_SKILL_20 = 0.98;
 
     /**
      * How much of the playmaking skill sees a receiver's danger, from skill 1 to skill 20.
