@@ -1316,14 +1316,15 @@ class MatchViewer {
   }
 
   _getCarrierId(interp) {
-    if (!interp) return null;
-    // Orange circle ONLY on the actual carrier or the pending receiver.
-    // No stale _lastCarrierId fallback — that caused the circle to get stuck
-    // on a player who never had the ball.
-    if (interp.frac >= 1.0 && interp.next) {
-      return interp.next.ballCarrierId || interp.next.targetPlayerId;
-    }
-    return interp.snap.ballCarrierId || interp.snap.targetPlayerId;
+    if (!interp) return this._lastCarrierId || null;
+    let carrierId = null;
+    if (interp.frac > 0.5 && interp.next) carrierId = interp.next.ballCarrierId;
+    else carrierId = interp.snap.ballCarrierId;
+    // The carrier must ALWAYS have an orange circle — if the current snapshot
+    // has no carrier (ball in flight, duel in progress), keep the last known
+    // carrier so the orange highlight never disappears.
+    if (carrierId) this._lastCarrierId = carrierId;
+    return carrierId || this._lastCarrierId || null;
   }
 
   /* ─── Playback ─── */
@@ -1696,29 +1697,8 @@ class MatchViewer {
   _renderFrame() {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
-    let ball = this._getInterpolatedBall(interp);
+    const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
-    // FE sync: snap ball to carrier ONLY when the carrier physically has the ball
-    // (ballCarrierId set in snapshot). During pass flight, carrierId is the
-    // pending receiver (targetPlayerId) — do NOT snap the ball to him, the
-    // ball is still in the air and must show at its flight position.
-    const actualCarrierId = interp && interp.snap ? interp.snap.ballCarrierId : null;
-    if (actualCarrierId && players) {
-      const carrier = players.find(p => p.id === actualCarrierId);
-      if (carrier && Number.isFinite(carrier.row) && Number.isFinite(carrier.col)) {
-        ball = { row: carrier.row, column: carrier.col, height: 0 };
-      }
-    }
-    // DEFLECT snap: when a DEFLECT event is near the current tick, snap the
-    // ball to the deflection point so the viewer shows the ball hitting the
-    // player, not passing through.
-    const deflectEv = this.events.find(e => e.type === 'DEFLECT' && Math.abs(e.tick - this.currentTick) <= 2);
-    if (deflectEv) {
-      const deflectSnap = this._snapIndex?.get(deflectEv.tick);
-      if (deflectSnap && deflectSnap.ballPosition) {
-        ball = { row: deflectSnap.ballPosition.row, column: deflectSnap.ballPosition.column, height: deflectSnap.ballHeight || 0 };
-      }
-    }
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;
