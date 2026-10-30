@@ -69,14 +69,37 @@ public final class SimReplayView {
         int last = snapshots.size() - 1;
         List<Map<String, Object>> out = new ArrayList<>();
         String previousCarrier = null;
+        // Track previous ball position to detect deflections (direction changes).
+        Position prevBallPos = null;
+        Position prevPrevBallPos = null;
         for (int i = 0; i < snapshots.size(); i++) {
             MatchSnapshot snap = snapshots.get(i);
             long tick = snap.getTick();
             String carrier = snap.getBallCarrierId();
             boolean inFlight = isBallInFlight(snap);
             boolean possessionChanged = carrier != null && !carrier.equals(previousCarrier);
+            // Deflection detection: if the ball's movement direction changed
+            // significantly between the previous two snapshots, a collision/bounce
+            // occurred — keep this snapshot so the viewer shows the deflection.
+            boolean deflected = false;
+            Position currBallPos = snap.getBallPosition();
+            if (prevBallPos != null && prevPrevBallPos != null && currBallPos != null) {
+                double dr1 = prevBallPos.getRow() - prevPrevBallPos.getRow();
+                double dc1 = prevBallPos.getColumn() - prevPrevBallPos.getColumn();
+                double dr2 = currBallPos.getRow() - prevBallPos.getRow();
+                double dc2 = currBallPos.getColumn() - prevBallPos.getColumn();
+                double len1 = Math.hypot(dr1, dc1);
+                double len2 = Math.hypot(dr2, dc2);
+                if (len1 > 1e-6 && len2 > 1e-6) {
+                    // Dot product of normalized directions. If negative, the ball
+                    // reversed direction — a deflection occurred.
+                    double dot = (dr1 * dr2 + dc1 * dc2) / (len1 * len2);
+                    if (dot < 0.5) deflected = true;
+                }
+            }
             boolean keep = inFlight
                     || possessionChanged
+                    || deflected
                     || i == 0
                     || i == last
                     || snap.isHalfTime()
@@ -84,6 +107,8 @@ public final class SimReplayView {
                     || tick % SNAPSHOT_STRIDE == 0;
             if (keep) out.add(toMap(snap));
             previousCarrier = carrier;
+            prevPrevBallPos = prevBallPos;
+            prevBallPos = currBallPos;
         }
         return out;
     }
