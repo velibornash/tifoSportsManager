@@ -1112,7 +1112,23 @@ public class CleanDecisionEngine {
             // must be same line or backward — never forward, regardless of tactic. This is the
             // build-up rule: don't launch the ball forward from the first touch.
             if (state.isFirstPassAfterKickoff()
-                    && progressOf(teammate) > progressOf(carrier)) continue;
+                    && progressOf(teammate) > progressOf(carrier)) {
+                if (carrier.getLabel().contains("Kačar") || carrier.getLabel().contains("Kacar")) {
+                    System.out.println("FILTERED-FIRSTPASS: " + carrier.getLabel() + " -> " + teammate.getLabel()
+                            + " progressTeammate=" + String.format("%.2f", progressOf(teammate))
+                            + " progressCarrier=" + String.format("%.2f", progressOf(carrier)));
+                }
+                continue;
+            }
+
+            // Debug: log all candidates for Kačar
+            if (carrier.getLabel().contains("Kačar") || carrier.getLabel().contains("Kacar")) {
+                System.out.println("CANDIDATE: " + carrier.getLabel() + " -> " + teammate.getLabel()
+                        + " role=" + teammate.getRole()
+                        + " pos=" + teammate.getPosition()
+                        + " unavailable=" + teammate.isUnavailable()
+                        + " firstPass=" + state.isFirstPassAfterKickoff());
+            }
 
             // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
             // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
