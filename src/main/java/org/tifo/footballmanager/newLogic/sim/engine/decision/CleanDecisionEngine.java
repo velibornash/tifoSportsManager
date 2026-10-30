@@ -326,12 +326,14 @@ public class CleanDecisionEngine {
         // The roll is cached per possession, like the shot gate: perception is a
         // read of the situation, not a fresh coin flip every tick.
         int pmIndex = SimUtils.clampInt((int) carrier.getSkills().playmaking(), 1, 20);
+        // CENTER and CROSS are natural winger deliveries — they do not require high
+        // playmaking to perceive (owner 2026-10-30: "Tu ne treba visok plej, to je
+        // PRIRODNA OPCIJA"). Only the through ball (a creative run-behind read) is
+        // gated by playmaking.
         thruOption = perceive(state, thruOption, "THRU_VISION",
                 0.20 + pmIndex / 20.0 * 0.70, pmIndex);
-        crossOption = perceive(state, crossOption, "CROSS_VISION",
-                0.45 + pmIndex / 20.0 * 0.50, pmIndex);
-        centerOption = perceive(state, centerOption, "CENTER_VISION",
-                0.45 + pmIndex / 20.0 * 0.50, pmIndex);
+        crossOption = perceive(state, crossOption, "CROSS_VISION", 1.0, pmIndex);
+        centerOption = perceive(state, centerOption, "CENTER_VISION", 1.0, pmIndex);
 
         DecisionOption chosen = selectOptionWithPlaymaking(carrier,
                 passOption, carryOption, shotOption, clearOption,
