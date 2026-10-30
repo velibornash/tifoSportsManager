@@ -54,7 +54,7 @@ public class DuelEngine {
     public static final double SIDE_ON_TIE_RADIUS = 0.2;
     public static final double AERIAL_DUEL_RADIUS = 0.2;
     public static final double SHOT_BLOCK_RADIUS = 0.2;
-    public static final int DUEL_COOLDOWN_TICKS = 10;
+    public static final int DUEL_COOLDOWN_TICKS = 3;
     public static final int DRIBBLE_COOLDOWN_TICKS = 7;
     /**
      * How many ticks the duel loser is movement-locked after losing a duel.

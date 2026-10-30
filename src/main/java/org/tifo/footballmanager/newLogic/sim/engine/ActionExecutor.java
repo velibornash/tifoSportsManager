@@ -63,6 +63,13 @@ public class ActionExecutor {
                 break;
         }
 
+        // Clear the "first pass after kickoff" flag once the receiver's first pass
+        // has been played, so subsequent decisions are unrestricted.
+        if (state.isFirstPassAfterKickoff()
+                && (type == ActionType.PASS || type == ActionType.THRU
+                        || type == ActionType.CROSS || type == ActionType.CENTER)) {
+            state.setFirstPassAfterKickoff(false);
+        }
         state.setLastDecisionScore(decision.getScore());
         state.setLastDecisionReason(decision.getReason());
         // Track the last executed action for shot-outcome attribution (the
@@ -131,7 +138,9 @@ public class ActionExecutor {
         // passes stay on the ground; anything at/over 1.5 cells is lofted (air
         // decel) so it can cover the distance without dying mid-flight.
         double dist = SimUtils.distance(carrier.getPosition(), receiver.getPosition());
-        boolean airborne = dist >= 1.5;
+        // Owner (2026-10-30): disable airborne passes for now — they make simple passes
+        // look broken. All passes stay on the ground.
+        boolean airborne = false;
         double desiredSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
 
         // ExecutionQuality gives deviated aim + launch speed + spin. The kickoff
@@ -154,6 +163,8 @@ public class ActionExecutor {
         // kickoff logic. OffsideService only skips the check during this flight.
         if (kickoff) {
             state.setKickoffPending(false);
+            // The kickoff receiver's first pass must not go forward (owner rule).
+            state.setFirstPassAfterKickoff(true);
         }
 
         // Carrier stops running. The receiver, on a direct pass (not a through ball), moves

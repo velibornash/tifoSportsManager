@@ -157,6 +157,7 @@ public class MatchState {
     // box/center for a duel.
     private boolean justTookRestart;
     private boolean kickoffPending;   // true right after kickoff (match start / after goal)
+    private boolean firstPassAfterKickoff; // true until the kickoff receiver's first pass: that pass must not go forward
 
     /**
      * Goal celebration, in ticks. The scoring side's players go to their own corner; the ball sits
@@ -612,6 +613,8 @@ public class MatchState {
 
     public boolean isKickoffPending() { return kickoffPending; }
     public void setKickoffPending(boolean kickoffPending) { this.kickoffPending = kickoffPending; }
+    public boolean isFirstPassAfterKickoff() { return firstPassAfterKickoff; }
+    public void setFirstPassAfterKickoff(boolean v) { this.firstPassAfterKickoff = v; }
 
     // === ROUND START POSITIONS ===
     public Position getRoundStartPosition(Player p) {

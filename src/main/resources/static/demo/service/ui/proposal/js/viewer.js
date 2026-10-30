@@ -1690,8 +1690,29 @@ class MatchViewer {
   _renderFrame() {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
-    const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
+    // FE/BE sync: when a carrier is on the ball, the ball MUST be drawn at the
+    // carrier's interpolated position — never at the interpolated (flight) ball
+    // position, which can lag behind by up to one snapshot. This is the rule
+    // "the ball circle is inside the player circle whenever a pass can start".
+    let ball = this._getInterpolatedBall(interp);
+    // If the current snapshot has a carrier, snap ball to carrier's position.
+    if (carrierId && players) {
+      const carrier = players.find(p => p.id === carrierId);
+      if (carrier) {
+        ball = { row: carrier.row, col: carrier.col, height: ball ? ball.height : 0 };
+      }
+    } else if (interp && interp.next && interp.next.ballCarrierId && interp.frac > 0.3) {
+      // Receive happened in the next snapshot: snap the ball to the (future) carrier's
+      // interpolated position early so the ball does not appear to crawl the last
+      // few cells toward the receiver.
+      const nextCarrierId = interp.next.ballCarrierId;
+      const nextPlayers = this._getInterpolatedPlayers(interp);
+      const nc = nextPlayers ? nextPlayers.find(p => p.id === nextCarrierId) : null;
+      if (nc) {
+        ball = { row: nc.row, col: nc.col, height: ball ? ball.height : 0 };
+      }
+    }
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;

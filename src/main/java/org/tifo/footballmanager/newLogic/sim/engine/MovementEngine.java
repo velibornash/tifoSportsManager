@@ -101,15 +101,6 @@ public class MovementEngine {
                 }
                 continue;
             }
-            if (p.getReceiveHoldTicks() > 0) {
-                p.setReceiveHoldTicks(p.getReceiveHoldTicks() - 1);
-                if (p == state.getCarrier()) {
-                    state.getBall().setPosition(current);
-                    state.getBall().stop();
-                }
-                continue;
-            }
-
             boolean isChaser = p == homeChaser || p == awayChaser;
             boolean isCarrier = p == state.getCarrier();
 

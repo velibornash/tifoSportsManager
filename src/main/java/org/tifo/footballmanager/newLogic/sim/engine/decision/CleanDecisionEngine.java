@@ -1058,6 +1058,12 @@ public class CleanDecisionEngine {
             // football stands, backward costs -20 and that is all.
             if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
 
+            // FIRST PASS AFTER KICKOFF (owner 2026-10-30): the kickoff receiver's first pass
+            // must be same line or backward — never forward, regardless of tactic. This is the
+            // build-up rule: don't launch the ball forward from the first touch.
+            if (state.isFirstPassAfterKickoff()
+                    && progressOf(teammate) > progressOf(carrier)) continue;
+
             // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
             // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
             // da krene pass... veci skill ce retko gadati offside".

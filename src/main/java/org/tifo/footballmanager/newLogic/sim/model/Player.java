@@ -78,7 +78,6 @@ public class Player {
     /** Remaining ticks the player must stay rooted after striking the ball
      * (PASS/SHOT/CLEAR) — the ball must be visibly leaving before he moves. */
     private int strikeHoldTicks;
-    private int receiveHoldTicks;   // 1 tick after receiving: carrier holds the ball, no decision
 
     public Player(String id, String label, String team, String role,
                   Position position, Position alternativePosition, PlayerSkills skills) {
@@ -225,8 +224,6 @@ public class Player {
     public int getStrikeHoldTicks() { return strikeHoldTicks; }
     public void setStrikeHoldTicks(int ticks) { this.strikeHoldTicks = Math.max(0, ticks); }
 
-    public int getReceiveHoldTicks() { return receiveHoldTicks; }
-    public void setReceiveHoldTicks(int ticks) { this.receiveHoldTicks = Math.max(0, ticks); }
 
     public int heightSkill() {
         return Math.max(1, Math.min(20, (int) Math.round((heightCm - 160) / 2.0)));

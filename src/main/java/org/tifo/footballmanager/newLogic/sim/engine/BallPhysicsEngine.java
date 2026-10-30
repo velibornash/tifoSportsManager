@@ -196,7 +196,6 @@ public class BallPhysicsEngine implements BallEngine {
                     && SimUtils.distance(pending.getPosition(), ball.getPosition()) <= PICKUP_R) {
                 deadTickCount = 0;
                 state.setCarrier(pending);
-                pending.setReceiveHoldTicks(1);
                 state.setLastTouchTeam(pending.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
@@ -207,7 +206,6 @@ public class BallPhysicsEngine implements BallEngine {
             if (near != null) {
                 deadTickCount = 0;
                 state.setCarrier(near);
-                near.setReceiveHoldTicks(1);
                 state.setLastTouchTeam(near.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
@@ -314,7 +312,6 @@ public class BallPhysicsEngine implements BallEngine {
                     pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
             if (d <= RECEIVE_R_BOOSTED) {
                 state.setCarrier(pending);
-                pending.setReceiveHoldTicks(1);
                 state.setLastTouchTeam(pending.getTeam());
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);

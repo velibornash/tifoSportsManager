@@ -577,16 +577,7 @@ public class MatchOrchestrator {
         // (restart entry points null the carrier, BallPhysicsEngine now lets only
         // the designated taker pick the restart ball up), and this term makes it
         // structurally impossible for a future caller to break it.
-        // RECEIVE HOLD (user 2026-10-30): a player who just received the ball holds it
-        // for one tick before deciding — he cannot receive and pass in the same tick.
-        Player _carrier = state.getCarrier();
-        if (_carrier != null && _carrier.getReceiveHoldTicks() > 0) {
-            _carrier.setReceiveHoldTicks(_carrier.getReceiveHoldTicks() - 1);
-            // snap ball to carrier, no decision
-            state.getBall().setPosition(_carrier.getPosition());
-            state.getBall().stop();
-            // skip decision block below
-        } else if (canReDecide && state.getCarrier() != null
+        if (canReDecide && state.getCarrier() != null
                 && state.getRestartTaker() == null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
 
