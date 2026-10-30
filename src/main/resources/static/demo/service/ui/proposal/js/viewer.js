@@ -1158,6 +1158,7 @@ class MatchViewer {
     this._varOverlayTick = -1;
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set(), cooldowns: new Map() };
+    this._lastCarrierId = null;
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
@@ -1315,13 +1316,15 @@ class MatchViewer {
   }
 
   _getCarrierId(interp) {
-    if (!interp) return null;
-    // During pass flight, ballCarrierId is null but targetPlayerId is the pending
-    // receiver — treat him as the carrier for display (orange circle + ball snap).
-    if (interp.frac >= 1.0 && interp.next) {
-      return interp.next.ballCarrierId || interp.next.targetPlayerId;
-    }
-    return interp.snap.ballCarrierId || interp.snap.targetPlayerId;
+    if (!interp) return this._lastCarrierId || null;
+    let carrierId = null;
+    if (interp.frac > 0.5 && interp.next) carrierId = interp.next.ballCarrierId;
+    else carrierId = interp.snap.ballCarrierId;
+    // The carrier must ALWAYS have an orange circle — if the current snapshot
+    // has no carrier (ball in flight, duel in progress), keep the last known
+    // carrier so the orange highlight never disappears.
+    if (carrierId) this._lastCarrierId = carrierId;
+    return carrierId || this._lastCarrierId || null;
   }
 
   /* ─── Playback ─── */
@@ -1694,36 +1697,8 @@ class MatchViewer {
   _renderFrame() {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
+    const ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
-    // Ball position: resolve defensively so the ball NEVER disappears from the
-    // screen during pass flight, reception, or carrier changes.
-    let ball = null;
-    const interpBall = this._getInterpolatedBall(interp);
-
-    // 1. If a carrier physically has the ball (ballCarrierId set), snap ball to
-    //    carrier's position — the ball is at his feet, not in flight.
-    const actualCarrier = interp && interp.snap ? interp.snap.ballCarrierId : null;
-    if (actualCarrier && players) {
-      const carrier = players.find(p => p.id === actualCarrier);
-      if (carrier && Number.isFinite(carrier.row) && Number.isFinite(carrier.col)) {
-        ball = { row: carrier.row, col: carrier.col, height: 0 };
-      }
-    }
-    // 2. Otherwise the ball is in flight — draw it at its interpolated flight
-    //    position. Do NOT snap to the pending receiver mid-flight (that would
-    //    teleport the ball before it arrives).
-    if (!ball && interpBall && Number.isFinite(interpBall.row) && Number.isFinite(interpBall.column)) {
-      ball = { row: interpBall.row, col: interpBall.column, height: interpBall.height || 0 };
-    }
-    // 3. Last-resort fallback: last snapshot's ball position.
-    if (!ball && interp && interp.snap && interp.snap.ballPosition) {
-      const bp = interp.snap.ballPosition;
-      if (Number.isFinite(bp.row) && Number.isFinite(bp.column)) {
-        ball = { row: bp.row, column: bp.column, height: bp.ballHeight || 0 };
-      }
-    }
-    // 4. Never draw an invalid ball — if nothing resolves, skip ball entirely
-    //    rather than drawing NaN (which breaks the canvas).
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;
