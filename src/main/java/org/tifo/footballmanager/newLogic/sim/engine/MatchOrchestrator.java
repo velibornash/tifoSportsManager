@@ -712,6 +712,13 @@ public class MatchOrchestrator {
         // quarter. TYPE C: chronic-offside attacker retreats toward own goal.
         threatOverrideEngine.evaluate(state);
 
+        // === 7c. DUEL DETECTION (pre-movement) ===
+        // Run BEFORE movement so duels fire on the positions from the previous
+        // tick's end (where the players actually touched), not after movement
+        // has already separated them. This fixes "opponent passes through the
+        // carrier without a duel firing".
+        detectAndResolveDuels();
+
         // === 8. MOVEMENT ENGINE ===
         // Capture on-ball state BEFORE movement: the glue in 8b is a
         // follow-the-feet attach (continuous possession, ball moves WITH the
@@ -781,7 +788,8 @@ public class MatchOrchestrator {
         // VAR cadence), not before — see step 6 for the pass-moment check.
         offsideService.resolvePendingVAROffside(state);
 
-        // === 11. DUEL DETECTION ===
+        // === 11. DUEL DETECTION (post-movement) ===
+        // Also check after movement, in case players converged during this tick.
         detectAndResolveDuels();
 
         // Kickoff half-line hold: a safety release, so a kickoff pass that is
