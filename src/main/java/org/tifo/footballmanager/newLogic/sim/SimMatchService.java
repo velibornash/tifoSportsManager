@@ -248,6 +248,10 @@ public class SimMatchService {
                         awayTacticsOverride != null ? awayTacticsOverride : tacticsRules.forTeam(awayTeam.getId())),
                 liveTactics);
 
+        // Wire the tactic style into the match state so the decision engine can apply it.
+        orchestrator.getState().setTacticStyle("HOME", tacticsRules.styleForTeam(homeTeam.getId()));
+        orchestrator.getState().setTacticStyle("AWAY", tacticsRules.styleForTeam(awayTeam.getId()));
+
         applySubstitutionPlan(fixture, orchestrator);
 
         // Tick snapshots are only ever read by the replay viewer and the zone load, and the zone load

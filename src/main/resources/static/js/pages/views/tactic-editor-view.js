@@ -118,7 +118,7 @@ export function createTacticEditorView(deps) {
     async function loadTacticEditor() {
         const mainContent = document.getElementById("main-content");
         const POSSESSION_CONTEXT = 'WE_HAVE_BALL'; // Koristimo samo jednu varijantu
-        const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"];
+        const availableStyles = ["BALANCED", "ATTACKING", "DEFENSIVE", "POSSESSION", "WINGER"];
         const availableFormations = ["4-4-2", "4-3-3", "4-2-3-1", "4-1-4-1", "4-5-1", "3-5-2", "3-4-3", "3-4-2-1", "5-3-2", "5-4-1"];
 
         // An hour before kickoff the match has been computed. The server refuses the save with 423

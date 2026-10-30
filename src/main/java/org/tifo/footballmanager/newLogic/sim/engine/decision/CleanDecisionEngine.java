@@ -1133,6 +1133,57 @@ public class CleanDecisionEngine {
                 score -= 3.0;
             }
 
+            // STYLE BOOSTS (owner, 2026-10-30): the tactic style affects pass selection.
+            // The carrier's team determines which style to use.
+            String style = state.getTacticStyle(carrier.getTeam());
+            if (style != null) {
+                style = style.toUpperCase(java.util.Locale.ROOT);
+                double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
+                if ("ATTACKING".equals(style)) {
+                    // +20% boost to teammates closer to opponent's goal
+                    if (advance > 0) {
+                        score *= 1.20;
+                    }
+                } else if ("DEFENSIVE".equals(style)) {
+                    // +10% boost to backward passes
+                    if (advance < -0.2) {
+                        score *= 1.10;
+                    }
+                } else if ("POSSESSION".equals(style)) {
+                    // +10% to nearby passer (within 1.5 cells) and +10% to free player
+                    if (distToTeammate <= 1.5) {
+                        score *= 1.10;
+                    }
+                    // free player: no opponent within 1.0 cell
+                    double nearestOppD = Double.MAX_VALUE;
+                    for (Player opp : state.getPlayers()) {
+                        if (opp.getTeam().equals(carrier.getTeam())) continue;
+                        if (opp.isUnavailable()) continue;
+                        double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
+                        if (d < nearestOppD) nearestOppD = d;
+                    }
+                    if (nearestOppD > 1.0) {
+                        score *= 1.10;
+                    }
+                } else if ("WINGER".equals(style)) {
+                    // +25% to players in extreme columns 1 and 6 if free
+                    double col = teammate.getPosition().getColumn();
+                    if (col <= 1.5 || col >= 5.5) {
+                        double nearestOppD = Double.MAX_VALUE;
+                        for (Player opp : state.getPlayers()) {
+                            if (opp.getTeam().equals(carrier.getTeam())) continue;
+                            if (opp.isUnavailable()) continue;
+                            double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
+                            if (d < nearestOppD) nearestOppD = d;
+                        }
+                        if (nearestOppD > 1.0) {
+                            score *= 1.25;
+                        }
+                    }
+                }
+                // BALANCED: no change
+            }
+
             // THE receiver term, weighted by how well this carrier reads a defence.
             score += receiverThreat(state, teammate, carrier) * threadOf(carrier) * 30.0;
 
@@ -1267,6 +1318,11 @@ public class CleanDecisionEngine {
             if (candidate.isGoalkeeper()) continue;
             // ME-1: a player who is off the pitch (sent off, injured, subbed) is not a target.
             if (candidate.isUnavailable()) continue;
+            // OWNER RULE (2026-10-30): the first pass after kickoff must be in the same line
+            // or backward — never forward. A forward pass from the center spot risks offside
+            // and is not how real football restarts work.
+            double advance = progressOf(candidate) - progressOf(carrier);
+            if (advance > 0) continue; // skip forward receivers
             double openness = calculateOpenness(state, candidate);
             double col = candidate.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);

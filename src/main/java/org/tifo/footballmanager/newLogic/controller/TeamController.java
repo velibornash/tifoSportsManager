@@ -60,7 +60,7 @@ import java.util.stream.Collectors;
 public class TeamController {
 
     private static final Set<String> ALLOWED_STYLES = Set.of(
-            "BALANCED", "ATTACKING", "DEFENSIVE", "COUNTER", "POSSESSION", "HIGH_PRESS", "DIRECT"
+            "BALANCED", "ATTACKING", "DEFENSIVE", "POSSESSION", "WINGER"
     );
 
     private final TeamRepository teamRepository;

@@ -139,7 +139,18 @@ public class MatchState {
     private MatchPhase phase;
     private String setPieceType;      // CORNER, GOAL_KICK, THROW_IN, PENALTY, FREE_KICK
     private String restartTeam;
+    private String homeTacticStyle = "BALANCED";
+    private String awayTacticStyle = "BALANCED";
     private Player restartTaker;      // walks to the ball during a restart
+
+    public String getTacticStyle(String team) {
+        return "HOME".equals(team) ? homeTacticStyle : awayTacticStyle;
+    }
+
+    public void setTacticStyle(String team, String style) {
+        if ("HOME".equals(team)) homeTacticStyle = style;
+        else awayTacticStyle = style;
+    }
     // F-RS-1 (replay 5633, 2026-10-26): true when the restart taker has just claimed the ball.
     // Used to enforce the owner's rule: a throw-in taker must NEVER pass to themselves or into
     // empty space. They may only pass to a free player within 2-2.5 cells, or throw into the

@@ -244,6 +244,24 @@ public class TacticsRulesProvider {
     }
 
     /**
+     * The style of a team's default tactic, or "BALANCED" when none.
+     *
+     * <p>Loaded from the Tactic entity, not cached. The style is a single string
+     * ("BALANCED", "ATTACKING", "DEFENSIVE", "POSSESSION", "WINGER") and is read
+     * once per match, so the overhead is negligible.
+     */
+    @Transactional(readOnly = true)
+    public String styleForTeam(Long teamId) {
+        if (teamId == null) return "BALANCED";
+        Long tacticId = defaultTacticByTeam.computeIfAbsent(teamId, this::resolveDefaultTacticId);
+        if (tacticId == null) return "BALANCED";
+        var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
+        if (tactic == null) return "BALANCED";
+        String style = tactic.getStyle();
+        return style == null || style.isBlank() ? "BALANCED" : style.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /**
      * The rules for one named tactic of one club.
      *
      * <p>The tactic id is checked against the club, so a caller holding a tactic from another club is
