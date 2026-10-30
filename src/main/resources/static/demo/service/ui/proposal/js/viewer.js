@@ -1697,8 +1697,16 @@ class MatchViewer {
   _renderFrame() {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
-    const ball = this._getInterpolatedBall(interp);
+    let ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
+    // DEFLECT snap: when a DEFLECT event is within 0.5 ticks of the current
+    // tick, snap the ball to the deflection point so the viewer shows the ball
+    // hitting the player, not passing through.
+    const deflectEv = this.events.find(e => e.type === 'DEFLECT'
+        && Math.abs(e.tick - this.currentTick) <= 0.5);
+    if (deflectEv && deflectEv.posRow != null && deflectEv.posCol != null) {
+      ball = { row: deflectEv.posRow, column: deflectEv.posCol, height: ball ? (ball.height || 0) : 0 };
+    }
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;
