@@ -1316,7 +1316,7 @@ class MatchViewer {
 
   _getCarrierId(interp) {
     if (!interp) return null;
-    if (interp.frac > 0.5 && interp.next) return interp.next.ballCarrierId;
+    if (interp.frac >= 1.0 && interp.next) return interp.next.ballCarrierId;
     return interp.snap.ballCarrierId;
   }
 
