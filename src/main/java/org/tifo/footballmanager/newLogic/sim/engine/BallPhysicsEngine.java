@@ -66,7 +66,7 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double ON_BALL_EPS = 0.05;
     public static final double RECEIVE_R = 0.35;
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
-    public static final double DEFLECT_R = 0.05;    // 0.5 m — ball physically strikes the body
+    public static final double DEFLECT_R = 0.15;    // 1.5 m — ball physically strikes the body (matches pitch ball tool)
     // --- Billiard-bounce threshold (owner 2026-10-23) ---
     // Above this speed (cells/tick) a ball that hits a player BOUNCES (reflects
     // velocity, dampens) instead of being received/intercepted — the ball is
