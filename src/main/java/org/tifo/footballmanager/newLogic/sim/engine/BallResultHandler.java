@@ -266,6 +266,10 @@ public class BallResultHandler {
                                 stats.onBlock("HOME".equals(shooter.getTeam()) ? "AWAY" : "HOME");
                                 state.setLastShooter(null); // shot outcome consumed
                             }
+                            // After a shot block, slow the ball down so the nearest
+                            // player receives it (picks up the loose ball) instead
+                            // of the ball continuing to goal.
+                            state.getBall().stop();
                         } else {
                             eventMsg = "BLOCK " + res.getDetail() + " parried a fast ball"
                                     + " | ball" + p(state.getBall().getPosition());
