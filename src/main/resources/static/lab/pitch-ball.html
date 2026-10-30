@@ -94,6 +94,7 @@
   </div>
   <div class="right">
     <div class="controls">
+      <label style="font-size:12px;color:#9aa7bf;">Tactic: <select id="tacticPicker" style="margin-left:6px;padding:4px;border-radius:4px;background:#1a2338;color:#e8ecf4;border:1px solid #3a4a6b;max-width:220px;"></select></label>
       <button id="reload">Reload tactic</button>
       <button id="reset">Ball to center</button>
     </div>
@@ -272,7 +273,19 @@ async function loadTactic() {
     loadedTeamId = me.footballTeamId || me.teamId;
     const teamId = loadedTeamId;
     const library = await apiGet('/teams/' + teamId + '/tactics');
-    const tactic = (library && library.tactics ? library.tactics : library)[0];
+    const list = (library && library.tactics ? library.tactics : (Array.isArray(library) ? library : []));
+    const picker = document.getElementById('tacticPicker');
+    if (picker) {
+      picker.innerHTML = '';
+      list.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.id;
+        o.textContent = (t.name || ('Tactic ' + t.id)) + (t.formation ? ' (' + t.formation + ')' : '');
+        picker.appendChild(o);
+      });
+    }
+    const selectedId = picker ? Number(picker.value) : null;
+    const tactic = selectedId ? list.find(t => t.id === selectedId) : list[0];
     if (!tactic) throw new Error('No tactic saved for this team.');
     const params = new URLSearchParams();
     if (tactic.formation) params.set('formation', tactic.formation);
@@ -1079,6 +1092,8 @@ ballPhysBtn.addEventListener('click', () => {
 
 renderGrid();
 requestAnimationFrame(tick);
+const _picker = document.getElementById('tacticPicker');
+if (_picker) _picker.addEventListener('change', () => loadTactic());
 loadTactic();
 </script>
 </body>
