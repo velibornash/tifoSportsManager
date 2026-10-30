@@ -474,7 +474,7 @@ public class CleanDecisionEngine {
 
         // Room to receive it in.
         double space = spaceAround(state, receiver);
-        score += space * 15.0;
+        score += space * 10.0;
         reason.append(String.format("space %.2f ", space));
 
         // Risk: the two ways this pass does not arrive.
@@ -494,6 +494,13 @@ public class CleanDecisionEngine {
         } else if (dist > 2.5) {
             score -= 12.0;
             reason.append("-12 long ");
+        }
+        // Progressive distance penalty: long passes are riskier and less accurate.
+        // A short safe pass to a nearby free player should beat a long wing pass.
+        if (dist > 2.0) {
+            double extra = (dist - 2.0) * 5.0;
+            score -= extra;
+            reason.append(String.format("-%.0f dist ", extra));
         }
 
         // OOB RISK (F-RS-3, replay 5633, 2026-10-26): if the pass target is near the touchline
@@ -516,8 +523,8 @@ public class CleanDecisionEngine {
                 if (d < nearestOppD) nearestOppD = d;
             }
             if (nearestOppD > 1.0) {
-                score += 10.0;
-                reason.append("safe short +10 ");
+                score += 15.0;
+                reason.append("safe short +15 ");
             }
         }
 
@@ -1073,7 +1080,7 @@ public class CleanDecisionEngine {
         // They may only pass to a free player within 2-2.5 cells, or throw into the box/center for a duel.
         if (state.isJustTookRestart()) {
             double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
-            if (distToTeammate <= 0.5) continue; // too close — essentially self or empty space
+            if (distToTeammate < 1.0) continue; // too close — essentially self or empty space (min 1 cell = 14 m)
             if (distToTeammate > 2.5) {
                 // only allow passes into the box/center area for a duel
                 double teammateRow = teammate.getPosition().getRow();

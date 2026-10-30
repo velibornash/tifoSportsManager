@@ -769,7 +769,7 @@ class PitchRenderer {
       ctx.font = `bold ${isGK ? 14 : 12}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const num = p.label.replace(/.*\s/, '');
+      const num = p.role ? p.role.substring(0, 3) : p.label.replace(/.*\s/, '');
       ctx.fillText(num, x, y + 0.5);
     }
   }
@@ -1158,7 +1158,6 @@ class MatchViewer {
     this._varOverlayTick = -1;
     this._varReviewQueued = false;
     this._duelState = { pairs: [], currentTick: -1, resolved: new Set(), cooldowns: new Map() };
-    this._lastCarrierId = null;
 
     document.getElementById('homeName').textContent = this.data.homeTeamName || 'HOME';
     document.getElementById('awayName').textContent = this.data.awayTeamName || 'AWAY';
@@ -1316,15 +1315,9 @@ class MatchViewer {
   }
 
   _getCarrierId(interp) {
-    if (!interp) return this._lastCarrierId || null;
-    let carrierId = null;
-    if (interp.frac > 0.5 && interp.next) carrierId = interp.next.ballCarrierId;
-    else carrierId = interp.snap.ballCarrierId;
-    // The carrier must ALWAYS have an orange circle — if the current snapshot
-    // has no carrier (ball in flight, duel in progress), keep the last known
-    // carrier so the orange highlight never disappears.
-    if (carrierId) this._lastCarrierId = carrierId;
-    return carrierId || this._lastCarrierId || null;
+    if (!interp) return null;
+    if (interp.frac > 0.5 && interp.next) return interp.next.ballCarrierId;
+    return interp.snap.ballCarrierId;
   }
 
   /* ─── Playback ─── */

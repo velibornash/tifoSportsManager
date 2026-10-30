@@ -101,7 +101,7 @@ import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
                 double dc = ball.getColumn() - cur.getColumn();
                 double dist = Math.hypot(dr, dc);
                 if (dist > 1e-6) {
-                    double cap = Math.min(dist, 0.5);
+                    double cap = Math.min(dist, 0.15);
                     p.setTarget(new Position(cur.getRow() + dr / dist * cap,
                             cur.getColumn() + dc / dist * cap));
                 } else {
