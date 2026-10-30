@@ -1695,33 +1695,35 @@ class MatchViewer {
     const interp = this._interpolateTick(this.currentTick);
     const players = this._getInterpolatedPlayers(interp);
     const carrierId = this._getCarrierId(interp);
-    // FE/BE sync: when a carrier is on the ball, the ball MUST be drawn at the
-    // carrier's interpolated position — never at the interpolated (flight) ball
-    // position, which can lag behind by up to one snapshot. During pass flight,
-    // carrierId is the pending receiver (targetPlayerId) but the ball is still in
-    // the air — do NOT snap it to him yet. Only snap when the ball is physically
-    // at the carrier's feet.
-    let ball = this._getInterpolatedBall(interp);
+    // Ball position: resolve defensively so the ball NEVER disappears from the
+    // screen during pass flight, reception, or carrier changes.
+    let ball = null;
+    const interpBall = this._getInterpolatedBall(interp);
+
+    // 1. If a carrier physically has the ball (ballCarrierId set), snap ball to
+    //    carrier's position — the ball is at his feet, not in flight.
     const actualCarrier = interp && interp.snap ? interp.snap.ballCarrierId : null;
     if (actualCarrier && players) {
       const carrier = players.find(p => p.id === actualCarrier);
-      if (carrier) {
-        ball = { row: carrier.row, col: carrier.col, height: ball ? ball.height : 0 };
-      }
-    } else if (interp && interp.next && interp.next.ballCarrierId && interp.frac > 0.3) {
-      // Reception happened in the next snapshot: snap the ball to the new carrier's
-      // position early so it never crawls or disappears on receive.
-      const nc = players ? players.find(p => p.id === interp.next.ballCarrierId) : null;
-      if (nc) {
-        ball = { row: nc.row, col: nc.col, height: ball ? ball.height : 0 };
+      if (carrier && Number.isFinite(carrier.row) && Number.isFinite(carrier.col)) {
+        ball = { row: carrier.row, col: carrier.col, height: 0 };
       }
     }
-    // Never draw a null/undefined ball — fall back to last known snapshot position.
-    if (!ball || ball.row == null || ball.column == null) {
-      const fallback = interp && interp.snap ? interp.snap.ballPosition : null;
-      if (fallback) ball = { row: fallback.row, column: fallback.column, height: fallback.ballHeight || 0 };
-      else ball = null;
+    // 2. Otherwise the ball is in flight — draw it at its interpolated flight
+    //    position. Do NOT snap to the pending receiver mid-flight (that would
+    //    teleport the ball before it arrives).
+    if (!ball && interpBall && Number.isFinite(interpBall.row) && Number.isFinite(interpBall.column)) {
+      ball = { row: interpBall.row, col: interpBall.column, height: interpBall.height || 0 };
     }
+    // 3. Last-resort fallback: last snapshot's ball position.
+    if (!ball && interp && interp.snap && interp.snap.ballPosition) {
+      const bp = interp.snap.ballPosition;
+      if (Number.isFinite(bp.row) && Number.isFinite(bp.column)) {
+        ball = { row: bp.row, column: bp.column, height: bp.ballHeight || 0 };
+      }
+    }
+    // 4. Never draw an invalid ball — if nothing resolves, skip ball entirely
+    //    rather than drawing NaN (which breaks the canvas).
     const goalAnim = this.overlays.getGoalAnimProgress();
     const duelPairs = this._getActiveDuelPairs(this.currentTick);
     const blockAnim = this._blockAnim;

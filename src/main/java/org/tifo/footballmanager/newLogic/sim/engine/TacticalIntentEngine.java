@@ -101,7 +101,10 @@ import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
                 double dc = ball.getColumn() - cur.getColumn();
                 double dist = Math.hypot(dr, dc);
                 if (dist > 1e-6) {
-                    double cap = Math.min(dist, 0.15);
+                    // Owner 2026-10-30: receiver must NOT abandon his tactical
+                    // position during pass flight — he stays in place and the ball
+                    // is snapped to him at reception. Cap = 0.
+                    double cap = 0.0;
                     p.setTarget(new Position(cur.getRow() + dr / dist * cap,
                             cur.getColumn() + dc / dist * cap));
                 } else {
