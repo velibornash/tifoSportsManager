@@ -1327,9 +1327,10 @@ public class CleanDecisionEngine {
             if (candidate.isUnavailable()) continue;
             // OWNER RULE (2026-10-30): the first pass after kickoff must be in the same line
             // or backward — never forward. A forward pass from the center spot risks offside
-            // and is not how real football restarts work.
-            double advance = progressOf(candidate) - progressOf(carrier);
-            if (advance > 0) continue; // skip forward receivers
+            // and is not how real football restarts work. Compare against the centre line
+            // (progress 0), not against the carrier, so a taker who claims the ball slightly
+            // behind centre does not filter out every same-line receiver.
+            if (progressOf(candidate) > 0) continue; // skip receivers forward of the centre line
             double openness = calculateOpenness(state, candidate);
             double col = candidate.getPosition().getColumn();
             double sidelineDist = Math.min(col - 1, 6 - col);
