@@ -359,10 +359,10 @@ public class SimulationController {
      *
      * <p>{@code WorldAdvanceAuthorizationTest} was written against the {@code /api} surface, so this route
      * was simply not on its list. The guard is the same one the rest of the world-moving surface uses
-     * ({@code APIController}'s {@code @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")}), and it is
+     * ({@code APIController}'s {@code @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN', 'TEST')")}), and it is
      * deliberately the same role set: the owner must not be locked out of his own game.
      */
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN', 'TEST')")
     @PostMapping("/week/advance")
     public ResponseEntity<Map<String, Object>> advanceWeek(@AuthenticationPrincipal User user) {
         GameClock clock = seasonService.getOrCreateClock();

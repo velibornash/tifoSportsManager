@@ -59,6 +59,12 @@ public class DatabaseInitializer {
     private static final String SECOND_DISPLAY_NAME = "Kecko";
     private static final String SECOND_PASSWORD = "Kecko123!";
     private static final String SREMAC_TEAM_NAME = "Sremac Berkasovo";
+
+    // TEST role user (owner request 2026-10-30): can see advanced dashboard commands,
+    // has unlimited training matches, but cannot see the admin tab in the navbar.
+    private static final String TEST_EMAIL = "tifoTest1@example.com";
+    private static final String TEST_DISPLAY_NAME = "TifoTest";
+    private static final String TEST_PASSWORD = "Test123!";
     private static final String SREMAC_STADIUM_IMAGE = "/images/livadice.png";
     private static final String SREMAC_LOGO = "/images/sremac_logo.jpg";
     private static final String OMLADINAC_LOGO = "/images/omladinac.png";
@@ -460,6 +466,7 @@ public class DatabaseInitializer {
             // bootstrap one.
             ensureSidLeague();
             createSecondUserIfNotExists();
+            createTestUserIfNotExists();
             refreshClubIdentities();
             backfillJuniorArrivalAges();
             int positioned = youthAcademyService.assignMissingPositions();
@@ -620,6 +627,7 @@ public class DatabaseInitializer {
             backfillStadiumCeilings();
             Team ownerTeam = createOwnerUserIfNotExists();
             createSecondUserIfNotExists();
+            createTestUserIfNotExists();
             seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         seedStandInTransferActivity();
             assignSquadNumbersIfMissing();
@@ -699,6 +707,7 @@ public class DatabaseInitializer {
         // the state a normal boot would, and that includes the second manager. The owner's own
         // account is restored here, so leaving his out would be the same omission one level down.
         createSecondUserIfNotExists();
+        createTestUserIfNotExists();
         progressListener.accept("Restoring tactics profiles...");
         restoreTacticsProfiles(tacticsSnapshots);
         restoreTacticLibrary(librarySnapshots, tacticRepository, teamRepository);
@@ -747,6 +756,7 @@ public class DatabaseInitializer {
     public void seedOwnerAfterReset() {
         Team ownerTeam = createOwnerUserIfNotExists();
         createSecondUserIfNotExists();
+        createTestUserIfNotExists();
         seedInitialJuniorsForOwnerIfMissing(ownerTeam);
         seedStandInTransferActivity();
         assignSquadNumbersIfMissing();
@@ -1040,6 +1050,34 @@ public class DatabaseInitializer {
             userRepository.save(user);
         }
         return sremac;
+    }
+
+    /**
+     * Creates a TEST-role user (tifoTest1) for testing advanced dashboard commands.
+     *
+     * <p>TEST role can see the advanced hour/day/week commands on the dashboard
+     * but cannot see the admin tab in the navbar. Has unlimited training matches.
+     */
+    private void createTestUserIfNotExists() {
+        Optional<User> existing = userRepository.findByUsernameOrEmail(TEST_EMAIL);
+        if (existing.isEmpty()) {
+            User user = new User();
+            user.setEmail(TEST_EMAIL);
+            user.setUsername(TEST_EMAIL);
+            user.setDisplayName(TEST_DISPLAY_NAME);
+            user.setPlusSubscription(false);
+            user.setPassword(encoder.encode(TEST_PASSWORD));
+            user.setRole(UserRole.TEST);
+            user.setCountryCode(SEEDED_COUNTRY_CODE);
+            userRepository.save(user);
+            log.info("Kreiran TEST korisnik '{}'", TEST_EMAIL);
+        } else {
+            User user = existing.get();
+            if (user.getRole() == null) {
+                user.setRole(UserRole.TEST);
+            }
+            userRepository.save(user);
+        }
     }
 
     /**
@@ -1533,6 +1571,7 @@ public class DatabaseInitializer {
         backfillStadiumCeilings();
         Team ownerTeam = createOwnerUserIfNotExists();
         createSecondUserIfNotExists();
+        createTestUserIfNotExists();
         // **Every club gets the world's default tactic.** The profile is restored from the backup
         // file first (restoreTacticsProfiles ran in clearDatabaseOnly); here we write the actual
         // tactic rows so the match engine has something to read. Without this the clubs come back

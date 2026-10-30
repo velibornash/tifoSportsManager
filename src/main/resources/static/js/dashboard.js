@@ -1,6 +1,6 @@
 // dashboard.js
 import { escapeHtml } from './ui/escape.js';
-import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility } from './auth.js';
+import { authFetch, handleAuthFailure, setSessionRole, isAdminSession, applyAdminVisibility, canSeeAdvancedCommands } from './auth.js';
 import { startNotificationPolling, wireNotificationBell, readUnreadCount } from './notifications.js';
 import { widgetRailHtml, nextMatchesHtml, updateWidget, bindWidgets, loadWidgetData, setStadiumFallback } from './dashboard-widgets.js';
 // The recent matches are the club's own match card, built by the same builder the club's Matches page
@@ -181,6 +181,11 @@ function readDashboardFlowFlash() {
     }
 }
 
+function canSeeAdvancedDashboardCommands() {
+    return typeof window.canSeeAdvancedCommands === 'function' ? window.canSeeAdvancedCommands() : isAdminSession();
+}
+window.canSeeAdvancedDashboardCommands = canSeeAdvancedDashboardCommands;
+
 function buildSeasonFlowPanel() {
     const flash = readDashboardFlowFlash();
     const statusTone = flash?.tone || 'info';
@@ -194,9 +199,9 @@ function buildSeasonFlowPanel() {
         || 'Advance the calendar. Each move runs the jobs that fall due, so the match week plays out '
          + 'on its own.';
 
-    // **Match Week Controls are admin-only.** Non-admin managers do not get the calendar-advance
-    // controls.
-    if (!isAdminUser()) {
+    // **Match Week Controls are visible to admin and TEST roles.** Non-admin managers do not get
+    // the calendar-advance controls. TEST role can see them for testing purposes.
+    if (!canSeeAdvancedDashboardCommands()) {
         return '';
     }
 

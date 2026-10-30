@@ -30,7 +30,7 @@ public class TrainingMatchLimitCache {
      * Accounts that play without a limit (owner, 2026-10-27: "za mog usera velibor@example.com bez
      * limita" — so he can test the engine as many times in a day as he needs).
      */
-    private static final Set<String> UNLIMITED = Set.of("velibor@example.com");
+    private static final Set<String> UNLIMITED = Set.of("velibor@example.com", "tifoTest1@example.com");
 
     private static final int MAX_ACCOUNTS = 512;
 

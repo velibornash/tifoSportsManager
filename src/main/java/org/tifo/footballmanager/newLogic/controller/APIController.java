@@ -97,7 +97,7 @@ public class APIController {
      * <p>The three roles are the same set {@code PlusFeatureService} already treats as privileged, so
      * "who is an administrator" has one answer in this codebase.
      */
-    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('OWNER', 'DEV', 'ADMIN', 'TEST')")
     @PostMapping("/game-clock/advance")
     public Map<String, Object> advanceGameClock(
             @RequestParam(defaultValue = "hour") String unit,

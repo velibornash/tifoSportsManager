@@ -412,6 +412,7 @@ export async function authFetch(url, options = {}) {
 // developer account can still reach DB tools while testing.
 
 const ADMIN_ROLES = new Set(['ADMIN', 'OWNER', 'DEV']);
+const DASHBOARD_COMMAND_ROLES = new Set(['ADMIN', 'OWNER', 'DEV', 'TEST']);
 
 let sessionRole = '';
 
@@ -440,6 +441,10 @@ export function isAdminSession() {
     return ADMIN_ROLES.has(sessionRole);
 }
 
+export function canSeeAdvancedCommands() {
+    return DASHBOARD_COMMAND_ROLES.has(sessionRole);
+}
+
 /**
  * Reveal every [data-admin-only] element for admins and hide it for everyone else.
  * Elements must start out `hidden` in the markup so a non-admin never sees a flash
@@ -462,4 +467,5 @@ export function applyAdminVisibility(root = document) {
 window.setSessionRole = setSessionRole;
 window.getSessionRole = getSessionRole;
 window.isAdminSession = isAdminSession;
+window.canSeeAdvancedCommands = canSeeAdvancedCommands;
 window.applyAdminVisibility = applyAdminVisibility;
