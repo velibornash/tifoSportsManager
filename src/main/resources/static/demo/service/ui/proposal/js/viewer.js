@@ -1698,6 +1698,14 @@ class MatchViewer {
     const players = this._getInterpolatedPlayers(interp);
     let ball = this._getInterpolatedBall(interp);
     const carrierId = this._getCarrierId(interp);
+    // FE sync: when a carrier is on the ball, snap ball to carrier position
+    // so the ball is always on the player's feet (never ahead or behind).
+    if (carrierId && players) {
+      const carrier = players.find(p => p.id === carrierId);
+      if (carrier && Number.isFinite(carrier.row) && Number.isFinite(carrier.col)) {
+        ball = { row: carrier.row, column: carrier.col, height: ball ? (ball.height || 0) : 0 };
+      }
+    }
     // DEFLECT snap: when a DEFLECT event is near the current tick, snap the
     // ball to the deflection point so the viewer shows the ball hitting the
     // player, not passing through.

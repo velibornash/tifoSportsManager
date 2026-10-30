@@ -70,6 +70,10 @@ class PassArrivesVisiblyTest {
             if (carrier != null && !carrier.equals(previous)) possessionChanges.add(s.getTick());
             previous = carrier;
         }
+        System.out.println("DEBUG: matchTicks=" + o.getState().getMatchTicks()
+                + " finished=" + o.getState().isMatchFinished()
+                + " snapshots=" + raw.size()
+                + " possessionChanges=" + possessionChanges.size());
         assertTrue(possessionChanges.size() > 10,
                 "a 900-tick match must change hands more than a handful of times, it changed "
                         + possessionChanges.size() + " times — the check would prove nothing");

@@ -552,18 +552,6 @@ public class CleanDecisionEngine {
                 double zoneBonus = (2.5 - dist) * 30.0;
                 score += zoneBonus;
                 reason.append(String.format("safe zone +%.0f ", zoneBonus));
-                System.out.println("DANGER-ZONE-BONUS: carrier=" + carrier.getLabel()
-                        + " receiver=" + receiver.getLabel()
-                        + " dist=" + String.format("%.2f", dist)
-                        + " nearestOppD=" + String.format("%.2f", nearestOppD)
-                        + " zoneBonus=" + String.format("%.0f", zoneBonus)
-                        + " totalScore=" + String.format("%.2f", score));
-            } else {
-                System.out.println("NO-DANGER-ZONE-BONUS: carrier=" + carrier.getLabel()
-                        + " receiver=" + receiver.getLabel()
-                        + " dist=" + String.format("%.2f", dist)
-                        + " nearestOppD=" + String.format("%.2f", nearestOppD)
-                        + " (opponent too close)");
             }
         }
 
@@ -1086,7 +1074,6 @@ public class CleanDecisionEngine {
     }
 
     private Player findBestReceiver(MatchState state, Player carrier) {
-        System.out.println("FIND-BEST-RECEIVER v2: carrier=" + carrier.getLabel() + " firstPass=" + state.isFirstPassAfterKickoff());
         // Best teammate = most open + clear lane + forward progress. A blocked
         // lane is the deciding negative: threading a ball through the block is
         // how passes get intercepted (demo/service lane weight ±80).
@@ -1114,22 +1101,9 @@ public class CleanDecisionEngine {
             // build-up rule: don't launch the ball forward from the first touch.
             if (state.isFirstPassAfterKickoff()
                     && progressOf(teammate) > progressOf(carrier)) {
-                if (carrier.getLabel().contains("Kačar") || carrier.getLabel().contains("Kacar")) {
-                    System.out.println("FILTERED-FIRSTPASS: " + carrier.getLabel() + " -> " + teammate.getLabel()
-                            + " progressTeammate=" + String.format("%.2f", progressOf(teammate))
-                            + " progressCarrier=" + String.format("%.2f", progressOf(carrier)));
-                }
                 continue;
             }
 
-            // Debug: log all candidates for Kačar
-            if (carrier.getLabel().contains("Kačar") || carrier.getLabel().contains("Kacar")) {
-                System.out.println("CANDIDATE: " + carrier.getLabel() + " -> " + teammate.getLabel()
-                        + " role=" + teammate.getRole()
-                        + " pos=" + teammate.getPosition()
-                        + " unavailable=" + teammate.isUnavailable()
-                        + " firstPass=" + state.isFirstPassAfterKickoff());
-            }
 
             // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
             // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze

@@ -16,7 +16,7 @@ import java.util.List;
  */
 public class MovementEngine {
 
-    public static final double PLAYER_SPEED_BASE = 0.75; // pace 20 = 0.75 cells/tick
+    public static final double PLAYER_SPEED_BASE = 0.60; // pace 20 = 0.60 cells/tick (reduced 20% per owner)
     public static final double CARRIER_FACTOR = 0.90; // carrier baseline (mild pressure)
     public static final double CARRIER_FACTOR_FREE = 0.96; // free (no defender within 1 cell)
     public static final double CARRIER_FACTOR_PRESSURE = 0.85; // defender within 1 cell
@@ -422,11 +422,6 @@ public class MovementEngine {
                 || state.getPendingReceiver() != null
                 || state.getRestartTaker() != null
                 || state.getOobPending() != null) {
-            System.out.println("CHASE-SKIP: team=" + team
-                    + " carrier=" + (state.getCarrier() == null ? "null" : state.getCarrier().getLabel())
-                    + " pending=" + (state.getPendingReceiver() == null ? "null" : state.getPendingReceiver().getLabel())
-                    + " restartTaker=" + (state.getRestartTaker() == null ? "null" : state.getRestartTaker().getLabel())
-                    + " oobPending=" + state.getOobPending());
             return null;
         }
 
@@ -442,9 +437,6 @@ public class MovementEngine {
         // it is going somewhere, and everyone converges on where it lands.
         double range = state.getBall().getSpeed() > BallPhysicsEngine.STOP_SPEED ? 6.0 : 4.0;
         Player result = bestD <= range ? best : null;
-        System.out.println("CHASE-RESULT: team=" + team + " best=" + (best == null ? "null" : best.getLabel())
-                + " bestD=" + String.format("%.2f", bestD) + " range=" + range
-                + " result=" + (result == null ? "null" : result.getLabel()));
         return result;
     }
 
