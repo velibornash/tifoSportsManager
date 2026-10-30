@@ -538,7 +538,7 @@ public class CleanDecisionEngine {
         boolean home = "HOME".equals(carrier.getTeam());
         boolean inDangerousZone = home ? carrier.getPosition().getRow() <= 3.5
                 : carrier.getPosition().getRow() >= 5.5;
-        if (inDangerousZone && dist <= 2.0) {
+        if (inDangerousZone && dist <= 2.5) {
             double nearestOppD = Double.MAX_VALUE;
             for (Player opp : state.getPlayers()) {
                 if (opp.getTeam().equals(carrier.getTeam())) continue;
@@ -547,8 +547,11 @@ public class CleanDecisionEngine {
                 if (d < nearestOppD) nearestOppD = d;
             }
             if (nearestOppD > 1.5) {
-                score += 40.0;
-                reason.append("safe zone +40 ");
+                // Progressive distance bonus: closer receiver gets MORE bonus.
+                // 1.0 distance -> +45, 2.0 distance -> +15, so nearest free player wins.
+                double zoneBonus = (2.5 - dist) * 30.0;
+                score += zoneBonus;
+                reason.append(String.format("safe zone +%.0f ", zoneBonus));
             }
         }
 
