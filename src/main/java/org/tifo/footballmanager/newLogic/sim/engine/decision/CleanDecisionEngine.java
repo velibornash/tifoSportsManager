@@ -438,7 +438,7 @@ public class CleanDecisionEngine {
         // only ever passes forward is a team that camps in the opposition's third.
         double advance = progressOf(receiver) - progressOf(carrier);
         if (advance > 0) {
-            double gain = Math.min(16.0, advance * 7.0);
+            double gain = Math.min(8.0, advance * 4.0);
             score += gain;
             reason.append(String.format("forward %+.0f ", gain));
         } else if (advance < -0.2) {
@@ -1118,7 +1118,7 @@ public class CleanDecisionEngine {
             if (advance > 0) {
                 // record the tick when we last made forward progress
                 state.setLastProgressTick(state.getMatchTicks());
-                score += Math.min(16.0, advance * 7.0);
+                score += Math.min(8.0, advance * 4.0);
             } else if (advance < -0.2) {
                 // backward pass — determine base penalty per original rules
                 double _dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
