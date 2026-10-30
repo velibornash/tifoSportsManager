@@ -1316,15 +1316,14 @@ class MatchViewer {
   }
 
   _getCarrierId(interp) {
-    if (!interp) return this._lastCarrierId || null;
-    let carrierId = null;
-    if (interp.frac > 0.5 && interp.next) carrierId = interp.next.ballCarrierId;
-    else carrierId = interp.snap.ballCarrierId;
-    // The carrier must ALWAYS have an orange circle — if the current snapshot
-    // has no carrier (ball in flight, duel in progress), keep the last known
-    // carrier so the orange highlight never disappears.
-    if (carrierId) this._lastCarrierId = carrierId;
-    return carrierId || this._lastCarrierId || null;
+    if (!interp) return null;
+    // Orange circle ONLY on the actual carrier or the pending receiver.
+    // No stale _lastCarrierId fallback — that caused the circle to get stuck
+    // on a player who never had the ball.
+    if (interp.frac >= 1.0 && interp.next) {
+      return interp.next.ballCarrierId || interp.next.targetPlayerId;
+    }
+    return interp.snap.ballCarrierId || interp.snap.targetPlayerId;
   }
 
   /* ─── Playback ─── */
