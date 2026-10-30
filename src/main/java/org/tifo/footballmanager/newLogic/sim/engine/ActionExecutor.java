@@ -18,6 +18,9 @@ public class ActionExecutor {
         if (decision == null || decision.getType() == null) {
             return;
         }
+        // Capture BEFORE executePass clears kickoffPending, so we know whether
+        // this execution is the kickoff itself (don't clear the flag on kickoff).
+        boolean wasKickoff = state.isKickoffPending();
 
         Player carrier = state.getCarrier();
         if (carrier == null && decision.getType() != ActionType.CLEAR) {
@@ -65,7 +68,7 @@ public class ActionExecutor {
 
         // Clear the "first pass after kickoff" flag once the receiver's first pass
         // has been played, so subsequent decisions are unrestricted.
-        if (state.isFirstPassAfterKickoff()
+        if (state.isFirstPassAfterKickoff() && !wasKickoff
                 && (type == ActionType.PASS || type == ActionType.THRU
                         || type == ActionType.CROSS || type == ActionType.CENTER)) {
             state.setFirstPassAfterKickoff(false);
