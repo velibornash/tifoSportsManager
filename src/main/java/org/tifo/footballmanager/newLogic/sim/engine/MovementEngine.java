@@ -246,7 +246,7 @@ public class MovementEngine {
             // owner's "nobody stands still" rule. The drift is a random offset in row and column
             // within ±0.15 of the target position; it is not a speed boost and does not carry
             // to the next tick — it is purely a within-cell wander.
-            if (SimUtils.distance(newPosition, target) < 1e-6) {
+            if (SimUtils.distance(newPosition, target) < 0.3) {
                 boolean isNonChaserNonCarrier = !isChaser && !(p == state.getCarrier());
                 if (isNonChaserNonCarrier) {
                     // Random offset ±0.15 cells within the cell the player just landed on.
@@ -256,6 +256,12 @@ public class MovementEngine {
                             newPosition.getRow() + driftRow,
                             newPosition.getColumn() + driftCol
                     );
+                    // APPLY the drift to the player (was missing — drift was computed but never applied).
+                    p.setPosition(newPosition);
+                    if (p == state.getCarrier()) {
+                        state.getBall().setPosition(newPosition);
+                        state.getBall().stop();
+                    }
                 }
                 if (!isChaser) p.setTarget(null);
             }
