@@ -552,6 +552,18 @@ public class CleanDecisionEngine {
                 double zoneBonus = (2.5 - dist) * 30.0;
                 score += zoneBonus;
                 reason.append(String.format("safe zone +%.0f ", zoneBonus));
+                System.out.println("DANGER-ZONE-BONUS: carrier=" + carrier.getLabel()
+                        + " receiver=" + receiver.getLabel()
+                        + " dist=" + String.format("%.2f", dist)
+                        + " nearestOppD=" + String.format("%.2f", nearestOppD)
+                        + " zoneBonus=" + String.format("%.0f", zoneBonus)
+                        + " totalScore=" + String.format("%.2f", score));
+            } else {
+                System.out.println("NO-DANGER-ZONE-BONUS: carrier=" + carrier.getLabel()
+                        + " receiver=" + receiver.getLabel()
+                        + " dist=" + String.format("%.2f", dist)
+                        + " nearestOppD=" + String.format("%.2f", nearestOppD)
+                        + " (opponent too close)");
             }
         }
 
