@@ -641,7 +641,7 @@ export function createStadiumView(deps) {
                 if (body.error) return say(body.error);
                 if (body.ok === false) return say(body.reason);
                 say(`The ${body.section || position} section now charges ${formatMoney(body.price)}.`);
-                await loadStadium();
+                if (input) input.value = body.price != null ? body.price : price;
             });
         });
 
