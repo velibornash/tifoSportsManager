@@ -72,6 +72,7 @@ async function bbRenderDashboard() {
             <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px;flex-wrap:wrap;">
                 <button class="play-all-btn" onclick="loadPage('schedule')" style="font-size:0.8rem;padding:8px 16px;">📅 View Schedule</button>
                 <button class="reset-btn" onclick="if(confirm('Reset ALL basketball matches? This cannot be undone.')) bbResetBasketball()">🔄 Reset Season</button>
+                <button class="play-all-btn" onclick="if(confirm('Start a new season? Fixtures and stats will be regenerated.')) bbStartNewSeasonClick()">🆕 New Season</button>
             </div>
             <div class="stats-grid clickable" onclick="loadPage('leagueTable')">
                 <div class="stat-item">
@@ -157,4 +158,15 @@ async function bbRenderDashboardRecentMatches() {
     }
 }
 
+async function bbStartNewSeasonClick() {
+    const res = await window.bbStartNewSeason();
+    if (res && res.ok) {
+        alert('New season started: ' + res.newSeason);
+        window.bbInvalidateCache();
+        loadPage('dashboard');
+    } else {
+        alert(res && res.error ? res.error : 'Failed to start new season');
+    }
+}
+window.bbStartNewSeasonClick = bbStartNewSeasonClick;
 window.bbRenderDashboard = bbRenderDashboard;

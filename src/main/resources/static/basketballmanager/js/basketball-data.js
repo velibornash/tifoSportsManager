@@ -241,6 +241,17 @@ async function bbTrain(teamId) {
     } catch (e) { return { ok: false, error: e.message }; }
 }
 
+async function bbStartNewSeason() {
+    try {
+        const res = await window.authFetch('/api/bb/season/new', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        if (data.newSeason) window.BBALL_CONF.seasonYear = data.newSeason;
+        window.bbInvalidateCache();
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+
 async function bbFetchRecentMatches(teamId, limit = 3) {
     try {
         const res = await window.authFetch('/api/bb/matches/team/' + teamId + '/recent?limit=' + limit + '&seasonYear=' + BBALL_CONF.seasonYear);
@@ -319,6 +330,7 @@ window.bbFetchRecentMatches = bbFetchRecentMatches;
 window.bbFetchTactics = bbFetchTactics;
 window.bbSaveTactics = bbSaveTactics;
 window.bbFetchTraining = bbFetchTraining;
+window.bbStartNewSeason = bbStartNewSeason;
 window.bbSetTrainingFocus = bbSetTrainingFocus;
 window.bbTrain = bbTrain;
 window.bbFetchTransferMarket = bbFetchTransferMarket;

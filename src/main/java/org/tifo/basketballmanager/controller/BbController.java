@@ -30,6 +30,7 @@ public class BbController {
     private final BbPlayerService playerService;
     private final BbTransferService transferService;
     private final BbTrainingService trainingService;
+    private final BbSeasonService seasonService;
     private final BbLeagueService leagueService;
     private final BbMatchRepository matchRepository;
     private final BbMatchSimulationService simulationService;
@@ -46,6 +47,7 @@ public class BbController {
                         BbPlayerService playerService,
                         BbTransferService transferService,
                         BbTrainingService trainingService,
+                        BbSeasonService seasonService,
                         BbLeagueService leagueService,
                         BbMatchRepository matchRepository,
                         BbMatchSimulationService simulationService,
@@ -60,6 +62,7 @@ public class BbController {
         this.playerService = playerService;
         this.transferService = transferService;
         this.trainingService = trainingService;
+        this.seasonService = seasonService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -147,7 +150,7 @@ public class BbController {
         resp.put("budget", team.getBudget());
         resp.put("competitionId", comp != null ? comp.getId() : null);
         resp.put("competitionName", comp != null ? comp.getName() : null);
-        resp.put("seasonYear", 2025);
+        resp.put("seasonYear", seasonService.getCurrentSeasonYear());
         return ResponseEntity.ok(resp);
     }
 
@@ -543,6 +546,24 @@ public class BbController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // ─── Season ───
+
+    @PostMapping("/season/new")
+    public ResponseEntity<Map<String, Object>> startNewSeason() {
+        try {
+            return ResponseEntity.ok(seasonService.startNewSeason());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/season/current")
+    public ResponseEntity<Map<String, Object>> currentSeason() {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("seasonYear", seasonService.getCurrentSeasonYear());
+        return ResponseEntity.ok(resp);
     }
 
     // ─── DTO Mappers ───
