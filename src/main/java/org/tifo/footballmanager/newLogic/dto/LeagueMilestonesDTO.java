@@ -43,6 +43,7 @@ public class LeagueMilestonesDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MilestoneLeaderDTO {
+        private Long playerId;
         private String playerName;
         private String teamName;
         private Integer value;

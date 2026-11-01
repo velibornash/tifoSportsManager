@@ -159,6 +159,7 @@ public class LeagueMilestoneService {
             String key = playerId > 0 ? "id:" + playerId : "name:" + safe(playerName);
             LeaderAccumulator accumulator = counts.computeIfAbsent(key, ignored -> new LeaderAccumulator());
             accumulator.playerName = safe(playerName);
+            accumulator.playerId = playerId > 0 ? playerId : null;
             accumulator.teamName = resolveTeamName(playerId);
             accumulator.value += 1;
         }
@@ -168,6 +169,7 @@ public class LeagueMilestoneService {
                         .comparingInt((LeaderAccumulator value) -> value.value).reversed()
                         .thenComparing(value -> safe(value.playerName)))
                 .map(value -> LeagueMilestonesDTO.MilestoneLeaderDTO.builder()
+                        .playerId(value.playerId)
                         .playerName(value.playerName)
                         .teamName(value.teamName)
                         .value(value.value)
@@ -427,6 +429,7 @@ public class LeagueMilestoneService {
     }
 
     private static class LeaderAccumulator {
+        private Long playerId;
         private String playerName;
         private String teamName;
         private int value;
