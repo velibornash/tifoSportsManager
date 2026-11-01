@@ -1131,13 +1131,14 @@ function buildPageNavState(page, options = {}) {
         const mainContent = document.getElementById('main-content');
         try {
             const teamId = typeof currentUserTeamId !== 'undefined' ? currentUserTeamId : null;
-            const [res, nationalRes, clubsRes, boardRes, mineRes] = await Promise.all([
+            const [res, nationalRes, clubsRes, boardRes, mineRes, ownProfileRes] = await Promise.all([
                 authFetch('/countries/world'), authFetch('/api/national-tournaments'),
                 authFetch('/countries/world/clubs/ranking?limit=500'),
                 // Week 6 is the break week: no club matches, so clubs can actually advertise
                 // and take a slot without being blocked by a league fixture.
                 worldFriendlyBoard.loadBoard(null, 6),
-                teamId ? worldFriendlyBoard.loadMine(teamId, null, 6) : Promise.resolve(null)
+                teamId ? worldFriendlyBoard.loadMine(teamId, null, 6) : Promise.resolve(null),
+                teamId ? authFetch(`/teams/${teamId}/profile`) : Promise.resolve(null)
             ]);
             if (!res.ok || !nationalRes.ok) throw new Error('World unavailable');
             const world = await res.json();
@@ -1145,6 +1146,7 @@ function buildPageNavState(page, options = {}) {
             const worldClubsPayload = clubsRes && clubsRes.ok ? await clubsRes.json() : null;
             const worldFriendlyBoardData = boardRes && !boardRes.failed ? boardRes : null;
             const worldFriendlyMineData = mineRes && !mineRes.failed ? mineRes : null;
+            const ownProfile = ownProfileRes && ownProfileRes.ok ? await ownProfileRes.json() : null;
             const nationalRows = Array.isArray(national.competitions) ? national.competitions : [];
             const countries = Array.isArray(world.countries) ? world.countries : [];
 
@@ -1186,8 +1188,16 @@ function buildPageNavState(page, options = {}) {
                     </tr>`;
             }).join('');
 
+            // Where the viewer's own club sits on the world ladder, even when it is not on the first
+            // page of the ranking. Shown in the panel head so a manager can find himself at a glance.
+            const ownWorldClub = (worldClubsPayload?.clubs ?? []).find(c => Number(c.teamId) === Number(teamId));
+            const ownWorldPos = ownWorldClub
+                ? (ownWorldClub.position ?? ((worldClubsPayload.clubs.indexOf(ownWorldClub)) + 1))
+                : (ownProfile?.worldPosition != null ? Number(ownProfile.worldPosition) : null);
+            const ownWorldName = ownWorldClub?.name || ownProfile?.name || null;
+            const ownWorldElo = ownWorldClub?.elo != null ? Math.round(Number(ownWorldClub.elo)) : (ownProfile?.elo != null ? Math.round(Number(ownProfile.elo)) : null);
+
             mainContent.innerHTML = `
-                <div class="fm-page fm-page--world">
                     <header class="fm-country-header">
                         <div class="fm-country-header-main">
                             <div>
@@ -1276,6 +1286,11 @@ function buildPageNavState(page, options = {}) {
                                 <h3>World club ranking</h3>
                                 <p class="fm-subtle">${Number(worldClubsPayload?.totalClubs ?? 0)} club${Number(worldClubsPayload?.totalClubs ?? 0) === 1 ? '' : 's'}, strongest first</p>
                             </div>
+                            ${ownWorldPos != null ? `<div class="fm-club-ranking-self">
+                                <span class="fm-club-ranking-self-pos">#${ownWorldPos}</span>
+                                <span class="fm-club-ranking-self-name">${escapeHtml(ownWorldName || 'Your club')}</span>
+                                ${ownWorldElo != null ? `<span class="fm-club-ranking-self-meta">Elo ${ownWorldElo}</span>` : ''}
+                            </div>` : ''}
                         </div>
                         <div class="fm-squad-wrap">
                             <table class="fm-squad fm-world-table fm-clubs-ranking-table">

@@ -2106,6 +2106,41 @@ button.training-week-item {
     margin-bottom: 14px;
 }
 
+/* Where the viewer's own club sits on a ranking list, even when it is not on the page in front of
+   him. Shown in the panel head, on the right, so it is visible at a glance. */
+.fm-club-ranking-self {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(var(--accent-rgb), 0.10);
+    border: 1px solid rgba(var(--accent-rgb), 0.28);
+    text-align: right;
+    min-width: 0;
+}
+.fm-club-ranking-self-pos {
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1;
+}
+.fm-club-ranking-self-name {
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 700;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fm-club-ranking-self-meta {
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
 .fm-panel-action,
 .fm-subtle,
 .fm-season-select-wrap span,
@@ -6064,6 +6099,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
         flex-direction: column;
         margin-top: 0;
         height: 100%;
+        padding-bottom: 12px;
     }
     .fm-grid-top--club-profile .fm-milestone-board-panel .fm-panel-head {
         flex: 0 0 auto;
@@ -6072,10 +6108,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
         flex: 1 1 auto;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-rows: repeat(3, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
     }
     .fm-grid-top--club-profile .fm-milestone-card {
         height: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
     }
 }
 

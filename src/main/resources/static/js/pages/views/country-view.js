@@ -460,6 +460,10 @@ export function createCountryView(deps) {
         }
         const total = Number(payload.totalClubs ?? clubs.length);
         const myTeamId = deps.getTeamId?.();
+        const ownClub = clubs.find(c => Number(c.teamId) === Number(myTeamId));
+        const ownPos = ownClub ? (ownClub.position ?? (clubs.indexOf(ownClub) + 1)) : null;
+        const ownName = ownClub?.name || null;
+        const ownElo = ownClub?.elo != null ? Math.round(Number(ownClub.elo)) : null;
         const rows = clubs.map(club => `
             <tr class="${Number(club.teamId) === Number(myTeamId) ? 'is-own-club' : ''}">
                 <td class="st-pos">${escapeNumber(club.position)}</td>
@@ -476,6 +480,11 @@ export function createCountryView(deps) {
                         <h3>Club ranking</h3>
                         <p class="fm-subtle">${total} club${total === 1 ? '' : 's'}, strongest first</p>
                     </div>
+                    ${ownPos != null ? `<div class="fm-club-ranking-self">
+                        <span class="fm-club-ranking-self-pos">#${ownPos}</span>
+                        <span class="fm-club-ranking-self-name">${htmlEscape(ownName || 'Your club')}</span>
+                        ${ownElo != null ? `<span class="fm-club-ranking-self-meta">Elo ${ownElo}</span>` : ''}
+                    </div>` : ''}
                 </div>
                 <div class="fm-squad-wrap">
                     <table class="fm-squad fm-world-table fm-clubs-ranking-table">
