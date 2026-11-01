@@ -693,6 +693,25 @@ public class CleanDecisionEngine {
                     .append(" -> ").append(String.format("%.1f", targetRow)).append(") ");
         }
 
+        // Tactic style influence on carrying (owner: style affects all decisions, except BALANCED).
+        String cstyle = state.getTacticStyle(carrier.getTeam());
+        if (cstyle != null) {
+            cstyle = cstyle.toUpperCase(java.util.Locale.ROOT);
+            if ("ATTACKING".equals(cstyle)) {
+                score *= 1.10;
+                reason.append("attacking +10% ");
+            } else if ("DEFENSIVE".equals(cstyle)) {
+                score *= 0.80;
+                reason.append("defensive -20% ");
+            } else if ("WINGER".equals(cstyle)) {
+                double col = carrier.getPosition().getColumn();
+                if (col <= 2.0 || col >= 6.0) {
+                    score *= 1.25;
+                    reason.append("winger +25% ");
+                }
+            }
+        }
+
         reason.append(String.format("to (%.1f,%.1f)", targetRow,
                 SimUtils.clamp(carrier.getPosition().getColumn(), 1.0, 7.0)));
         return new DecisionOption(ActionType.DRIBBLE, null, score, reason.toString());
@@ -792,6 +811,26 @@ public class CleanDecisionEngine {
         // Shot selection: based on situation (shooting zone, open pass, carry space, dribble
         // opportunity). No arbitrary penalty for shooting when teammates are free — the shot
         // competes with pass/carry on its own score. (Owner: 2 cells is 30 m, too big for any bonus.)
+
+        // Tactic style influence on shooting (owner: style should affect all decisions).
+        String style = state.getTacticStyle(carrier.getTeam());
+        if (style != null) {
+            style = style.toUpperCase(java.util.Locale.ROOT);
+            if ("ATTACKING".equals(style)) {
+                score *= 1.15;
+                reason.append("attacking +15% ");
+            } else if ("DEFENSIVE".equals(style)) {
+                score *= 0.85;
+                reason.append("defensive -15% ");
+            } else if ("WINGER".equals(style)) {
+                double carrierCol = carrier.getPosition().getColumn();
+                if (carrierCol <= 2.0 || carrierCol >= 6.0) {
+                    score *= 1.20;
+                    reason.append("winger wide +20% ");
+                }
+            }
+            // POSSESSION and BALANCED: no change to shooting
+        }
 
         reason.append(String.format("-> %.1f dist", distToGoal));
         return new DecisionOption(ActionType.SHOT, null, score, "SHOT: " + reason);
