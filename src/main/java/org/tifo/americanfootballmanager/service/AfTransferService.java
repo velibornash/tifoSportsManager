@@ -22,10 +22,12 @@ public class AfTransferService {
 
     private final AfTeamRepository teamRepository;
     private final AfPlayerRepository playerRepository;
+    private final AfInboxService inboxService;
 
-    public AfTransferService(AfTeamRepository teamRepository, AfPlayerRepository playerRepository) {
+    public AfTransferService(AfTeamRepository teamRepository, AfPlayerRepository playerRepository, AfInboxService inboxService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.inboxService = inboxService;
     }
 
     public List<AfPlayerDTO> getMarketPlayers(Long userTeamId, int limit) {
@@ -60,6 +62,8 @@ public class AfTransferService {
         teamRepository.save(buyer);
         teamRepository.save(seller);
 
+        try { inboxService.addMessage(buyer.getId(), "MARKET", "Free agency", "Signed " + player.getName() + " for " + price, null); } catch (Exception ignored) { }
+
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);
         resp.put("playerId", player.getId());
@@ -90,6 +94,8 @@ public class AfTransferService {
         playerRepository.save(player);
         teamRepository.save(seller);
         teamRepository.save(buyer);
+
+        try { inboxService.addMessage(seller.getId(), "MARKET", "Traded away", "Traded " + player.getName() + " to " + buyer.getName() + " for " + price, null); } catch (Exception ignored) { }
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);

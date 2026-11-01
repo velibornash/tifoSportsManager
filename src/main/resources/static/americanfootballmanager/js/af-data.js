@@ -294,6 +294,34 @@ async function afTrain(teamId) {
 window.afFetchTraining = afFetchTraining;
 window.afSetTrainingFocus = afSetTrainingFocus;
 window.afTrain = afTrain;
+async function afStartNewSeason() {
+    try {
+        const res = await window.authFetch('/api/af/season/new', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        if (data.newSeason) window.AF_CONF.seasonYear = data.newSeason;
+        window.afInvalidateCache();
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+window.afStartNewSeason = afStartNewSeason;
+async function afFetchInbox() {
+    try {
+        const res = await window.authFetch('/api/af/inbox');
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
+}
+async function afMarkInboxRead(id) {
+    try { await window.authFetch('/api/af/inbox/' + id + '/read', { method: 'POST' }); } catch {}
+}
+async function afMarkAllInboxRead() {
+    try { await window.authFetch('/api/af/inbox/read-all', { method: 'POST' }); } catch {}
+}
+
+window.afFetchInbox = afFetchInbox;
+window.afMarkInboxRead = afMarkInboxRead;
+window.afMarkAllInboxRead = afMarkAllInboxRead;
 window.afFetchTransferMarket = afFetchTransferMarket;
 window.afBuyPlayer = afBuyPlayer;
 window.afSellPlayer = afSellPlayer;

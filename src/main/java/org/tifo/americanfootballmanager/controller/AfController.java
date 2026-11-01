@@ -28,6 +28,8 @@ public class AfController {
     private final AfPlayerService playerService;
     private final AfTransferService transferService;
     private final AfTrainingService trainingService;
+    private final AfSeasonService seasonService;
+    private final AfInboxService inboxService;
     private final AfLeagueService leagueService;
     private final AfMatchRepository matchRepository;
     private final AfMatchSimulationService simulationService;
@@ -43,6 +45,8 @@ public class AfController {
                          AfPlayerService playerService,
                          AfTransferService transferService,
                          AfTrainingService trainingService,
+                         AfSeasonService seasonService,
+                         AfInboxService inboxService,
                          AfLeagueService leagueService,
                          AfMatchRepository matchRepository,
                          AfMatchSimulationService simulationService,
@@ -57,6 +61,8 @@ public class AfController {
         this.playerService = playerService;
         this.transferService = transferService;
         this.trainingService = trainingService;
+        this.seasonService = seasonService;
+        this.inboxService = inboxService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -144,7 +150,7 @@ public class AfController {
         resp.put("budget", team.getBudget());
         resp.put("competitionId", comp != null ? comp.getId() : null);
         resp.put("competitionName", comp != null ? comp.getName() : null);
-        resp.put("seasonYear", 2025);
+        resp.put("seasonYear", seasonService.getCurrentSeasonYear());
         return ResponseEntity.ok(resp);
     }
 
@@ -352,6 +358,12 @@ public class AfController {
                 userRepository.save(user);
             }
         });
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            if (user.getAmericanFootballTeam() == null) {
+                teamRepository.findByName("AF Partizan").ifPresent(user::setAmericanFootballTeam);
+                userRepository.save(user);
+            }
+        });
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);
@@ -504,6 +516,56 @@ public class AfController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    // ─── Season ───
+
+    @PostMapping("/season/new")
+    public ResponseEntity<Map<String, Object>> startNewSeason() {
+        try {
+            return ResponseEntity.ok(seasonService.startNewSeason());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/season/current")
+    public ResponseEntity<Map<String, Object>> currentSeason() {
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("seasonYear", seasonService.getCurrentSeasonYear());
+        return ResponseEntity.ok(resp);
+    }
+
+    // ─── Inbox ───
+
+    @GetMapping("/inbox")
+    public ResponseEntity<List<AfInboxMessage>> getInbox() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(inboxService.getMessages(teamId));
+    }
+
+    @GetMapping("/inbox/unread-count")
+    public ResponseEntity<Map<String, Object>> unreadCount() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("count", inboxService.unreadCount(teamId));
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/inbox/{id}/read")
+    public ResponseEntity<Map<String, Object>> markRead(@PathVariable Long id) {
+        inboxService.markRead(id);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    @PostMapping("/inbox/read-all")
+    public ResponseEntity<Map<String, Object>> markAllRead() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        inboxService.markAllRead(teamId);
+        return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── DTO Mappers ───

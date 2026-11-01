@@ -16,11 +16,13 @@ public class AfTrainingService {
 
     private final AfTeamRepository teamRepository;
     private final AfPlayerRepository playerRepository;
+    private final AfInboxService inboxService;
     private final Random random = new Random();
 
-    public AfTrainingService(AfTeamRepository teamRepository, AfPlayerRepository playerRepository) {
+    public AfTrainingService(AfTeamRepository teamRepository, AfPlayerRepository playerRepository, AfInboxService inboxService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.inboxService = inboxService;
     }
 
     public String getFocus(Long teamId) {
@@ -43,6 +45,8 @@ public class AfTrainingService {
             if (tryImprove(p, skill)) improved++;
             playerRepository.save(p);
         }
+        try { inboxService.addMessage(teamId, "CLUB", "Training", focus + " session: " + improved + " of " + team.getPlayers().size() + " players improved.", null); } catch (Exception ignored) { }
+
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);
         resp.put("focus", focus);

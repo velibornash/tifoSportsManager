@@ -127,6 +127,7 @@ async function afRenderDashboard() {
                 <button class="reset-btn" onclick="afInitSeason()" style="font-size:0.8rem;padding:8px 16px;">🏈 Start Season</button>
                 <button class="reset-btn" onclick="loadPage('league')" style="font-size:0.8rem;padding:8px 16px;">📊 League Table</button>
                 <button class="reset-btn" onclick="if(confirm('Reset ALL American Football matches? This cannot be undone.')) afResetSeason()" style="font-size:0.8rem;padding:8px 16px;">🔄 Reset Season</button>
+                <button class="play-all-btn" onclick="if(confirm('Start a new season? Fixtures and stats will be regenerated.')) afStartNewSeasonClick()" style="font-size:0.8rem;padding:8px 16px;">🆕 New Season</button>
             </div>
         </div>`;
 }
@@ -173,6 +174,12 @@ async function afResetSeason() {
     }
 }
 
+async function afStartNewSeasonClick() {
+    const res = await window.afStartNewSeason();
+    if (res && res.ok) { alert('New season started: ' + res.newSeason); window.afInvalidateCache(); loadPage('dashboard'); }
+    else { alert(res && res.error ? res.error : 'Failed to start new season'); }
+}
+window.afStartNewSeasonClick = afStartNewSeasonClick;
 window.afRenderDashboard = afRenderDashboard;
 window.afInitSeason = afInitSeason;
 window.afResetSeason = afResetSeason;

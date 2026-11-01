@@ -65,6 +65,7 @@ public class AfDataInitializer {
     public void initAmericanFootballData() {
         if (commonCompetitionRepository.findBySport("AMERICAN_FOOTBALL").size() > 0) {
             log.info("American Football data already seeded");
+            assignUserTeams();
             return;
         }
 
@@ -109,6 +110,7 @@ public class AfDataInitializer {
         }
 
         assignOwnerTeam(superLiga, allTeams);
+        assignUserTeams();
 
         log.info("American Football data seeded: {} competitions, {} teams", competitions.size(), allTeams.size());
     }
@@ -385,6 +387,32 @@ public class AfDataInitializer {
                 log.info("AF Omladinac assigned to owner");
             }
         }
+
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            AfTeam partizan = allTeams.stream()
+                    .filter(t -> "AF Partizan".equals(t.getName()))
+                    .findFirst().orElse(null);
+            if (partizan != null && user.getAmericanFootballTeam() == null) {
+                user.setAmericanFootballTeam(partizan);
+                userRepository.save(user);
+                log.info("AF Partizan assigned to kecko");
+            }
+        });
+    }
+
+    private void assignUserTeams() {
+        userRepository.findByUsernameOrEmail(OWNER_EMAIL).ifPresent(user -> {
+            if (user.getAmericanFootballTeam() == null) {
+                teamRepository.findByName("AF Omladinac").ifPresent(user::setAmericanFootballTeam);
+                userRepository.save(user);
+            }
+        });
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            if (user.getAmericanFootballTeam() == null) {
+                teamRepository.findByName("AF Partizan").ifPresent(user::setAmericanFootballTeam);
+                userRepository.save(user);
+            }
+        });
     }
 
     private List<String> generateNames() {

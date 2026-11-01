@@ -23,19 +23,22 @@ public class AfMatchSimulationService {
     private final AfMatchRepository matchRepository;
     private final AfMatchFixtureRepository matchFixtureRepository;
     private final AfPlayerSeasonStatsRepository seasonStatsRepository;
+    private final AfInboxService inboxService;
 
     public AfMatchSimulationService(AfMatchEngine matchEngine,
                                      AfTeamRepository teamRepository,
                                      AfPlayerRepository playerRepository,
                                      AfMatchRepository matchRepository,
                                      AfMatchFixtureRepository matchFixtureRepository,
-                                     AfPlayerSeasonStatsRepository seasonStatsRepository) {
+                                     AfPlayerSeasonStatsRepository seasonStatsRepository,
+                                     AfInboxService inboxService) {
         this.matchEngine = matchEngine;
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
         this.matchFixtureRepository = matchFixtureRepository;
         this.seasonStatsRepository = seasonStatsRepository;
+        this.inboxService = inboxService;
     }
 
     @Transactional
@@ -102,6 +105,12 @@ public class AfMatchSimulationService {
 
         savePlayerStats(result.getHomePlayerStats(), seasonYear, competitionId, home);
         savePlayerStats(result.getAwayPlayerStats(), seasonYear, competitionId, away);
+
+        try {
+            String body = home.getName() + " " + result.getHomeScore() + " - " + result.getAwayScore() + " " + away.getName();
+            inboxService.addMessage(home.getId(), "MATCHDAY", "Game result", body, seasonYear);
+            inboxService.addMessage(away.getId(), "MATCHDAY", "Game result", body, seasonYear);
+        } catch (Exception ignored) { }
 
         return result;
     }

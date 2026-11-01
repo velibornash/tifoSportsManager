@@ -39,6 +39,7 @@ async function loadPage(page, options = {}) {
             case 'transfers': await afRenderTransfers(); break;
             case 'tactics': await afRenderTactics(); break;
             case 'training': await afRenderTraining(); break;
+            case 'inbox': await afRenderInbox(); break;
             case 'player': await window.afRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.afRenderMatchViewer(options); break;
             default: await window.afRenderDashboard();
@@ -246,6 +247,38 @@ async function afTrainClick() {
     else { alert(res && res.error ? res.error : 'Training failed'); }
 }
 
+async function afRenderInbox() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    const msgs = await window.afFetchInbox();
+    const rows = msgs.map(m => `
+        <div class="match-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;" onclick="afInboxRead(${m.id})">
+            <div style="display:flex;gap:8px;align-items:center;width:100%;">
+                <span style="font-size:0.7rem;text-transform:uppercase;color:var(--af-primary-light);">${cmEscapeHtml(m.desk || '')}</span>
+                <span style="font-weight:700;flex:1;">${cmEscapeHtml(m.title || '')}</span>
+                ${m.read ? '' : '<span style="color:#f5a623;font-size:0.7rem;">● unread</span>'}
+            </div>
+            <div style="font-size:0.85rem;color:#99a6bb;">${cmEscapeHtml(m.body || '')}</div>
+        </div>
+    `).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div><div class="af-eyebrow">News</div><h2 style="margin:0;">Inbox</h2></div>
+                <div style="display:flex;gap:8px;">
+                    <button class="reset-btn" style="font-size:0.75rem;padding:4px 10px;" onclick="afInboxMarkAll()">Mark all read</button>
+                    <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+                </div>
+            </div>
+            ${rows || cmBuildEmptyState('No messages yet')}
+        </div>`;
+}
+
+async function afInboxRead(id) { await window.afMarkInboxRead(id); loadPage('inbox'); }
+async function afInboxMarkAll() { await window.afMarkAllInboxRead(); loadPage('inbox'); }
+
+window.afRenderInbox = afRenderInbox;
 window.afRenderTraining = afRenderTraining;
 window.afRenderTactics = afRenderTactics;
 window.afRenderTransfers = afRenderTransfers;
