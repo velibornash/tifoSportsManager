@@ -131,7 +131,7 @@ public class DuelEngine {
         boolean goalSide = carrierIsHome ? defenderRow > carrierRow : defenderRow < carrierRow;
 
         if (goalSide) return true;
-        return distance <= SIDE_ON_TIE_RADIUS + 0.02;
+        return distance <= SIDE_ON_TIE_RADIUS + 0.05;
     }
 
     public DuelType checkDuel(Player attacker, Player defender,
@@ -151,7 +151,7 @@ public class DuelEngine {
         // ThreatOverrideEngine sets the flag, but the contest distance is the
         // same for a standing defender as for a pressing one — 0.45 cells.
         double dribbleRadius = DRIBBLE_DUEL_RADIUS;
-        if (distance <= dribbleRadius + 0.02 && contestsTheBall(attacker, defender, distance, state)) {
+        if (distance <= dribbleRadius + 0.05 && contestsTheBall(attacker, defender, distance, state)) {
             if (!isOnCooldown(attacker, defender, DRIBBLE_COOLDOWN_TICKS, state)) {
                 markDuel(attacker, defender, state);
                 return DuelType.DRIBBLE;
@@ -165,7 +165,7 @@ public class DuelEngine {
         // his target is non-null only while he is walking to the carry point ActionExecutor wrote
         // last tick. It made "can this defender contest the ball" depend on a movement decision made
         // by a different subsystem. A duel is a function of positions, skills and the cooldown.
-        if (distance <= RECEIVE_PASS_RADIUS + 0.02) {
+        if (distance <= RECEIVE_PASS_RADIUS + 0.05) {
             if (!isOnCooldown(attacker, defender, DUEL_COOLDOWN_TICKS, state)) {
                 markDuel(attacker, defender, state);
                 return DuelType.RECEIVE_PASS;
