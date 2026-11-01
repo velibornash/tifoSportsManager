@@ -736,18 +736,18 @@ public class BallPhysicsEngine implements BallEngine {
                 state.setReceivePoint(null);
                 // reflect like DEFLECT
                 Position contact = hit.getPosition();
-                double nr = hit.getPosition().getRow() - ball.getPosition().getRow();
-                double nc = hit.getPosition().getColumn() - ball.getPosition().getColumn();
+                double nr = hit.getPosition().getRow() - state.getBall().getPosition().getRow();
+                double nc = hit.getPosition().getColumn() - state.getBall().getPosition().getColumn();
                 double len = Math.hypot(nr, nc);
                 if (len > 1e-9) {
                     nr /= len; nc /= len;
-                    double dot = ball.getVelX() * nc + ball.getVelY() * nr;
-                    ball.setVelocity(
-                            (ball.getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
-                            (ball.getVelY() - 2 * dot * nr) * BOUNCE_DAMP
+                    double dot = state.getBall().getVelX() * nc + state.getBall().getVelY() * nr;
+                    state.getBall().setVelocity(
+                            (state.getBall().getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
+                            (state.getBall().getVelY() - 2 * dot * nr) * BOUNCE_DAMP
                     );
                 }
-                ball.setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
+                state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
                 return BallStepResult.gkParry(hit.getLabel());
             } else {
                 // BLOCK or DEFLECT — reflect off player body. RIGID RULE (user
