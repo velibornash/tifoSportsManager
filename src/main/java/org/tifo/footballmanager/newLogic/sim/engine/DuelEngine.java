@@ -281,11 +281,11 @@ public class DuelEngine {
         switch (duelType) {
             case DRIBBLE -> {
                 // Dribbling + technique + pace
-                power = skills.technique() * 0.4 + skills.pace() * 0.3 + skills.striker() * 0.3;
+                power = skills.technique() * 0.4 + skills.pace() * 0.4 + skills.striker() * 0.2;
             }
             case TACKLE -> {
-                // Defending + technique + pace (owner: 0.6 def / 0.3 tech / 0.1 pace)
-                power = skills.defender() * 0.6 + skills.technique() * 0.3 + skills.pace() * 0.1;
+                // Defending + technique + pace (owner: pace matters more)
+                power = skills.defender() * 0.5 + skills.technique() * 0.3 + skills.pace() * 0.2;
             }
             case RECEIVE_PASS -> {
                 // Technique + first touch

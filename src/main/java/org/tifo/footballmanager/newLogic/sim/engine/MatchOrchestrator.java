@@ -686,7 +686,6 @@ public class MatchOrchestrator {
             // Defer execution to the next tick.
             state.setPendingDecision(decision);
             state.setPendingDecisionCarrier(carrier);
-            carrier.setStrikeHoldTicks(1);
 
             boolean changed = decision.getType() != lastLoggedType
                     || !carrier.getLabel().equals(lastLoggedCarrier);
