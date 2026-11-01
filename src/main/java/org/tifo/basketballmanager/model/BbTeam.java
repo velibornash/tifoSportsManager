@@ -58,6 +58,10 @@ public class BbTeam {
     @Builder.Default
     private List<BbPlayer> players = new ArrayList<>();
 
+    @Column(name = "budget", columnDefinition = "bigint not null default 1000000")
+    @Builder.Default
+    private Long budget = 1_000_000L;
+
     public double getAverageOverall() {
         if (players.isEmpty()) return 0;
         return players.stream().mapToInt(BbPlayer::getOverall).average().orElse(0);

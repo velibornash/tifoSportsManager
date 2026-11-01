@@ -28,6 +28,7 @@ public class BbController {
 
     private final BbTeamRepository teamRepository;
     private final BbPlayerService playerService;
+    private final BbTransferService transferService;
     private final BbLeagueService leagueService;
     private final BbMatchRepository matchRepository;
     private final BbMatchSimulationService simulationService;
@@ -42,6 +43,7 @@ public class BbController {
 
     public BbController(BbTeamRepository teamRepository,
                         BbPlayerService playerService,
+                        BbTransferService transferService,
                         BbLeagueService leagueService,
                         BbMatchRepository matchRepository,
                         BbMatchSimulationService simulationService,
@@ -54,6 +56,7 @@ public class BbController {
                         UserRepository userRepository) {
         this.teamRepository = teamRepository;
         this.playerService = playerService;
+        this.transferService = transferService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -138,6 +141,7 @@ public class BbController {
         resp.put("teamName", team.getName());
         resp.put("teamShortName", team.getShortName());
         resp.put("teamColor", team.getColor());
+        resp.put("budget", team.getBudget());
         resp.put("competitionId", comp != null ? comp.getId() : null);
         resp.put("competitionName", comp != null ? comp.getName() : null);
         resp.put("seasonYear", 2025);
@@ -434,6 +438,48 @@ public class BbController {
         }
     }
 
+    // ─── Transfers ───
+
+    @GetMapping("/transfers/market")
+    public ResponseEntity<List<BbPlayerDTO>> getTransferMarket(
+            @RequestParam(defaultValue = "100") int limit) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(transferService.getMarketPlayers(userTeamId, limit));
+    }
+
+    @PostMapping("/transfers/buy/{playerId}")
+    public ResponseEntity<Map<String, Object>> buyPlayer(@PathVariable Long playerId) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        try {
+            Map<String, Object> resp = transferService.buyPlayer(userTeamId, playerId);
+            return ResponseEntity.ok(resp);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/transfers/sell/{playerId}")
+    public ResponseEntity<Map<String, Object>> sellPlayer(@PathVariable Long playerId) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        try {
+            Map<String, Object> resp = transferService.sellPlayer(userTeamId, playerId);
+            return ResponseEntity.ok(resp);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private Long getCurrentUserTeamId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        return userRepository.findByUsernameOrEmail(email)
+                .map(u -> u.getBasketballTeam() != null ? u.getBasketballTeam().getId() : null)
+                .orElse(null);
+    }
+
     // ─── DTO Mappers ───
 
     private BbTeamDTO toTeamDTO(BbTeam team) {
@@ -446,6 +492,7 @@ public class BbController {
                 .hallCapacity(team.getHallCapacity())
                 .color(team.getColor())
                 .averageOverall(team.getAverageOverall())
+                .budget(team.getBudget())
                 .build();
     }
 

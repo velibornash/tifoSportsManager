@@ -14,6 +14,7 @@ let BBALL_CONF = {
     teamName: null,
     teamShortName: null,
     teamColor: null,
+    budget: 0,
     quarters: 4,
     quarterMinutes: 10,
 };
@@ -60,6 +61,7 @@ async function bbFetchMyTeam() {
                 BBALL_CONF.teamName = data.teamName;
                 BBALL_CONF.teamShortName = data.teamShortName;
                 BBALL_CONF.teamColor = data.teamColor;
+                BBALL_CONF.budget = data.budget || 0;
                 BBALL_CONF.competitionId = data.competitionId;
                 BBALL_CONF.seasonYear = data.seasonYear || 2025;
             }
@@ -201,6 +203,38 @@ async function bbFetchRecentMatches(teamId, limit = 3) {
     }
 }
 
+// ─── Transfers ───
+
+async function bbFetchTransferMarket(limit = 100) {
+    try {
+        const res = await window.authFetch('/api/bb/transfers/market?limit=' + limit);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch (e) { console.error(e); return []; }
+}
+
+async function bbBuyPlayer(playerId) {
+    try {
+        const res = await window.authFetch('/api/bb/transfers/buy/' + playerId, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Buy failed' };
+        window.BBALL_CONF.budget = data.budget || window.BBALL_CONF.budget;
+        window.bbInvalidateCache();
+        return data;
+    } catch (e) { console.error(e); return { ok: false, error: e.message }; }
+}
+
+async function bbSellPlayer(playerId) {
+    try {
+        const res = await window.authFetch('/api/bb/transfers/sell/' + playerId, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Sell failed' };
+        window.BBALL_CONF.budget = data.budget || window.BBALL_CONF.budget;
+        window.bbInvalidateCache();
+        return data;
+    } catch (e) { console.error(e); return { ok: false, error: e.message }; }
+}
+
 // ─── Overall Rating (client-side, from skills map) ───
 
 function bbCalculateOverall(skills, position) {
@@ -233,6 +267,9 @@ window.bbFetchTeamFixtures = bbFetchTeamFixtures;
 window.bbPlayFixture = bbPlayFixture;
 window.bbFetchMatchDetail = bbFetchMatchDetail;
 window.bbFetchRecentMatches = bbFetchRecentMatches;
+window.bbFetchTransferMarket = bbFetchTransferMarket;
+window.bbBuyPlayer = bbBuyPlayer;
+window.bbSellPlayer = bbSellPlayer;
 window.bbCalculateOverall = bbCalculateOverall;
 window.bbPositions = bbPositions;
 window.bbInvalidateCache = bbInvalidateCache;

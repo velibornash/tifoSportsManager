@@ -16,5 +16,6 @@ public class BbTeamDTO {
     private Integer hallCapacity;
     private String color;
     private Double averageOverall;
+    private Long budget;
     private List<BbPlayerDTO> players;
 }
