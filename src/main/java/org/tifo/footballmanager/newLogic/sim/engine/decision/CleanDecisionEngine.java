@@ -440,7 +440,7 @@ public class CleanDecisionEngine {
         // only ever passes forward is a team that camps in the opposition's third.
         double advance = progressOf(receiver) - progressOf(carrier);
         if (advance > 0) {
-            double gain = Math.min(8.0, advance * 4.0);
+            double gain = Math.min(12.0, advance * 4.0);
             score += gain;
             reason.append(String.format("forward %+.0f ", gain));
         } else if (advance < -0.2) {
@@ -549,7 +549,7 @@ public class CleanDecisionEngine {
             if (nearestOppD > 1.5) {
                 // Progressive distance bonus: closer receiver gets MORE bonus.
                 // 1.0 distance -> +45, 2.0 distance -> +15, so nearest free player wins.
-                double zoneBonus = (2.5 - dist) * 10.0;
+                double zoneBonus = (2.5 - dist) * 5.0;
                 score += zoneBonus;
                 reason.append(String.format("safe zone +%.0f ", zoneBonus));
             }
@@ -1337,7 +1337,7 @@ public class CleanDecisionEngine {
                     if (d < _nearestOppD) _nearestOppD = d;
                 }
                 if (_nearestOppD > 1.5) {
-                    double zoneBonus = (2.5 - dist) * 10.0;
+                    double zoneBonus = (2.5 - dist) * 5.0;
                     score += zoneBonus;
                 }
             }
