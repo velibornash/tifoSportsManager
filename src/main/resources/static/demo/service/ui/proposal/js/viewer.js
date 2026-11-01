@@ -693,11 +693,54 @@ class PitchRenderer {
       }
     }
 
+    // Build the position map (with duel convergence applied) for all players first,
+    // so a separation pass can push overlapping circles apart BEFORE drawing.
+    const posMap = new Map();
     for (const p of players) {
       let pos = { row: p.row, col: p.col };
-      if (convergedPos.has(p.id)) {
-        pos = convergedPos.get(p.id);
+      if (convergedPos.has(p.id)) pos = convergedPos.get(p.id);
+      posMap.set(p.id, pos);
+    }
+    // Separation pass (mirrors the lab pitch tool's separateOverlaps): push any
+    // two overlapping player circles apart along their center-to-center axis, in
+    // rendered pixel space (a row cell and a column cell are not the same size).
+    // Circles touch but never overlap; players still approach each other.
+    {
+      const rect = this.canvas.getBoundingClientRect();
+      const rowPx = CELL_W, colPx = CELL_H; // row -> x, col -> y (see toCanvas)
+      const D = 28; // touching distance in px (two 14px circles)
+      const margin = this.margin || { left: 0, top: 0 };
+      for (let iter = 0; iter < 4; iter++) {
+        let any = false;
+        const ids = [...posMap.keys()];
+        for (let i = 0; i < ids.length; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            const a = posMap.get(ids[i]);
+            const b = posMap.get(ids[j]);
+            if (!a || !b) continue;
+            const ax = margin.left + a.row * rowPx;
+            const ay = margin.top + a.col * colPx;
+            const bx = margin.left + b.row * rowPx;
+            const by = margin.top + b.col * colPx;
+            const dx = bx - ax, dy = by - ay;
+            const d = Math.hypot(dx, dy);
+            if (d >= D) continue;
+            const dd = Math.max(d, 1e-9);
+            const nx = dx / dd, ny = dy / dd;
+            const overlap = D - dd;
+            a.row -= (nx * overlap / 2) / rowPx;
+            a.col -= (ny * overlap / 2) / colPx;
+            b.row += (nx * overlap / 2) / rowPx;
+            b.col += (ny * overlap / 2) / colPx;
+            any = true;
+          }
+        }
+        if (!any) break;
       }
+    }
+
+    for (const p of players) {
+      let pos = posMap.get(p.id) || { row: p.row, col: p.col };
       const [x, y] = this.toCanvas(pos.row, pos.col);
       const isHome = p.team === 'HOME';
       const isGK = p.role === 'GK';
