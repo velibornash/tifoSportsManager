@@ -192,6 +192,27 @@ async function bbFetchMatchDetail(matchId) {
     }
 }
 
+async function bbFetchTactics(teamId) {
+    try {
+        const res = await window.authFetch('/api/bb/teams/' + teamId + '/tactics');
+        if (!res.ok) return { playStyle: 'BALANCED', starterIds: '' };
+        return await res.json();
+    } catch { return { playStyle: 'BALANCED', starterIds: '' }; }
+}
+
+async function bbSaveTactics(teamId, playStyle, starterIds) {
+    try {
+        const res = await window.authFetch('/api/bb/teams/' + teamId + '/tactics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playStyle, starterIds })
+        });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Save failed' };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+
 async function bbFetchRecentMatches(teamId, limit = 3) {
     try {
         const res = await window.authFetch('/api/bb/matches/team/' + teamId + '/recent?limit=' + limit + '&seasonYear=' + BBALL_CONF.seasonYear);
@@ -267,6 +288,8 @@ window.bbFetchTeamFixtures = bbFetchTeamFixtures;
 window.bbPlayFixture = bbPlayFixture;
 window.bbFetchMatchDetail = bbFetchMatchDetail;
 window.bbFetchRecentMatches = bbFetchRecentMatches;
+window.bbFetchTactics = bbFetchTactics;
+window.bbSaveTactics = bbSaveTactics;
 window.bbFetchTransferMarket = bbFetchTransferMarket;
 window.bbBuyPlayer = bbBuyPlayer;
 window.bbSellPlayer = bbSellPlayer;

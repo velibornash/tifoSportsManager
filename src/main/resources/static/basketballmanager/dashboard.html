@@ -17,6 +17,7 @@
     <div class="menu-button desktop-only" onclick="window.location.href='/home.html'">⚽🏀🏈 Sports Lobby</div>
     <div class="menu-button desktop-only" onclick="loadPage('dashboard')">📊 Dashboard</div>
     <div class="menu-button desktop-only" onclick="loadPage('firstTeam')">🏀 Club</div>
+    <div class="menu-button desktop-only" onclick="loadPage('tactics')">🧠 Tactics</div>
     <div class="menu-button desktop-only" onclick="loadPage('leagueTable')">&#127942; League</div>
     <div class="menu-button desktop-only" onclick="loadPage('stats')">&#128202; Stats</div>
     <div class="menu-button desktop-only" onclick="loadPage('schedule')">&#128197; Schedule</div>
@@ -37,6 +38,7 @@
             <div class="accordion-header" onclick="cmToggleAccordion(this)">🏀 Club</div>
             <div class="accordion-content">
                 <div onclick="loadPage('firstTeam');cmCloseMobileMenu()">First Team</div>
+                <div onclick="loadPage('tactics');cmCloseMobileMenu()">Tactics</div>
                 <div onclick="loadPage('schedule');cmCloseMobileMenu()">Schedule</div>
                 <div onclick="loadPage('transfers');cmCloseMobileMenu()">Transfers</div>
             </div>
@@ -61,6 +63,7 @@
     <div class="sidebar-content">
         <h3 style="color:#f5a623;">Club</h3>
         <div onclick="loadPage('firstTeam')">First Team</div>
+        <div onclick="loadPage('tactics')">Tactics</div>
         <div onclick="loadPage('schedule')">Schedule</div>
         <div onclick="loadPage('transfers')">Transfers</div>
     </div>

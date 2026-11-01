@@ -62,6 +62,13 @@ public class BbTeam {
     @Builder.Default
     private Long budget = 1_000_000L;
 
+    @Column(name = "play_style", length = 16, columnDefinition = "varchar(16) not null default 'BALANCED'")
+    @Builder.Default
+    private String playStyle = "BALANCED";
+
+    @Column(name = "starter_ids", length = 255)
+    private String starterIds;
+
     public double getAverageOverall() {
         if (players.isEmpty()) return 0;
         return players.stream().mapToInt(BbPlayer::getOverall).average().orElse(0);

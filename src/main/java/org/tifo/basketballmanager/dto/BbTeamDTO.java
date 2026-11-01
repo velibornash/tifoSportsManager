@@ -17,5 +17,7 @@ public class BbTeamDTO {
     private String color;
     private Double averageOverall;
     private Long budget;
+    private String playStyle;
+    private String starterIds;
     private List<BbPlayerDTO> players;
 }

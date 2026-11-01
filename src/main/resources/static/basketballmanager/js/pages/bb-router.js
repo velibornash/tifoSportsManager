@@ -39,6 +39,7 @@ async function loadPage(page, options = {}) {
             case 'stats': await window.bbRenderStats(); break;
             case 'schedule': await window.bbRenderSchedule(); break;
             case 'transfers': await bbRenderTransfers(); break;
+            case 'tactics': await bbRenderTactics(); break;
             case 'player': await window.bbRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.bbRenderMatchViewer(options); break;
             default: await window.bbRenderDashboard();
@@ -155,4 +156,77 @@ window.bbInit = bbInit;
 window._team = _team;
 window.bbSelectTeam = bbSelectTeam;
 window.bbShowPlayer = bbShowPlayer;
+async function bbRenderTactics() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    if (!window.bbTeams.length) await window.bbInit();
+    const team = window._team(window.bbCurrentTeamId);
+    const players = await window.bbFetchTeamPlayers(window.bbCurrentTeamId);
+    const tac = await window.bbFetchTactics(window.bbCurrentTeamId);
+    const selected = new Set((tac.starterIds || '').split(',').filter(Boolean).map(Number));
+    const style = tac.playStyle || 'BALANCED';
+
+    const styleButtons = ['OFFENSIVE', 'BALANCED', 'DEFENSIVE', 'COUNTER'].map(s => `
+        <button class="${s === style ? 'play-all-btn' : 'reset-btn'}" style="font-size:0.8rem;padding:6px 12px;" onclick="bbTacticsStyle='${s}'; document.querySelectorAll('.bb-style-btn').forEach(b=>b.classList.remove('play-all-btn')); this.classList.add('play-all-btn');">${s}</button>
+    `).join('');
+
+    const rows = players.map(p => {
+        const ovr = p.overall || window.bbCalculateOverall(p.skills, p.position);
+        const checked = selected.has(p.id) ? 'checked' : '';
+        return `<tr>
+            <td><input type="checkbox" class="bb-starter-cb" value="${p.id}" ${checked}></td>
+            <td class="player-name-cell">${cmEscapeHtml(p.name)}</td>
+            <td><span class="pos-badge ${p.position}">${p.position}</span></td>
+            <td style="font-weight:900;">${ovr}</td>
+        </tr>`;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <div class="bball-eyebrow">Team Settings</div>
+                    <h2 style="margin:0;">Tactics</h2>
+                </div>
+                <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <h3 style="margin:0 0 8px;">Play Style</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="bb-style-buttons">
+                    ${['OFFENSIVE','BALANCED','DEFENSIVE','COUNTER'].map(s => `
+                        <button class="bb-style-btn ${s === style ? 'play-all-btn' : 'reset-btn'}" data-style="${s}" style="font-size:0.8rem;padding:6px 12px;" onclick="window.bbTacticsStyle='${s}'; document.querySelectorAll('.bb-style-btn').forEach(b=>{b.classList.remove('play-all-btn');b.classList.add('reset-btn');}); this.classList.remove('reset-btn'); this.classList.add('play-all-btn');">${s}</button>
+                    `).join('')}
+                </div>
+                <p style="font-size:0.75rem;color:#99a6bb;margin-top:6px;">Starters get more shot opportunities. Offensive increases shot volume, Defensive reduces it.</p>
+            </div>
+
+            <h3 style="margin:12px 0 8px;">Starting Five (select 5)</h3>
+            <div style="overflow-x:auto;">
+                <table class="player-table">
+                    <thead><tr><th></th><th style="text-align:left;">Player</th><th>Pos</th><th>OVR</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <div style="margin-top:12px;">
+                <button class="play-all-btn" onclick="bbSaveTacticsClick()">Save Tactics</button>
+            </div>
+        </div>`;
+    window.bbTacticsStyle = style;
+}
+
+async function bbSaveTacticsClick() {
+    const checked = Array.from(document.querySelectorAll('.bb-starter-cb:checked')).map(cb => cb.value);
+    if (checked.length > 5) { alert('Select at most 5 starters'); return; }
+    const style = window.bbTacticsStyle || 'BALANCED';
+    const res = await window.bbSaveTactics(window.bbCurrentTeamId, style, checked.join(','));
+    if (res && res.ok) {
+        alert('Tactics saved');
+        loadPage('dashboard');
+    } else {
+        alert(res && res.error ? res.error : 'Save failed');
+    }
+}
+
+window.bbRenderTactics = bbRenderTactics;
 window.loadPage = loadPage;

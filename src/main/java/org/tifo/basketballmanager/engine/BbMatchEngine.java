@@ -21,6 +21,9 @@ public class BbMatchEngine {
         List<BbPlayer> homePlayers = new ArrayList<>(home.getPlayers());
         List<BbPlayer> awayPlayers = new ArrayList<>(away.getPlayers());
 
+        Set<Long> homeStarters = parseStarterIds(home.getStarterIds());
+        Set<Long> awayStarters = parseStarterIds(away.getStarterIds());
+
         Collections.shuffle(homePlayers, random);
         Collections.shuffle(awayPlayers, random);
 
@@ -34,6 +37,7 @@ public class BbMatchEngine {
         // 4 regulation quarters
         for (int q = 0; q < 4; q++) {
             playPeriod(homePlayers, awayPlayers, homeStats, awayStats, events, home, away,
+                    homeStarters, home.getPlayStyle(), awayStarters, away.getPlayStyle(),
                     q, false, 0, homeQS, awayQS);
         }
 
@@ -49,6 +53,7 @@ public class BbMatchEngine {
 
             int qIndex = 3 + otCount; // OT1 = index 4, OT2 = index 5, etc.
             playPeriod(homePlayers, awayPlayers, homeStats, awayStats, events, home, away,
+                    homeStarters, home.getPlayStyle(), awayStarters, away.getPlayStyle(),
                     qIndex, true, otCount, homeQS, awayQS);
         }
 
@@ -84,6 +89,7 @@ public class BbMatchEngine {
     private void playPeriod(List<BbPlayer> homePlayers, List<BbPlayer> awayPlayers,
                              Map<Long, BbPlayerGameStats> homeStats, Map<Long, BbPlayerGameStats> awayStats,
                              List<String> events, BbTeam home, BbTeam away,
+                             Set<Long> homeStarters, String homeStyle, Set<Long> awayStarters, String awayStyle,
                              int qIndex, boolean isOt, int otNum,
                              List<Integer> homeQS, List<Integer> awayQS) {
         int possInQ = isOt ? OT_POSS : POSS_PER_Q;
@@ -102,11 +108,11 @@ public class BbMatchEngine {
             String timeStr = periodLabel + " " + min + ":" + String.format("%02d", sec);
 
             if (homePossession) {
-                BbPlayer shooter = selectShooter(homePlayers, homeStats);
+                BbPlayer shooter = selectShooter(homePlayers, homeStats, homeStarters, homeStyle);
                 int pts = runPossession(shooter, homePlayers, awayPlayers, homeStats, awayStats, events, timeStr, home, away, true);
                 homeQScore += pts;
             } else {
-                BbPlayer shooter = selectShooter(awayPlayers, awayStats);
+                BbPlayer shooter = selectShooter(awayPlayers, awayStats, awayStarters, awayStyle);
                 int pts = runPossession(shooter, awayPlayers, homePlayers, awayStats, homeStats, events, timeStr, home, away, false);
                 awayQScore += pts;
             }
@@ -248,21 +254,45 @@ public class BbMatchEngine {
         return 0;
     }
 
-    private BbPlayer selectShooter(List<BbPlayer> players, Map<Long, BbPlayerGameStats> statsMap) {
+    private BbPlayer selectShooter(List<BbPlayer> players, Map<Long, BbPlayerGameStats> statsMap,
+                                  Set<Long> starterIds, String playStyle) {
         List<BbPlayer> eligible = players.stream()
                 .filter(p -> statsMap.get(p.getId()).getFouls() < 5)
                 .collect(Collectors.toList());
         if (eligible.isEmpty()) eligible = players;
+        double styleFactor = switch (playStyle == null ? "BALANCED" : playStyle) {
+            case "OFFENSIVE" -> 1.2;
+            case "DEFENSIVE" -> 0.8;
+            case "COUNTER" -> 1.0;
+            default -> 1.0;
+        };
         double totalWeight = eligible.stream()
-                .mapToDouble(p -> 1.0 + (p.getSkillTwoPtShot() + p.getSkillThreePtShot()) / 30.0)
+                .mapToDouble(p -> {
+                    double w = 1.0 + (p.getSkillTwoPtShot() + p.getSkillThreePtShot()) / 30.0;
+                    if (starterIds != null && starterIds.contains(p.getId())) w *= 2.0;
+                    w *= styleFactor;
+                    return w;
+                })
                 .sum();
         double r = random.nextDouble() * totalWeight;
         double cumulative = 0;
         for (BbPlayer p : eligible) {
-            cumulative += 1.0 + (p.getSkillTwoPtShot() + p.getSkillThreePtShot()) / 30.0;
+            double w = 1.0 + (p.getSkillTwoPtShot() + p.getSkillThreePtShot()) / 30.0;
+            if (starterIds != null && starterIds.contains(p.getId())) w *= 2.0;
+            w *= styleFactor;
+            cumulative += w;
             if (r <= cumulative) return p;
         }
         return eligible.get(eligible.size() - 1);
+    }
+
+    private Set<Long> parseStarterIds(String starterIds) {
+        Set<Long> set = new HashSet<>();
+        if (starterIds == null || starterIds.isBlank()) return set;
+        for (String part : starterIds.split(",")) {
+            try { set.add(Long.parseLong(part.trim())); } catch (NumberFormatException ignored) { }
+        }
+        return set;
     }
 
     private BbPlayer selectRebounder(List<BbPlayer> players, Map<Long, BbPlayerGameStats> statsMap) {
