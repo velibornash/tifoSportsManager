@@ -466,6 +466,7 @@ public class MatchState {
 
     public void clearPassContext() {
         clearPendingPass();
+        pendingReceiver = null;
         lastCompletedPasserId = null;
         lastCompletedPasserName = null;
         lastCompletedPasserTeam = null;
