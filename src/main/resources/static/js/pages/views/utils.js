@@ -205,8 +205,11 @@ export function formatMilestoneAttendanceValue(value) {
  *   one string and escape all of it, which is right and is why the icons have to arrive as a pair of
  *   parts: a pre-joined "<span>⚽</span> · club" string would render as visible tags.
  */
-export function buildMilestoneCardHtml(title, value, meta, extraClass = '') {
-    const safeValue = value == null || value === '' ? '—' : htmlEscape(String(value));
+export function buildMilestoneCardHtml(title, value, meta, extraClass = '', playerId = null) {
+    const safeValue = value == null || value === '' ? '—'
+        : playerId
+            ? `<span class="fm-player-link" onclick="if(window.loadPlayer) window.loadPlayer(${Number(playerId)}, 'dashboard')" style="cursor:pointer;">${htmlEscape(String(value))}</span>`
+            : htmlEscape(String(value));
     const safeMeta = meta == null || meta === ''
         ? 'No milestone logged yet.'
         : typeof meta === 'object'
@@ -251,12 +254,16 @@ export function buildMilestoneBoardHtml(milestones) {
             ${buildMilestoneCardHtml(
                 'Top scorer',
                 scorer?.playerName || '—',
-                scorer?.playerName ? { club: scorer.teamName, icons: iconCount('fm-badge-goal', '⚽', scorer.value) } : 'No goals filed yet.'
+                scorer?.playerName ? { club: scorer.teamName, icons: iconCount('fm-badge-goal', '⚽', scorer.value) } : 'No goals filed yet.',
+                '',
+                scorer?.playerId
             )}
             ${buildMilestoneCardHtml(
                 'Top assist',
                 assist?.playerName || '—',
-                assist?.playerName ? { club: assist.teamName, icons: iconCount('fm-badge-ast', '&#127984;', assist.value) } : 'No assists filed yet.'
+                assist?.playerName ? { club: assist.teamName, icons: iconCount('fm-badge-ast', '&#127984;', assist.value) } : 'No assists filed yet.',
+                '',
+                assist?.playerId
             )}
             ${buildMilestoneCardHtml(
                 'Biggest win',
