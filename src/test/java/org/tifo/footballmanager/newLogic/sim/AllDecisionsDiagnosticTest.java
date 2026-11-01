@@ -68,6 +68,13 @@ class AllDecisionsDiagnosticTest {
         });
 
         orchestrator.simulate(TICKS);
+        // Log all duels
+        System.out.println("\n=== DUELS ===");
+        for (org.tifo.footballmanager.newLogic.sim.recording.MatchEvent e : orchestrator.getRecorder().getEvents()) {
+            if (e.getType() != null && e.getType().contains("DUEL")) {
+                System.out.println("TICK " + e.getTick() + " " + e.getType() + " " + e.getDescription());
+            }
+        }
         System.out.println("\n=== MATCH ENDED after " + TICKS + " ticks ===");
     }
 

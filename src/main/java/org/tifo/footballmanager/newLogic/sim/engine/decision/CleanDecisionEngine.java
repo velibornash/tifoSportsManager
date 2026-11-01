@@ -555,16 +555,8 @@ public class CleanDecisionEngine {
             }
         }
 
-        // DANGEROUS-ZONE TOUCHLINE PENALTY: in the own defensive third, passes toward
-        // the touchline (col < 2.0 or col > 6.0) are riskier (OOB risk) and should be
-        // penalized. Central passes are safer.
-        if (inDangerousZone) {
-            double _targetCol = receiver.getPosition().getColumn();
-            if (_targetCol < 2.0 || _targetCol > 6.0) {
-                score -= 15.0;
-                reason.append("touchline -15 ");
-            }
-        }
+        // DANGEROUS-ZONE TOUCHLINE PENALTY removed (owner: no penalty for passes to the side
+        // if the pass is open). OOB risk (-20 for col < 1.5 or > 6.5) stays.
 
         // Safety: how close is the nearest opponent to the receiver? A pass to a
         // receiver with an opponent within 0.5 cells (7 m) is dangerous; a pass to
