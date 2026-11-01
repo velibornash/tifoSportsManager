@@ -9,6 +9,7 @@ import org.tifo.footballmanager.newLogic.sim.restarts.RestartManager;
 import org.tifo.footballmanager.newLogic.sim.rules.DisciplineService;
 import org.tifo.footballmanager.newLogic.sim.rules.OffsideService;
 import org.tifo.footballmanager.newLogic.sim.rules.VARService;
+import org.tifo.footballmanager.newLogic.sim.util.SimUtils;
 import org.tifo.footballmanager.newLogic.sim.util.SimulationRandom;
 
 /**
@@ -43,8 +44,43 @@ public class DuelService {
     }
 
     public void detectAndResolveDuels() {
-        if (state.getCarrier() == null) return;
         Player carrier = state.getCarrier();
+
+        // Loose ball: no carrier yet. If two opponents are close to the ball and to
+        // each other, they duel for it (owner: "ako dodju istovremeno odmah se desava duel").
+        if (carrier == null) {
+            Player homeChaser = null, awayChaser = null;
+            double homeD = Double.MAX_VALUE, awayD = Double.MAX_VALUE;
+            for (Player p : state.getPlayers()) {
+                if (p.isUnavailable() || p.isLocked() || p.isSentOff()) continue;
+                double d = SimUtils.distance(p.getPosition(), state.getBall().getPosition());
+                if (d > 0.5) continue; // only players near the ball
+                if ("HOME".equals(p.getTeam()) && d < homeD) { homeD = d; homeChaser = p; }
+                if ("AWAY".equals(p.getTeam()) && d < awayD) { awayD = d; awayChaser = p; }
+            }
+            if (homeChaser != null && awayChaser != null) {
+                double dist = SimUtils.distance(homeChaser.getPosition(), awayChaser.getPosition());
+                if (dist <= 0.25) {
+                    // Duel for the loose ball
+                    DuelEngine.DuelType duelType = DuelEngine.DuelType.RECEIVE_PASS;
+                    Player winner = duelEngine.resolveDuel(homeChaser, awayChaser, duelType, state);
+                    duelEngine.applyDuelResult(state, winner, winner == homeChaser ? awayChaser : homeChaser);
+                    String duelMsg = "DUEL " + duelType + " (loose ball) won by " + winner.getLabel()
+                            + " (" + homeChaser.getLabel() + p(homeChaser.getPosition())
+                            + " v " + awayChaser.getLabel() + p(awayChaser.getPosition()) + ")"
+                            + " ball" + p(state.getBall().getPosition());
+                    log("DUL", duelMsg);
+                    recorder.appendEvent(state.getMatchTicks(), "DUEL", duelMsg, state);
+                    recorder.appendEvent(state.getMatchTicks(), "DUEL_RESOLVED",
+                            "DUEL RESOLVED " + winner.getLabel() + " won, "
+                                    + (winner == homeChaser ? awayChaser : homeChaser).getLabel() + " locked for "
+                                    + DuelEngine.LOSER_LOCK_TICKS + " ticks",
+                            winner, winner == homeChaser ? awayChaser : homeChaser);
+                    stats.onDuelWon(winner.getId(), (winner == homeChaser ? awayChaser : homeChaser).getId());
+                }
+            }
+            return;
+        }
 
         // Pick the most dangerous qualifying opponent (F-DU-3, owner decision
         // 2026-10-22): among all opponents that can contest the ball this tick,
