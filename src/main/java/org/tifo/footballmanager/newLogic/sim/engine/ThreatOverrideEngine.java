@@ -183,7 +183,11 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
         // "Several metres of nobody around him". A carrier who is already crowded does not need
         // one more man sent at him, and pressing him anyway is what produced a mean of four
         // defenders inside the press radius at the same moment.
-        if (!carrierIsFree(state, carrier)) return null;
+        // EXCEPTION (owner 2026-11-01): in the shooting zone, a defender must always press the
+        // carrier so a duel can fire — even when the carrier is crowded. A shot next to a
+        // defender with no duel is a bug.
+        boolean inShootingZone = isShootingZone(carrier);
+        if (!inShootingZone && !carrierIsFree(state, carrier)) return null;
 
         if (!isClosestEligiblePresser(carrier, defender, state)) return null;
 
@@ -194,6 +198,18 @@ public class ThreatOverrideEngine implements EngineInterfaces.ThreatOverrideEngi
     }
 
     /** Whether nobody from the carrier's own team is within {@link #CARRIER_SPACE_RADIUS} of him. */
+    /** Whether the carrier is in the shooting zone (final third, not a corner). Mirrors CleanDecisionEngine. */
+    private boolean isShootingZone(Player p) {
+        double row = p.getPosition().getRow();
+        double col = p.getPosition().getColumn();
+        boolean home = "HOME".equals(p.getTeam());
+        boolean inBand = home ? row >= 6.0 : row <= 3.0;
+        boolean inCorner = home
+                ? (row > 7.0 && (col < 2.0 || col > 6.0))
+                : (row < 2.0 && (col < 2.0 || col > 6.0));
+        return inBand && !inCorner;
+    }
+
     private boolean carrierIsFree(MatchState state, Player carrier) {
         for (Player teammate : state.getPlayers()) {
             if (!teammate.getTeam().equals(carrier.getTeam())) continue;
