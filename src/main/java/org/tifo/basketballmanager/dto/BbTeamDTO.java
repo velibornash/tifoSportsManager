@@ -19,5 +19,6 @@ public class BbTeamDTO {
     private Long budget;
     private String playStyle;
     private String starterIds;
+    private String trainingFocus;
     private List<BbPlayerDTO> players;
 }

@@ -29,6 +29,7 @@ public class BbController {
     private final BbTeamRepository teamRepository;
     private final BbPlayerService playerService;
     private final BbTransferService transferService;
+    private final BbTrainingService trainingService;
     private final BbLeagueService leagueService;
     private final BbMatchRepository matchRepository;
     private final BbMatchSimulationService simulationService;
@@ -44,6 +45,7 @@ public class BbController {
     public BbController(BbTeamRepository teamRepository,
                         BbPlayerService playerService,
                         BbTransferService transferService,
+                        BbTrainingService trainingService,
                         BbLeagueService leagueService,
                         BbMatchRepository matchRepository,
                         BbMatchSimulationService simulationService,
@@ -57,6 +59,7 @@ public class BbController {
         this.teamRepository = teamRepository;
         this.playerService = playerService;
         this.transferService = transferService;
+        this.trainingService = trainingService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -511,6 +514,37 @@ public class BbController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // ─── Training ───
+
+    @GetMapping("/teams/{id}/training")
+    public ResponseEntity<Map<String, Object>> getTraining(@PathVariable Long id) {
+        return teamRepository.findById(id).map(team -> {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("focus", trainingService.getFocus(id));
+            return ResponseEntity.ok(resp);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/teams/{id}/training/focus")
+    public ResponseEntity<Map<String, Object>> setTrainingFocus(@PathVariable Long id,
+                                                               @RequestBody Map<String, String> body) {
+        String focus = body.getOrDefault("focus", "BALANCED");
+        trainingService.setFocus(id, focus);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("ok", true);
+        resp.put("focus", trainingService.getFocus(id));
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/teams/{id}/training/train")
+    public ResponseEntity<Map<String, Object>> train(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(trainingService.train(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ─── DTO Mappers ───
 
     private BbTeamDTO toTeamDTO(BbTeam team) {
@@ -526,6 +560,7 @@ public class BbController {
                 .budget(team.getBudget())
                 .playStyle(team.getPlayStyle())
                 .starterIds(team.getStarterIds())
+                .trainingFocus(team.getTrainingFocus())
                 .build();
     }
 

@@ -40,6 +40,7 @@ async function loadPage(page, options = {}) {
             case 'schedule': await window.bbRenderSchedule(); break;
             case 'transfers': await bbRenderTransfers(); break;
             case 'tactics': await bbRenderTactics(); break;
+            case 'training': await bbRenderTraining(); break;
             case 'player': await window.bbRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.bbRenderMatchViewer(options); break;
             default: await window.bbRenderDashboard();
@@ -228,5 +229,78 @@ async function bbSaveTacticsClick() {
     }
 }
 
+async function bbRenderTraining() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    if (!window.bbTeams.length) await window.bbInit();
+    const team = window._team(window.bbCurrentTeamId);
+    const tr = await window.bbFetchTraining(window.bbCurrentTeamId);
+    const focus = tr.focus || 'BALANCED';
+    const players = await window.bbFetchTeamPlayers(window.bbCurrentTeamId);
+
+    const focusButtons = ['BALANCED', 'ATTACK', 'DEFENCE', 'CREATION'].map(f => `
+        <button class="bb-focus-btn ${f === focus ? 'play-all-btn' : 'reset-btn'}" data-focus="${f}" style="font-size:0.8rem;padding:6px 12px;" onclick="window.bbTrainingFocus='${f}'; document.querySelectorAll('.bb-focus-btn').forEach(b=>{b.classList.remove('play-all-btn');b.classList.add('reset-btn');}); this.classList.remove('reset-btn'); this.classList.add('play-all-btn');">${f}</button>
+    `).join('');
+
+    const rows = players.map(p => {
+        const ovr = p.overall || window.bbCalculateOverall(p.skills, p.position);
+        const s = p.skills || {};
+        return `<tr>
+            <td class="player-name-cell">${cmEscapeHtml(p.name)}</td>
+            <td><span class="pos-badge ${p.position}">${p.position}</span></td>
+            <td style="font-weight:900;">${ovr}</td>
+            <td>${cmSkillBar(s.pace)}</td>
+            <td>${cmSkillBar(s.twoPtShot)}</td>
+            <td>${cmSkillBar(s.threePtShot)}</td>
+            <td>${cmSkillBar(s.rebounding)}</td>
+            <td>${cmSkillBar(s.playmaking)}</td>
+        </tr>`;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <div class="bball-eyebrow">Team Development</div>
+                    <h2 style="margin:0;">Training</h2>
+                </div>
+                <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <h3 style="margin:0 0 8px;">Training Focus</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">${focusButtons}</div>
+                <p style="font-size:0.75rem;color:#99a6bb;margin-top:6px;">One squad-wide focus per session. Click "Train Now" to apply development.</p>
+            </div>
+            <div style="margin-bottom:16px;">
+                <button class="play-all-btn" onclick="bbTrainClick()">Train Now</button>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table class="player-table">
+                    <thead><tr>
+                        <th style="text-align:left;">Player</th><th>Pos</th><th>OVR</th>
+                        <th>Pace</th><th>2PT</th><th>3PT</th><th>Reb</th><th>Ply</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    window.bbTrainingFocus = focus;
+}
+
+async function bbTrainClick() {
+    const focus = window.bbTrainingFocus || 'BALANCED';
+    await window.bbSetTrainingFocus(window.bbCurrentTeamId, focus);
+    const res = await window.bbTrain(window.bbCurrentTeamId);
+    if (res && res.ok) {
+        alert('Training complete: ' + (res.playersImproved || 0) + ' of ' + (res.playersTrained || 0) + ' players improved.');
+        loadPage('training');
+    } else {
+        alert(res && res.error ? res.error : 'Training failed');
+    }
+}
+
+window.bbRenderTraining = bbRenderTraining;
 window.bbRenderTactics = bbRenderTactics;
 window.loadPage = loadPage;

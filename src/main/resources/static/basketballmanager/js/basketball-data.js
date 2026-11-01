@@ -213,6 +213,34 @@ async function bbSaveTactics(teamId, playStyle, starterIds) {
     } catch (e) { return { ok: false, error: e.message }; }
 }
 
+async function bbFetchTraining(teamId) {
+    try {
+        const res = await window.authFetch('/api/bb/teams/' + teamId + '/training');
+        if (!res.ok) return { focus: 'BALANCED' };
+        return await res.json();
+    } catch { return { focus: 'BALANCED' }; }
+}
+async function bbSetTrainingFocus(teamId, focus) {
+    try {
+        const res = await window.authFetch('/api/bb/teams/' + teamId + '/training/focus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ focus })
+        });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+async function bbTrain(teamId) {
+    try {
+        const res = await window.authFetch('/api/bb/teams/' + teamId + '/training/train', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+
 async function bbFetchRecentMatches(teamId, limit = 3) {
     try {
         const res = await window.authFetch('/api/bb/matches/team/' + teamId + '/recent?limit=' + limit + '&seasonYear=' + BBALL_CONF.seasonYear);
@@ -290,6 +318,9 @@ window.bbFetchMatchDetail = bbFetchMatchDetail;
 window.bbFetchRecentMatches = bbFetchRecentMatches;
 window.bbFetchTactics = bbFetchTactics;
 window.bbSaveTactics = bbSaveTactics;
+window.bbFetchTraining = bbFetchTraining;
+window.bbSetTrainingFocus = bbSetTrainingFocus;
+window.bbTrain = bbTrain;
 window.bbFetchTransferMarket = bbFetchTransferMarket;
 window.bbBuyPlayer = bbBuyPlayer;
 window.bbSellPlayer = bbSellPlayer;
