@@ -14,6 +14,7 @@ let AF_CONF = {
     teamName: null,
     teamShortName: null,
     teamColor: null,
+    budget: 0,
     quarters: 4,
     quarterMinutes: 15,
 };
@@ -53,6 +54,7 @@ async function afFetchMyTeam() {
                 AF_CONF.teamColor = data.teamColor;
                 AF_CONF.competitionId = data.competitionId;
                 AF_CONF.seasonYear = data.seasonYear || 2025;
+                AF_CONF.budget = data.budget || 0;
             }
             return data;
         } finally {
@@ -215,6 +217,37 @@ function afCalculateOverall(skills, position) {
 
 function afPositions() { return ['QB', 'RB', 'WR', 'TE', 'OL', 'DE', 'DT', 'LB', 'CB', 'S', 'K', 'P']; }
 
+async function afFetchTransferMarket(limit = 100) {
+    try {
+        const res = await window.authFetch('/api/af/transfers/market?limit=' + limit);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch (e) { console.error(e); return []; }
+}
+async function afBuyPlayer(playerId) {
+    try {
+        const res = await window.authFetch('/api/af/transfers/buy/' + playerId, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Buy failed' };
+        window.AF_CONF.budget = data.budget || window.AF_CONF.budget;
+        window.afInvalidateCache();
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+async function afSellPlayer(playerId) {
+    try {
+        const res = await window.authFetch('/api/af/transfers/sell/' + playerId, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Sell failed' };
+        window.AF_CONF.budget = data.budget || window.AF_CONF.budget;
+        window.afInvalidateCache();
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+
+window.afFetchTransferMarket = afFetchTransferMarket;
+window.afBuyPlayer = afBuyPlayer;
+window.afSellPlayer = afSellPlayer;
 window.AF_CONF = AF_CONF;
 window.afFetchMyTeam = afFetchMyTeam;
 window.afFetchTeams = afFetchTeams;

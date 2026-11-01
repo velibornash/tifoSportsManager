@@ -58,6 +58,10 @@ public class AfTeam {
     @Builder.Default
     private List<AfPlayer> players = new ArrayList<>();
 
+    @Column(name = "budget", columnDefinition = "bigint not null default 5000000")
+    @Builder.Default
+    private Long budget = 5_000_000L;
+
     public double getAverageOverall() {
         if (players.isEmpty()) return 0;
         return players.stream().mapToInt(AfPlayer::getOverall).average().orElse(0);

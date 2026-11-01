@@ -16,5 +16,6 @@ public class AfTeamDTO {
     private Integer stadiumCapacity;
     private String color;
     private Double averageOverall;
+    private Long budget;
     private List<AfPlayerDTO> players;
 }

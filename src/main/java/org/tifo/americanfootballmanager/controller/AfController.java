@@ -26,6 +26,7 @@ public class AfController {
 
     private final AfTeamRepository teamRepository;
     private final AfPlayerService playerService;
+    private final AfTransferService transferService;
     private final AfLeagueService leagueService;
     private final AfMatchRepository matchRepository;
     private final AfMatchSimulationService simulationService;
@@ -39,6 +40,7 @@ public class AfController {
 
     public AfController(AfTeamRepository teamRepository,
                          AfPlayerService playerService,
+                         AfTransferService transferService,
                          AfLeagueService leagueService,
                          AfMatchRepository matchRepository,
                          AfMatchSimulationService simulationService,
@@ -51,6 +53,7 @@ public class AfController {
                          CommonCompetitionRepository commonCompetitionRepository) {
         this.teamRepository = teamRepository;
         this.playerService = playerService;
+        this.transferService = transferService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -135,6 +138,7 @@ public class AfController {
         resp.put("teamName", team.getName());
         resp.put("teamShortName", team.getShortName());
         resp.put("teamColor", team.getColor());
+        resp.put("budget", team.getBudget());
         resp.put("competitionId", comp != null ? comp.getId() : null);
         resp.put("competitionName", comp != null ? comp.getName() : null);
         resp.put("seasonYear", 2025);
@@ -402,6 +406,45 @@ public class AfController {
         }
     }
 
+    // ─── Transfers ───
+
+    @GetMapping("/transfers/market")
+    public ResponseEntity<List<AfPlayerDTO>> getTransferMarket(@RequestParam(defaultValue = "100") int limit) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(transferService.getMarketPlayers(userTeamId, limit));
+    }
+
+    @PostMapping("/transfers/buy/{playerId}")
+    public ResponseEntity<Map<String, Object>> buyPlayer(@PathVariable Long playerId) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        try {
+            return ResponseEntity.ok(transferService.buyPlayer(userTeamId, playerId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/transfers/sell/{playerId}")
+    public ResponseEntity<Map<String, Object>> sellPlayer(@PathVariable Long playerId) {
+        Long userTeamId = getCurrentUserTeamId();
+        if (userTeamId == null) return ResponseEntity.badRequest().build();
+        try {
+            return ResponseEntity.ok(transferService.sellPlayer(userTeamId, playerId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private Long getCurrentUserTeamId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+        return userRepository.findByUsernameOrEmail(email)
+                .map(u -> u.getAmericanFootballTeam() != null ? u.getAmericanFootballTeam().getId() : null)
+                .orElse(null);
+    }
+
     // ─── DTO Mappers ───
 
     private AfTeamDTO toTeamDTO(AfTeam team) {
@@ -414,6 +457,7 @@ public class AfController {
                 .stadiumCapacity(team.getStadiumCapacity())
                 .color(team.getColor())
                 .averageOverall(team.getAverageOverall())
+                .budget(team.getBudget())
                 .build();
     }
 
