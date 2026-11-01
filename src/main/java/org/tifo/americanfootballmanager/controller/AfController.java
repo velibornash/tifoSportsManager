@@ -27,6 +27,7 @@ public class AfController {
     private final AfTeamRepository teamRepository;
     private final AfPlayerService playerService;
     private final AfTransferService transferService;
+    private final AfTrainingService trainingService;
     private final AfLeagueService leagueService;
     private final AfMatchRepository matchRepository;
     private final AfMatchSimulationService simulationService;
@@ -41,6 +42,7 @@ public class AfController {
     public AfController(AfTeamRepository teamRepository,
                          AfPlayerService playerService,
                          AfTransferService transferService,
+                         AfTrainingService trainingService,
                          AfLeagueService leagueService,
                          AfMatchRepository matchRepository,
                          AfMatchSimulationService simulationService,
@@ -54,6 +56,7 @@ public class AfController {
         this.teamRepository = teamRepository;
         this.playerService = playerService;
         this.transferService = transferService;
+        this.trainingService = trainingService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -473,6 +476,36 @@ public class AfController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // ─── Training ───
+
+    @GetMapping("/teams/{id}/training")
+    public ResponseEntity<Map<String, Object>> getTraining(@PathVariable Long id) {
+        return teamRepository.findById(id).map(team -> {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("focus", trainingService.getFocus(id));
+            return ResponseEntity.ok(resp);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/teams/{id}/training/focus")
+    public ResponseEntity<Map<String, Object>> setTrainingFocus(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String focus = body.getOrDefault("focus", "BALANCED");
+        trainingService.setFocus(id, focus);
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("ok", true);
+        resp.put("focus", trainingService.getFocus(id));
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/teams/{id}/training/train")
+    public ResponseEntity<Map<String, Object>> train(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(trainingService.train(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     // ─── DTO Mappers ───
 
     private AfTeamDTO toTeamDTO(AfTeam team) {
@@ -488,6 +521,7 @@ public class AfController {
                 .budget(team.getBudget())
                 .playStyle(team.getPlayStyle())
                 .starterIds(team.getStarterIds())
+                .trainingFocus(team.getTrainingFocus())
                 .build();
     }
 

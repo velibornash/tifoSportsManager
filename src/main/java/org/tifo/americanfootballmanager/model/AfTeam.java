@@ -69,6 +69,10 @@ public class AfTeam {
     @Column(name = "starter_ids", length = 500)
     private String starterIds;
 
+    @Column(name = "training_focus", length = 16, columnDefinition = "varchar(16) not null default 'BALANCED'")
+    @Builder.Default
+    private String trainingFocus = "BALANCED";
+
     public double getAverageOverall() {
         if (players.isEmpty()) return 0;
         return players.stream().mapToInt(AfPlayer::getOverall).average().orElse(0);

@@ -265,6 +265,35 @@ async function afSaveTactics(teamId, playStyle, starterIds) {
 }
 window.afFetchTactics = afFetchTactics;
 window.afSaveTactics = afSaveTactics;
+async function afFetchTraining(teamId) {
+    try {
+        const res = await window.authFetch('/api/af/teams/' + teamId + '/training');
+        if (!res.ok) return { focus: 'BALANCED' };
+        return await res.json();
+    } catch { return { focus: 'BALANCED' }; }
+}
+async function afSetTrainingFocus(teamId, focus) {
+    try {
+        const res = await window.authFetch('/api/af/teams/' + teamId + '/training/focus', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ focus })
+        });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+async function afTrain(teamId) {
+    try {
+        const res = await window.authFetch('/api/af/teams/' + teamId + '/training/train', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+window.afFetchTraining = afFetchTraining;
+window.afSetTrainingFocus = afSetTrainingFocus;
+window.afTrain = afTrain;
 window.afFetchTransferMarket = afFetchTransferMarket;
 window.afBuyPlayer = afBuyPlayer;
 window.afSellPlayer = afSellPlayer;

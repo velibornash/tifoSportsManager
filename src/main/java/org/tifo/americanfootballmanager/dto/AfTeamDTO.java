@@ -19,5 +19,6 @@ public class AfTeamDTO {
     private Long budget;
     private String playStyle;
     private String starterIds;
+    private String trainingFocus;
     private List<AfPlayerDTO> players;
 }

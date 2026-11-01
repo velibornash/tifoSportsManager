@@ -38,6 +38,7 @@ async function loadPage(page, options = {}) {
             case 'schedule': await window.afRenderSchedule(); break;
             case 'transfers': await afRenderTransfers(); break;
             case 'tactics': await afRenderTactics(); break;
+            case 'training': await afRenderTraining(); break;
             case 'player': await window.afRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.afRenderMatchViewer(options); break;
             default: await window.afRenderDashboard();
@@ -194,5 +195,57 @@ async function afSaveTacticsClick() {
     else { alert(res && res.error ? res.error : 'Save failed'); }
 }
 
+async function afRenderTraining() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    if (!window.afTeams.length) await window.afInit();
+    const players = await window.afFetchTeamPlayers(window.afCurrentTeamId);
+    const tr = await window.afFetchTraining(window.afCurrentTeamId);
+    const focus = tr.focus || 'BALANCED';
+
+    const focusButtons = ['BALANCED', 'OFFENSE', 'DEFENSE', 'SPECIAL'].map(f => `
+        <button class="af-focus-btn ${f === focus ? 'play-all-btn' : 'reset-btn'}" data-focus="${f}" style="font-size:0.8rem;padding:6px 12px;" onclick="window.afTrainingFocus='${f}'; document.querySelectorAll('.af-focus-btn').forEach(b=>{b.classList.remove('play-all-btn');b.classList.add('reset-btn');}); this.classList.remove('reset-btn'); this.classList.add('play-all-btn');">${f}</button>
+    `).join('');
+
+    const rows = players.map(p => {
+        const ovr = p.overall || 0;
+        return `<tr>
+            <td class="player-name-cell">${cmEscapeHtml(p.name)}</td>
+            <td>${p.position}</td>
+            <td style="font-weight:900;">${ovr}</td>
+        </tr>`;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div><div class="af-eyebrow">Team Development</div><h2 style="margin:0;">Training</h2></div>
+                <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+            </div>
+            <div style="margin-bottom:16px;">
+                <h3 style="margin:0 0 8px;">Training Focus</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">${focusButtons}</div>
+                <p style="font-size:0.75rem;color:#99a6bb;margin-top:6px;">One squad-wide focus per session. Click "Train Now" to apply development.</p>
+            </div>
+            <div style="margin-bottom:16px;"><button class="play-all-btn" onclick="afTrainClick()">Train Now</button></div>
+            <div style="overflow-x:auto;">
+                <table class="player-table">
+                    <thead><tr><th style="text-align:left;">Player</th><th>Pos</th><th>OVR</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    window.afTrainingFocus = focus;
+}
+
+async function afTrainClick() {
+    const focus = window.afTrainingFocus || 'BALANCED';
+    await window.afSetTrainingFocus(window.afCurrentTeamId, focus);
+    const res = await window.afTrain(window.afCurrentTeamId);
+    if (res && res.ok) { alert('Training complete: ' + (res.playersImproved||0) + ' of ' + (res.playersTrained||0) + ' players improved.'); loadPage('training'); }
+    else { alert(res && res.error ? res.error : 'Training failed'); }
+}
+
+window.afRenderTraining = afRenderTraining;
 window.afRenderTactics = afRenderTactics;
 window.afRenderTransfers = afRenderTransfers;
