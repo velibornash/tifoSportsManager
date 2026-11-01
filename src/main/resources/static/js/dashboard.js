@@ -493,7 +493,15 @@ window.addEventListener('load', async () => {
         startNotificationPolling();
         if (typeof window.renderDesktopBottomNav === 'function') window.renderDesktopBottomNav('dashboard');
 
-        loadDashboard();
+        const initialHash = (location.hash || '').replace(/^#/, '').trim();
+        if (initialHash && initialHash !== 'dashboard' && typeof window.loadPage === 'function') {
+            window.loadPage(initialHash, { pushHistory: false });
+        } else {
+            loadDashboard();
+            if (typeof history.replaceState === 'function') {
+                try { history.replaceState({ page: 'dashboard' }, '', '#dashboard'); } catch (e) { /* ignore */ }
+            }
+        }
     } catch (err) {
         console.error('Error loading /auth/me:', err);
         if (!handleAuthFailure(err, 'Session expired while loading dashboard.')) {

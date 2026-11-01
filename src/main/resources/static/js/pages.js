@@ -570,6 +570,7 @@ function buildPageNavState(page, options = {}) {
     async function loadPage(page, options = {}) {
         const pushHistory = options.pushHistory !== false;
         const mainContent = document.getElementById("main-content");
+        if (typeof window.showLoading === 'function') window.showLoading();
         currentPageId = page;
     if (!currentUserTeamId) {
             await loadUserTeamId();
@@ -579,7 +580,12 @@ function buildPageNavState(page, options = {}) {
 	        if (isLeaguePage(page) && !preserveLeagueContext) {
 	            syncUserLeagueContext();
 	        }
-	        if (pushHistory) pushNavState(buildPageNavState(page, options));
+	        if (pushHistory) {
+	            pushNavState(buildPageNavState(page, options));
+	            if (typeof history.pushState === 'function') {
+	                try { history.pushState({ page, options: options || {} }, '', '#' + page); } catch (e) { /* ignore */ }
+	            }
+	        }
         try {
 
             switch(page) {
@@ -819,6 +825,7 @@ function buildPageNavState(page, options = {}) {
             // person reading it, and authFetch carries it; show it.
             mainContent.innerHTML = buildErrorState(err, describePage(page));
         } finally {
+            if (typeof window.hideLoading === 'function') window.hideLoading();
             scrollToTopOfPage();
             try { renderDesktopBottomNav(page); } catch (e) { /* no-op outside the dashboard layout */ }
         }
@@ -903,8 +910,13 @@ function buildPageNavState(page, options = {}) {
     }
 
     async function loadMatch(matchId, caller, options = {}) {
-        await settleTeamId();
-        return matchView.loadMatch(matchId, caller, options);
+        if (typeof window.showLoading === 'function') window.showLoading();
+        try {
+            await settleTeamId();
+            return await matchView.loadMatch(matchId, caller, options);
+        } finally {
+            if (typeof window.hideLoading === 'function') window.hideLoading();
+        }
     }
 
     async function loadFormations() {
@@ -2200,6 +2212,46 @@ async function loadUserProfile() {
     }
 
     window.loadPage = loadPage;
+
+    // Delayed loading overlay: only appears if an action takes more than ~200ms, so fast
+    // navigations never flicker. Cleared as soon as the action finishes.
+    let loadingTimer = null;
+    function showLoading() {
+        if (loadingTimer) return;
+        loadingTimer = setTimeout(() => {
+            const el = document.getElementById('fm-loading-overlay');
+            if (el) el.hidden = false;
+        }, 200);
+    }
+    function hideLoading() {
+        if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
+        const el = document.getElementById('fm-loading-overlay');
+        if (el) el.hidden = true;
+    }
+    window.showLoading = showLoading;
+    window.hideLoading = hideLoading;
+
+    // Browser back/forward support inside the SPA. Each loadPage() with pushHistory pushes a
+    // hash entry (#budget, #profile, ...) so the browser's Back button walks the pages the
+    // manager actually visited instead of leaving the app for the previous document. popstate
+    // renders the entry it lands on; the internal navHistoryStack is untouched, so the in-app
+    // Back button keeps working as before.
+    window.addEventListener('popstate', (event) => {
+        const state = event.state || {};
+        let page = state.page;
+        if (!page) {
+            const hash = (location.hash || '').replace(/^#/, '').trim();
+            if (hash) page = hash;
+        }
+        if (!page || page === 'dashboard') {
+            if (typeof window.loadPage === 'function') window.loadPage('dashboard', { pushHistory: false });
+            else if (typeof window.loadDashboard === 'function') window.loadDashboard();
+            return;
+        }
+        if (typeof window.loadPage === 'function') {
+            window.loadPage(page, { ...(state.options || {}), pushHistory: false });
+        }
+    });
     window.openNotificationPanel = openNotificationPanel;
     window.desktopNavGo = desktopNavGo;
     window.desktopNavBack = desktopNavBack;
