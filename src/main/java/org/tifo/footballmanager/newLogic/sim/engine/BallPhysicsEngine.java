@@ -652,16 +652,20 @@ public class BallPhysicsEngine implements BallEngine {
                 continue;
             } else if (state.getLastShooter() != null && d <= SHOT_BLOCK_R) {
                 // SHOT BLOCK: a defender putting a body in the way of a shot in
-                // flight parries it rather than controlling it.
-                //
-                // This branch did not exist: {@code ev = "BLOCK"} was never
-                // assigned anywhere, so {@code BallStepResult.block()},
-                // the BLOCK event, {@code stats.onBlock} and the per-player
-                // "blocks" column were all dead code and every match reported
-                // 0.0 blocks. A block is a shot that hits a defender standing
-                // in the lane (SHOT_BLOCK_R = 0.18 cells = 2.5 m of the flight
-                // line) — the ball is alive again either way, so it simply
-                // deflects.
+                // flight parries it rather than controlling it. The ball reflects
+                // off the blocker's body (like a deflection) and stays in play.
+                double nr = p.getPosition().getRow() - state.getBall().getPosition().getRow();
+                double nc = p.getPosition().getColumn() - state.getBall().getPosition().getColumn();
+                double len = Math.hypot(nr, nc);
+                if (len > 1e-9) {
+                    nr /= len; nc /= len;
+                    double dot = state.getBall().getVelX() * nc + state.getBall().getVelY() * nr;
+                    state.getBall().setVelocity(
+                            (state.getBall().getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
+                            (state.getBall().getVelY() - 2 * dot * nr) * BOUNCE_DAMP
+                    );
+                }
+                state.getBall().setPosition(new Position(p.getPosition().getRow(), p.getPosition().getColumn()));
                 bestT = t; ev = "BLOCK"; hit = p;
             } else {
                 // Opponent body. A defender within 2 m of the line can only READ

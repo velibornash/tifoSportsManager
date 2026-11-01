@@ -266,10 +266,9 @@ public class BallResultHandler {
                                 stats.onBlock("HOME".equals(shooter.getTeam()) ? "AWAY" : "HOME");
                                 state.setLastShooter(null); // shot outcome consumed
                             }
-                            // After a shot block, slow the ball down so the nearest
-                            // player receives it (picks up the loose ball) instead
-                            // of the ball continuing to goal.
-                            state.getBall().stop();
+                            // After a shot block, the ball reflects off the blocker (handled in
+                            // BallPhysicsEngine) and stays in play as a loose ball — chase triggers.
+                            // Do NOT stop the ball here; let the reflected velocity carry it.
                         } else {
                             eventMsg = "BLOCK " + res.getDetail() + " parried a fast ball"
                                     + " | ball" + p(state.getBall().getPosition());
@@ -494,7 +493,10 @@ public class BallResultHandler {
                         }
                     }
                     case FLIGHT -> {
-                        // ball in flight, no event needed
+                        // ball in flight, log position for diagnostics
+                        log("BAL", "FLIGHT ball" + p(state.getBall().getPosition())
+                                + " speed=" + String.format("%.2f", state.getBall().getSpeed())
+                                + " carrier=" + (state.getCarrier() == null ? "none" : state.getCarrier().getLabel()));
                     }
                 }
 }
