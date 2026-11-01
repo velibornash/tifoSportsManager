@@ -1429,14 +1429,22 @@ export function renderTableView(payload, { loadLeagueTeam, loadLeagueTeamPlayer,
             <div class="fm-milestone-grid">
                 ${milestoneCardHtml(
                     'Top scorer',
-                    scorer?.playerName ? safe(scorer.playerName) : '—',
+                    scorer?.playerName
+                        ? (scorer?.playerId
+                            ? `<span class="fm-player-link" onclick="if(window.loadPlayer) window.loadPlayer(${Number(scorer.playerId)}, 'dashboard')" style="cursor:pointer;">${safe(scorer.playerName)}</span>`
+                            : safe(scorer.playerName))
+                        : '—',
                     // The icons the rest of the app already uses for a goal and an assist, rather than
                     // the words "goals" and "assists" - a manager reads the symbol everywhere else.
                     scorer?.playerName ? `${safe(scorer.teamName || 'No CTeam')} · ${iconCount('fm-badge-goal', '⚽', Number(scorer.value || 0))}` : 'No goals filed yet.'
                 )}
                 ${milestoneCardHtml(
                     'Top assist',
-                    assist?.playerName ? safe(assist.playerName) : '—',
+                    assist?.playerName
+                        ? (assist?.playerId
+                            ? `<span class="fm-player-link" onclick="if(window.loadPlayer) window.loadPlayer(${Number(assist.playerId)}, 'dashboard')" style="cursor:pointer;">${safe(assist.playerName)}</span>`
+                            : safe(assist.playerName))
+                        : '—',
                     assist?.playerName ? `${safe(assist.teamName || 'No CTeam')} · ${iconCount('fm-badge-ast', '&#127984;', Number(assist.value || 0))}` : 'No assists filed yet.'
                 )}
                 ${milestoneCardHtml(
