@@ -144,11 +144,14 @@ export function bindAlbum(container, players, options = {}) {
     });
 
     if (typeof loadPlayer === 'function') {
-        container.querySelectorAll('.fm-pcard').forEach(card => {
-            card.addEventListener('click', () => {
+        const grid = container.querySelector('[data-album-grid]');
+        if (grid) {
+            grid.addEventListener('click', (event) => {
+                const card = event.target.closest('.fm-pcard');
+                if (!card || !grid.contains(card)) return;
                 const playerId = Number(card.dataset.playerId);
                 if (playerId) loadPlayer(playerId);
             });
-        });
+        }
     }
 }

@@ -156,6 +156,7 @@ export function playerCardHtml(player, options = {}) {
 
     const tier = playerTier(player);
     const overall = Number(player?.overall);
+    const age = Number(player?.age);
     const name = player?.name || 'Unknown';
     const code = playerPositionCode(player, positionLabel);
     const number = albumNumber != null ? `#${albumNumber}` : '';
@@ -200,6 +201,7 @@ export function playerCardHtml(player, options = {}) {
                 <div class="fm-pcard-name">${htmlEscape(name)}</div>
                 <div class="fm-pcard-foot">
                     <span class="fm-pcard-tier">${htmlEscape(tier.label)}</span>
+                    ${Number.isFinite(age) && age > 0 ? `<span class="fm-pcard-age">${age} yrs</span>` : ''}
                     ${number ? `<span class="fm-pcard-num">${htmlEscape(number)}</span>` : ''}
                 </div>
             </div>

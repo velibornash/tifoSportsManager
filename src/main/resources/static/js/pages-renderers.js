@@ -505,18 +505,18 @@ export function buildSquadTableHtml(players, options = {}) {
            <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
            <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
            <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
-           <th>Position</th>
-           <th class="sq-age">Age</th>
-           <th class="sq-ability">Ability</th>
-           <th class="sq-potential">Potential</th>
+           <th class="sq-pos sortable" data-sort="position">Position ⇅</th>
+           <th class="sq-age sortable" data-sort="age">Age ⇅</th>
+           <th class="sq-ability sortable" data-sort="ability">Ability ⇅</th>
+           <th class="sq-potential sortable" data-sort="potential">Potential ⇅</th>
            <th class="sq-cond">Condition</th>
            <th class="sq-morale">Morale</th>`
         : `<th class="sq-inf"></th>
            <th class="sq-name">Name</th>
-           <th>Position</th>
-           <th class="sq-age">Age</th>
-           <th class="sq-ability">Ability</th>
-           <th class="sq-potential">Potential</th>
+           <th class="sq-pos sortable" data-sort="position">Position ⇅</th>
+           <th class="sq-age sortable" data-sort="age">Age ⇅</th>
+           <th class="sq-ability sortable" data-sort="ability">Ability ⇅</th>
+           <th class="sq-potential sortable" data-sort="potential">Potential ⇅</th>
            <th class="sq-cond">Condition</th>
            <th class="sq-morale">Morale</th>
            <th class="sq-games sortable" data-sort="apps">Apps \u21c5</th>
@@ -569,7 +569,7 @@ export function buildSquadTableHtml(players, options = {}) {
                             : `${badgeCell}${nameCell}${attributesCells}${gamesCell}${goalsCell}${assistsCell}${ratingCell}`;
 
                         return `
-                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}">
+                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}" data-position="${htmlEscape(player?.position || '')}" data-age="${Number(player?.age ?? 0)}" data-ability="${Number(player?.overall ?? 0)}" data-potential="${Math.min(99, Number(player?.overall ?? 0) + 6)}">
                                 ${cells}
                             </tr>`;
                     }).join('')}
@@ -697,8 +697,8 @@ export function renderAwaySquadView(players, { clubName, teamId, onBack } = {}) 
                                 <th class="sq-goals sortable" data-sort="goals">Gls \u21c5</th>
                                 <th class="sq-goals sortable" data-sort="assists">Ast \u21c5</th>
                                 <th class="sq-form sortable" data-sort="form">Form \u21c5</th>
-                                <th>Position</th>
-                                <th class="sq-age">Age</th>
+                                <th class="sq-pos sortable" data-sort="position">Position ⇅</th>
+                                <th class="sq-age sortable" data-sort="age">Age ⇅</th>
                             </tr>
                         </thead>
                         <tbody>${body}</tbody>
@@ -728,8 +728,11 @@ export function bindSortableSquadTable(container) {
     const heads = Array.from(table.querySelectorAll('thead .sortable[data-sort]'));
     if (!tbody || !heads.length) return;
 
-    const attrOf = (key) => `data-${key === 'rating' ? 'rating' : key === 'assists' ? 'assists' : key === 'goals' ? 'goals' : key === 'form' ? 'form' : 'apps'}`;
-    const readNum = (row, key) => {
+    const readVal = (row, key) => {
+        if (key === 'position') return String(row.dataset.position || '');
+        if (key === 'age') return Number(row.dataset.age) || 0;
+        if (key === 'ability') return Number(row.dataset.ability) || 0;
+        if (key === 'potential') return Number(row.dataset.potential) || 0;
         if (key === 'apps') return Number(row.dataset.apps) || 0;
         if (key === 'goals') return Number(row.dataset.goals) || 0;
         if (key === 'assists') return Number(row.dataset.assists) || 0;
@@ -746,8 +749,11 @@ export function bindSortableSquadTable(container) {
             head.dataset.dir = ascending ? 'asc' : 'desc';
             const rows = Array.from(tbody.querySelectorAll('tr.fm-squad-row'));
             rows.sort((a, b) => {
-                const left = readNum(a, key);
-                const right = readNum(b, key);
+                const left = readVal(a, key);
+                const right = readVal(b, key);
+                if (typeof left === 'string' || typeof right === 'string') {
+                    return (ascending ? 1 : -1) * String(left).localeCompare(String(right));
+                }
                 if (left === right) return 0;
                 return (ascending ? 1 : -1) * (left > right ? 1 : -1);
             });

@@ -2341,6 +2341,18 @@ select option {
 }
 
 .fm-team-link,
+/* Team/club name links rendered as spans (league table, country/world rankings, profile). They
+   are clickable but had no affordance, so managers could not tell. */
+.fm-CTeam-link {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 600;
+}
+.fm-CTeam-link:hover {
+    text-decoration: underline;
+}
+
 .fm-player-link,
 .fx-home,
 .fx-away,
@@ -9239,6 +9251,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     max-width: 340px;
     margin: 0 auto;
     align-items: stretch;
+    cursor: pointer;
 }
 
 .fm-pcard--legend { --pcard-tier-colour: var(--pcard-legend); }
