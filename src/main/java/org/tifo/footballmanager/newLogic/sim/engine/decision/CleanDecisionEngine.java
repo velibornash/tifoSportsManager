@@ -585,6 +585,26 @@ public class CleanDecisionEngine {
             reason.append("safe +2 ");
         }
 
+        // MEGA boost for a free teammate deep in opponent territory (owner: "slobodan i
+        // cist pass lane duboko u protivnickoj teritoriji dobija MEGA boost"). A free
+        // player in the opponent's half with a clear lane is the best pass option.
+        boolean receiverInOpponentHalf = "HOME".equals(carrier.getTeam())
+                ? receiver.getPosition().getRow() >= 5.0
+                : receiver.getPosition().getRow() <= 4.0;
+        if (receiverInOpponentHalf) {
+            double nearestOppD = Double.MAX_VALUE;
+            for (Player opp : state.getPlayers()) {
+                if (opp.getTeam().equals(carrier.getTeam())) continue;
+                if (opp.isUnavailable()) continue;
+                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
+                if (d < nearestOppD) nearestOppD = d;
+            }
+            if (nearestOppD > 1.0) {
+                score += 20.0;
+                reason.append("MEGA free deep +20 ");
+            }
+        }
+
         // Execution: whether he can hit it, not whether he should.
         score += (carrier.getSkills().passing() - 10.0) * 0.8;
         score += (carrier.getSkills().playmaking() - 10.0) * 0.4;
@@ -801,8 +821,8 @@ public class CleanDecisionEngine {
         double col = carrier.getPosition().getColumn();
         boolean central = col >= 2.5 && col <= 5.5;
         if (inBox && central) {
-            score += 30.0;
-            reason.append("central-box +30 ");
+            score += 15.0;
+            reason.append("central-box +15 ");
         } else {
             score -= pressure * 20.0;
             reason.append(String.format("press -%.0f ", pressure * 20.0));
