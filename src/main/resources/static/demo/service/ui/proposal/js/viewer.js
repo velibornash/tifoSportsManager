@@ -1293,12 +1293,7 @@ class MatchViewer {
   _getInterpolatedBall(interp) {
     if (!interp) return null;
     const a = interp.snap.ballPosition;
-    if (!a || !interp.next) {
-      if (!a) return a;
-      const row = Math.max(FIELD_ROW_MIN, Math.min(FIELD_ROW_MAX, a.row));
-      const col = Math.max(FIELD_COL_MIN, Math.min(FIELD_COL_MAX, a.column));
-      return { row, column: col, height: interp.snap.ballHeight || 0 };
-    }
+    if (!a || !interp.next) return a ? { row: a.row, column: a.column, height: interp.snap.ballHeight || 0 } : a;
     const b = interp.next.ballPosition;
     if (!b) return a;
     // When a player is carrying the ball on the starting snapshot, the ball must
@@ -1349,9 +1344,7 @@ class MatchViewer {
     }
 
     const h = lerp(a.ballHeight || 0, b.ballHeight || 0, t);
-    const row = Math.max(FIELD_ROW_MIN, Math.min(FIELD_ROW_MAX, lerp(a.row, b.row, t)));
-    const col = Math.max(FIELD_COL_MIN, Math.min(FIELD_COL_MAX, lerp(a.column, b.column, t)));
-    return { row, column: col, height: h };
+    return { row: lerp(a.row, b.row, t), column: lerp(a.column, b.column, t), height: h };
   }
 
   _isOutOfBounds(p) {

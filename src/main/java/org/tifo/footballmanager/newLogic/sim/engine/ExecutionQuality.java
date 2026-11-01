@@ -213,10 +213,7 @@ public class ExecutionQuality {
         }
 
         Position actualTarget = new Position(actualRow, actualCol);
-        // Shot speed: striker skill 10 = 2.5 (normal). Proportional for other skills.
-        // 10% boost for all shots. Capped at MAX_BALL_SPEED (2.5).
-        double speed = Math.min(BallPhysicsEngine.MAX_BALL_SPEED,
-                2.5 * (skill / 10.0) * 1.1);
+        double speed = ballSpeedForSkill(skill);
         double spin = SimulationRandom.nextDouble() * 0.3; // shots can have more spin
 
         return new ShotResult(actualTarget, onTarget, speed, spin);
