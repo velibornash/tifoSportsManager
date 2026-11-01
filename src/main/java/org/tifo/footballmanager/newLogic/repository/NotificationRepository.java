@@ -38,6 +38,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
      */
     List<Notification> findTop200ByRecipientIdAndReadAtIsNullOrderByIdAsc(Long recipientId);
 
-    /** Everything one account has read, for the count of "when did you last look". */
-    List<Notification> findByRecipientIdAndReadAtIsNotNull(Long recipientId);
+    /** Deletes notifications older than the given cutoff. Used by the 24-hour purge. */
+    void deleteByCreatedAtBefore(LocalDateTime cutoff);
+
+    /** How many notifications are older than the given cutoff (for logging/verification). */
+    long countByCreatedAtBefore(LocalDateTime cutoff);
 }

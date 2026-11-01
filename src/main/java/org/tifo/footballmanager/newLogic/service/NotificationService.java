@@ -209,7 +209,19 @@ public class NotificationService {
         }
     }
 
-    private static Map<String, Object> toMap(Notification notification) {
+    /**
+     * Removes notifications older than 24 hours. Notifications are meant to be timely; keeping them
+     * forever only grows the table and leaves stale badges on accounts that never opened the bell.
+     *
+     * <p>Read and unread alike: the owner's rule is that a notification is gone after a day.
+     */
+    @Transactional
+    public int purgeOlderThan24Hours() {
+        java.time.LocalDateTime cutoff = java.time.LocalDateTime.now().minusHours(24);
+        long before = notifications.countByCreatedAtBefore(cutoff);
+        notifications.deleteByCreatedAtBefore(cutoff);
+        return (int) before;
+    }
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", notification.getId());
         row.put("kind", notification.getKind() == null ? null : notification.getKind().name());
