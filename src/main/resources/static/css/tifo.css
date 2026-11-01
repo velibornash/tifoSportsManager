@@ -152,7 +152,10 @@ body {
 @media (min-width: 1025px) {
     .desktop-only { display: inline-flex; }
 }
-@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+/* One narrow-screen band, not two. It used to be `481–1024`, and the phone fell outside it —
+   so the hamburger never appeared, the sidebar stayed fixed and open at 200px, and the main
+   column was left 190px wide on a 390px screen. Everything on the page was cut off. */
+@media (max-width: 1024px) {
     .mobile-only { display: flex !important; }
     .desktop-only { display: none !important; }
 }
@@ -213,7 +216,9 @@ body {
 }
 .tifo-sidebar-overlay.active { display: block; }
 
-@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+/* The sidebar leaves the screen and the ☰ takes over — on every screen narrower than 1025px,
+   the phone included. It previously named `481–1024` only. */
+@media (max-width: 1024px) {
     .tifo-hamburger { display: block; }
     .tifo-sidebar {
         transform: translateX(-100%);
@@ -1560,7 +1565,7 @@ body {
     display: none;
 }
 
-@media (min-width: 481px) and (min-width: 481px) and (max-width: 1024px) {
+@media (max-width: 1024px) {
     .cs-club-hero,
     .cs-match-scoreboard {
         grid-template-columns: 1fr;
@@ -1663,11 +1668,20 @@ body {
 }
 
 @media (max-width: 480px) {
+    /* dashboard.css pins `.top-menu` to the top of a phone with `!important`, for the graphical
+       dashboard, and gives the body 68px of padding for it. This bar is taller than that — the round
+       info wraps — so in the text mode the first lines of every page sat underneath it, which is what
+       "everything is cut off" looked like. Here the bar scrolls with the page instead. */
     .top-menu {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        /* The round info takes what is left; the Next button and the logo keep their own width. */
+        grid-template-columns: minmax(0, 1fr) auto auto;
         gap: 8px;
         padding: 10px;
+        /* The ☰ is fixed in the top-left corner; the bar starts after it instead of under it. */
+        padding-left: 64px;
+        position: static !important;
+        z-index: auto;
     }
     .top-menu .menu-button,
     .top-menu .cs-next-round-wrap,
