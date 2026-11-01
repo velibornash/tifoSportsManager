@@ -9837,3 +9837,22 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 @keyframes fm-spin {
     to { transform: rotate(360deg); }
 }
+
+/* Squad table sort bar (players page): a dropdown for sorting by any column, including the
+   individual skills that are not shown as columns. */
+.fm-squad-sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+.fm-squad-sort-bar select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-faint);
+    background: var(--surface-2-grad);
+    color: var(--text);
+    font-size: 0.85rem;
+}

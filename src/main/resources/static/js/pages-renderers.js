@@ -525,6 +525,28 @@ export function buildSquadTableHtml(players, options = {}) {
            <th class="sq-rating sortable" data-sort="rating">Av Rat \u21c5</th>`;
 
     return `
+    ${sortable ? `<div class="fm-squad-sort-bar">
+        <label>Sort by
+            <select class="fm-squad-sort-select">
+                <option value="rating">Avg rating</option>
+                <option value="apps">Appearances</option>
+                <option value="goals">Goals</option>
+                <option value="assists">Assists</option>
+                <option value="position">Position</option>
+                <option value="age">Age</option>
+                <option value="ability">Ability (overall)</option>
+                <option value="potential">Potential</option>
+                <option value="stamina">Stamina</option>
+                <option value="pace">Pace</option>
+                <option value="technique">Technique</option>
+                <option value="passing">Passing</option>
+                <option value="goalkeeper">Goalkeeper</option>
+                <option value="defending">Defending</option>
+                <option value="playmaker">Playmaker</option>
+                <option value="shooting">Shooting (striker)</option>
+            </select>
+        </label>
+    </div>` : ''}
         <div class="fm-squad-wrap${sortable ? " fm-squad-wrap--sortable" : ""}">
             <table class="fm-squad${statsFirst ? ' fm-squad--stats-first' : ''}">
                 <thead>
@@ -569,7 +591,7 @@ export function buildSquadTableHtml(players, options = {}) {
                             : `${badgeCell}${nameCell}${attributesCells}${gamesCell}${goalsCell}${assistsCell}${ratingCell}`;
 
                         return `
-                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}" data-position="${htmlEscape(player?.position || '')}" data-age="${Number(player?.age ?? 0)}" data-ability="${Number(player?.overall ?? 0)}" data-potential="${Math.min(99, Number(player?.overall ?? 0) + 6)}">
+                            <tr class="fm-squad-row ${rowClass}" data-player-id="${player?.id ?? ''}" data-CTeam-id="${teamId}" data-CTeam-name="${htmlEscape(teamName)}" data-apps="${Number(player?.played ?? player?.matchesPlayed ?? 0)}" data-goals="${Number(player?.totalGoals ?? player?.goals ?? 0)}" data-assists="${Number(player?.totalAssists ?? player?.assists ?? 0)}" data-rating="${Number.isFinite(Number(player?.averageRating10)) ? Number(player?.averageRating10) : 0}" data-position="${htmlEscape(player?.position || '')}" data-age="${Number(player?.age ?? 0)}" data-ability="${Number(player?.overall ?? 0)}" data-potential="${Math.min(99, Number(player?.overall ?? 0) + 6)}" data-stamina="${Number(player?.stamina ?? 0)}" data-pace="${Number(player?.pace ?? 0)}" data-technique="${Number(player?.technique ?? 0)}" data-passing="${Number(player?.passing ?? 0)}" data-goalkeeper="${Number(player?.goalkeeper ?? 0)}" data-defending="${Number(player?.defending ?? 0)}" data-playmaker="${Number(player?.playmaker ?? 0)}" data-shooting="${Number(player?.shooting ?? 0)}">
                                 ${cells}
                             </tr>`;
                     }).join('')}
@@ -737,7 +759,29 @@ export function bindSortableSquadTable(container) {
         if (key === 'goals') return Number(row.dataset.goals) || 0;
         if (key === 'assists') return Number(row.dataset.assists) || 0;
         if (key === 'form') return Number(row.dataset.form) || 0;
+        if (key === 'stamina') return Number(row.dataset.stamina) || 0;
+        if (key === 'pace') return Number(row.dataset.pace) || 0;
+        if (key === 'technique') return Number(row.dataset.technique) || 0;
+        if (key === 'passing') return Number(row.dataset.passing) || 0;
+        if (key === 'goalkeeper') return Number(row.dataset.goalkeeper) || 0;
+        if (key === 'defending') return Number(row.dataset.defending) || 0;
+        if (key === 'playmaker') return Number(row.dataset.playmaker) || 0;
+        if (key === 'shooting') return Number(row.dataset.shooting) || 0;
         return Number(row.dataset.rating) || 0;
+    };
+
+    const sortRows = (key, ascending) => {
+        const rows = Array.from(tbody.querySelectorAll('tr.fm-squad-row'));
+        rows.sort((a, b) => {
+            const left = readVal(a, key);
+            const right = readVal(b, key);
+            if (typeof left === 'string' || typeof right === 'string') {
+                return (ascending ? 1 : -1) * String(left).localeCompare(String(right));
+            }
+            if (left === right) return 0;
+            return (ascending ? 1 : -1) * (left > right ? 1 : -1);
+        });
+        rows.forEach(row => tbody.appendChild(row));
     };
 
     heads.forEach(head => {
@@ -747,19 +791,16 @@ export function bindSortableSquadTable(container) {
             const ascending = head.dataset.dir !== 'asc';
             heads.forEach(h => { if (h !== head) h.dataset.dir = ''; });
             head.dataset.dir = ascending ? 'asc' : 'desc';
-            const rows = Array.from(tbody.querySelectorAll('tr.fm-squad-row'));
-            rows.sort((a, b) => {
-                const left = readVal(a, key);
-                const right = readVal(b, key);
-                if (typeof left === 'string' || typeof right === 'string') {
-                    return (ascending ? 1 : -1) * String(left).localeCompare(String(right));
-                }
-                if (left === right) return 0;
-                return (ascending ? 1 : -1) * (left > right ? 1 : -1);
-            });
-            rows.forEach(row => tbody.appendChild(row));
+            sortRows(key, ascending);
         });
     });
+
+    const sortSelect = container.querySelector('.fm-squad-sort-select');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            sortRows(sortSelect.value, false);
+        });
+    }
 }
 export function bindSquadRowClicks(container, onClick, selector = '.league-player-card') {
     container.querySelectorAll(selector).forEach(row => {
