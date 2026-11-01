@@ -583,6 +583,9 @@ public class CleanDecisionEngine {
         for (Player teammate : state.getPlayers()) {
             if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
             if (teammate.isUnavailable()) continue;
+
+            // Task 4 (owner 2026-11-01): a teammate's pass never targets the goalkeeper.
+            if (teammate.isGoalkeeper()) continue;
             if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
             double offsideMargin = offsideMargin(state, carrier, teammate);
             if (offsideMargin > OFFSIDE_HARD_LIMIT) continue;
@@ -1089,6 +1092,9 @@ public class CleanDecisionEngine {
             // the sent-off player — standing still in space, with nobody marking him — was the
             // most open man on the pitch, so he kept receiving the ball.
             if (teammate.isUnavailable()) continue;
+
+            // Task 4 (owner 2026-11-01): a teammate's pass never targets the goalkeeper.
+            if (teammate.isGoalkeeper()) continue;
 
             // ME-2 (owner 2026-10-23): from a shooting position a pass back into his own half is
             // not an option at all — removed, not penalised. ("iz pozicije za sut odigrava PAS NA

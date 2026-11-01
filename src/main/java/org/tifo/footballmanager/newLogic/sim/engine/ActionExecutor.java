@@ -148,7 +148,7 @@ public class ActionExecutor {
         // for close-range passes so the ball doesn't overshoot or go out of bounds.
         // Full speed only for passes over 2.5 cells.
         double skillSpeed = ExecutionQuality.ballSpeedForSkill(carrier.getSkills().passing());
-        double desiredSpeed = dist < 2.5 ? Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, skillSpeed * (dist / 2.5)) : skillSpeed;
+        double desiredSpeed = BallPhysicsEngine.LAUNCH_SPEED;
 
         // ExecutionQuality gives deviated aim + launch speed + spin. The kickoff
         // pass bypasses it entirely: exact receiver position, max speed, no spin.
@@ -284,7 +284,7 @@ public class ActionExecutor {
         Position aim = new Position(targetPos.getRow(), SimUtils.clamp(aimCol, 1.5, 6.5));
 
         launchDelivery(state, carrier, target, aim, true,
-                BallPhysicsEngine.MAX_BALL_SPEED * 0.85);
+                BallPhysicsEngine.LAUNCH_SPEED);
     }
 
     /** Shared launch for THRU / CROSS / CENTER: aim, flight, pending receiver. */
@@ -365,7 +365,7 @@ public class ActionExecutor {
 
         // Launch the ball
         state.getBallEngine().launch(state.getBall(), carrier.getPosition(),
-                result.getActualTarget(), result.getSpeed(), true, result.getSpin());
+                result.getActualTarget(), BallPhysicsEngine.LAUNCH_SPEED, true, result.getSpin());
 
         // Carrier stops running
         carrier.setTarget(null);
@@ -460,9 +460,7 @@ public class ActionExecutor {
         // clearance is a driven ball upfield that a teammate can run onto. Launched airborne the
         // model cannot represent a short flight at all, which is the underlying limitation.
         double range = SimUtils.distance(current, clearTarget);
-        double power = Math.sqrt(2.0 * BallPhysicsEngine.GROUND_DECEL * Math.max(0.5, range));
-        power = SimUtils.clamp(power, BallPhysicsEngine.MIN_LAUNCH_SPEED,
-                BallPhysicsEngine.MAX_BALL_SPEED);
+        double power = BallPhysicsEngine.LAUNCH_SPEED;
 
         Ball ball = state.getBall();
         state.getBallEngine().launch(ball, current, clearTarget, power, false, 0.0);

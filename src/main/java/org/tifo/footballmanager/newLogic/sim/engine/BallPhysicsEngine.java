@@ -35,7 +35,8 @@ public class BallPhysicsEngine implements BallEngine {
     private int deadTickCount;
 
     // --- Physics constants (cells/tick @ 40 TPM = 1 tick = 1.5 s match time) ---
-    public static final double MAX_BALL_SPEED = 1.5;      // 14 m/s
+    public static final double MAX_BALL_SPEED = 2.1;      // launch speed (cells/tick) — owner: constant 2.1 for all actions
+    public static final double LAUNCH_SPEED = 2.1;        // constant launch speed for passes/shots/centers (changeable later)
     public static final double MIN_LAUNCH_SPEED = 0.75;   // 7 m/s
     /**
      * Rolling deceleration on grass, in cells/tick^2 (1 cell = 14 m, 1 tick = 1.5 s).
@@ -64,37 +65,18 @@ public class BallPhysicsEngine implements BallEngine {
      * 0.05 cells ≈ 0.7 m — visually the player dot is on the ball dot.
      */
     public static final double ON_BALL_EPS = 0.05;
-    public static final double RECEIVE_R = 0.35;
+    public static final double RECEIVE_R = 0.4;          // receiver pickup radius (boosted)
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.15;    // 1.5 m — ball physically strikes the body (matches pitch ball tool)
     // --- Billiard-bounce threshold (owner 2026-10-23) ---
-    // Above this speed (cells/tick) a ball that hits a player BOUNCES (reflects
-    // velocity, dampens) instead of being received/intercepted — the ball is
-    // moving too fast for a controlled touch. Below it, the normal football
-    // receive/intercept logic applies (with a boosted pickup radius).
-    public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // ~4.5 m/s (pitch tool: 0.35 received)
-    // The SELECTED receiver's reach — the "boost" the owner ruled for the man the pass
-    // was played to ("izabrani receiver treba da ima boost da pokupi loptu"). It is the
-    // one radius a pass is caught at, on both contact paths.
-    //
-    // F2 (replay 5633, 2026-10-26): 0.5 cells = 7 m, which meant a ball could be
-    // "received" while still seven metres from the receiver's body — the pass visibly
-    // arrived at nobody, and the ball then jumped to his feet on the next decision.
-    // With the ball now stopping ON the receiver (see stepBall), the radius only has to
-    // be an honest reach: 0.25 cells = 3.5 m, still double the intercept lane and five
-    // times the deflection radius, so the selected receiver keeps a real advantage over
-    // a contesting player on the path (who gets a deflection, per the owner's F3 ruling).
-    public static final double RECEIVE_R_BOOSTED = 0.25;
+    // Receiver: 0.35; everyone else: 0.3. A ball above the threshold bounces off a non-receiver.
+    public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // receiver threshold
+    public static final double BALL_BOUNCE_SPEED_THRESHOLD_OTHERS = 0.3;  // non-receiver threshold
+    // The SELECTED receiver's reach — the "boost" the owner ruled.
+    public static final double RECEIVE_R_BOOSTED = 0.4;
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
-    public static final double PICKUP_R = 0.35;
-    /**
-     * How close to the shot's flight line a defender must be to block it.
-     * 0.18 cells = 2.5 m — a defender genuinely getting a body in the way.
-     * At 0.3 (4.2 m) the window was wide enough that 9 shots a match were
-     * "blocked" (real: 2-4).
-     */
-    public static final double SHOT_BLOCK_R = 0.18;
+    public static final double PICKUP_R = 0.5;  // non-receiver loose-ball pickup radius
     public static final double PICKUP_DISTANCE = PICKUP_R; // alias for orchestrator
     public static final double BALL_R = 0.015;
 
@@ -644,9 +626,18 @@ public class BallPhysicsEngine implements BallEngine {
 
             boolean sameTeam = p.getTeam().equals(state.getLastTouchTeam());
             if (sameTeam) {
-                // teammate body -> deflection only
-                if (d <= DEFLECT_R) {
-                    bestT = t; ev = "DEFLECT"; hit = p;
+                // teammate body -> for SLOW balls, receive (pick up) instead of
+                // deflect; for FAST balls, deflect (ball bounces off body).
+                if (spd <= BALL_BOUNCE_SPEED_THRESHOLD) {
+                    // Slow ball: teammate receives it (picks up the loose ball)
+                    if (d <= RECEIVE_R_BOOSTED) {
+                        bestT = t; ev = "RECEIVE"; hit = p;
+                    }
+                } else {
+                    // Fast ball: teammate body -> deflection only
+                    if (d <= DEFLECT_R) {
+                        bestT = t; ev = "DEFLECT"; hit = p;
+                    }
                 }
             } else if (state.getLastShooter() != null && d <= SHOT_BLOCK_R) {
                 // SHOT BLOCK: a defender putting a body in the way of a shot in
