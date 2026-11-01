@@ -222,6 +222,8 @@ public class NotificationService {
         notifications.deleteByCreatedAtBefore(cutoff);
         return (int) before;
     }
+
+    private static Map<String, Object> toMap(Notification notification) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", notification.getId());
         row.put("kind", notification.getKind() == null ? null : notification.getKind().name());
