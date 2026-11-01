@@ -67,25 +67,18 @@ public class ExecutionQuality {
         int skill = (int) passer.getSkills().passing();
         double maxSpeedForSkill = ballSpeedForSkill(skill); // 7-14 m/s -> 0.75-1.5 c/t
         double overspeed = Math.max(0.0, desiredSpeed - maxSpeedForSkill);
-        double maxDeviation = 0.02 + overspeed * 2.0;
+        // Owner (2026-10-30): NO deviation at all. Passes go EXACTLY to the target.
+        // No curve, no bend, no random deviation. The ball goes straight.
+        double maxDeviation = 0.0;
 
         // Direction from origin to intended target
         double dx = intendedTarget.getColumn() - origin.getColumn();
         double dy = intendedTarget.getRow() - origin.getRow();
         double len = Math.sqrt(dx * dx + dy * dy);
 
-        double dirRow = len < 1e-9 ? 0 : dy / len;
-        double dirCol = len < 1e-9 ? 1 : dx / len;
-        double sideRow = -dirCol;  // perpendicular left
-        double sideCol = dirRow;
-
-        double longitudinal = (SimulationRandom.nextDouble() * 2 - 1) * maxDeviation;
-        double lateral = (SimulationRandom.nextDouble() * 2 - 1) * maxDeviation * 2.5;
-
-        double actualRow = intendedTarget.getRow() + dirRow * longitudinal + sideRow * lateral;
-        double actualCol = intendedTarget.getColumn() + dirCol * longitudinal + sideCol * lateral;
-
-        Position actualTarget = new Position(actualRow, actualCol);
+        // No deviation — pass goes exactly to the intended target.
+        // (All deviation variables removed — pass goes straight, no curve.)
+        Position actualTarget = intendedTarget;
         // speed clamped to launch limits
         double speed = Math.max(BallPhysicsEngine.MIN_LAUNCH_SPEED, Math.min(BallPhysicsEngine.MAX_BALL_SPEED, desiredSpeed));
         // Owner (2026-10-30): no spin — spin causes lateral bend that pushes

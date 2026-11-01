@@ -292,7 +292,17 @@ public class BallResultHandler {
                         state.setOffsideFlaggedReceiver(null);
                         eventMsg = "DEFLECT off " + res.getDetail() + " | ball" + p(state.getBall().getPosition());
                         log("ORC", eventMsg);
-                        recorder.appendEvent(state.getMatchTicks(), "DEFLECT", eventMsg, state);
+                        // Find the deflected player by label so the viewer can snap
+                        // the ball to their position (showing the collision).
+                        Player deflector = null;
+                        for (Player pl : state.getPlayers()) {
+                            if (pl.getLabel().equals(res.getDetail())) {
+                                deflector = pl;
+                                break;
+                            }
+                        }
+                        recorder.appendEvent(state.getMatchTicks(), "DEFLECT", eventMsg,
+                                deflector, null);
                         state.clearPassContext();
                         // Attribute the deflect to the team of the player whose body it
                         // struck (label is the player's short name).
