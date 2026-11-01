@@ -107,7 +107,8 @@ public class DuelService {
                     state.clearPassContext();
                 }
                 duelEngine.applyDuelResult(state, winner, winner == carrier ? opponent : carrier);
-                String duelMsg = "DUEL " + duelType + " won by " + winner.getLabel()
+                String duelTypeLabel = (duelType == DuelEngine.DuelType.DRIBBLE && winner != carrier) ? "TACKLE" : duelType.toString();
+                String duelMsg = "DUEL " + duelTypeLabel + " won by " + winner.getLabel()
                         + " (" + carrier.getLabel() + p(carrier.getPosition())
                         + " v " + opponent.getLabel() + p(opponent.getPosition()) + ")"
                         + " ball" + p(state.getBall().getPosition());
@@ -116,7 +117,7 @@ public class DuelService {
                 // Emit DUEL_RESOLVED so the viewer can render the yellow→orange ring,
                 // the winner's movement onto the ball, and the loser's cooldown.
                 recorder.appendEvent(state.getMatchTicks(), "DUEL_RESOLVED",
-                        "DUEL RESOLVED " + winner.getLabel() + " won, " + opponent.getLabel() + " locked for "
+                        "DUEL RESOLVED " + winner.getLabel() + " won, " + (winner == carrier ? opponent : carrier).getLabel() + " locked for "
                                 + DuelEngine.LOSER_LOCK_TICKS + " ticks",
                         winner, opponent);
                 stats.onDuelWon(winner.getId(), (winner == carrier ? opponent : carrier).getId());
