@@ -37,6 +37,7 @@ async function loadPage(page, options = {}) {
             case 'stats': await window.afRenderStats(); break;
             case 'schedule': await window.afRenderSchedule(); break;
             case 'transfers': await afRenderTransfers(); break;
+            case 'tactics': await afRenderTactics(); break;
             case 'player': await window.afRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.afRenderMatchViewer(options); break;
             default: await window.afRenderDashboard();
@@ -139,4 +140,59 @@ window._team = _team;
 window.afSelectTeam = afSelectTeam;
 window.afShowPlayer = afShowPlayer;
 window.loadPage = loadPage;
+async function afRenderTactics() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    if (!window.afTeams.length) await window.afInit();
+    const players = await window.afFetchTeamPlayers(window.afCurrentTeamId);
+    const tac = await window.afFetchTactics(window.afCurrentTeamId);
+    const selected = new Set((tac.starterIds || '').split(',').filter(Boolean).map(Number));
+    const style = tac.playStyle || 'BALANCED';
+
+    const rows = players.map(p => {
+        const ovr = p.overall || 0;
+        const checked = selected.has(p.id) ? 'checked' : '';
+        return `<tr>
+            <td><input type="checkbox" class="af-starter-cb" value="${p.id}" ${checked}></td>
+            <td class="player-name-cell">${cmEscapeHtml(p.name)}</td>
+            <td>${p.position}</td>
+            <td style="font-weight:900;">${ovr}</td>
+        </tr>`;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div><div class="af-eyebrow">Team Settings</div><h2 style="margin:0;">Tactics</h2></div>
+                <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+            </div>
+            <div style="margin-bottom:16px;">
+                <h3 style="margin:0 0 8px;">Play-Calling Style</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    ${['RUN_HEAVY','BALANCED','PASS_HEAVY'].map(s => `
+                        <button class="af-style-btn ${s === style ? 'play-all-btn' : 'reset-btn'}" data-style="${s}" style="font-size:0.8rem;padding:6px 12px;" onclick="window.afTacticsStyle='${s}'; document.querySelectorAll('.af-style-btn').forEach(b=>{b.classList.remove('play-all-btn');b.classList.add('reset-btn');}); this.classList.remove('reset-btn'); this.classList.add('play-all-btn');">${s}</button>
+                    `).join('')}
+                </div>
+            </div>
+            <h3 style="margin:12px 0 8px;">Depth Chart (select starters)</h3>
+            <div style="overflow-x:auto;">
+                <table class="player-table">
+                    <thead><tr><th></th><th style="text-align:left;">Player</th><th>Pos</th><th>OVR</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <div style="margin-top:12px;"><button class="play-all-btn" onclick="afSaveTacticsClick()">Save Tactics</button></div>
+        </div>`;
+    window.afTacticsStyle = style;
+}
+
+async function afSaveTacticsClick() {
+    const checked = Array.from(document.querySelectorAll('.af-starter-cb:checked')).map(cb => cb.value);
+    const style = window.afTacticsStyle || 'BALANCED';
+    const res = await window.afSaveTactics(window.afCurrentTeamId, style, checked.join(','));
+    if (res && res.ok) { alert('Tactics saved'); loadPage('dashboard'); }
+    else { alert(res && res.error ? res.error : 'Save failed'); }
+}
+
+window.afRenderTactics = afRenderTactics;
 window.afRenderTransfers = afRenderTransfers;

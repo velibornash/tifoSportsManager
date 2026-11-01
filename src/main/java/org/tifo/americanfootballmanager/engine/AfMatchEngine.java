@@ -94,10 +94,10 @@ public class AfMatchEngine {
             String timeStr = periodLabel + " " + min + ":" + String.format("%02d", sec);
 
             // Home possession drive
-            homeQScore += runDrive(homePlayers, awayPlayers, homeStats, awayStats, events, timeStr, home, away, true, d);
+            homeQScore += runDrive(homePlayers, awayPlayers, homeStats, awayStats, events, timeStr, home, away, true, d, home.getPlayStyle());
 
             // Away possession drive
-            awayQScore += runDrive(awayPlayers, homePlayers, awayStats, homeStats, events, timeStr, home, away, false, d);
+            awayQScore += runDrive(awayPlayers, homePlayers, awayStats, homeStats, events, timeStr, home, away, false, d, away.getPlayStyle());
         }
 
         homeQS.add(homeQScore);
@@ -107,7 +107,7 @@ public class AfMatchEngine {
     private int runDrive(List<AfPlayer> offense, List<AfPlayer> defense,
                           Map<Long, AfPlayerGameStats> offStats, Map<Long, AfPlayerGameStats> defStats,
                           List<String> events, String timeStr,
-                          AfTeam home, AfTeam away, boolean isHome, int driveNum) {
+                          AfTeam home, AfTeam away, boolean isHome, int driveNum, String playStyle) {
         int yards = 0;
         int downs = 0;
         int score = 0;
@@ -127,14 +127,19 @@ public class AfMatchEngine {
             double playType = random.nextDouble();
             int gain;
 
-            if (playType < 0.45) {
+            double runThreshold = 0.45;
+            double passThreshold = 0.85;
+            if ("RUN_HEAVY".equals(playStyle)) { runThreshold = 0.65; passThreshold = 0.90; }
+            else if ("PASS_HEAVY".equals(playStyle)) { runThreshold = 0.25; passThreshold = 0.70; }
+
+            if (playType < runThreshold) {
                 // Run play
                 AfPlayer runner = selectRunner(offense);
                 gain = 1 + random.nextInt(8 + runner.getSkillRunning());
                 AfPlayerGameStats rs = stats(offStats, runner);
                 rs.setRushingYards(rs.getRushingYards() + gain);
                 events.add(timeStr + "|RUN|" + runner.getId().intValue() + "|" + runner.getName() + "|" + gain + "|rush " + gain + " yds");
-            } else if (playType < 0.85) {
+            } else if (playType < passThreshold) {
                 // Pass play
                 AfPlayer receiver = selectReceiver(offense, qb.getId());
                 int passComp = (qb.getSkillPassing() * 4 + receiver.getSkillRunning()) / 5;

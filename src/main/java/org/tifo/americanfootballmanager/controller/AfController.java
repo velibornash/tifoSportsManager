@@ -445,6 +445,34 @@ public class AfController {
                 .orElse(null);
     }
 
+    // ─── Tactics ───
+
+    @GetMapping("/teams/{id}/tactics")
+    public ResponseEntity<Map<String, Object>> getTactics(@PathVariable Long id) {
+        return teamRepository.findById(id).map(team -> {
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("playStyle", team.getPlayStyle() == null ? "BALANCED" : team.getPlayStyle());
+            resp.put("starterIds", team.getStarterIds() == null ? "" : team.getStarterIds());
+            return ResponseEntity.ok(resp);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/teams/{id}/tactics")
+    public ResponseEntity<Map<String, Object>> saveTactics(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        return teamRepository.findById(id).map(team -> {
+            String style = body.getOrDefault("playStyle", "BALANCED");
+            if (!Set.of("RUN_HEAVY", "BALANCED", "PASS_HEAVY").contains(style)) style = "BALANCED";
+            team.setPlayStyle(style);
+            team.setStarterIds(body.getOrDefault("starterIds", ""));
+            teamRepository.save(team);
+            Map<String, Object> resp = new LinkedHashMap<>();
+            resp.put("ok", true);
+            resp.put("playStyle", team.getPlayStyle());
+            resp.put("starterIds", team.getStarterIds());
+            return ResponseEntity.ok(resp);
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     // ─── DTO Mappers ───
 
     private AfTeamDTO toTeamDTO(AfTeam team) {
@@ -458,6 +486,8 @@ public class AfController {
                 .color(team.getColor())
                 .averageOverall(team.getAverageOverall())
                 .budget(team.getBudget())
+                .playStyle(team.getPlayStyle())
+                .starterIds(team.getStarterIds())
                 .build();
     }
 

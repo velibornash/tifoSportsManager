@@ -245,6 +245,26 @@ async function afSellPlayer(playerId) {
     } catch (e) { return { ok: false, error: e.message }; }
 }
 
+async function afFetchTactics(teamId) {
+    try {
+        const res = await window.authFetch('/api/af/teams/' + teamId + '/tactics');
+        if (!res.ok) return { playStyle: 'BALANCED', starterIds: '' };
+        return await res.json();
+    } catch { return { playStyle: 'BALANCED', starterIds: '' }; }
+}
+async function afSaveTactics(teamId, playStyle, starterIds) {
+    try {
+        const res = await window.authFetch('/api/af/teams/' + teamId + '/tactics', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playStyle, starterIds })
+        });
+        const data = await res.json();
+        if (!res.ok) return { ok: false, error: data.error || 'Save failed' };
+        return data;
+    } catch (e) { return { ok: false, error: e.message }; }
+}
+window.afFetchTactics = afFetchTactics;
+window.afSaveTactics = afSaveTactics;
 window.afFetchTransferMarket = afFetchTransferMarket;
 window.afBuyPlayer = afBuyPlayer;
 window.afSellPlayer = afSellPlayer;
