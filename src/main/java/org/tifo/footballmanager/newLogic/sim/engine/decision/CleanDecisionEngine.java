@@ -525,8 +525,8 @@ public class CleanDecisionEngine {
                 if (d < nearestOppD) nearestOppD = d;
             }
             if (nearestOppD > 1.0) {
-                score += 15.0;
-                reason.append("safe short +15 ");
+                score += 8.0;
+                reason.append("safe short +8 ");
             }
         }
 
@@ -549,7 +549,7 @@ public class CleanDecisionEngine {
             if (nearestOppD > 1.5) {
                 // Progressive distance bonus: closer receiver gets MORE bonus.
                 // 1.0 distance -> +45, 2.0 distance -> +15, so nearest free player wins.
-                double zoneBonus = (2.5 - dist) * 30.0;
+                double zoneBonus = (2.5 - dist) * 10.0;
                 score += zoneBonus;
                 reason.append(String.format("safe zone +%.0f ", zoneBonus));
             }
@@ -581,8 +581,8 @@ public class CleanDecisionEngine {
             score -= 25.0;
             reason.append("dangerous -25 ");
         } else if (nearestOppToReceiver > 1.0) {
-            score += 8.0;
-            reason.append("safe +8 ");
+            score += 5.0;
+            reason.append("safe +5 ");
         }
 
         // Execution: whether he can hit it, not whether he should.
@@ -1337,7 +1337,7 @@ public class CleanDecisionEngine {
                     if (d < _nearestOppD) _nearestOppD = d;
                 }
                 if (_nearestOppD > 1.5) {
-                    double zoneBonus = (2.5 - dist) * 30.0;
+                    double zoneBonus = (2.5 - dist) * 10.0;
                     score += zoneBonus;
                 }
             }
