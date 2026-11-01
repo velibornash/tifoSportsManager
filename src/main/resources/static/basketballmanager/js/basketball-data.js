@@ -252,6 +252,28 @@ async function bbStartNewSeason() {
     } catch (e) { return { ok: false, error: e.message }; }
 }
 
+async function bbFetchInbox() {
+    try {
+        const res = await window.authFetch('/api/bb/inbox');
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
+}
+async function bbMarkInboxRead(id) {
+    try { await window.authFetch('/api/bb/inbox/' + id + '/read', { method: 'POST' }); } catch {}
+}
+async function bbMarkAllInboxRead() {
+    try { await window.authFetch('/api/bb/inbox/read-all', { method: 'POST' }); } catch {}
+}
+async function bbFetchUnreadCount() {
+    try {
+        const res = await window.authFetch('/api/bb/inbox/unread-count');
+        if (!res.ok) return 0;
+        const d = await res.json();
+        return d.count || 0;
+    } catch { return 0; }
+}
+
 async function bbFetchRecentMatches(teamId, limit = 3) {
     try {
         const res = await window.authFetch('/api/bb/matches/team/' + teamId + '/recent?limit=' + limit + '&seasonYear=' + BBALL_CONF.seasonYear);
@@ -331,6 +353,10 @@ window.bbFetchTactics = bbFetchTactics;
 window.bbSaveTactics = bbSaveTactics;
 window.bbFetchTraining = bbFetchTraining;
 window.bbStartNewSeason = bbStartNewSeason;
+window.bbFetchInbox = bbFetchInbox;
+window.bbMarkInboxRead = bbMarkInboxRead;
+window.bbMarkAllInboxRead = bbMarkAllInboxRead;
+window.bbFetchUnreadCount = bbFetchUnreadCount;
 window.bbSetTrainingFocus = bbSetTrainingFocus;
 window.bbTrain = bbTrain;
 window.bbFetchTransferMarket = bbFetchTransferMarket;

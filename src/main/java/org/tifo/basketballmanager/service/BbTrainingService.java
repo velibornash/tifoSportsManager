@@ -16,11 +16,13 @@ public class BbTrainingService {
 
     private final BbTeamRepository teamRepository;
     private final BbPlayerRepository playerRepository;
+    private final BbInboxService inboxService;
     private final Random random = new Random();
 
-    public BbTrainingService(BbTeamRepository teamRepository, BbPlayerRepository playerRepository) {
+    public BbTrainingService(BbTeamRepository teamRepository, BbPlayerRepository playerRepository, BbInboxService inboxService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.inboxService = inboxService;
     }
 
     public String getFocus(Long teamId) {
@@ -44,6 +46,10 @@ public class BbTrainingService {
             if (gained) improved++;
             playerRepository.save(p);
         }
+        try {
+            inboxService.addMessage(teamId, "CLUB", "Training", focus + " session: " + improved + " of " + team.getPlayers().size() + " players improved.", null);
+        } catch (Exception ignored) { }
+
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);
         resp.put("focus", focus);

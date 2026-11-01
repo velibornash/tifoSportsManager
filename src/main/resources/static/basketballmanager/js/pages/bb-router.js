@@ -41,6 +41,7 @@ async function loadPage(page, options = {}) {
             case 'transfers': await bbRenderTransfers(); break;
             case 'tactics': await bbRenderTactics(); break;
             case 'training': await bbRenderTraining(); break;
+            case 'inbox': await bbRenderInbox(); break;
             case 'player': await window.bbRenderPlayer(options?.playerId); break;
             case 'matchViewer': await window.bbRenderMatchViewer(options); break;
             default: await window.bbRenderDashboard();
@@ -301,6 +302,48 @@ async function bbTrainClick() {
     }
 }
 
+async function bbRenderInbox() {
+    const mc = document.getElementById('main-content');
+    if (!mc) return;
+    const msgs = await window.bbFetchInbox();
+    const rows = msgs.map(m => `
+        <div class="match-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;" onclick="bbInboxRead(${m.id})">
+            <div style="display:flex;gap:8px;align-items:center;width:100%;">
+                <span style="font-size:0.7rem;text-transform:uppercase;color:var(--bball-primary-light);">${cmEscapeHtml(m.desk || '')}</span>
+                <span style="font-weight:700;flex:1;">${cmEscapeHtml(m.title || '')}</span>
+                ${m.read ? '' : '<span style="color:#f5a623;font-size:0.7rem;">● unread</span>'}
+            </div>
+            <div style="font-size:0.85rem;color:#99a6bb;">${cmEscapeHtml(m.body || '')}</div>
+            <div style="font-size:0.7rem;color:#666;">${cmFormatDate(m.createdAt)}</div>
+        </div>
+    `).join('');
+
+    mc.innerHTML = `
+        <div class="fm-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <div class="bball-eyebrow">News</div>
+                    <h2 style="margin:0;">Inbox</h2>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="reset-btn" style="font-size:0.75rem;padding:4px 10px;" onclick="bbInboxMarkAll()">Mark all read</button>
+                    <button class="back-button" onclick="loadPage('dashboard')">← Dashboard</button>
+                </div>
+            </div>
+            ${rows || cmBuildEmptyState('No messages yet')}
+        </div>`;
+}
+
+async function bbInboxRead(id) {
+    await window.bbMarkInboxRead(id);
+    loadPage('inbox');
+}
+async function bbInboxMarkAll() {
+    await window.bbMarkAllInboxRead();
+    loadPage('inbox');
+}
+
+window.bbRenderInbox = bbRenderInbox;
 window.bbRenderTraining = bbRenderTraining;
 window.bbRenderTactics = bbRenderTactics;
 window.loadPage = loadPage;

@@ -23,19 +23,22 @@ public class BbMatchSimulationService {
     private final BbMatchRepository matchRepository;
     private final BbMatchFixtureRepository matchFixtureRepository;
     private final BbPlayerSeasonStatsRepository seasonStatsRepository;
+    private final BbInboxService inboxService;
 
     public BbMatchSimulationService(BbMatchEngine matchEngine,
                                     BbTeamRepository teamRepository,
                                     BbPlayerRepository playerRepository,
                                     BbMatchRepository matchRepository,
                                     BbMatchFixtureRepository matchFixtureRepository,
-                                    BbPlayerSeasonStatsRepository seasonStatsRepository) {
+                                    BbPlayerSeasonStatsRepository seasonStatsRepository,
+                                    BbInboxService inboxService) {
         this.matchEngine = matchEngine;
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.matchRepository = matchRepository;
         this.matchFixtureRepository = matchFixtureRepository;
         this.seasonStatsRepository = seasonStatsRepository;
+        this.inboxService = inboxService;
     }
 
     @Transactional
@@ -113,6 +116,12 @@ public class BbMatchSimulationService {
         savePlayerStats(result.getHomePlayerStats(), seasonYear, competitionId, home);
         savePlayerStats(result.getAwayPlayerStats(), seasonYear, competitionId, away);
         log.info("CPlayer stats saved");
+
+        try {
+            String body = home.getName() + " " + result.getHomeScore() + " - " + result.getAwayScore() + " " + away.getName();
+            inboxService.addMessage(home.getId(), "MATCHDAY", "Match result", body, seasonYear);
+            inboxService.addMessage(away.getId(), "MATCHDAY", "Match result", body, seasonYear);
+        } catch (Exception ignored) { }
 
         return result;
     }

@@ -27,6 +27,7 @@ public class BbSeasonService {
     private final BbMatchFixtureRepository fixtureRepository;
     private final BbMatchRepository matchRepository;
     private final BbPlayerSeasonStatsRepository seasonStatsRepository;
+    private final BbInboxService inboxService;
     private final Random random = new Random();
 
     public BbSeasonService(CommonCompetitionRepository competitionRepository,
@@ -37,7 +38,8 @@ public class BbSeasonService {
                            BbCompetitionEntryRepository competitionEntryRepository,
                            BbMatchFixtureRepository fixtureRepository,
                            BbMatchRepository matchRepository,
-                           BbPlayerSeasonStatsRepository seasonStatsRepository) {
+                           BbPlayerSeasonStatsRepository seasonStatsRepository,
+                           BbInboxService inboxService) {
         this.competitionRepository = competitionRepository;
         this.seasonRepository = seasonRepository;
         this.teamRepository = teamRepository;
@@ -47,6 +49,7 @@ public class BbSeasonService {
         this.fixtureRepository = fixtureRepository;
         this.matchRepository = matchRepository;
         this.seasonStatsRepository = seasonStatsRepository;
+        this.inboxService = inboxService;
     }
 
     public int getCurrentSeasonYear() {
@@ -92,6 +95,10 @@ public class BbSeasonService {
             p.setFatigue(0);
             p.setInjured(false);
             playerRepository.save(p);
+        }
+
+        for (BbTeam t : teamRepository.findAll()) {
+            try { inboxService.addMessage(t.getId(), "WORLD", "New season", "Season " + newYear + " has started.", newYear); } catch (Exception ignored) { }
         }
 
         Map<String, Object> resp = new LinkedHashMap<>();

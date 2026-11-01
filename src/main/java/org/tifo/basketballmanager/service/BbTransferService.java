@@ -22,10 +22,12 @@ public class BbTransferService {
 
     private final BbTeamRepository teamRepository;
     private final BbPlayerRepository playerRepository;
+    private final BbInboxService inboxService;
 
-    public BbTransferService(BbTeamRepository teamRepository, BbPlayerRepository playerRepository) {
+    public BbTransferService(BbTeamRepository teamRepository, BbPlayerRepository playerRepository, BbInboxService inboxService) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
+        this.inboxService = inboxService;
     }
 
     public List<BbPlayerDTO> getMarketPlayers(Long userTeamId, int limit) {
@@ -67,6 +69,10 @@ public class BbTransferService {
         teamRepository.save(buyer);
         teamRepository.save(seller);
 
+        try {
+            inboxService.addMessage(buyer.getId(), "MARKET", "Transfer in", "Bought " + player.getName() + " for " + price, null);
+        } catch (Exception ignored) { }
+
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);
         resp.put("playerId", player.getId());
@@ -98,6 +104,10 @@ public class BbTransferService {
         playerRepository.save(player);
         teamRepository.save(seller);
         teamRepository.save(buyer);
+
+        try {
+            inboxService.addMessage(seller.getId(), "MARKET", "Transfer out", "Sold " + player.getName() + " to " + buyer.getName() + " for " + price, null);
+        } catch (Exception ignored) { }
 
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("ok", true);

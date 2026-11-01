@@ -31,6 +31,7 @@ public class BbController {
     private final BbTransferService transferService;
     private final BbTrainingService trainingService;
     private final BbSeasonService seasonService;
+    private final BbInboxService inboxService;
     private final BbLeagueService leagueService;
     private final BbMatchRepository matchRepository;
     private final BbMatchSimulationService simulationService;
@@ -48,6 +49,7 @@ public class BbController {
                         BbTransferService transferService,
                         BbTrainingService trainingService,
                         BbSeasonService seasonService,
+                        BbInboxService inboxService,
                         BbLeagueService leagueService,
                         BbMatchRepository matchRepository,
                         BbMatchSimulationService simulationService,
@@ -63,6 +65,7 @@ public class BbController {
         this.transferService = transferService;
         this.trainingService = trainingService;
         this.seasonService = seasonService;
+        this.inboxService = inboxService;
         this.leagueService = leagueService;
         this.matchRepository = matchRepository;
         this.simulationService = simulationService;
@@ -564,6 +567,38 @@ public class BbController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("seasonYear", seasonService.getCurrentSeasonYear());
         return ResponseEntity.ok(resp);
+    }
+
+    // ─── Inbox ───
+
+    @GetMapping("/inbox")
+    public ResponseEntity<List<BbInboxMessage>> getInbox() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        return ResponseEntity.ok(inboxService.getMessages(teamId));
+    }
+
+    @GetMapping("/inbox/unread-count")
+    public ResponseEntity<Map<String, Object>> unreadCount() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("count", inboxService.unreadCount(teamId));
+        return ResponseEntity.ok(resp);
+    }
+
+    @PostMapping("/inbox/{id}/read")
+    public ResponseEntity<Map<String, Object>> markRead(@PathVariable Long id) {
+        inboxService.markRead(id);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    @PostMapping("/inbox/read-all")
+    public ResponseEntity<Map<String, Object>> markAllRead() {
+        Long teamId = getCurrentUserTeamId();
+        if (teamId == null) return ResponseEntity.badRequest().build();
+        inboxService.markAllRead(teamId);
+        return ResponseEntity.ok(Map.of("ok", true));
     }
 
     // ─── DTO Mappers ───
