@@ -22,7 +22,7 @@ import java.util.List;
  */
 class AllDecisionsDiagnosticTest {
 
-    private static final int TICKS = 80;
+    private static final int TICKS = 200;
 
     @Test
     @DisplayName("Diagnostic: log all decisions and check sensibility for 2 minutes")

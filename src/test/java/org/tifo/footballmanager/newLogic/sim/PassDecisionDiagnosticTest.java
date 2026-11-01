@@ -24,7 +24,7 @@ import java.util.List;
  */
 class PassDecisionDiagnosticTest {
 
-    private static final int TICKS = 80; // 2 minutes
+    private static final int TICKS = 200; // 5 minutes
 
     @Test
     @DisplayName("Diagnostic: log all pass decisions and options for 2 minutes")
