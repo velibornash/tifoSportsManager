@@ -141,6 +141,7 @@ async function afRenderMatchViewer(options = {}) {
                     <h2 style="margin:4px 0;">${cmEscapeHtml(match.homeTeamName)} vs ${cmEscapeHtml(match.awayTeamName)}</h2>
                 </div>
                 <button class="back-button" onclick="afStopPlayback();loadPage('dashboard')">← Dashboard</button>
+                <button class="back-button" onclick="window.location.href='/home.html'">🏠 Sports Lobby</button>
             </div>
 
             <div class="scoreboard">
