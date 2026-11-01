@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.tifo.footballmanager.newLogic.sim.engine.ActionLogService;
+import org.tifo.footballmanager.newLogic.sim.model.DecisionOption;
 
 /**
  * Authoritative match state — single source of truth.
@@ -109,7 +110,10 @@ public class MatchState {
     // Ball
     private final Ball ball;
     private Player carrier;           // null = no carrier (transition/loose)
+    private Player carrierAtPhysics;  // carrier as of ball-physics result (before decision/execution)
     private Player pendingReceiver;   // who should receive the in-flight pass
+    private DecisionOption pendingDecision; // decision made on tick N, executed on tick N+1
+    private Player pendingDecisionCarrier; // who made the decision
     private Position receivePoint;    // where the in-flight pass will land (receiver runs onto it)
     private String lastTouchTeam;     // team that last touched the ball
     private Player lastTouchPlayer;   // player who last touched the ball (for deflection exclusion)
@@ -467,6 +471,9 @@ public class MatchState {
     public void clearPassContext() {
         clearPendingPass();
         pendingReceiver = null;
+        pendingDecision = null;
+        carrierAtPhysics = null;
+        pendingDecisionCarrier = null;
         lastCompletedPasserId = null;
         lastCompletedPasserName = null;
         lastCompletedPasserTeam = null;
@@ -519,7 +526,15 @@ public class MatchState {
     public void incrementAwayPenalties() { this.awayPenalties++; }
 
     public Player getPendingReceiver() { return pendingReceiver; }
+    public Player getCarrierAtPhysics() { return carrierAtPhysics; }
+    public void setCarrierAtPhysics(Player c) { this.carrierAtPhysics = c; }
     public void setPendingReceiver(Player pendingReceiver) { this.pendingReceiver = pendingReceiver; }
+
+    public DecisionOption getPendingDecision() { return pendingDecision; }
+    public void setPendingDecision(DecisionOption pendingDecision) { this.pendingDecision = pendingDecision; }
+    public void clearPendingDecision() { this.pendingDecision = null; this.pendingDecisionCarrier = null; }
+    public Player getPendingDecisionCarrier() { return pendingDecisionCarrier; }
+    public void setPendingDecisionCarrier(Player c) { this.pendingDecisionCarrier = c; }
 
     /** Where the in-flight pass is heading — the receiver runs onto it. */
     public Position getReceivePoint() { return receivePoint; }

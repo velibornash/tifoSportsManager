@@ -74,6 +74,7 @@ public class MatchOrchestrator {
     private String lastLoggedCarrier;
     private boolean tacticsSourceLogged;
     private int restartTakerAge; // ticks the current restart taker has been designated
+    private boolean pendingChanged; // whether the pending decision was a change from the previous
 
     /**
      * Set when a penalty taker picks the ball up, consumed by the decision hook on the next tick.
@@ -560,6 +561,11 @@ public class MatchOrchestrator {
         // === 5. HANDLE BALL PHYSICS RESULT ===
         handleBallPhysicsResult(ballResult);
 
+        // Capture the carrier as of the ball-physics result, before decision/execution.
+        // This is what the snapshot uses, so the orange circle shows who received the
+        // ball even if they pass/carry in the same tick.
+        state.setCarrierAtPhysics(state.getCarrier());
+
         // === 5b. A RESTART NOBODY CAN TAKE IS OVER ===
         // After the ball result, because that is where a restart is created — and a restart
         // nobody can take must not survive into the next tick with the offside check still
@@ -577,25 +583,90 @@ public class MatchOrchestrator {
         // (restart entry points null the carrier, BallPhysicsEngine now lets only
         // the designated taker pick the restart ball up), and this term makes it
         // structurally impossible for a future caller to break it.
-        if (canReDecide && state.getCarrier() != null
+        // === 6. DECISION (tick N) + EXECUTION (tick N+1) ===
+        // Decision and execution are deliberately split across two ticks (owner 2026-11-01):
+        // the decision is made on tick N (carrier must be on the ball), and the execution
+        // (launching the ball) happens on tick N+1. This prevents the pass/shot from
+        // launching in the same tick as the receive, which caused the ball to leave the
+        // player before he was visually on it, and gives the carrier a visible 1-tick
+        // root on the ball before he moves.
+
+        // --- Execute a deferred decision from the previous tick ---
+        if (state.getPendingDecision() != null) {
+            DecisionOption decision = state.getPendingDecision();
+            Player carrier = state.getPendingDecisionCarrier();
+            state.clearPendingDecision();
+            if (carrier != null && state.getCarrier() == carrier && isCarrierOnBall()) {
+                actionExecutor.execute(state, decision);
+
+                // Clear the "just took restart" flag after the restart action is executed.
+                if (state.isJustTookRestart()) {
+                    state.setJustTookRestart(false);
+                }
+
+                boolean changed = pendingChanged;
+                if (changed) {
+                    lastLoggedType = decision.getType();
+                    lastLoggedCarrier = carrier.getLabel();
+                }
+
+                // Enriched per-action event (gated on "changed").
+                String actionEvent = actionEventType(decision.getType());
+                if (actionEvent != null && changed) {
+                    String actionMsg = actionEvent + " by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                            + " at " + p(carrier.getPosition())
+                            + (decision.getTarget() != null
+                                ? " -> " + decision.getTarget().getLabel() + "(" + decision.getTarget().getRole() + ")"
+                                : "")
+                            + (decision.getType() == ActionType.SHOT
+                                ? (state.isLastShotOnTarget() ? " (on target)" : " (off target)")
+                                : "");
+                    recorder.appendEvent(state.getMatchTicks(), actionEvent, actionMsg, carrier, decision.getTarget());
+                }
+
+                // Feed the stats collector.
+                switch (decision.getType()) {
+                    case PASS -> stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    case THRU -> {
+                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                        stats.onThroughBall(carrier.getTeam(), carrier.getId());
+                    }
+                    case CROSS -> {
+                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                        stats.onCross(carrier.getTeam(), carrier.getId());
+                    }
+                    case CENTER -> {
+                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                        stats.onCenter(carrier.getTeam(), carrier.getId());
+                    }
+                    case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
+                    case DRIBBLE -> {
+                        if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());
+                        if (changed) recorder.appendEvent(state.getMatchTicks(), "CARRY",
+                                "CARRY by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                                        + " at " + p(carrier.getPosition())
+                                        + (decision.getTarget() != null ? " -> " + p(decision.getTarget().getPosition()) : ""),
+                                carrier, decision.getTarget());
+                    }
+                    case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
+                }
+            }
+            // if carrier moved away, the decision is discarded (no execution)
+        }
+
+        // --- Decide (defer execution to next tick) ---
+        if (state.getPendingDecision() == null && canReDecide && state.getCarrier() != null
                 && state.getRestartTaker() == null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
 
-            // A penalty is its own mechanic, not an 11 m shot. This must run BEFORE the
-            // decision engine, otherwise the final-rows hard-SHOT rule fires and the taker
-            // simply blasts it from the spot with no run-up, no dive and no nerve - which
-            // is exactly the bug S1.7 was raised to fix.
-                if (state.isPenaltyPending()) {
+            // A penalty is its own mechanic, not an 11 m shot.
+            if (state.isPenaltyPending()) {
                 state.setPenaltyPending(false);
                 takePenalty(carrier);
                 return;
             }
 
-            // RIGID RULE (user 2026-09-17): the carrier must be physically ON the
-            // ball before deciding/executing ANY action. An off-ball carrier leaves
-            // the ball where it lies and the Movement Engine walks him onto it —
-            // the decision is deferred until he actually arrives. Only once he is
-            // on the ball (within ON_BALL_EPS) is it glued to his feet.
+            // RIGID RULE: the carrier must be physically ON the ball.
             state.getBall().setPosition(carrier.getPosition());
             state.getBall().stop();
 
@@ -607,86 +678,25 @@ public class MatchOrchestrator {
             }
 
             // Offside at the moment the ball is played.
-            //
-            // The delivery is NOT blocked and the ball is NOT teleported to the receiver — the
-            // receiver is FLAGGED, and the whistle fires when he actually touches the ball. That is
-            // the owner's rule (2026-09-23), and it is why there is no "confirmed" branch here: the
-            // offence happens at the reception, not at the pass. The branch that used to be here
-            // could never run, because `checkOffside` never confirms — and it said in its own
-            // comment that a clear offside was "whistled immediately ... pass NOT executed", which
-            // is not what the code did.
-            //
-            // This covers EVERY delivery that puts the ball at a team-mate's feet: an ordinary
-            // pass, a cross and a centre. A cross used to skip the check entirely, so a cross to a
-            // runner beyond the second-to-last defender was a normal reception — he could shoot
-            // and score from it (F-DE-1 / F-DE-7).
             if (offsideService.isOffsideCheckedDelivery(decision.getType())
                     && decision.getTarget() != null) {
                 offsideService.checkOffside(decision.getTarget(), carrier.getPosition(), state);
             }
 
-            actionExecutor.execute(state, decision);
-
-            // Clear the "just took restart" flag after the restart action is executed.
-            // This ensures the throw-in rules (no pass to self, pass within 2-2.5 cells
-            // or into the box) only apply to the restart taker's first decision.
-            if (state.isJustTookRestart()) {
-                state.setJustTookRestart(false);
-            }
+            // Defer execution to the next tick.
+            state.setPendingDecision(decision);
+            state.setPendingDecisionCarrier(carrier);
+            carrier.setStrikeHoldTicks(1);
 
             boolean changed = decision.getType() != lastLoggedType
                     || !carrier.getLabel().equals(lastLoggedCarrier);
+            pendingChanged = changed;
             if (changed) {
                 lastLoggedType = decision.getType();
                 lastLoggedCarrier = carrier.getLabel();
                 String decMsg = formatDecision(carrier, result);
                 log("DEC", decMsg);
                 recorder.appendEvent(state.getMatchTicks(), "DECISION", decMsg, carrier, decision.getTarget());
-            }
-
-            // Enriched per-action event with explicit actor attribution (carrier
-            // is null after PASS/SHOT/CLEAR execution). Gated on "changed" so a
-            // continuing DRIBBLE (re-executed every tick) does not spam events.
-            String actionEvent = actionEventType(decision.getType());
-            if (actionEvent != null && changed) {
-                String actionMsg = actionEvent + " by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
-                        + " at " + p(carrier.getPosition())
-                        + (decision.getTarget() != null
-                            ? " -> " + decision.getTarget().getLabel() + "(" + decision.getTarget().getRole() + ")"
-                            : "")
-                        + (decision.getType() == ActionType.SHOT
-                            ? (state.isLastShotOnTarget() ? " (on target)" : " (off target)")
-                            : "");
-                recorder.appendEvent(state.getMatchTicks(), actionEvent, actionMsg, carrier, decision.getTarget());
-            }
-
-            // Feed the stats collector for each executed action (one per decision change).
-            switch (decision.getType()) {
-                case PASS -> stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                // A through ball, cross and centre are all PASSES for the
-                // pass-accuracy counters, and additionally get their own stat.
-                case THRU -> {
-                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                    stats.onThroughBall(carrier.getTeam(), carrier.getId());
-                }
-                case CROSS -> {
-                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                    stats.onCross(carrier.getTeam(), carrier.getId());
-                }
-                case CENTER -> {
-                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                    stats.onCenter(carrier.getTeam(), carrier.getId());
-                }
-                case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
-                case DRIBBLE -> {
-                    if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());
-                    if (changed) recorder.appendEvent(state.getMatchTicks(), "CARRY",
-                            "CARRY by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
-                                    + " at " + p(carrier.getPosition())
-                                    + (decision.getTarget() != null ? " -> " + p(decision.getTarget().getPosition()) : ""),
-                            carrier, decision.getTarget());
-                }
-                case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
             }
         }
 

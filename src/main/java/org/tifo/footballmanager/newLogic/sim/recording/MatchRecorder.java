@@ -107,11 +107,16 @@ public class MatchRecorder {
         String actingPlayerId = state.getLastTouchPlayer() != null
                 ? state.getLastTouchPlayer().getId() : null;
 
+        // The carrier as of the ball-physics result (before decision/execution), so the orange
+        // circle shows who received the ball even if they pass in the same tick.
+        Player carrierForSnapshot = state.getCarrierAtPhysics() != null
+                ? state.getCarrierAtPhysics() : state.getCarrier();
+
         snapshots.add(new MatchSnapshot(
                 state.getMatchTicks(), 0, playerSnapshots,
                 state.getBall().getPosition(), null,
                 state.getBall().getBallState(state.getCarrier()),
-                state.getCarrier() == null ? null : state.getCarrier().getId(),
+                carrierForSnapshot == null ? null : carrierForSnapshot.getId(),
                 null, actionType, actingPlayerId, targetPlayerId, aim, aim,
                 state.getPhase(), state.getHomeGoals(), state.getAwayGoals(),
                 state.getMatchTicks(), state.isHalfTime(), state.isMatchFinished(),
