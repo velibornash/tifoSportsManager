@@ -692,7 +692,15 @@ public class CleanDecisionEngine {
         score -= pressure * 20.0;
         reason.append(String.format("press -%.0f ", pressure * 20.0));
 
-        // RIGID CARRY GUARD. At the byline the carry target clamps back onto the carrier's own
+        // Wide player in attacking half: boost carry into the space ahead.
+        // (Owner: "bocni igrac treba da napadne prostor ispred sebe")
+        boolean inAttackingHalf = home ? row >= 4.5 : row <= 4.5;
+        double col = carrier.getPosition().getColumn();
+        boolean wide = col <= 2.0 || col >= 6.0;
+        if (inAttackingHalf && wide) {
+            score += 15.0;
+            reason.append("wide carry +15 ");
+        }
         // position, so a DRIBBLE there makes NO progress and would re-win for ever — a standing-spot
         // loop. Judged on the CLAMPED target in the direction he attacks: the executor clamps HOME to
         // [1.0, 7.5] and AWAY to [1.5, 8.0], and the Movement Engine converges on the cap with
@@ -724,8 +732,8 @@ public class CleanDecisionEngine {
                 score *= 0.80;
                 reason.append("defensive -20% ");
             } else if ("WINGER".equals(cstyle)) {
-                double col = carrier.getPosition().getColumn();
-                if (col <= 2.0 || col >= 6.0) {
+                double ccol = carrier.getPosition().getColumn();
+                if (ccol <= 2.0 || ccol >= 6.0) {
                     score *= 1.25;
                     reason.append("winger +25% ");
                 }
