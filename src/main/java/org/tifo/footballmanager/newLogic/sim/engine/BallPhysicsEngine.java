@@ -35,8 +35,8 @@ public class BallPhysicsEngine implements BallEngine {
     private int deadTickCount;
 
     // --- Physics constants (cells/tick @ 40 TPM = 1 tick = 1.5 s match time) ---
-    public static final double MAX_BALL_SPEED = 2.1;      // launch speed (cells/tick) — owner: constant 2.1 for all actions
-    public static final double LAUNCH_SPEED = 2.1;        // constant launch speed for passes/shots/centers (changeable later)
+    public static final double MAX_BALL_SPEED = 2.5;      // launch speed (cells/tick) — owner: 2.5 (raised from 2.1, ball looked too slow)
+    public static final double LAUNCH_SPEED = 2.5;        // constant launch speed for passes/shots/centers (changeable later)
     public static final double MIN_LAUNCH_SPEED = 0.75;   // 7 m/s
     /**
      * Rolling deceleration on grass, in cells/tick^2 (1 cell = 14 m, 1 tick = 1.5 s).
@@ -580,22 +580,6 @@ public class BallPhysicsEngine implements BallEngine {
         String ev = null;
         Player hit = null;
 
-        // pending receiver (same team as lastTouch) — RECEIVE if within radius
-        if (pending != null) {
-            double d = SimUtils.pointSegmentDistance(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
-            // The selected receiver's boost is ONE radius at every door. It used to be
-            // RECEIVE_R_BOOSTED (0.5) for a slow ball and the larger RECEIVE_R (0.35)
-            // for a fast one through here — so the stepBall fast path could tighten the
-            // reach and this second door would still hand the ball over at 0.35.
-            // RECEIVER boost, one number: RECEIVE_R_BOOSTED.
-            double receiveR = RECEIVE_R_BOOSTED;
-            if (d <= receiveR) {
-                bestT = approachT(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
-                ev = "RECEIVE";
-                hit = pending;
-            }
-        }
-
         // other players
         Player lastToucher = state.getLastTouchPlayer();
         for (Player p : state.getPlayers()) {
@@ -686,6 +670,20 @@ public class BallPhysicsEngine implements BallEngine {
                         bestT = t; ev = "INTERCEPT"; hit = p;
                     }
                     // else: too far to touch / no read — ball sails by.
+                }
+            }
+        }
+
+        // Pending receiver: checked AFTER all opponents, so an opponent in the way
+        // (within DEFLECT_R) takes priority (deflect/intercept) over the receive.
+        // The pending receiver only gets the ball if no opponent contacted it first.
+        if (pending != null && !pending.isUnavailable() && ev == null) {
+            double d = SimUtils.pointSegmentDistance(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
+            double receiveR = RECEIVE_R_BOOSTED;
+            if (d <= receiveR) {
+                double t = approachT(pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
+                if (t < bestT) {
+                    bestT = t; ev = "RECEIVE"; hit = pending;
                 }
             }
         }

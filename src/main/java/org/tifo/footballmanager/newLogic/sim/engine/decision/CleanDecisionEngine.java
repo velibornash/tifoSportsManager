@@ -566,6 +566,25 @@ public class CleanDecisionEngine {
             }
         }
 
+        // Safety: how close is the nearest opponent to the receiver? A pass to a
+        // receiver with an opponent within 0.5 cells (7 m) is dangerous; a pass to
+        // a receiver with nobody within 1.0 cell is safe. (Owner: 2 cells is 30 m
+        // — far too big for a "free player" bonus; ~0.5 cells is the right scale.)
+        double nearestOppToReceiver = Double.MAX_VALUE;
+        for (Player opp : state.getPlayers()) {
+            if (opp.getTeam().equals(carrier.getTeam())) continue;
+            if (opp.isUnavailable()) continue;
+            double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
+            if (d < nearestOppToReceiver) nearestOppToReceiver = d;
+        }
+        if (nearestOppToReceiver < 0.5) {
+            score -= 25.0;
+            reason.append("dangerous -25 ");
+        } else if (nearestOppToReceiver > 1.0) {
+            score += 8.0;
+            reason.append("safe +8 ");
+        }
+
         // Execution: whether he can hit it, not whether he should.
         score += (carrier.getSkills().passing() - 10.0) * 0.8;
         score += (carrier.getSkills().playmaking() - 10.0) * 0.4;
@@ -768,6 +787,40 @@ public class CleanDecisionEngine {
         } else {
             score -= pressure * 20.0;
             reason.append(String.format("press -%.0f ", pressure * 20.0));
+        }
+
+        // If there are free teammates nearby, prefer passing over shooting.
+        // (Owner: 2 cells is too big — ~1.0 cell is the right scale for "free".)
+        double nearestFreeTeammate = Double.MAX_VALUE;
+        for (Player mate : state.getPlayers()) {
+            if (!mate.getTeam().equals(carrier.getTeam()) || mate.equals(carrier)) continue;
+            if (mate.isUnavailable()) continue;
+            double d = SimUtils.distance(mate.getPosition(), carrier.getPosition());
+            if (d < nearestFreeTeammate) nearestFreeTeammate = d;
+        }
+        // Check if that teammate is actually free (no opponent within 1.0 cell)
+        if (nearestFreeTeammate <= 2.0) {
+            // There's a teammate nearby — check if they're free
+            boolean mateFree = true;
+            for (Player mate : state.getPlayers()) {
+                if (!mate.getTeam().equals(carrier.getTeam()) || mate.equals(carrier)) continue;
+                if (mate.isUnavailable()) continue;
+                double d = SimUtils.distance(mate.getPosition(), carrier.getPosition());
+                if (d > 2.0) continue;
+                for (Player opp : state.getPlayers()) {
+                    if (opp.getTeam().equals(carrier.getTeam())) continue;
+                    if (opp.isUnavailable()) continue;
+                    if (SimUtils.distance(opp.getPosition(), mate.getPosition()) < 1.0) {
+                        mateFree = false;
+                        break;
+                    }
+                }
+                if (mateFree) break;
+            }
+            if (mateFree) {
+                score -= 20.0;
+                reason.append("free teammate nearby -20 ");
+            }
         }
 
         reason.append(String.format("-> %.1f dist", distToGoal));
