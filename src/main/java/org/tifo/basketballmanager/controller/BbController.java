@@ -362,10 +362,16 @@ public class BbController {
         // 4. Reset player stats/fatigue/injury (single UPDATE)
         playerRepository.resetAllPlayers();
 
-        // 5. Re-assign owner team in case it was lost
+        // 5. Re-assign seeded users' teams in case they were lost
         userRepository.findByUsernameOrEmail("velibor@example.com").ifPresent(user -> {
             if (user.getBasketballTeam() == null) {
                 teamRepository.findByName("KK Omladinac").ifPresent(user::setBasketballTeam);
+                userRepository.save(user);
+            }
+        });
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            if (user.getBasketballTeam() == null) {
+                teamRepository.findByName("KK Partizan").ifPresent(user::setBasketballTeam);
                 userRepository.save(user);
             }
         });

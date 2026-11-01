@@ -65,6 +65,7 @@ public class BbDataInitializer {
     public void initBasketballData() {
         if (commonCompetitionRepository.findBySport("BASKETBALL").size() > 0) {
             log.info("Basketball data already seeded");
+            assignUserTeams();
             return;
         }
 
@@ -109,6 +110,7 @@ public class BbDataInitializer {
         }
 
         assignOwnerTeam(superLiga, allTeams);
+        assignUserTeams();
 
         log.info("Basketball data seeded: {} competitions, {} teams, competitions.size={}",
                 competitions.size(), allTeams.size(), competitions.size());
@@ -398,6 +400,36 @@ public class BbDataInitializer {
                 log.info("KK Omladinac assigned to owner");
             }
         }
+
+        // Second human manager (kecko) — mirrors football manager's DatabaseInitializer,
+        // so both seeded accounts can play basketball after a reset.
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            BbTeam partizan = allTeams.stream()
+                    .filter(t -> "KK Partizan".equals(t.getName()))
+                    .findFirst().orElse(null);
+            if (partizan != null && user.getBasketballTeam() == null) {
+                user.setBasketballTeam(partizan);
+                userRepository.save(user);
+                log.info("KK Partizan assigned to kecko");
+            }
+        });
+    }
+
+    private void assignUserTeams() {
+        userRepository.findByUsernameOrEmail(OWNER_EMAIL).ifPresent(user -> {
+            if (user.getBasketballTeam() == null) {
+                teamRepository.findByName("KK Omladinac").ifPresent(user::setBasketballTeam);
+                userRepository.save(user);
+                log.info("KK Omladinac assigned to owner (ensure)");
+            }
+        });
+        userRepository.findByUsernameOrEmail("kecko@example.com").ifPresent(user -> {
+            if (user.getBasketballTeam() == null) {
+                teamRepository.findByName("KK Partizan").ifPresent(user::setBasketballTeam);
+                userRepository.save(user);
+                log.info("KK Partizan assigned to kecko (ensure)");
+            }
+        });
     }
 
     private List<String> generateSerbianNames() {
