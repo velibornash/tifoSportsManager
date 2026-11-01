@@ -1043,9 +1043,9 @@ export function createTrainingView(deps) {
                         </div>
                     </section>
                     ${noticeHtml}
-                    ${strengthPickerHtml}
                     ${tacticPickerHtml}
                     ${aiTacticPickerHtml}
+                    ${strengthPickerHtml}
                     ${resultHtml}
                 </div>`;
 
@@ -1099,6 +1099,7 @@ export function createTrainingView(deps) {
                     } finally {
                         state.busy = false;
                         render();
+                        setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50);
                     }
                 });
             }

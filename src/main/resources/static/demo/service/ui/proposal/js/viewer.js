@@ -1253,6 +1253,19 @@ class MatchViewer {
     if (!a || !interp.next) return a ? { row: a.row, column: a.column, height: interp.snap.ballHeight || 0 } : a;
     const b = interp.next.ballPosition;
     if (!b) return a;
+    // When a player is carrying the ball on the starting snapshot, the ball must
+    // stay on that player's feet during interpolation — never drift ahead of him.
+    // A pass/shot/center launched while the carrier is not physically on the ball
+    // is a visual lie, and this guard makes the viewer honest regardless of the
+    // engine's recorded positions.
+    const carrierId = interp.snap.ballCarrierId;
+    if (carrierId) {
+      const players = this._getInterpolatedPlayers(interp);
+      const carrier = players ? players.find(p => p.id === carrierId) : null;
+      if (carrier && carrier.row != null && carrier.column != null) {
+        return { row: carrier.row, column: carrier.column, height: interp.snap.ballHeight || 0 };
+      }
+    }
     const t = interp.frac;
 
     // A restart (goal kick / corner / throw-in / goal) teleports the ball from
