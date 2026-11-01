@@ -131,6 +131,7 @@ async function bbRenderMatchViewer(options) {
                     <h2 style="margin:4px 0;">${cmEscapeHtml(result.homeTeamName)} vs ${cmEscapeHtml(result.awayTeamName)}</h2>
                 </div>
                 <button class="back-button" onclick="bbStopPlayback();loadPage('')">← Dashboard</button>
+                <button class="back-button" onclick="window.location.href='/home.html'">🏠 Sports Lobby</button>
             </div>
 
             <div class="scoreboard" style="position:relative;z-index:1;">

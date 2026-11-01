@@ -360,3 +360,18 @@
     .qtr-scores { gap: 6px; }
     .qtr-score { min-width: 44px; padding: 4px 8px; }
 }
+
+/* ─── PHASE 0: lobby return on desktop + no overlapping icons on phone ───
+   The shared layout.css hides .top-menu on desktop (>=1025px) because the full
+   football manager moved to .desktop-nav. Basketball still uses the top bar as its
+   primary navigation, so unhide it on desktop. On phones, the desktop-only nav
+   buttons (Sports Lobby, Dashboard, Club, ...) would otherwise stay visible and
+   overlap the mobile header; hide them on phones (they remain reachable through
+   the mobile sidebar). */
+@media (min-width: 1025px) {
+    .top-menu { display: flex !important; }
+}
+
+@media (max-width: 480px) {
+    .top-menu > .menu-button.desktop-only { display: none !important; }
+}
