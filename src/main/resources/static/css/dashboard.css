@@ -3170,6 +3170,7 @@ select option {
 
 .fm-grid-top--club-profile {
     grid-template-columns: minmax(280px, 0.74fr) minmax(0, 1.26fr);
+    align-items: stretch;
 }
 
 .fm-grid-top--fixture-preview {
@@ -6051,6 +6052,44 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 12px;
+}
+
+/* Club profile (desktop): the milestones panel sits in the right column beside the club card and
+   stretches to that card's height. Its six widgets are laid out as 3 rows of 2, so the panel's
+   height comes from the rows, not from content — the owner asked for the same height as the left
+   card. Mobile keeps the auto-fit single column (see the media blocks below). */
+@media (min-width: 1025px) {
+    .fm-grid-top--club-profile .fm-milestone-board-panel {
+        display: flex;
+        flex-direction: column;
+        margin-top: 0;
+        height: 100%;
+    }
+    .fm-grid-top--club-profile .fm-milestone-board-panel .fm-panel-head {
+        flex: 0 0 auto;
+    }
+    .fm-grid-top--club-profile .fm-milestone-grid {
+        flex: 1 1 auto;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .fm-grid-top--club-profile .fm-milestone-card {
+        height: 100%;
+    }
+}
+
+/* Clickable badge tiles in the club hero: the ones that point somewhere (stadium, finances, the
+   country's club ranking, the world club ranking) read as links rather than plain figures. */
+.team-summary-grid .team-summary-tile--link {
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.team-summary-grid .team-summary-tile--link:hover,
+.team-summary-grid .team-summary-tile--link:focus-visible {
+    border-color: rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.08);
+    outline: none;
 }
 
 /* The history under the tiles, in the tiles' own language (owner, 2026-10-19: "recent matches i

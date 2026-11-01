@@ -230,6 +230,13 @@ public class TeamController {
         profile.put("worldPosition", worldPosition);
         profile.put("humanControlled", Boolean.TRUE.equals(team.isHumanControlled()));
 
+        // The club's country, so the profile can link the Elo rating to that country's club ranking
+        // rather than only to the viewer's own country. Reads the FK, never a name join.
+        if (team.getCountry() != null) {
+            profile.put("countryIso", team.getCountry().getIsoCode());
+            profile.put("countryName", team.getCountry().getName());
+        }
+
         // Whether the reader may rename this club — the same gate the rename endpoint applies, so the
         // pencil appears exactly where the write would be accepted. Read rather than guessed from
         // humanControlled: an AI club is human-controlled false, but so is a club whose manager has

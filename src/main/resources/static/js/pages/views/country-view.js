@@ -1144,12 +1144,14 @@ export function createCountryView(deps) {
     // ------------------------------------------------------------------ page
 
     async function loadCountryPage(options) {
-        const { tab = 'general', level: forcedLevel, simulatedCountry = '' } = options || {};
+        const { tab = 'general', level: forcedLevel, simulatedCountry = '', countryCode = '' } = options || {};
         const mainContent = document.getElementById('main-content');
         // Resolved by the host, which prefers an explicit choice from the World page over the manager's
         // own country. It used to ask for the manager's own country directly, so every country in the
         // world showed the manager's own side.
-        const countryIsoCode = getCurrentUserCountryIsoCode();
+        const countryIsoCode = (countryCode && String(countryCode).trim())
+            ? String(countryCode).trim()
+            : (getCurrentUserCountryIsoCode() || '');
         if (!countryIsoCode) {
             mainContent.innerHTML = buildEmptyState('Country data is not available for this manager yet.');
             return;

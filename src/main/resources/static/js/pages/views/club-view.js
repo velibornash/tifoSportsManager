@@ -45,17 +45,25 @@ export function createClubView(deps) {
         const delta = typeof profile.eloDelta === 'number' ? profile.eloDelta : null;
         const position = profile.worldPosition != null ? Number(profile.worldPosition) : null;
         if (elo == null && position == null) return '';
-        return `
-            <div>
-                <strong>${elo != null ? elo : '—'}${delta != null && Number.isFinite(delta)
-                    ? ` <span class="fm-club-elo-delta ${delta >= 0 ? 'is-up' : 'is-down'}">${
-                        delta >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(delta))}</span>` : ''}</strong>
-                <span>Elo rating</span>
-            </div>
-            <div>
-                <strong>${position != null ? `#${position}` : '—'}</strong>
-                <span>In the world</span>
-            </div>`;
+        const countryIso = profile.countryIso ? String(profile.countryIso) : '';
+        const eloTile = countryIso
+            ? `<div class="team-summary-tile--link" data-goto-country="${htmlEscape(countryIso)}" role="link" tabindex="0">
+                    <strong>${elo != null ? elo : '—'}${delta != null && Number.isFinite(delta)
+                        ? ` <span class="fm-club-elo-delta ${delta >= 0 ? 'is-up' : 'is-down'}">${
+                            delta >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(delta))}</span>` : ''}</strong>
+                    <span>Elo rating</span>
+                </div>`
+            : `<div>
+                    <strong>${elo != null ? elo : '—'}${delta != null && Number.isFinite(delta)
+                        ? ` <span class="fm-club-elo-delta ${delta >= 0 ? 'is-up' : 'is-down'}">${
+                            delta >= 0 ? '▲' : '▼'} ${Math.abs(Math.round(delta))}</span>` : ''}</strong>
+                    <span>Elo rating</span>
+                </div>`;
+        const worldTile = `<div class="team-summary-tile--link" data-goto-world-clubs role="link" tabindex="0">
+            <strong>${position != null ? `#${position}` : '—'}</strong>
+            <span>In the world</span>
+        </div>`;
+        return `${eloTile}${worldTile}`;
     }
 
     /**
@@ -141,14 +149,23 @@ export function createClubView(deps) {
                         <h2>${clubNameCellHtml(profile)}</h2>
                         <p class="fm-subtle">Same club shell as First Team, with profile data, stadium access, budget, and reputation.</p>
                         <p class="fm-subtle" data-club-name-status></p>
+                        <p class="fm-subtle club-profile-hero-meta">
+                            <span>League: ${profile.leagueId
+                                ? `<a class="fm-CTeam-link" href="#" data-open-league="${htmlEscape(String(profile.leagueId))}"
+                                      data-league-name="${htmlEscape(profile.leagueName || '')}">${htmlEscape(profile.leagueName || 'League')}</a>`
+                                : htmlEscape(profile.leagueName || 'No league')}</span>
+                            <span>Manager: ${profile.managerUserId
+                                ? `<button type="button" class="fm-link-btn" data-open-manager="${htmlEscape(String(profile.managerUserId))}">${htmlEscape(profile.managerName || 'Manager')}</button>`
+                                : htmlEscape('AI-run')}</span>
+                        </p>
                     </div>
                     ${buildClubActionsHtml('profile')}
                 </div>
                 <div class="fm-medical-stat-grid team-summary-grid">
                     <div><strong>${htmlEscape(profile.founded || 'N/A')}</strong><span>Founded</span></div>
-                    <div><strong>${htmlEscape(profile.stadium || 'N/A')}</strong><span>Home stadium</span></div>
+                    <div class="team-summary-tile--link" data-goto-page="stadium" role="link" tabindex="0"><strong>${htmlEscape(profile.stadium || 'N/A')}</strong><span>Home stadium</span></div>
                     <div><strong>${htmlEscape(profile.reputation || 'N/A')}</strong><span>Reputation</span></div>
-                    <div><strong>${moneySpan(profile.budget)}</strong><span>Budget</span></div>
+                    <div class="team-summary-tile--link" data-goto-page="finances" role="link" tabindex="0"><strong>${moneySpan(profile.budget)}</strong><span>Budget</span></div>
                     ${strengthTiles(profile)}
                 </div>
             </section>
@@ -192,53 +209,17 @@ export function createClubView(deps) {
                          rating, appearances, goals and assists, without skills. -->
                     <button type="button" class="fm-action-btn secondary club-profile-squad-btn">Open Squad</button>
                 </section>
-                <section class="fm-panel club-profile-detail-card">
+                <section class="fm-panel fm-milestone-board-panel">
                     <div class="fm-panel-head">
                         <div>
-                            <h3>Club details</h3>
-                            <p class="fm-subtle">Profile data stays concise, wide, and visually aligned with the rest of the club area.</p>
+                            <h3>Club milestones</h3>
+                            <p class="fm-subtle">Current season snapshot for your club, kept alongside the league-wide milestone boards.</p>
                         </div>
-                        <span class="fm-panel-action">Profile</span>
+                        <span class="fm-panel-action">Team board</span>
                     </div>
-                    <div class="club-profile-detail-list">
-                        <div class="club-profile-detail-row"><span>Founded</span><strong>${htmlEscape(profile.founded || 'N/A')}</strong></div>
-                        <div class="club-profile-detail-row"><span>Stadium</span><strong>${htmlEscape(profile.stadium || 'N/A')}</strong></div>
-                        <div class="club-profile-detail-row"><span>Budget</span><strong>${moneySpan(profile.budget)}</strong></div>
-                        <div class="club-profile-detail-row"><span>Reputation</span><strong>${htmlEscape(profile.reputation || 'N/A')}</strong></div>
-                        <!-- The league, as a link. It was missing entirely: a club profile that
-                             does not say which division it is in, and cannot take you there. -->
-                        <div class="club-profile-detail-row"><span>League</span><strong>${
-                            profile.leagueId
-                                ? `<a class="fm-CTeam-link" href="#" data-open-league="${htmlEscape(String(profile.leagueId))}"
-                                      data-league-name="${htmlEscape(profile.leagueName || '')}">${htmlEscape(profile.leagueName || 'League')}</a>`
-                                : htmlEscape('No league')
-                        }</strong></div>
-                        <!-- Who runs the club, and a way to his profile. The owner asked for exactly
-                             this path: click a club, see who manages it, click him, read his profile.
-                             Reads the FK on TeamController.getProfile — never a name join, which is
-                             what P0-18 and P0-20 are about.
-
-                             A club with no manager says "AI-run" rather than showing nothing: this page
-                             is the viewer's OWN club, so the absence is meaningful and should look
-                             deliberate. -->
-                        <div class="club-profile-detail-row"><span>Manager</span><strong>${
-                            profile.managerUserId
-                                ? `<button type="button" class="fm-link-btn" data-open-manager="${htmlEscape(String(profile.managerUserId))}">${htmlEscape(profile.managerName || 'Manager')}</button>`
-                                : htmlEscape('AI-run')
-                        }</strong></div>
-                    </div>
+                    ${buildMilestoneBoardHtml(milestones)}
                 </section>
             </div>
-            <section class="fm-panel fm-milestone-board-panel">
-                <div class="fm-panel-head">
-                    <div>
-                        <h3>Club milestones</h3>
-                        <p class="fm-subtle">Current season snapshot for your club, kept alongside the league-wide milestone boards.</p>
-                    </div>
-                    <span class="fm-panel-action">Team board</span>
-                </div>
-                ${buildMilestoneBoardHtml(milestones)}
-            </section>
             ${friendlyPanel.buildHtml(friendlyWeek)}
             ${friendlyBoard.buildHtml(board, mine, teamId)}
         </div>`;
@@ -262,6 +243,47 @@ export function createClubView(deps) {
                     window.openUserProfile(userId);
                 } else {
                     window.alert('The profile page is still loading. Try again in a moment.');
+                }
+            });
+        });
+
+        // The badge tiles in the hero are links to the places they describe: stadium, finances,
+        // the country's club ranking (Elo) and the world club ranking ("In the world"). Founded
+        // and Reputation stay plain — there is no page for either. A tile that is not a link has
+        // no data-goto-* attribute, so it is never wired here.
+        mainContent.querySelectorAll('[data-goto-page]').forEach(tile => {
+            tile.addEventListener('click', () => {
+                const page = tile.dataset.gotoPage;
+                if (page) loadPage(page);
+            });
+            tile.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const page = tile.dataset.gotoPage;
+                    if (page) loadPage(page);
+                }
+            });
+        });
+        mainContent.querySelectorAll('[data-goto-country]').forEach(tile => {
+            tile.addEventListener('click', () => {
+                const iso = tile.dataset.gotoCountry;
+                if (!iso) return;
+                loadPage('country', { countryCode: iso, tab: 'clubs' });
+            });
+            tile.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const iso = tile.dataset.gotoCountry;
+                    if (iso) loadPage('country', { countryCode: iso, tab: 'clubs' });
+                }
+            });
+        });
+        mainContent.querySelectorAll('[data-goto-world-clubs]').forEach(tile => {
+            tile.addEventListener('click', () => loadPage('world', { tab: 'clubs' }));
+            tile.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    loadPage('world', { tab: 'clubs' });
                 }
             });
         });
