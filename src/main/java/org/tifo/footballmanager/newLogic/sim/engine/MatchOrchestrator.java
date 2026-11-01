@@ -680,6 +680,11 @@ public class MatchOrchestrator {
                 case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
                 case DRIBBLE -> {
                     if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());
+                    if (changed) recorder.appendEvent(state.getMatchTicks(), "CARRY",
+                            "CARRY by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                                    + " at " + p(carrier.getPosition())
+                                    + (decision.getTarget() != null ? " -> " + p(decision.getTarget().getPosition()) : ""),
+                            carrier, decision.getTarget());
                 }
                 case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
             }

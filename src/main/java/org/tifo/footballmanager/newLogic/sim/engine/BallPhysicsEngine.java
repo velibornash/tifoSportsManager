@@ -616,7 +616,13 @@ public class BallPhysicsEngine implements BallEngine {
                 double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
                 if (t < bestT && goalkeeperEngine.trySave(p, d, spd, state.getBall().getHeight())
                         && onTrajectoryForGoal(state, p, prev, curr)) {
-                    bestT = t; ev = "SAVE"; hit = p;
+                    // Hold vs parry: better keepers hold more often.
+                    double holdChance = 0.5 + (p.getSkills().keeper() / 20.0) * 0.3;
+                    if (SimulationRandom.nextDouble() < holdChance) {
+                        bestT = t; ev = "SAVE"; hit = p;
+                    } else {
+                        bestT = t; ev = "GK_PARRY"; hit = p;
+                    }
                 }
                 continue;
             }
@@ -640,6 +646,10 @@ public class BallPhysicsEngine implements BallEngine {
                         bestT = t; ev = "DEFLECT"; hit = p;
                     }
                 }
+            } else if (p.isGoalkeeper()) {
+                // Goalkeeper never intercepts/deflects a shot as a field player:
+                // he either SAVES (handled above) or the ball goes past him.
+                continue;
             } else if (state.getLastShooter() != null && d <= SHOT_BLOCK_R) {
                 // SHOT BLOCK: a defender putting a body in the way of a shot in
                 // flight parries it rather than controlling it.
@@ -717,6 +727,28 @@ public class BallPhysicsEngine implements BallEngine {
                 state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
                 state.getBall().stop();
                 return BallStepResult.save(hit.getLabel());
+            } else if (ev.equals("GK_PARRY")) {
+                // Goalkeeper parries — ball rebounds (deflects) off his body, stays in play,
+                // GK gets a save stat, ball becomes loose and triggers a chase.
+                state.setLastTouchTeam(hit.getTeam());
+                state.setLastTouchPlayer(hit);
+                state.setPendingReceiver(null);
+                state.setReceivePoint(null);
+                // reflect like DEFLECT
+                Position contact = hit.getPosition();
+                double nr = hit.getPosition().getRow() - ball.getPosition().getRow();
+                double nc = hit.getPosition().getColumn() - ball.getPosition().getColumn();
+                double len = Math.hypot(nr, nc);
+                if (len > 1e-9) {
+                    nr /= len; nc /= len;
+                    double dot = ball.getVelX() * nc + ball.getVelY() * nr;
+                    ball.setVelocity(
+                            (ball.getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
+                            (ball.getVelY() - 2 * dot * nr) * BOUNCE_DAMP
+                    );
+                }
+                ball.setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
+                return BallStepResult.gkParry(hit.getLabel());
             } else {
                 // BLOCK or DEFLECT — reflect off player body. RIGID RULE (user
                 // 2026-09-23): the deflection must be PHYSICAL. (a) The ball is
