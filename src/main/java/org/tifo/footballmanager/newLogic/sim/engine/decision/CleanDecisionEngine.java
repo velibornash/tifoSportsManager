@@ -789,39 +789,9 @@ public class CleanDecisionEngine {
             reason.append(String.format("press -%.0f ", pressure * 20.0));
         }
 
-        // If there are free teammates nearby, prefer passing over shooting.
-        // (Owner: 2 cells is too big — ~1.0 cell is the right scale for "free".)
-        double nearestFreeTeammate = Double.MAX_VALUE;
-        for (Player mate : state.getPlayers()) {
-            if (!mate.getTeam().equals(carrier.getTeam()) || mate.equals(carrier)) continue;
-            if (mate.isUnavailable()) continue;
-            double d = SimUtils.distance(mate.getPosition(), carrier.getPosition());
-            if (d < nearestFreeTeammate) nearestFreeTeammate = d;
-        }
-        // Check if that teammate is actually free (no opponent within 1.0 cell)
-        if (nearestFreeTeammate <= 2.0) {
-            // There's a teammate nearby — check if they're free
-            boolean mateFree = true;
-            for (Player mate : state.getPlayers()) {
-                if (!mate.getTeam().equals(carrier.getTeam()) || mate.equals(carrier)) continue;
-                if (mate.isUnavailable()) continue;
-                double d = SimUtils.distance(mate.getPosition(), carrier.getPosition());
-                if (d > 2.0) continue;
-                for (Player opp : state.getPlayers()) {
-                    if (opp.getTeam().equals(carrier.getTeam())) continue;
-                    if (opp.isUnavailable()) continue;
-                    if (SimUtils.distance(opp.getPosition(), mate.getPosition()) < 1.0) {
-                        mateFree = false;
-                        break;
-                    }
-                }
-                if (mateFree) break;
-            }
-            if (mateFree) {
-                score -= 20.0;
-                reason.append("free teammate nearby -20 ");
-            }
-        }
+        // Shot selection: based on situation (shooting zone, open pass, carry space, dribble
+        // opportunity). No arbitrary penalty for shooting when teammates are free — the shot
+        // competes with pass/carry on its own score. (Owner: 2 cells is 30 m, too big for any bonus.)
 
         reason.append(String.format("-> %.1f dist", distToGoal));
         return new DecisionOption(ActionType.SHOT, null, score, "SHOT: " + reason);
