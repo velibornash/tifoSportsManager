@@ -68,6 +68,7 @@ public class BallPhysicsEngine implements BallEngine {
     public static final double RECEIVE_R = 0.4;          // receiver pickup radius (boosted)
     public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
     public static final double DEFLECT_R = 0.15;    // 1.5 m — ball physically strikes the body (matches pitch ball tool)
+    public static final double SHOT_BLOCK_R = 0.18;  // 2.5 m — defender genuinely in the way
     // --- Billiard-bounce threshold (owner 2026-10-23) ---
     // Receiver: 0.35; everyone else: 0.3. A ball above the threshold bounces off a non-receiver.
     public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // receiver threshold
