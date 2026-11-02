@@ -110,6 +110,7 @@ public class MatchState {
     // Ball
     private final Ball ball;
     private Player carrier;           // null = no carrier (transition/loose)
+    private boolean justReceived;     // true on the tick a player received the ball — blocks same-tick decision
     private Player carrierAtPhysics;  // carrier as of ball-physics result (before decision/execution)
     private Player pendingReceiver;   // who should receive the in-flight pass
     private DecisionOption pendingDecision; // decision made on tick N, executed on tick N+1
@@ -220,6 +221,7 @@ public class MatchState {
         this.ball = new Ball(new Position(CENTER_ROW, CENTER_COL));
         this.carrier = null;
         this.pendingReceiver = null;
+        this.justReceived = false;
         this.lastTouchTeam = null;
         this.oobPending = null;
         this.oobHoldTicks = 0;
@@ -472,6 +474,7 @@ public class MatchState {
         clearPendingPass();
         pendingReceiver = null;
         pendingDecision = null;
+        justReceived = false;
         carrierAtPhysics = null;
         pendingDecisionCarrier = null;
         lastCompletedPasserId = null;
@@ -526,6 +529,8 @@ public class MatchState {
     public void incrementAwayPenalties() { this.awayPenalties++; }
 
     public Player getPendingReceiver() { return pendingReceiver; }
+    public boolean isJustReceived() { return justReceived; }
+    public void setJustReceived(boolean v) { this.justReceived = v; }
     public Player getCarrierAtPhysics() { return carrierAtPhysics; }
     public void setCarrierAtPhysics(Player c) { this.carrierAtPhysics = c; }
     public void setPendingReceiver(Player pendingReceiver) { this.pendingReceiver = pendingReceiver; }

@@ -561,6 +561,14 @@ public class MatchOrchestrator {
         // === 5. HANDLE BALL PHYSICS RESULT ===
         handleBallPhysicsResult(ballResult);
 
+        // If a player received the ball this tick, block decision on this tick
+        // so the pass/shot doesn't launch in the same tick as the receive.
+        if (ballResult.getType() == BallStepResult.Type.RECEIVE) {
+            state.setJustReceived(true);
+        } else {
+            state.setJustReceived(false);
+        }
+
         // Capture the carrier as of the ball-physics result, before decision/execution.
         // This is what the snapshot uses, so the orange circle shows who received the
         // ball even if they pass/carry in the same tick.
@@ -583,79 +591,11 @@ public class MatchOrchestrator {
         // (restart entry points null the carrier, BallPhysicsEngine now lets only
         // the designated taker pick the restart ball up), and this term makes it
         // structurally impossible for a future caller to break it.
-        // === 6. DECISION (tick N) + EXECUTION (tick N+1) ===
-        // Decision and execution are deliberately split across two ticks (owner 2026-11-01):
-        // the decision is made on tick N (carrier must be on the ball), and the execution
-        // (launching the ball) happens on tick N+1. This prevents the pass/shot from
-        // launching in the same tick as the receive, which caused the ball to leave the
-        // player before he was visually on it, and gives the carrier a visible 1-tick
-        // root on the ball before he moves.
-
-        // --- Execute a deferred decision from the previous tick ---
-        if (state.getPendingDecision() != null) {
-            DecisionOption decision = state.getPendingDecision();
-            Player carrier = state.getPendingDecisionCarrier();
-            state.clearPendingDecision();
-            if (carrier != null && state.getCarrier() == carrier && isCarrierOnBall()) {
-                actionExecutor.execute(state, decision);
-
-                // Clear the "just took restart" flag after the restart action is executed.
-                if (state.isJustTookRestart()) {
-                    state.setJustTookRestart(false);
-                }
-
-                boolean changed = pendingChanged;
-                if (changed) {
-                    lastLoggedType = decision.getType();
-                    lastLoggedCarrier = carrier.getLabel();
-                }
-
-                // Enriched per-action event (gated on "changed").
-                String actionEvent = actionEventType(decision.getType());
-                if (actionEvent != null && changed) {
-                    String actionMsg = actionEvent + " by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
-                            + " at " + p(carrier.getPosition())
-                            + (decision.getTarget() != null
-                                ? " -> " + decision.getTarget().getLabel() + "(" + decision.getTarget().getRole() + ")"
-                                : "")
-                            + (decision.getType() == ActionType.SHOT
-                                ? (state.isLastShotOnTarget() ? " (on target)" : " (off target)")
-                                : "");
-                    recorder.appendEvent(state.getMatchTicks(), actionEvent, actionMsg, carrier, decision.getTarget());
-                }
-
-                // Feed the stats collector.
-                switch (decision.getType()) {
-                    case PASS -> stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                    case THRU -> {
-                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                        stats.onThroughBall(carrier.getTeam(), carrier.getId());
-                    }
-                    case CROSS -> {
-                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                        stats.onCross(carrier.getTeam(), carrier.getId());
-                    }
-                    case CENTER -> {
-                        stats.onPassAttempt(carrier.getTeam(), carrier.getId());
-                        stats.onCenter(carrier.getTeam(), carrier.getId());
-                    }
-                    case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
-                    case DRIBBLE -> {
-                        if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());
-                        if (changed) recorder.appendEvent(state.getMatchTicks(), "CARRY",
-                                "CARRY by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
-                                        + " at " + p(carrier.getPosition())
-                                        + (decision.getTarget() != null ? " -> " + p(decision.getTarget().getPosition()) : ""),
-                                carrier, decision.getTarget());
-                    }
-                    case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
-                }
-            }
-            // if carrier moved away, the decision is discarded (no execution)
-        }
-
-        // --- Decide (defer execution to next tick) ---
-        if (state.getPendingDecision() == null && canReDecide && state.getCarrier() != null
+        // === 6. DECISION + EXECUTION ===
+        // Decision and execution happen in the same tick (original behaviour).
+        // A "just received" flag blocks decision on the receive tick, so the
+        // pass/shot doesn't launch in the same tick as the receive.
+        if (!state.isJustReceived() && canReDecide && state.getCarrier() != null
                 && state.getRestartTaker() == null && isCarrierOnBall()) {
             Player carrier = state.getCarrier();
 
@@ -683,19 +623,62 @@ public class MatchOrchestrator {
                 offsideService.checkOffside(decision.getTarget(), carrier.getPosition(), state);
             }
 
-            // Defer execution to the next tick.
-            state.setPendingDecision(decision);
-            state.setPendingDecisionCarrier(carrier);
+            actionExecutor.execute(state, decision);
+
+            // Clear the "just took restart" flag after the restart action is executed.
+            if (state.isJustTookRestart()) {
+                state.setJustTookRestart(false);
+            }
 
             boolean changed = decision.getType() != lastLoggedType
                     || !carrier.getLabel().equals(lastLoggedCarrier);
-            pendingChanged = changed;
             if (changed) {
                 lastLoggedType = decision.getType();
                 lastLoggedCarrier = carrier.getLabel();
                 String decMsg = formatDecision(carrier, result);
                 log("DEC", decMsg);
                 recorder.appendEvent(state.getMatchTicks(), "DECISION", decMsg, carrier, decision.getTarget());
+            }
+
+            // Enriched per-action event with explicit actor attribution.
+            String actionEvent = actionEventType(decision.getType());
+            if (actionEvent != null && changed) {
+                String actionMsg = actionEvent + " by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                        + " at " + p(carrier.getPosition())
+                        + (decision.getTarget() != null
+                            ? " -> " + decision.getTarget().getLabel() + "(" + decision.getTarget().getRole() + ")"
+                            : "")
+                        + (decision.getType() == ActionType.SHOT
+                            ? (state.isLastShotOnTarget() ? " (on target)" : " (off target)")
+                            : "");
+                recorder.appendEvent(state.getMatchTicks(), actionEvent, actionMsg, carrier, decision.getTarget());
+            }
+
+            // Feed the stats collector.
+            switch (decision.getType()) {
+                case PASS -> stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                case THRU -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onThroughBall(carrier.getTeam(), carrier.getId());
+                }
+                case CROSS -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onCross(carrier.getTeam(), carrier.getId());
+                }
+                case CENTER -> {
+                    stats.onPassAttempt(carrier.getTeam(), carrier.getId());
+                    stats.onCenter(carrier.getTeam(), carrier.getId());
+                }
+                case SHOT -> stats.onShot(carrier.getTeam(), carrier.getId(), state.isLastShotOnTarget());
+                case DRIBBLE -> {
+                    if (changed) stats.onDribble(carrier.getTeam(), carrier.getId());
+                    if (changed) recorder.appendEvent(state.getMatchTicks(), "CARRY",
+                            "CARRY by " + carrier.getLabel() + "(" + carrier.getRole() + ")"
+                                    + " at " + p(carrier.getPosition())
+                                    + (decision.getTarget() != null ? " -> " + p(decision.getTarget().getPosition()) : ""),
+                            carrier, decision.getTarget());
+                }
+                case CLEAR -> stats.onClearance(carrier.getTeam(), carrier.getId());
             }
         }
 
@@ -814,6 +797,9 @@ public class MatchOrchestrator {
             state.setKickoffHalfHold(false);
             log("RST", "kickoff hold released by timeout");
         }
+
+        // Clear the "just received" flag so the next tick can decide normally.
+        state.setJustReceived(false);
 
         // === 12. DECREMENT VAR TIMER ===
         state.decrementVAR();
