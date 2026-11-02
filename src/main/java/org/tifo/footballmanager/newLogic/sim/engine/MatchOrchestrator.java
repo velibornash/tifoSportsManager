@@ -883,7 +883,7 @@ public class MatchOrchestrator {
     /** Map an executed decision to its enriched event type (null = no event). */
     private String actionEventType(ActionType type) {
         return switch (type) {
-            case PASS -> "PASS";
+            case PASS, THRU, CROSS, CENTER -> type.toString();
             case SHOT -> "SHOT";
             case DRIBBLE -> "DRIBBLE";
             case CLEAR -> "CLEAR";
