@@ -35,7 +35,7 @@ public class ZoneLoadService {
     private static final Logger log = LoggerFactory.getLogger(ZoneLoadService.class);
 
     /** Effective minutes a player can bank per day before recovery stops helping. */
-    private static final double DAILY_RECOVERY_CAP = 90.0;
+    private static final double DAILY_RECOVERY_CAP = 120.0;
 
     /**
      * Fraction of yesterday's work recovered in a day.
@@ -43,7 +43,7 @@ public class ZoneLoadService {
      * <p>Not 1.0. A footballer does not wake up fully recovered, and a model that says he does makes
      * fatigue a number that only ever goes up and never comes down.
      */
-    private static final double DAILY_RECOVERY_RATE = 0.65;
+    private static final double DAILY_RECOVERY_RATE = 0.85;
 
     /** How many days of zone load count towards today's recovery. */
     private static final int RECOVERY_WINDOW_DAYS = 2;
@@ -232,7 +232,7 @@ public class ZoneLoadService {
             if (work == null || work <= 0.0) {
                 continue;
             }
-            player.setMorale(player.getMorale() + 0.2);
+            player.setMorale(player.getMorale() + 0.3);
             touched++;
         }
         if (touched > 0) {
