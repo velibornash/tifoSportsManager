@@ -753,7 +753,7 @@ public class MatchOrchestrator {
             // Normal claim: taker physically ON the ball (RIGID RULE). A stalled
             // taker (wall-ringed, locked mid-walk, etc.) eventually claims from a
             // slightly wider reach so a restart can NEVER freeze the match.
-            double claimRadius = restartTakerAge > 40 ? 0.6 : BallPhysicsEngine.ON_BALL_EPS;
+            double claimRadius = restartTakerAge > 40 ? 0.6 : BallPhysicsEngine.RECEIVE_R_BOOSTED;
             if (dist <= claimRadius) {
                 state.setCarrier(taker);
                 state.getBall().stop();
