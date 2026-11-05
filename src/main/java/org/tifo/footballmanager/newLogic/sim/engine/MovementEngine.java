@@ -267,50 +267,6 @@ public class MovementEngine {
             }
         }
 
-        // Global separation pass (matches the lab pitch tool's separateOverlaps): push any two
-        // overlapping players apart along their center-to-center axis and clamp to the pitch, so
-        // circles touch but never overlap. Stationary players are included, so a mover cannot
-        // end up on top of a holder. Four iterations settle chains of three or more.
-        for (int iter = 0; iter < 4; iter++) {
-            boolean any = false;
-            List<Player> active = new ArrayList<>();
-            for (Player pl : state.getPlayers()) {
-                if (pl.isUnavailable() || pl.isLocked() || pl.isSentOff()) continue;
-                // The carrier walking onto the ball claims the spot (CLAIM_REACH_RADIUS) and
-                // must not be pushed away from it by the global separation pass. The restart
-                // taker (goal kick / corner / throw-in / free kick) is in the same situation:
-                // he is walking onto the ball spot and must be allowed to reach it.
-                if (pl == state.getCarrier() || pl == state.getRestartTaker()) continue;
-                active.add(pl);
-            }
-            for (int i = 0; i < active.size(); i++) {
-                for (int j = i + 1; j < active.size(); j++) {
-                    Player a = active.get(i);
-                    Player b = active.get(j);
-                    // Anisotropic (metres): 1 col = 10 m, 1 row = 14 m.
-                    double ax = a.getPosition().getColumn() * 10.0, ay = a.getPosition().getRow() * 14.0;
-                    double bx = b.getPosition().getColumn() * 10.0, by = b.getPosition().getRow() * 14.0;
-                    double dx = bx - ax, dy = by - ay;
-                    double d = Math.hypot(dx, dy);
-                    if (d >= TOUCHING_DISTANCE_M) continue;
-                    if (d <= 1e-9) { dx = 10.0; dy = 0; d = 10.0; } // coincident: split sideways
-                    double push = (TOUCHING_DISTANCE_M - d) / 2.0;
-                    double ux = dx / d, uy = dy / d;
-                    double nax = ax - ux * push, nay = ay - uy * push;
-                    double nbx = bx + ux * push, nby = by + uy * push;
-                    Position na = new Position(
-                            SimUtils.clamp(nay / 14.0, PitchEnvironment.HOME_GOAL_LINE, PitchEnvironment.AWAY_GOAL_LINE),
-                            SimUtils.clamp(nax / 10.0, PitchEnvironment.LEFT_TOUCHLINE, PitchEnvironment.RIGHT_TOUCHLINE));
-                    Position nb = new Position(
-                            SimUtils.clamp(nby / 14.0, PitchEnvironment.HOME_GOAL_LINE, PitchEnvironment.AWAY_GOAL_LINE),
-                            SimUtils.clamp(nbx / 10.0, PitchEnvironment.LEFT_TOUCHLINE, PitchEnvironment.RIGHT_TOUCHLINE));
-                    a.setPosition(na);
-                    b.setPosition(nb);
-                    any = true;
-                }
-            }
-            if (!any) break;
-        }
     }
 
     /**
