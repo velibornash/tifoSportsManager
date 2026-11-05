@@ -30,7 +30,9 @@ async function loadCountries() {
         const countries = await response.json();
 
         select.innerHTML = '';
-        countries.forEach(country => {
+        const sorted = [...countries].sort((a, b) =>
+            String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }));
+        sorted.forEach(country => {
             const option = document.createElement('option');
             option.value = country.code;
             option.textContent = country.name + (country.hasClubs ? '' : ' — not set up yet');
