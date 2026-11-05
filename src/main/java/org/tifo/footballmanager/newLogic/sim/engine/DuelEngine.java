@@ -262,6 +262,9 @@ public class DuelEngine {
         // Movement Engine walks him onto it before any action starts. No teleport.
         state.getBall().stop();
 
+        // The winner walks to the ball (sets target) so he doesn't stand still.
+        winner.setTarget(state.getBall().getPosition());
+
         // Loser is blocked for cooldown (unlocked by orchestrator after ticks expire)
         loser.setLocked(true);
         loser.setLockTicks(LOSER_LOCK_TICKS);

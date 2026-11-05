@@ -156,6 +156,12 @@ public class MovementEngine {
                 // footrace. A burst that a tired player cannot summon is not a bounded burst.
             }
 
+            // Restart taker gets a speed boost (owner: "OOB taker isto dobija boost za pickup
+            // radius i speed threshold kao receiver da bi zaista bio NA LOPTI").
+            if (p == state.getRestartTaker() && !p.isGoalkeeper()) {
+                playerSpeed *= 1.5;
+            }
+
             // Calculate movement vector toward target
             double dx = target.getColumn() - current.getColumn();
             double dy = target.getRow() - current.getRow();
