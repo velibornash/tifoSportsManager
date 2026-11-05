@@ -66,15 +66,15 @@ public class BallPhysicsEngine implements BallEngine {
      */
     public static final double ON_BALL_EPS = 0.05;
     public static final double RECEIVE_R = 0.4;          // receiver pickup radius (boosted)
-    public static final double INTERCEPT_R = 0.14;   // 2 m — reading lane (probabilistic)
-    public static final double DEFLECT_R = 0.15;    // 1.5 m — ball physically strikes the body (matches pitch ball tool)
-    public static final double SHOT_BLOCK_R = 0.18;  // 2.5 m — defender genuinely in the way
+    public static final double INTERCEPT_R = 0.20;   // ~2.8m/2.0m — reading lane (matches player circle)
+    public static final double DEFLECT_R = 0.20;    // ~2.8m/2.0m — ball physically strikes the body (matches player circle radius)
+    public static final double SHOT_BLOCK_R = 0.20;  // ~2.8m/2.0m — defender in the way
     // --- Billiard-bounce threshold (owner 2026-10-23) ---
     // Receiver: 0.35; everyone else: 0.3. A ball above the threshold bounces off a non-receiver.
     public static final double BALL_BOUNCE_SPEED_THRESHOLD = 0.35;  // receiver threshold
     public static final double BALL_BOUNCE_SPEED_THRESHOLD_OTHERS = 0.3;  // non-receiver threshold
     // The SELECTED receiver's reach — the "boost" the owner ruled.
-    public static final double RECEIVE_R_BOOSTED = 0.4;
+    public static final double RECEIVE_R_BOOSTED = 0.5;  // match Pitch tool pickup radius
     private final GoalkeeperEngine goalkeeperEngine = new GoalkeeperEngine();
 
     public static final double PICKUP_R = 0.5;  // non-receiver loose-ball pickup radius

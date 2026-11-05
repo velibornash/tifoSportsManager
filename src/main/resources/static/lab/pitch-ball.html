@@ -99,7 +99,7 @@
       <button id="reset">Ball to center</button>
     </div>
     <div class="phys">
-      <label>Launch speed: <input type="number" id="phys-speed" value="0.75" step="0.05" min="0.1" max="3"></label>
+      <label>Launch speed: <input type="number" id="phys-speed" value="2.5" step="0.05" min="0.1" max="3"></label>
       <label>Speed threshold (bounce↔receive): <input type="number" id="phys-threshold" value="0.3" step="0.05" min="0.05" max="1.5"></label>
       <label>Pickup radius (receive boost): <input type="number" id="phys-pickup" value="0.5" step="0.05" min="0.1" max="1.5"></label>
       <div class="status" id="phys-status">Ball physics: idle</div>
@@ -742,7 +742,7 @@ function stepBallPhysics(dt) {
   }
 
   if (ballPhysics.speed === null) {
-    const launchSpeed = parseFloat(document.getElementById('phys-speed').value) || 0.75;
+    const launchSpeed = parseFloat(document.getElementById('phys-speed').value) || 2.5;
     ballPhysics.speed = launchSpeed;
     const dist = Math.hypot(dr, dc);
     if (dist > 0.01) {
