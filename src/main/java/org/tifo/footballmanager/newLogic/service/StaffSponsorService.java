@@ -258,10 +258,10 @@ public class StaffSponsorService {
                 default -> Sponsor.Tier.MINOR;
             });
             double base = switch (tier) {
-                case 1 -> 1_400_000;
-                case 2 -> 260_000;
-                case 3 -> 70_000;
-                default -> 18_000;
+                case 1 -> 1_700_000;
+                case 2 -> 310_000;
+                case 3 -> 85_000;
+                default -> 22_000;
             };
             // Variance so two clubs in the same division are not identical, and no random draw.
             double variance = 0.75 + (Math.abs(stableUnit(club.getId(), i + 100) % 100) / 400.0);
