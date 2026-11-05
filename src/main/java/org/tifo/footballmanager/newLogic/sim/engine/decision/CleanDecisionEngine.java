@@ -513,55 +513,11 @@ public class CleanDecisionEngine {
             reason.append("OOB risk -20 ");
         }
 
-        // SAFE SHORT PASS BONUS (F-RS-3): a short, safe pass to a nearby teammate
-        // (within 1.5 cells, no opponent within 1.0 cell) is the "safe pass to yourself"
-        // — the ball stays in play and possession is maintained.
-        if (dist <= 1.5 && dist >= 0.5) {
-            double nearestOppD = Double.MAX_VALUE;
-            for (Player opp : state.getPlayers()) {
-                if (opp.getTeam().equals(carrier.getTeam())) continue;
-                if (opp.isUnavailable()) continue;
-                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
-                if (d < nearestOppD) nearestOppD = d;
-            }
-            if (nearestOppD > 1.0) {
-                score += 2.0;
-                reason.append("safe short +2 ");
-            }
-        }
-
-        // DANGEROUS-ZONE SAFE PASS (owner 2026-10-30): in the own defensive third, a
-        // safe pass to the nearest free teammate (within 2.0 cells, no opponent within
-        // 1.5 cells) MUST win over a risky forward pass. This is the "siguran pas najblizem
-        // slobodnom igrac" rule — defenders don't play risky passes when a safe option
-        // exists right next to them.
-        boolean home = "HOME".equals(carrier.getTeam());
-        boolean inDangerousZone = home ? carrier.getPosition().getRow() <= 3.5
-                : carrier.getPosition().getRow() >= 5.5;
-        if (inDangerousZone && dist <= 2.5) {
-            double nearestOppD = Double.MAX_VALUE;
-            for (Player opp : state.getPlayers()) {
-                if (opp.getTeam().equals(carrier.getTeam())) continue;
-                if (opp.isUnavailable()) continue;
-                double d = SimUtils.distance(opp.getPosition(), receiver.getPosition());
-                if (d < nearestOppD) nearestOppD = d;
-            }
-            if (nearestOppD > 1.5) {
-                // Progressive distance bonus: closer receiver gets MORE bonus.
-                // 1.0 distance -> +45, 2.0 distance -> +15, so nearest free player wins.
-                double zoneBonus = (2.5 - dist) * 1.0;
-                score += zoneBonus;
-                reason.append(String.format("safe zone +%.0f ", zoneBonus));
-            }
-        }
-
-        // DANGEROUS-ZONE TOUCHLINE PENALTY removed (owner: no penalty for passes to the side
-        // if the pass is open). OOB risk (-20 for col < 1.5 or > 6.5) stays.
-
-        // Safety: how close is the nearest opponent to the receiver? A pass to a
-        // receiver with an opponent within 0.5 cells (7 m) is dangerous; a pass to
-        // a receiver with nobody within 1.0 cell is safe. (Owner: 2 cells is 30 m
-        // — far too big for a "free player" bonus; ~0.5 cells is the right scale.)
+        // Safety: proportional to exact distance of nearest opponent to receiver (see above).
+        // (Removed range-based "safe short" and "safe zone" bonuses — replaced by proportional safety.)
+        // < 0.5 cells (7m): dangerous, penalty scales from -25 (at 0) to 0 (at 0.5).
+        // 0.5-1.0 cells: neutral.
+        // > 1.0 cells: safe, bonus scales from 0 (at 1.0) to +5 (at 3.0+).
         double nearestOppToReceiver = Double.MAX_VALUE;
         for (Player opp : state.getPlayers()) {
             if (opp.getTeam().equals(carrier.getTeam())) continue;
@@ -570,11 +526,13 @@ public class CleanDecisionEngine {
             if (d < nearestOppToReceiver) nearestOppToReceiver = d;
         }
         if (nearestOppToReceiver < 0.5) {
-            score -= 25.0;
-            reason.append("dangerous -25 ");
+            double penalty = 25.0 * (1.0 - nearestOppToReceiver / 0.5);
+            score -= penalty;
+            reason.append(String.format("dangerous -%.0f ", penalty));
         } else if (nearestOppToReceiver > 1.0) {
-            score += 2.0;
-            reason.append("safe +2 ");
+            double bonus = Math.min(5.0, (nearestOppToReceiver - 1.0) * 2.5);
+            score += bonus;
+            reason.append(String.format("safe +%.0f ", bonus));
         }
 
         // MEGA boost for a free teammate deep in opponent territory (owner: "slobodan i
