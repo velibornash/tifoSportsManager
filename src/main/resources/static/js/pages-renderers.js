@@ -1123,7 +1123,7 @@ export function renderFixturesView(fixtures, title, { currentPage = 'schedule' }
 
     html += fixtureRows
         .map((fixture, idx) => buildScheduleFixtureCardHtml(fixture, {
-            matchCaller: 'match',
+            matchCaller: currentPage,
             pendingLabel: 'VS',
             allowFixtureClick: true,
             safe: htmlEscape,

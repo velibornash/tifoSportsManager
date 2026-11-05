@@ -167,6 +167,8 @@ export function createMatchView(deps) {
             const KNOWN_BACK_TARGETS = {
                 match: 'results',
                 results: 'results',
+                schedule: 'schedule',
+                fixtures: 'schedule',
                 leagueMatches: 'leagueMatches',
                 leagueTable: 'leagueTable',
                 leagueSchedule: 'leagueSchedule',
