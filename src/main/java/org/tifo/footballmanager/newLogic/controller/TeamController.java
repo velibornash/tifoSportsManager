@@ -608,14 +608,25 @@ public class TeamController {
      * same controller already refuses a stranger's player on the {@code /players/{playerId}} read through
      * {@code PlusFeatureService}, so the rule existed and this write simply did not use it.
      */
+    @GetMapping("/{teamId}/medical/recovery/{playerId}/quote")
+    public ResponseEntity<Map<String, Object>> getRecoveryQuote(@PathVariable Long teamId,
+                                                                 @PathVariable Long playerId,
+                                                                 @AuthenticationPrincipal User user) {
+        if (!mayManage(user, teamId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        Map<String, Object> quote = teamMedicalService.recoveryQuote(teamId, playerId);
+        return quote == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(quote);
+    }
     @PostMapping("/{teamId}/medical/recovery/{playerId}")
     public ResponseEntity<TeamMedicalOverviewDTO> applyMedicalRecovery(@PathVariable Long teamId,
                                                                        @PathVariable Long playerId,
+                                                                       @RequestParam(value = "confirm", defaultValue = "false") boolean confirm,
                                                                        @AuthenticationPrincipal User user) {
         if (!mayManage(user, teamId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        TeamMedicalOverviewDTO overview = teamMedicalService.applyRecovery(teamId, playerId);
+        TeamMedicalOverviewDTO overview = teamMedicalService.applyRecovery(teamId, playerId, confirm);
         return overview == null ? ResponseEntity.notFound().build() : ResponseEntity.ok(overview);
     }
 

@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @Service
@@ -59,8 +60,40 @@ public class TeamMedicalService {
         return buildOverview(team);
     }
 
+    @Transactional(readOnly = true)
+    public Map<String, Object> recoveryQuote(Long teamId, Long playerId) {
+        Team team = teamRepository.findById(teamId).orElse(null);
+        if (team == null) return null;
+        Player player = playerRepository.findById(playerId)
+                .filter(p -> p.getTeam() != null && Objects.equals(p.getTeam().getId(), teamId))
+                .orElse(null);
+        if (player == null) return null;
+
+        Skills skills = player.getSkills();
+        int currentFatigue = skills != null ? Math.max(0, skills.getFatigue()) : 0;
+        int currentInjuryDays = Math.max(0, player.getInjuryDaysRemaining());
+
+        int maxInjuryReduction = (currentInjuryDays > 0) ? Math.max(1, currentInjuryDays / 2) : 0;
+        double weeklySalary = player.getEarnings() > 0 ? player.getEarnings() : 1000.0;
+        double injuryPrice = maxInjuryReduction * (weeklySalary * 0.25);
+
+        int maxFatigueReduction = (currentFatigue > 0) ? Math.max(1, (int) (currentFatigue * 0.10)) : 0;
+        double fatiguePrice = (maxFatigueReduction > 0) ? (weeklySalary * 0.10) : 0.0;
+
+        Map<String, Object> quote = new java.util.LinkedHashMap<>();
+        quote.put("playerId", playerId);
+        quote.put("playerName", player.getName());
+        quote.put("injuryDaysRemaining", currentInjuryDays);
+        quote.put("maxInjuryReduction", maxInjuryReduction);
+        quote.put("injuryPrice", injuryPrice);
+        quote.put("currentFatigue", currentFatigue);
+        quote.put("maxFatigueReduction", maxFatigueReduction);
+        quote.put("fatiguePrice", fatiguePrice);
+        quote.put("totalPrice", injuryPrice + fatiguePrice);
+        return quote;
+    }
     @Transactional
-    public TeamMedicalOverviewDTO applyRecovery(Long teamId, Long playerId) {
+    public TeamMedicalOverviewDTO applyRecovery(Long teamId, Long playerId, boolean confirm) {
         Team team = teamRepository.findById(teamId).orElse(null);
         if (team == null) {
             return null;
@@ -74,33 +107,58 @@ public class TeamMedicalService {
         }
 
         Skills skills = player.getSkills();
-        if (skills != null) {
-            // **Physio handles fatigue, doctor handles injuries - two roles, two jobs** (owner,
-            // 2026-10-18). That sentence was in the comment below and the physio did nothing at all: the
-            // fatigue reduction was a flat twelve for every club in the world, whether it employed a
-            // physio or not. He is now what the comment always claimed.
-            int reduction = (int) Math.round(RECOVERY_FATIGUE_REDUCTION * physioFactor(teamId));
+        int currentFatigue = skills != null ? Math.max(0, skills.getFatigue()) : 0;
+        int currentInjuryDays = Math.max(0, player.getInjuryDaysRemaining());
+
+        // Calculate max reductions and prices
+        int maxInjuryReduction = (currentInjuryDays > 0) ? Math.max(1, currentInjuryDays / 2) : 0;
+        double weeklySalary = player.getEarnings() > 0 ? player.getEarnings() : 1000.0;
+        double injuryPrice = maxInjuryReduction * (weeklySalary * 0.25);
+
+        int maxFatigueReduction = (currentFatigue > 0) ? Math.max(1, (int) (currentFatigue * 0.10)) : 0;
+        double fatiguePrice = (maxFatigueReduction > 0) ? (weeklySalary * 0.10) : 0.0;
+
+        if (!confirm) {
+            return buildOverview(team);
+        }
+
+        // Apply injury recovery (max half)
+        if (skills != null && maxFatigueReduction > 0) {
+            int reduction = Math.min(maxFatigueReduction, RECOVERY_FATIGUE_REDUCTION);
             int reducedFatigue = Math.max(0, skills.getFatigue() - reduction);
             skills.setSkill(SkillName.FATIGUE, reducedFatigue);
         }
 
-        int currentInjuryDays = Math.max(0, player.getInjuryDaysRemaining());
-        if (currentInjuryDays > 0) {
-            // **Doctor shortens injury recovery.** The base reduction is 3 days; if the club has a
-            // doctor, his fitness attribute adds up to 4 more (20 fitness = 7 days total). Physio
-            // handles fatigue, doctor handles injuries - two roles, two jobs.
-            int reduction = RECOVERY_DAY_REDUCTION;
-            StaffMember doctor = staffMemberRepository.findByTeamId(teamId).stream()
-                    .filter(sm -> sm.getRole() == StaffRole.DOCTOR).findFirst().orElse(null);
-            if (doctor != null && doctor.getFitness() != null) {
-                reduction += (int) Math.round(doctor.getFitness() / 5.0);
-            }
+        if (currentInjuryDays > 0 && maxInjuryReduction > 0) {
+            int reduction = maxInjuryReduction;
             int next = Math.max(0, currentInjuryDays - reduction);
             player.setInjuryDaysRemaining(next);
             if (next == 0) {
                 player.setInjurySeasonNumber(null);
                 player.setInjuryWeekNumber(null);
                 player.setInjured(false);
+            }
+        }
+
+        // Charge
+        double totalCost = injuryPrice + fatiguePrice;
+        if (totalCost > 0) {
+            double budget = team.getBudget() == null ? 0.0 : team.getBudget();
+            if (totalCost > budget) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "NO_MONEY",
+                        "Recovery costs " + money(totalCost) + " but the club has " + money(budget) + ".");
+            }
+            team.setBudget(round2(budget - totalCost));
+            teamRepository.save(team);
+            if (injuryPrice > 0) {
+                ledger.save(FinanceLedgerEntry.of(team, seasonYear(), weekNumber(),
+                        FinanceCategory.MEDICAL, -injuryPrice,
+                        "Injury recovery for " + player.getName() + " - " + money(injuryPrice)));
+            }
+            if (fatiguePrice > 0) {
+                ledger.save(FinanceLedgerEntry.of(team, seasonYear(), weekNumber(),
+                        FinanceCategory.MEDICAL, -fatiguePrice,
+                        "Fatigue recovery for " + player.getName() + " - " + money(fatiguePrice)));
             }
         }
 
