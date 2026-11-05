@@ -217,7 +217,7 @@ public class ExecutionQuality {
         // 10% boost for all shots. Capped at MAX_BALL_SPEED (2.5).
         double speed = Math.min(BallPhysicsEngine.MAX_BALL_SPEED,
                 2.5 * (skill / 10.0) * 1.1);
-        double spin = SimulationRandom.nextDouble() * 0.3; // shots can have more spin
+        double spin = 0.0; // no spin — spin causes lateral bend (owner rule)
 
         return new ShotResult(actualTarget, onTarget, speed, spin);
     }

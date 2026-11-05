@@ -759,6 +759,12 @@ public class CleanDecisionEngine {
                     "SHOT: not in zone");
         }
 
+        // Shot distance limit: no shots from more than 2 cells (28m) from goal.
+        if (distToGoal > 2.0) {
+            return new DecisionOption(ActionType.SHOT, null, UNAVAILABLE,
+                    "SHOT: too far from goal (" + String.format("%.1f", distToGoal) + " cells)");
+        }
+
         // The frequency gate is GONE (ME-3, 2026-10-23 — owner: "SKLONI TO PRAVILO, igrač
         // treba da odluci u odnosu na to da li je pozicija za sut ili nije"). The shot
         // competes on its score like every other option; the position is the whole judgement —
