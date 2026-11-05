@@ -56,14 +56,14 @@ class PhysioRecoveryTest extends BaseTest {
         Team club = club();
 
         Player alone = player(club, START_FATIGUE);
-        medical.applyRecovery(club.getId(), alone.getId());
+        medical.applyRecovery(club.getId(), alone.getId(), true);
         int withoutPhysio = fatigueOf(alone.getId());
         assertEquals(START_FATIGUE - WITHOUT_PHYSIO, withoutPhysio,
                 "no physio is slow, not nothing: a club that has not hired must still recover");
 
         Player helped = player(club, START_FATIGUE);
         staff.save(physio(club, 20));
-        medical.applyRecovery(club.getId(), helped.getId());
+        medical.applyRecovery(club.getId(), helped.getId(), true);
         int withPhysio = fatigueOf(helped.getId());
         assertEquals(START_FATIGUE - WITH_BEST_PHYSIO, withPhysio,
                 "the best physio restores the whole reduction");
@@ -81,7 +81,7 @@ class PhysioRecoveryTest extends BaseTest {
 
         Player withWeak = player(club, START_FATIGUE);
         StaffMember weak = staff.save(physio(club, 5));
-        medical.applyRecovery(club.getId(), withWeak.getId());
+        medical.applyRecovery(club.getId(), withWeak.getId(), true);
         int weakResult = fatigueOf(withWeak.getId());
 
         // The same club, a better physio. The old one is released rather than kept: this fixture is about
@@ -91,7 +91,7 @@ class PhysioRecoveryTest extends BaseTest {
         staff.save(physio(club, 20));
 
         Player withGood = player(club, START_FATIGUE);
-        medical.applyRecovery(club.getId(), withGood.getId());
+        medical.applyRecovery(club.getId(), withGood.getId(), true);
         int goodResult = fatigueOf(withGood.getId());
 
         assertTrue(goodResult < weakResult,
