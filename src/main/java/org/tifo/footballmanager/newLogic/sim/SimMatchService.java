@@ -485,8 +485,7 @@ public class SimMatchService {
             return lineup.getFormation();
         }
         if (team != null && team.getId() != null) {
-            String fromEditor = teamTacticsProfileRepository.findByTeamId(team.getId())
-                    .map(org.tifo.footballmanager.newLogic.model.tactics.TeamTacticsProfile::getFormation)
+            String fromEditor = teamTacticsProfileRepository.findFormationByTeamId(team.getId())
                     .filter(f -> f != null && !f.isBlank())
                     .orElse(null);
             if (fromEditor != null) {

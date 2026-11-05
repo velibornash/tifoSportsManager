@@ -36,6 +36,10 @@ public interface TacticRepository extends JpaRepository<Tactic, Long> {
     @Query("select t.style from Tactic t where t.id = :id and t.team.id = :teamId")
     Optional<String> findStyleByIdAndTeamId(@Param("id") Long id, @Param("teamId") Long teamId);
 
+    /** Lightweight: load only formation + rulesJson + name, without the full entity. */
+    @Query("select t.formation, t.rulesJson, t.name from Tactic t where t.id = :id and t.team.id = :teamId")
+    List<Object[]> findTacticDataByIdAndTeamId(@Param("id") Long id, @Param("teamId") Long teamId);
+
     /** Lightweight projection (teamId, name) for all tactics — avoids loading rulesJson in bulk checks. */
     @Query("select t.team.id, t.name from Tactic t where t.team is not null")
     List<Object[]> findAllTeamIdAndName();

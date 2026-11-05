@@ -139,7 +139,7 @@ public class TacticsRulesProvider {
             new java.util.LinkedHashMap<Long, TacticsRules>(256, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(java.util.Map.Entry<Long, TacticsRules> eldest) {
-                    return size() > 4096;
+                    return size() > 256;
                 }
             });
 
@@ -161,7 +161,7 @@ public class TacticsRulesProvider {
             new java.util.LinkedHashMap<Long, RawTactic>(256, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(java.util.Map.Entry<Long, RawTactic> eldest) {
-                    return size() > 4096;
+                    return size() > 256;
                 }
             });
 
@@ -207,7 +207,7 @@ public class TacticsRulesProvider {
             new java.util.LinkedHashMap<Integer, ContentEntry>(256, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(java.util.Map.Entry<Integer, ContentEntry> eldest) {
-                    return size() > 1024;
+                    return size() > 256;
                 }
             });
 
@@ -295,16 +295,20 @@ public class TacticsRulesProvider {
         // cache hit, which is safe during simulation (the id came from resolveDefaultTacticId).
         RawTactic raw = rawCache.get(tacticId);
         if (raw == null) {
-            var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
-            if (tactic == null) {
+            var data = tactics.findTacticDataByIdAndTeamId(tacticId, teamId);
+            if (data.isEmpty()) {
                 log.warn("{} has no tactic {}; the bundled fallback applies.", teamName(teamId, null), tacticId);
                 return fallback;
             }
+            Object[] row = data.get(0);
+            String formation = (String) row[0];
+            String rulesJson = (String) row[1];
+            String name = (String) row[2];
             tacticOwner.put(tacticId, teamId);
-            raw = new RawTactic(tactic.getFormation(), tactic.getRulesJson());
+            raw = new RawTactic(formation, rulesJson);
             rawCache.put(tacticId, raw);
             return rulesFor(teamId, raw.formation, raw.rulesJson,
-                    "tactics editor (" + tactic.getName() + ")");
+                    "tactics editor (" + name + ")");
         }
         tacticOwner.put(tacticId, teamId);
         return rulesFor(teamId, raw.formation, raw.rulesJson, "tactics editor (cached)");
@@ -318,14 +322,17 @@ public class TacticsRulesProvider {
      * every club holds a tactic, not before.
      */
     private TacticsRules loadFromLegacyProfile(Long teamId) {
-        TeamTacticsProfile profile = profiles.findByTeamId(teamId).orElse(null);
-        if (profile == null) {
+        var data = profiles.findFormationAndRulesByTeamId(teamId);
+        if (data.isEmpty()) {
             log.debug("{} has no tactical profile; the bundled fallback applies.",
                     teamName(teamId, null));
             return fallback;
         }
-        return rulesFor(teamId, profile.getFormation(), profile.getRulesJson(),
-                "tactics editor (" + profile.getFormation() + ")");
+        Object[] row = data.get(0);
+        String formation = (String) row[0];
+        String rulesJson = (String) row[1];
+        return rulesFor(teamId, formation, rulesJson,
+                "tactics editor (" + formation + ")");
     }
 
     /**

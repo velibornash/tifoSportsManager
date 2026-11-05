@@ -14,6 +14,14 @@ public interface TeamTacticsProfileRepository extends JpaRepository<TeamTacticsP
 
     Optional<TeamTacticsProfile> findByTeamId(Long teamId);
 
+    /** Lightweight: only formation + rulesJson, without loading the full entity (OOM prevention). */
+    @org.springframework.data.jpa.repository.Query("select p.formation, p.rulesJson from TeamTacticsProfile p where p.team.id = :teamId")
+    java.util.List<Object[]> findFormationAndRulesByTeamId(@org.springframework.data.repository.query.Param("teamId") Long teamId);
+
+    /** Lightweight: only the formation string, without loading rulesJson. */
+    @org.springframework.data.jpa.repository.Query("select p.formation from TeamTacticsProfile p where p.team.id = :teamId")
+    Optional<String> findFormationByTeamId(@org.springframework.data.repository.query.Param("teamId") Long teamId);
+
     /**
      * The one profile the owner has designated as the world's starting tactic.
      *
