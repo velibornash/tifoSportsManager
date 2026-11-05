@@ -255,10 +255,9 @@ public class TacticsRulesProvider {
         if (teamId == null) return "BALANCED";
         Long tacticId = defaultTacticByTeam.computeIfAbsent(teamId, this::resolveDefaultTacticId);
         if (tacticId == null) return "BALANCED";
-        var tactic = tactics.findByIdAndTeamId(tacticId, teamId).orElse(null);
-        if (tactic == null) return "BALANCED";
-        String style = tactic.getStyle();
-        return style == null || style.isBlank() ? "BALANCED" : style.trim().toUpperCase(java.util.Locale.ROOT);
+        String style = tactics.findStyleByIdAndTeamId(tacticId, teamId).orElse(null);
+        if (style == null) return "BALANCED";
+        return style.isBlank() ? "BALANCED" : style.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -279,18 +278,15 @@ public class TacticsRulesProvider {
 
     /** The club's default tactic id, or null when it has none. */
     private Long resolveDefaultTacticId(Long teamId) {
-        List<org.tifo.footballmanager.newLogic.model.tactics.Tactic> defaults =
-                tactics.findDefaultsForTeam(teamId);
-        if (defaults.isEmpty()) {
+        List<Long> ids = tactics.findDefaultTacticIdsForTeam(teamId);
+        if (ids.isEmpty()) {
             return null;
         }
-        if (defaults.size() > 1) {
-            // The service makes this impossible. If it has happened anyway, taking the lowest id is a
-            // decision rather than a preference, and the warning says the invariant is broken.
+        if (ids.size() > 1) {
             log.warn("{} has {} default tactics; the service allows one. Using the oldest.",
-                    teamName(teamId, null), defaults.size());
+                    teamName(teamId, null), ids.size());
         }
-        return defaults.get(0).getId();
+        return ids.get(0);
     }
 
     private TacticsRules load(Long teamId, Long tacticId) {

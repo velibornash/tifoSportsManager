@@ -28,6 +28,14 @@ public interface TacticRepository extends JpaRepository<Tactic, Long> {
     @Query("select t from Tactic t where t.team.id = :teamId and t.defaultTactic = true")
     List<Tactic> findDefaultsForTeam(@Param("teamId") Long teamId);
 
+    /** Lightweight: only the default tactic's id, without loading rulesJson. */
+    @Query("select t.id from Tactic t where t.team.id = :teamId and t.defaultTactic = true")
+    List<Long> findDefaultTacticIdsForTeam(@Param("teamId") Long teamId);
+
+    /** Lightweight: only the style string, without loading rulesJson. */
+    @Query("select t.style from Tactic t where t.id = :id and t.team.id = :teamId")
+    Optional<String> findStyleByIdAndTeamId(@Param("id") Long id, @Param("teamId") Long teamId);
+
     /** Lightweight projection (teamId, name) for all tactics — avoids loading rulesJson in bulk checks. */
     @Query("select t.team.id, t.name from Tactic t where t.team is not null")
     List<Object[]> findAllTeamIdAndName();
