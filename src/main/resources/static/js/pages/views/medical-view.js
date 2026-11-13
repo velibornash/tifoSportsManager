@@ -139,12 +139,20 @@ export function createMedicalView(deps) {
                     if (!playerId) return;
                     button.disabled = true;
                     try {
-                        await authFetch(`/teams/${teamId}/medical/recovery/${playerId}`, { method: 'POST' });
+                        // Show the quote first.
+                        const quoteRes = await authFetch(`/teams/${teamId}/medical/recovery/${playerId}/quote`);
+                        const quote = await quoteRes.json();
+                        const total = Number(quote?.totalPrice || 0);
+                        const injuryReduction = Number(quote?.maxInjuryReduction || 0);
+                        const fatigueReduction = Number(quote?.maxFatigueReduction || 0);
+                        const msg = `Recovery: reduce injury by ${injuryReduction} day(s), fatigue by ${fatigueReduction} points. Cost: ${total.toFixed(0)} EUR. Apply?`;
+                        if (!window.confirm(msg)) {
+                            button.disabled = false;
+                            return;
+                        }
+                        await authFetch(`/teams/${teamId}/medical/recovery/${playerId}?confirm=true`, { method: 'POST' });
                         await loadMedicalCenter();
                     } catch (err) {
-                        // The server refused the recovery and says why - the player is not injured, the
-                        // treatment is not available. That sentence is shown, not just logged: the
-                        // manager pressed a button and deserves to read the answer.
                         console.error('Medical recovery failed:', err);
                         window.alert(apiErrorMessage(err, 'The recovery could not be arranged.'));
                         button.disabled = false;
