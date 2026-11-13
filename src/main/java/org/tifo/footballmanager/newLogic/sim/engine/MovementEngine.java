@@ -120,6 +120,12 @@ public class MovementEngine {
 
             Position target = isChaser ? state.getBall().getPosition() : p.getTarget();
             if (carrierOffBall) target = state.getBall().getPosition();
+            // Chase override: if a non-carrier player is within 0.3 cells of a loose
+            // ball (no carrier), they must chase it, not run to their tactical target.
+            if (!isCarrier && state.getCarrier() == null && state.getPendingReceiver() == null
+                    && SimUtils.distance(current, state.getBall().getPosition()) <= 0.3) {
+                target = state.getBall().getPosition();
+            }
             if (target == null) continue;
 
             double pace = state.getRoundPaceSkill(p);
