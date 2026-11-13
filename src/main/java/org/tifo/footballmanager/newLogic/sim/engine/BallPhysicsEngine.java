@@ -294,23 +294,35 @@ public class BallPhysicsEngine implements BallEngine {
             double d = SimUtils.pointSegmentDistance(
                     pending.getPosition().getRow(), pending.getPosition().getColumn(), prev, curr);
             if (d <= RECEIVE_R_BOOSTED) {
-                state.setCarrier(pending);
-                state.setLastTouchTeam(pending.getTeam());
-                state.setPendingReceiver(null);
-                state.setReceivePoint(null);
-                // F2 (replay 5633, 2026-10-26): the received ball ENDS ON THE RECEIVER.
-                //
-                // The ball stopped wherever its own step left it — up to the boosted radius
-                // away from the man receiving it — and only the next decision snapped it to
-                // his feet. So the frame the viewer showed at reception had the ball sitting
-                // several metres from the player who had just taken it, and the pass read as
-                // arriving nowhere near him. The owner's rule stands: the received pass must
-                // be unambiguously visible — player and ball on the same coordinate. The
-                // receiver keeps his boost (he may take the ball at this reach); the ball,
-                // once taken, is his.
-                ball.setPosition(pending.getPosition());
-                ball.stop();
-                return BallStepResult.receive(pending.getLabel());
+                // WHO IS HIT FIRST (owner, 2026-11-13). This block used to return immediately, so
+                // the designated receiver took the ball before any other body on the segment was
+                // even looked at. A pass could therefore be handed to its target straight through
+                // a player standing on the line — the owner's 0:04 log: Kačar (2.5,3.5) -> Petri
+                // (2.5,5.5) with Cvijić at (2.5,4.5), dead on the line, and the ball went through
+                // him. The receiver keeps his boosted reach, but only a TIE goes to him: a body
+                // struck earlier in the same tick is the physical contact, and the ball bounces off
+                // it like it would in the pitch tool.
+                double receiveT = approachT(pending.getPosition().getRow(),
+                        pending.getPosition().getColumn(), prev, curr);
+                if (receiveT <= earliestBodyT(state, prev, curr, pending)) {
+                    state.setCarrier(pending);
+                    state.setLastTouchTeam(pending.getTeam());
+                    state.setPendingReceiver(null);
+                    state.setReceivePoint(null);
+                    // F2 (replay 5633, 2026-10-26): the received ball ENDS ON THE RECEIVER.
+                    //
+                    // The ball stopped wherever its own step left it — up to the boosted radius
+                    // away from the man receiving it — and only the next decision snapped it to
+                    // his feet. So the frame the viewer showed at reception had the ball sitting
+                    // several metres from the player who had just taken it, and the pass read as
+                    // arriving nowhere near him. The owner's rule stands: the received pass must
+                    // be unambiguously visible — player and ball on the same coordinate. The
+                    // receiver keeps his boost (he may take the ball at this reach); the ball,
+                    // once taken, is his.
+                    ball.setPosition(pending.getPosition());
+                    ball.stop();
+                    return BallStepResult.receive(pending.getLabel());
+                }
             }
         }
 
@@ -495,6 +507,62 @@ public class BallPhysicsEngine implements BallEngine {
     }
 
     /**
+     * How far along this tick's segment the EARLIEST player body lies, or
+     * {@link Double#MAX_VALUE} when no body is on it.
+     *
+     * <p>Used only to answer "who was hit first" before the designated receiver is allowed to take
+     * the ball: a body struck earlier in the same tick is the physical contact, and the pass does
+     * not reach its target through it (owner, 2026-11-13). The radius is the same one
+     * {@link #fastPlayerBounce} uses for any outfield body, and so are the exclusions — the player
+     * who struck the ball, and the receiver himself (the caller handles his boosted reach).
+     */
+    private double earliestBodyT(MatchState state, Position prev, Position curr, Player receiver) {
+        double best = Double.MAX_VALUE;
+        for (Player p : state.getPlayers()) {
+            if (p.isUnavailable()) continue;
+            if (p == receiver || p == state.getLastTouchPlayer()) continue;
+            double d = SimUtils.pointSegmentDistance(p.getPosition().getRow(),
+                    p.getPosition().getColumn(), prev, curr);
+            if (d > DEFLECT_R) continue;
+            double t = approachT(p.getPosition().getRow(), p.getPosition().getColumn(), prev, curr);
+            if (t < best) best = t;
+        }
+        return best;
+    }
+
+    /**
+     * The unit normal from a player's body to the point where the ball struck it.
+     *
+     * <p><b>Dead-centre contact needs a normal too (owner, 2026-11-13).</b> When the ball strikes the
+     * middle of the body, the contact point <em>is</em> the body position, so the vector between them
+     * is zero and there is no geometric normal. Both callers used to fall back to a horizontal normal
+     * ({@code nr = 0, nc = 1}), which for a ball travelling straight along a row left the velocity's
+     * row component untouched: the ball kept going, through the player, at half speed sideways. That
+     * is the same "ball goes through a body" the receiver shortcut produced. The honest fallback is
+     * the ball's own direction of travel, reversed — a dead-centre hit rebounds straight back.
+     */
+    private static double[] surfaceNormal(Ball ball, double contactRow, double contactCol, Player body) {
+        double nr = contactRow - body.getPosition().getRow();
+        double nc = contactCol - body.getPosition().getColumn();
+        double len = Math.hypot(nr, nc);
+        if (len < 1e-9) {
+            double spd = Math.hypot(ball.getVelY(), ball.getVelX());
+            if (spd < 1e-9) return new double[] {0.0, 1.0};
+            return new double[] {-ball.getVelY() / spd, -ball.getVelX() / spd};
+        }
+        return new double[] {nr / len, nc / len};
+    }
+
+    /** Reflect the ball's velocity about a surface normal and damp it. */
+    private static void reflectVelocity(Ball ball, double nr, double nc) {
+        double dot = ball.getVelY() * nr + ball.getVelX() * nc;
+        ball.setVelocity(
+                (ball.getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
+                (ball.getVelY() - 2 * dot * nr) * BOUNCE_DAMP
+        );
+    }
+
+    /**
      * Fast ball (spd > BALL_BOUNCE_SPEED_THRESHOLD) that physically strikes a
      * player's body bounces like a billiard ball: reflect velocity, dampen by
      * BOUNCE_DAMP, move the ball to the surface. No possession change — the ball
@@ -530,28 +598,17 @@ public class BallPhysicsEngine implements BallEngine {
         // Determine if this is a GK parry
         boolean isGkParry = hit.isGoalkeeper();
         Position playerPos = hit.getPosition();
-        // Normal from player to ball at contact point
+        // Contact point on the tick's segment, and the normal from the body out to it.
         double cx = prev.getRow() + (curr.getRow() - prev.getRow()) * bestT;
         double cy = prev.getColumn() + (curr.getColumn() - prev.getColumn()) * bestT;
-        double nr = cx - playerPos.getRow();
-        double nc = cy - playerPos.getColumn();
-        double len = Math.hypot(nr, nc);
-        if (len < 1e-9) { nr = 0; nc = 1; len = 1; }
-        nr /= len; nc /= len;
+        double[] normal = surfaceNormal(ball, cx, cy, hit);
+        reflectVelocity(ball, normal[0], normal[1]);
 
-        // Reflect velocity (velX = col direction, velY = row direction)
-        double velX = ball.getVelX();
-        double velY = ball.getVelY();
-        double dot = velY * nr + velX * nc;
-        double newVelY = (velY - 2 * dot * nr) * BOUNCE_DAMP;
-        double newVelX = (velX - 2 * dot * nc) * BOUNCE_DAMP;
-
-        // Move ball to surface (just outside the player)
-        double surfaceRow = playerPos.getRow() + nr * (DEFLECT_R + 0.02);
-        double surfaceCol = playerPos.getColumn() + nc * (DEFLECT_R + 0.02);
-        ball.setPosition(new Position(surfaceRow, surfaceCol));
-        ball.setVelocity(newVelX, newVelY);
-        ball.setLaunchSpeed(Math.hypot(newVelX, newVelY));
+        // Move the ball to the surface of the body it struck.
+        ball.setPosition(new Position(
+                playerPos.getRow() + normal[0] * (DEFLECT_R + 0.02),
+                playerPos.getColumn() + normal[1] * (DEFLECT_R + 0.02)));
+        ball.setLaunchSpeed(ball.getSpeed());
         ball.setAirborne(false);
         ball.setHeight(0.0);
 
@@ -638,18 +695,11 @@ public class BallPhysicsEngine implements BallEngine {
                 // SHOT BLOCK: a defender putting a body in the way of a shot in
                 // flight parries it rather than controlling it. The ball reflects
                 // off the blocker's body (like a deflection) and stays in play.
-                double nr = p.getPosition().getRow() - state.getBall().getPosition().getRow();
-                double nc = p.getPosition().getColumn() - state.getBall().getPosition().getColumn();
-                double len = Math.hypot(nr, nc);
-                if (len > 1e-9) {
-                    nr /= len; nc /= len;
-                    double dot = state.getBall().getVelX() * nc + state.getBall().getVelY() * nr;
-                    state.getBall().setVelocity(
-                            (state.getBall().getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
-                            (state.getBall().getVelY() - 2 * dot * nr) * BOUNCE_DAMP
-                    );
-                }
-                state.getBall().setPosition(new Position(p.getPosition().getRow(), p.getPosition().getColumn()));
+                Ball shotBall = state.getBall();
+                double[] normal = surfaceNormal(shotBall, shotBall.getPosition().getRow(),
+                        shotBall.getPosition().getColumn(), p);
+                reflectVelocity(shotBall, normal[0], normal[1]);
+                shotBall.setPosition(new Position(p.getPosition().getRow(), p.getPosition().getColumn()));
                 bestT = t; ev = "BLOCK"; hit = p;
             } else {
                 // Opponent body. A defender within 2 m of the line can only READ
@@ -737,18 +787,10 @@ public class BallPhysicsEngine implements BallEngine {
                 state.setPendingReceiver(null);
                 state.setReceivePoint(null);
                 // reflect like DEFLECT
-                Position contact = hit.getPosition();
-                double nr = hit.getPosition().getRow() - state.getBall().getPosition().getRow();
-                double nc = hit.getPosition().getColumn() - state.getBall().getPosition().getColumn();
-                double len = Math.hypot(nr, nc);
-                if (len > 1e-9) {
-                    nr /= len; nc /= len;
-                    double dot = state.getBall().getVelX() * nc + state.getBall().getVelY() * nr;
-                    state.getBall().setVelocity(
-                            (state.getBall().getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
-                            (state.getBall().getVelY() - 2 * dot * nr) * BOUNCE_DAMP
-                    );
-                }
+                Ball parryBall = state.getBall();
+                double[] normal = surfaceNormal(parryBall, parryBall.getPosition().getRow(),
+                        parryBall.getPosition().getColumn(), hit);
+                reflectVelocity(parryBall, normal[0], normal[1]);
                 state.getBall().setPosition(new Position(hit.getPosition().getRow(), hit.getPosition().getColumn()));
                 return BallStepResult.gkParry(hit.getLabel());
             } else {
@@ -775,17 +817,8 @@ public class BallPhysicsEngine implements BallEngine {
                     return null;
                 }
                 b.setPosition(contact);
-                double nr = hit.getPosition().getRow() - contact.getRow();
-                double nc = hit.getPosition().getColumn() - contact.getColumn();
-                double len = Math.hypot(nr, nc);
-                if (len > 1e-9) {
-                    nr /= len; nc /= len;
-                    double dot = b.getVelX() * nc + b.getVelY() * nr;
-                    b.setVelocity(
-                            (b.getVelX() - 2 * dot * nc) * BOUNCE_DAMP,
-                            (b.getVelY() - 2 * dot * nr) * BOUNCE_DAMP
-                    );
-                }
+                double[] normal = surfaceNormal(b, contact.getRow(), contact.getColumn(), hit);
+                reflectVelocity(b, normal[0], normal[1]);
                 if (ev.equals("BLOCK")) return BallStepResult.block(hit.getLabel());
                 return BallStepResult.deflect(hit.getLabel());
             }

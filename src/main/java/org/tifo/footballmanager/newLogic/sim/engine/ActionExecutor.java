@@ -66,15 +66,25 @@ public class ActionExecutor {
                 break;
         }
 
-        // Clear the "first pass after kickoff" flag once the receiver's first pass
-        // has been played, so subsequent decisions are unrestricted.
-        if (state.isFirstPassAfterKickoff() && !wasKickoff
-                && (type == ActionType.PASS || type == ActionType.THRU
-                        || type == ActionType.CROSS || type == ActionType.CENTER)) {
-            state.setFirstPassAfterKickoff(false);
-        }
         state.setLastDecisionScore(decision.getScore());
         state.setLastDecisionReason(decision.getReason());
+        // Forward progress, recorded when the ball is actually PLAYED forward. It used to be
+        // recorded inside findBestReceiver's candidate loop — i.e. on EVALUATION, so merely having a
+        // forward option available reset the clock, and the F10 "no progress for 100 ticks" penalty
+        // could never fire for the right reason. Moving the receiver pool onto one shared scoring
+        // (owner, 2026-11-13) removed that loop, so this is where it belongs: a forward delivery was
+        // executed.
+        Player progressTarget = decision.getTarget();
+        if (carrier != null && progressTarget != null
+                && (type == ActionType.PASS || type == ActionType.THRU
+                        || type == ActionType.CROSS || type == ActionType.CENTER)) {
+            boolean forward = "HOME".equals(carrier.getTeam())
+                    ? progressTarget.getPosition().getRow() > carrier.getPosition().getRow()
+                    : progressTarget.getPosition().getRow() < carrier.getPosition().getRow();
+            if (forward) {
+                state.setLastProgressTick(state.getMatchTicks());
+            }
+        }
         // Track the last executed action for shot-outcome attribution (the
         // carrier is null during flight, so the orchestrator reads this).
         state.setLastActionType(type);
@@ -170,8 +180,6 @@ public class ActionExecutor {
         // kickoff logic. OffsideService only skips the check during this flight.
         if (kickoff) {
             state.setKickoffPending(false);
-            // The kickoff receiver's first pass must not go forward (owner rule).
-            state.setFirstPassAfterKickoff(true);
         }
 
         // Carrier stops running. The receiver stays exactly on his tactical spot — he

@@ -86,8 +86,15 @@ public final class MatchEngineVersion {
      * <b>The retreat:</b> the offside line counts the goalkeeper again, so the two halves of the
      * retreat rule agree. <b>The restarts:</b> a restart nobody can take no longer switches the
      * offside check off for the rest of the match. A stored match from -3 must never be read as -1.
+     *
+     * <p><b>-1, 2026-11-13:</b> the pass pays for its length in metres, linearly, and the pool
+     * scorer and the option scorer now use the same term — the receiver used to be chosen by a
+     * scorer with no distance cost between 0.7 and 2.5 cells and then a −12 cliff, so a 28 m pass to
+     * a better finisher beat a 14 m pass to the man beside him. The "first pass after kickoff must
+     * not go forward" rule was removed at the owner's instruction. The receiver can no longer take a
+     * pass through a body standing on the line: the earliest contact on the tick's segment wins.
      */
-    public static final String VERSION = "2026.10.19-1";
+    public static final String VERSION = "2026.11.13-1";
 
     /**
      * Every constant that can change a scoreline, read live.
@@ -104,6 +111,7 @@ public final class MatchEngineVersion {
         r.put("decision.thruGate", num(CleanDecisionEngine.THRU_FREQUENCY_GATE));
         r.put("decision.deliveryGate", num(CleanDecisionEngine.DELIVERY_FREQUENCY_GATE));
         r.put("decision.offsideHardLimit", num(CleanDecisionEngine.OFFSIDE_HARD_LIMIT));
+        r.put("decision.passDistanceCost", num(CleanDecisionEngine.PASS_DISTANCE_COST));
 
         // --- The offside rule itself. ---
         //

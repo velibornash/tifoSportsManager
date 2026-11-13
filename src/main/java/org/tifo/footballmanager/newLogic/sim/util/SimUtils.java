@@ -7,9 +7,29 @@ public final class SimUtils {
 
     private SimUtils() {}
 
+    /** Metres along one grid row: the pitch is 98 m deep on 7 rows. */
+    public static final double ROW_METRES = 14.0;
+    /** Metres along one grid column: the pitch is 60 m wide on 6 columns. */
+    public static final double COLUMN_METRES = 10.0;
+
     public static double distance(Position a, Position b) {
         double dr = a.getRow() - b.getRow();
         double dc = a.getColumn() - b.getColumn();
+        return Math.sqrt(dr * dr + dc * dc);
+    }
+
+    /**
+     * The real distance between two players, in metres.
+     *
+     * <p>{@link #distance} measures in grid cells and treats a row and a column as the same length,
+     * which they are not: the pitch is 98 m deep and 60 m wide on a 7 × 6 grid, so one row is 14 m
+     * and one column is 10 m. A pass two cells along a row is 28 m; two cells along a column is
+     * 20 m. The owner asked (2026-11-13) for pass distance to be measured in metres for exactly
+     * that reason: a "two-cell" distance is two different passes.
+     */
+    public static double distanceMetres(Position a, Position b) {
+        double dr = (a.getRow() - b.getRow()) * ROW_METRES;
+        double dc = (a.getColumn() - b.getColumn()) * COLUMN_METRES;
         return Math.sqrt(dr * dr + dc * dc);
     }
 

@@ -121,6 +121,22 @@ public class CleanDecisionEngine {
     private static final double DRIBBLE_BASE = 12.0;
 
     /**
+     * What one row of pass length costs, in points: 4 points per 14 m, so 0.286 per metre.
+     *
+     * <p><b>Why the pass pays for length at all, and why it is linear.</b> The receiver used to be
+     * chosen by a scorer that had no distance term between 0.7 and 2.5 cells — a square 14 m pass and
+     * a 28 m pass to the same row scored the same — and then a cliff of −12 at 2.5 cells. Measured on
+     * the owner's own kickoff (2026-11-13): Kačar (2.5,3.5) with Živanov 10 m away, Cvijić 10 m away
+     * and Petri 20 m away chose Petri, by 0.03 of a point, because Petri's finishing skill (striker 9
+     * against 7 and 6) was worth +1.03 and the whole of the extra 10 m cost only 1.00. Out of ~21.
+     * The owner's rule: "the closer player must always have a bigger boost than the farther one."
+     * A strictly monotonic, linear cost in <em>metres</em> is the only shape that cannot do anything
+     * else: for any two receivers, the nearer one always scores higher on this term, by exactly the
+     * distance between them, and there is no band or cliff anywhere.
+     */
+    public static final double PASS_DISTANCE_COST = 4.0;
+
+    /**
      * What a chance is worth, per unit of chance quality.
      *
      * <p>A shot's {@code chance} is 0..1 over distance and corner openness — a tap-in is about 0.75
@@ -489,21 +505,13 @@ public class CleanDecisionEngine {
                     "PASS: lane blocked by defender");
         }
 
-        // Distance. Modest now, and deliberately so — where the ball goes matters more than how far.
-        double dist = SimUtils.distance(carrier.getPosition(), receiver.getPosition());
-        if (dist >= 0.8 && dist <= 1.5) {
-            score += 6.0;
-        } else if (dist > 2.5) {
-            score -= 12.0;
-            reason.append("-12 long ");
-        }
-        // Progressive distance penalty: long passes are riskier and less accurate.
-        // A short safe pass to a nearby free player should beat a long wing pass.
-        if (dist > 2.0) {
-            double extra = (dist - 2.0) * 5.0;
-            score -= extra;
-            reason.append(String.format("-%.0f dist ", extra));
-        }
+        // Distance, in metres, as one continuous cost — the same term findBestReceiver uses, so
+        // the pool scorer and the option scorer can never disagree about how far a pass is
+        // (owner 2026-11-13). 14 m = 4 points, and nearer is always better.
+        double passMetres = SimUtils.distanceMetres(carrier.getPosition(), receiver.getPosition());
+        double distanceCost = passDistanceCost(passMetres);
+        score -= distanceCost;
+        reason.append(String.format("dist %.0fm -%.0f ", passMetres, distanceCost));
 
         // OOB RISK (F-RS-3, replay 5633, 2026-10-26): if the pass target is near the touchline
         // (col < 1.5 or col > 6.5), the pass risks going out of bounds. Penalise heavily.
@@ -576,6 +584,26 @@ public class CleanDecisionEngine {
             // Task 4 (owner 2026-11-01): a teammate's pass never targets the goalkeeper.
             if (teammate.isGoalkeeper()) continue;
             if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
+
+            // F-RS-1 (replay 5633, 2026-10-26): a throw-in taker must NEVER pass to himself or into
+            // empty space — only to a free player within 2-2.5 cells, or into the box for a duel.
+            // This used to live in findBestReceiver; it belongs to the candidate pool, which is now
+            // the only place candidates come from.
+            if (state.isJustTookRestart()) {
+                double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
+                if (distToTeammate < 1.0) continue;
+                if (distToTeammate > 2.5) {
+                    double teammateRow = teammate.getPosition().getRow();
+                    double teammateCol = teammate.getPosition().getColumn();
+                    boolean inBox = "HOME".equals(carrier.getTeam())
+                            ? teammateRow >= 5.0 && teammateRow <= 8.0
+                                    && teammateCol >= 2.0 && teammateCol <= 6.0
+                            : teammateRow >= 1.0 && teammateRow <= 4.0
+                                    && teammateCol >= 2.0 && teammateCol <= 6.0;
+                    if (!inBox) continue;
+                }
+            }
+
             double offsideMargin = offsideMargin(state, carrier, teammate);
             if (offsideMargin > OFFSIDE_HARD_LIMIT) continue;
             boolean marginalOffside = offsideMargin > 0;
@@ -1123,220 +1151,27 @@ public class CleanDecisionEngine {
     }
 
     private Player findBestReceiver(MatchState state, Player carrier) {
-        // Best teammate = most open + clear lane + forward progress. A blocked
-        // lane is the deciding negative: threading a ball through the block is
-        // how passes get intercepted (demo/service lane weight ±80).
+        // ONE PASS SCORING (owner, 2026-11-13).
+        //
+        // There used to be two, and they disagreed. This method had its own scale — threat × 30,
+        // space × 15, forward capped at +8, a repetition penalty, and NO distance cost at all
+        // between 0.7 and 2.5 cells — and then scorePassOptions scored the chosen man again on a
+        // different one (space × 10, forward capped at +20, safe/dangerous/OOB terms and its own
+        // distance bands). In the owner's own log that is how a stopper 10 m from two free team-mates
+        // picked the third one 20 m away: the pool scale never charged him for the extra 10 m, and
+        // the score printed next to the pass came from the other formula entirely (where that same
+        // man was the worst of the three).
+        //
+        // The candidates are now ranked by the very numbers the engine uses to prefer a pass to a
+        // shot, so the receiver who is chosen is the receiver whose score is reported, and there is
+        // no second scale left to disagree with the first.
         Player best = null;
         double bestScore = -Double.MAX_VALUE;
-        boolean home = "HOME".equals(carrier.getTeam());
-
-        for (Player teammate : state.getPlayers()) {
-            if (!teammate.getTeam().equals(carrier.getTeam()) || teammate.equals(carrier)) continue;
-            // ME-1 (owner 2026-10-23): never pass to a player who has left the pitch — sent off,
-            // injured off, or already substituted. Every other pool in the engine (restarts,
-            // loose balls, movement, offside) already skips isUnavailable(); this one didn't, and
-            // the sent-off player — standing still in space, with nobody marking him — was the
-            // most open man on the pitch, so he kept receiving the ball.
-            if (teammate.isUnavailable()) continue;
-
-            // Task 4 (owner 2026-11-01): a teammate's pass never targets the goalkeeper.
-            if (teammate.isGoalkeeper()) continue;
-
-            // ME-2 (owner 2026-10-23): from a shooting position a pass back into his own half is
-            // not an option at all — removed, not penalised. ("iz pozicije za sut odigrava PAS NA
-            // SVOJU POLOVINU, ovo smo bili zabranili!") From farther out nothing changes: the old
-            // football stands, backward costs -20 and that is all.
-            if (inShootingZone(carrier) && inOwnHalf(teammate)) continue;
-
-            // FIRST PASS AFTER KICKOFF (owner 2026-10-30): the kickoff receiver's first pass
-            // must be same line or backward — never forward, regardless of tactic. This is the
-            // build-up rule: don't launch the ball forward from the first touch.
-            if (state.isFirstPassAfterKickoff()
-                    && progressOf(teammate) > progressOf(carrier)) {
-                continue;
-            }
-
-
-            // OFFSIDE (user rule 2026-09-25): "kad je vise od 0.5 cella igrac u
-            // offside, sto je 7m, nema ni smisla da ide pass, ali unutar 7m moze
-            // da krene pass... veci skill ce retko gadati offside".
-            //  - beyond 0.5 cells (7 m) he is CLEARLY offside: never a target.
-            //  - inside 0.5 cells the pass may be played, and whether the carrier
-            //    actually does it depends on his PLAYMAKING skill (1-20): a
-            //    poor passer sees the flag and plays it anyway, a good one
-            //    almost never does.
-            // The rules layer (OffsideService) kills such a pass at reception, so
-            // selecting purely-offside targets was self-sabotage: measured with
-            // ProposalPassFailDiag, 17.5 offsides per match and 20% of all
-            // failed passes.
-            double offsideMargin = offsideMargin(state, carrier, teammate);
-            if (offsideMargin > OFFSIDE_HARD_LIMIT) {
-                continue;   // clearly offside (>7 m) — not a passing option at all
-            }
-            boolean marginalOffside = offsideMargin > 0;
-
-            // F-RS-1 (replay 5633, 2026-10-26): throw-in taker must NEVER pass to themselves or into empty space.
-        // They may only pass to a free player within 2-2.5 cells, or throw into the box/center for a duel.
-        if (state.isJustTookRestart()) {
-            double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
-            if (distToTeammate < 1.0) continue; // too close — essentially self or empty space (min 1 cell = 14 m)
-            if (distToTeammate > 2.5) {
-                // only allow passes into the box/center area for a duel
-                double teammateRow = teammate.getPosition().getRow();
-                double teammateCol = teammate.getPosition().getColumn();
-                boolean inBox = (carrier.getTeam().equals("HOME")
-                        ? teammateRow >= 5.0 && teammateRow <= 8.0 && teammateCol >= 2.0 && teammateCol <= 6.0
-                        : teammateRow >= 1.0 && teammateRow <= 4.0 && teammateCol >= 2.0 && teammateCol <= 6.0);
-                if (!inBox) continue; // not in box/center — don't allow long throw to nowhere
-            }
-        }
-
-            // F10 (backward-pass penalty after no progression).
-            // If we've had no forward progress for > F10_BACKWARD_PENALTY_TICKS, then
-            // backward passes (advance < -0.2) are penalised an extra -20 so the engine
-            // varies its targets rather than repeatedly playing the ball backward.
-            int ticksSinceLastProgress = state.getMatchTicks() - state.getLastProgressTick();
-            boolean noProgressMode = ticksSinceLastProgress > F10_BACKWARD_PENALTY_TICKS;
-
-            // F9 (pass-repetition penalty): if the same passer→receiver pair was used on the
-            // immediately preceding pass, penalise this candidate so the engine varies its
-            // targets over time rather than aiming at the same two men repeatedly.
-            double score = 0.0;
-            double advance = progressOf(teammate) - progressOf(carrier);
-            boolean samePair = carrier.getId().equals(state.getLastPassPasserId())
-                    && teammate.getId().equals(state.getLastPassReceiverId());
-            if (samePair) {
-                score -= 20.0;   // repetition penalty — same passer and same receiver
-            }
-            if (advance > 0) {
-                // record the tick when we last made forward progress
-                state.setLastProgressTick(state.getMatchTicks());
-                score += Math.min(8.0, advance * 4.0);
-            } else if (advance < -0.2) {
-                // backward pass — determine base penalty per original rules
-                double _dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
-                boolean _short = _dist <= 1.5;
-                boolean _ownHalf = "HOME".equals(carrier.getTeam())
-                        ? carrier.getPosition().getRow() < 4.5
-                        : carrier.getPosition().getRow() > 4.5;
-                double basePenalty;
-                if (_short) {
-                    if (!_ownHalf) basePenalty = 5.0;   // reduced penalty outside own half
-                    else basePenalty = 0.0;            // in own half: no penalty (owner's rule)
-                } else {
-                    basePenalty = 20.0;
-                }
-                if (noProgressMode) {
-                    basePenalty += 20.0;   // extra penalty for backward pass after no progress
-                }
-                if (_short) {
-                    if (!_ownHalf) score -= basePenalty;   // reduced penalty outside own half
-                    else score -= basePenalty;              // in own half: no penalty but with F10 extra
-                } else {
-                    score -= basePenalty;
-                }
-            } else {
-                score -= 3.0;
-            }
-
-            // STYLE BOOSTS (owner, 2026-10-30): the tactic style affects pass selection.
-            // The carrier's team determines which style to use.
-            String style = state.getTacticStyle(carrier.getTeam());
-            if (style != null) {
-                style = style.toUpperCase(java.util.Locale.ROOT);
-                double distToTeammate = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
-                if ("ATTACKING".equals(style)) {
-                    // +20% boost to teammates closer to opponent's goal
-                    if (advance > 0) {
-                        score *= 1.20;
-                    }
-                } else if ("DEFENSIVE".equals(style)) {
-                    // +10% boost to backward passes
-                    if (advance < -0.2) {
-                        score *= 1.10;
-                    }
-                } else if ("POSSESSION".equals(style)) {
-                    // +10% to nearby passer (within 1.5 cells) and +10% to free player
-                    if (distToTeammate <= 1.5) {
-                        score *= 1.10;
-                    }
-                    // free player: no opponent within 1.0 cell
-                    double nearestOppD = Double.MAX_VALUE;
-                    for (Player opp : state.getPlayers()) {
-                        if (opp.getTeam().equals(carrier.getTeam())) continue;
-                        if (opp.isUnavailable()) continue;
-                        double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
-                        if (d < nearestOppD) nearestOppD = d;
-                    }
-                    if (nearestOppD > 1.0) {
-                        score *= 1.10;
-                    }
-                } else if ("WINGER".equals(style)) {
-                    // +25% to players in extreme columns 1 and 6 if free
-                    double col = teammate.getPosition().getColumn();
-                    if (col <= 1.5 || col >= 5.5) {
-                        double nearestOppD = Double.MAX_VALUE;
-                        for (Player opp : state.getPlayers()) {
-                            if (opp.getTeam().equals(carrier.getTeam())) continue;
-                            if (opp.isUnavailable()) continue;
-                            double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
-                            if (d < nearestOppD) nearestOppD = d;
-                        }
-                        if (nearestOppD > 1.0) {
-                            score *= 1.25;
-                        }
-                    }
-                }
-                // BALANCED: no change
-            }
-
-            // THE receiver term, weighted by how well this carrier reads a defence.
-            score += receiverThreat(state, teammate, carrier) * threadOf(carrier) * 30.0;
-
-            score += spaceAround(state, teammate) * 15.0;
-
-            if (nearestOpponentBeatsHimToIt(state, teammate)) score -= 40.0;
-            if (laneBlockPenalty(state, carrier, teammate) > 0) {
-                continue;   // blocked pass — not an option (owner: "jasno u bloku")
-            }
-
-            double dist = SimUtils.distance(carrier.getPosition(), teammate.getPosition());
-            if (dist > 2.5) score -= 12.0;
-            else if (dist < 0.7) score -= 6.0;   // too close to be progressive
-
-            // DANGEROUS-ZONE SAFE PASS (owner 2026-10-30): in the own defensive third, a
-            // safe pass to the nearest free teammate (within 2.5 cells, no opponent within
-            // 1.5 cells) gets a progressive distance bonus so the nearest free player wins.
-            // This is applied in findBestReceiver so the receiver selection prefers safe
-            // nearby passes over risky distant ones.
-            boolean _home = "HOME".equals(carrier.getTeam());
-            boolean _inDangerousZone = _home ? carrier.getPosition().getRow() <= 3.5
-                    : carrier.getPosition().getRow() >= 5.5;
-            if (_inDangerousZone && dist <= 2.5) {
-                double _nearestOppD = Double.MAX_VALUE;
-                for (Player opp : state.getPlayers()) {
-                    if (opp.getTeam().equals(carrier.getTeam())) continue;
-                    if (opp.isUnavailable()) continue;
-                    double d = SimUtils.distance(opp.getPosition(), teammate.getPosition());
-                    if (d < _nearestOppD) _nearestOppD = d;
-                }
-                if (_nearestOppD > 1.5) {
-                    double zoneBonus = (2.5 - dist) * 1.0;
-                    score += zoneBonus;
-                }
-            }
-
-            // Marginal offside: still an option, but only if he plays the risk.
-            if (marginalOffside && !carrierWillRiskOffside(carrier)) {
-                continue;
-            }
-            // Blocked pass (defender on the lane) is not an option at all.
-            if (laneBlockPenalty(state, carrier, teammate) > 0) {
-                continue;
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                best = teammate;
+        for (DecisionOption option : passCandidateOptions(state, carrier)) {
+            if (option.getTarget() == null) continue;
+            if (option.getScore() > bestScore) {
+                bestScore = option.getScore();
+                best = option.getTarget();
             }
         }
         return best;
@@ -1418,18 +1253,33 @@ public class CleanDecisionEngine {
         return home ? receiverRow - lineRow : lineRow - receiverRow;
     }
 
-    /** Number of opponents whose body lies inside the passing corridor (0..1 normalized). */
+    /**
+     * Is anybody standing in the passing corridor?
+     *
+     * <p>Counts <b>both sides</b>. It used to count opponents only, which is why a pass could be
+     * played at a target with a team-mate planted exactly on the line: the owner's 0:04 log shows
+     * Kačar at (2.5,3.5) passing to Petri at (2.5,5.5) with Cvijić standing at (2.5,4.5), dead on the
+     * line, and the ball went through him (2026-11-13). A body is a body — the ball does not know
+     * whose shirt it is, and it bounces off either.
+     *
+     * <p>The passer and the receiver are excluded: they are the two ends of the segment, so their
+     * distance to it is zero by definition.
+     */
     private double laneBlockPenalty(MatchState state, Player passer, Player receiver) {
         if (receiver == null) return 1.0;
         Position a = passer.getPosition();
         Position b = receiver.getPosition();
-        double corridor = 0.35; // cells around the pass line that block it (interception needs ~0.14)
-        for (Player opponent : state.getPlayers()) {
-            if (!opponent.getTeam().equals(passer.getTeam())) {
-                double d = SimUtils.pointSegmentDistance(a, b, opponent.getPosition());
-                if (d < corridor) {
-                    return 1.0;
-                }
+        // The corridor is exactly the body radius the physics uses: a player at least one body away
+        // from the line does not touch the ball, so he must not make the pass unplayable either. At
+        // 0.35 cells (3.5-5 m) the decision layer refused passes the ball would have sailed through
+        // cleanly, and with team-mates counted that stopped 2 passes in 3.
+        double corridor = org.tifo.footballmanager.newLogic.sim.engine.BallPhysicsEngine.DEFLECT_R;
+        for (Player body : state.getPlayers()) {
+            if (body == passer || body == receiver) continue;
+            if (body.isUnavailable()) continue;
+            double d = SimUtils.pointSegmentDistance(a, b, body.getPosition());
+            if (d < corridor) {
+                return 1.0;
             }
         }
         return 0.0;
@@ -1544,6 +1394,18 @@ public class CleanDecisionEngine {
     private static double progressOf(Player p) {
         double row = p.getPosition().getRow();
         return "HOME".equals(p.getTeam()) ? row - 4.5 : 4.5 - row;
+    }
+
+    /**
+     * What a pass of this length costs, in points.
+     *
+     * <p>Linear in metres on purpose: {@code cost(a) - cost(b)} is exactly proportional to
+     * {@code distance(a) - distance(b)}, so a nearer receiver can never be beaten by a farther one
+     * on distance, and there is no band and no cliff. Four points per 14 m (one row) is roughly what
+     * the old 0.8–1.5-cell band was worth at its centre, so ordinary short passes score as they did.
+     */
+    private static double passDistanceCost(double metres) {
+        return metres / SimUtils.ROW_METRES * PASS_DISTANCE_COST;
     }
 
     /** 0..1, how much room a receiver has, from the nearest marker. */
